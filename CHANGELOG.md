@@ -5,6 +5,16 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+### Fixed
+
+- A new site's first commit no longer edits the managed `scripts/ci.test.mjs`.
+  0.16.0 gave its push-event test a shorter repository, and the pre-commit
+  hook's formatter joined a line the template had wrapped, so `gq sync` then
+  reported the file as a local edit. The template now has the line as the
+  formatter writes it.
+  - **Existing sites:** if `gq sync` reports `scripts/ci.test.mjs` as edited
+    for this reason, delete it and run `gq sync`.
+
 ## 0.16.1 — 2026-10-03
 
 ### Fixed
