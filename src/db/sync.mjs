@@ -9,7 +9,8 @@
 //      database, then import the backup
 //   4. search-replace the live admin/frontend URLs with the local ones
 //   5. create (or reset) the local administrator, run `wp core update-db`,
-//      and check the site and the WordPress version
+//      install the language packs of gq.ops.json's wordpress.locale, and
+//      check the site and the WordPress version
 //
 // Nothing here writes to the live database: the only command sent to Ploi is
 // the export script, which is checked for write commands before it is sent,
@@ -381,6 +382,7 @@ async function runDatabase({ context, parsed, env, fetch, exec, io, interactive,
     await ddev(["wp", "cache", "flush", "--quiet"]);
     await ddev(["wp", "rewrite", "flush", "--quiet"]);
     await ddev(["wp", "core", "update-db", "--quiet"]);
+    await installLanguagePacks({ ddev, exec, cmsRoot, env, ui }, ops.wordpress?.locale);
 
     const localWordpress = (await ddev(["wp", "core", "version"], { capture: true })).trim();
     if (localWordpress !== backup.wordpress) {
@@ -411,6 +413,22 @@ async function runDatabase({ context, parsed, env, fetch, exec, io, interactive,
     throw error;
   } finally {
     if (workDir) await rm(workDir, { recursive: true, force: true });
+  }
+}
+
+// The live database names the site's language (WPLANG), but language packs
+// are files the CMS deploy installs on the server, not rows: install
+// gq.ops.json's wordpress.locale here too, or the local admin falls back to
+// English. A missing plugin or theme translation only warns, as on deploy.
+async function installLanguagePacks({ ddev, exec, cmsRoot, env, ui }, locale) {
+  if (!locale || locale === "en_US") return;
+  ui.info(`Installing the ${locale} language packs`);
+  await ddev(["wp", "language", "core", "install", locale, "--quiet"]);
+  for (const kind of ["plugin", "theme"]) {
+    const args = ["wp", "language", kind, "install", "--all", locale, "--quiet"];
+    if ((await exec("ddev", args, { cwd: cmsRoot, env })).code !== 0) {
+      ui.warn(`Some ${kind} translations for ${locale} are not available.`);
+    }
   }
 }
 

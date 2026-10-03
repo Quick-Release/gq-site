@@ -15,10 +15,19 @@ const RELEASE_SHA = "0123abcd";
 const RECORD = `record() { local line="$1"; shift; for arg in "$@"; do line+=$'\\t'"$arg"; done; printf '%s\\n' "$line" >> "$DEPLOY_CALLS"; }`;
 
 const STUBS = {
-  // WordPress is installed unless WP_INSTALLED=0, and every plugin asked
-  // about is active. Of the wp eval checks, the getquick-config one passes
-  // and the S3 Uploads one doesn't (no bucket).
+  // WordPress is installed unless WP_INSTALLED=0, every plugin asked about
+  // is active, and every core language is installed unless
+  // WP_LANGUAGE_INSTALLED=0.
+  // Of the wp eval checks, the getquick-config one passes and the S3 Uploads
+  // one doesn't (no bucket). A call starting with a line of WP_FAILING fails.
   wp: `record wp "$@"
+while IFS= read -r failing; do
+  if [ -n "$failing" ] && [[ "$*" == "$failing"* ]]; then exit 1; fi
+done <<< "\${WP_FAILING:-}"
+if [ "$1 \${2:-} \${3:-}" = "language core is-installed" ]; then
+  [ "\${WP_LANGUAGE_INSTALLED:-1}" = 1 ]
+  exit
+fi
 case "$1 \${2:-}" in
   "core is-installed") [ "\${WP_INSTALLED:-1}" = 1 ] ;;
   "eval "*GETQUICK_CONFIG_VERSION*) exit 0 ;;
@@ -46,13 +55,22 @@ printf '8.3'`,
 // Deploys a release holding `releaseFiles` (site-relative path → content;
 // RELEASE, apps/cms/composer.json, apps/cms/web/index.php and the script
 // itself as deploy/ploi/admin.sh are added) with `script`, to a site holding
-// `siteFiles` and an installed WordPress (none with `installed: false`).
+// `siteFiles` and an installed WordPress (none with `installed: false`),
+// with every core language installed (none with `languageInstalled: false`)
+// and each wp call that starts with one of `failing` exiting 1.
 // Resolves to the exit `code`, `stdout`, `stderr`, both as `output`, the
 // `site` directory, the recorded `calls` (each an array: tool, then
 // arguments) and the COMPOSER_AUTH composer saw.
 export async function deploy(
   script,
-  { releaseFiles = {}, siteFiles = {}, installed = true, composerAuth = '{"http-basic":{}}' } = {},
+  {
+    releaseFiles = {},
+    siteFiles = {},
+    installed = true,
+    languageInstalled = true,
+    failing = [],
+    composerAuth = '{"http-basic":{}}',
+  } = {},
 ) {
   const directory = await temporaryDirectory();
   const [stubs, release, site] = ["stubs", "release", "site"].map((name) => join(directory, name));
@@ -87,6 +105,8 @@ export async function deploy(
       COMPOSER_AUTH: composerAuth,
       DEPLOY_CALLS: calls,
       WP_INSTALLED: installed ? "1" : "0",
+      WP_LANGUAGE_INSTALLED: languageInstalled ? "1" : "0",
+      WP_FAILING: failing.join("\n"),
     },
   });
   const recorded = await readFile(calls, "utf8");

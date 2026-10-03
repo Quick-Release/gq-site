@@ -31,6 +31,13 @@ const pluginSlug = z
     /^[A-Za-z0-9][\w.-]*$/u,
     "must be a plugin slug (letters, digits, -, _ and ., starting with a letter or digit)",
   );
+// A WordPress locale: a language, then optionally a region and a variant, as
+// WordPress.org names its language packs (en_US, pt_PT, pt_PT_ao90,
+// de_DE_formal). The CMS deploy script passes it to wp, so nothing else.
+export const LOCALE_PATTERN = /^[a-z]{2,3}(?:_[A-Z]{2})?(?:_[a-z0-9]+)?$/u;
+const locale = z
+  .string()
+  .regex(LOCALE_PATTERN, "must be a WordPress locale, like en_US, pt_PT or pt_PT_ao90");
 
 // A pattern whose match is replaced by `replacement`, `{version}` standing
 // for the release version: the JSON form of a release config's
@@ -85,6 +92,13 @@ export const manifestSchema = z
         plugins: z
           .array(pluginSlug)
           .describe("The plugins the CMS deploy script activates, in order."),
+        locale: locale
+          .optional()
+          .describe(
+            "The site's main language, as a WordPress locale (pt_PT_ao90): the CMS deploy " +
+              "script installs and activates it, and the Frontend's <html lang> follows it. " +
+              "Left out, the deploy leaves the CMS's language as it is.",
+          ),
       })
       .optional(),
     releases: z.strictObject({ bucket: z.string(), prefix: z.string().optional() }).optional(),

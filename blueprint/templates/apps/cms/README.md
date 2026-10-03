@@ -40,8 +40,10 @@ server.
 `gq ploi provision` renders the server's `.env` from `.env.production.example`
 (real database credentials and salts replace its placeholders) and
 `gq ploi release` deploys a release with `deploy/ploi/admin.sh`. That script is
-generated from `gq.ops.json`: it activates `wordpress.plugins`, then runs the
-site's own steps in `deploy/ploi/admin.d` (`10-theme.sh` activates
+generated from `gq.ops.json`: it activates `wordpress.plugins`, installs and
+activates the language `wordpress.locale` names (the admin can't install
+one: production disallows file modifications), then runs the site's own
+steps in `deploy/ploi/admin.d` (`10-theme.sh` activates
 `getquick-theme`).
 
 ## Publication events

@@ -241,3 +241,118 @@ test("a plugin that isn't a plugin slug is refused before gq sync writes anythin
     await assert.rejects(access(fixture.path("deploy/ploi/admin.sh")), { code: "ENOENT" });
   }
 });
+
+// The deploy script gq sync renders for ACME with `locale` as its
+// wordpress.locale.
+async function scriptWithLocale(locale) {
+  const fixture = await createFixtureSite({
+    ops: { ...ACME, wordpress: { plugins: PLUGINS, locale } },
+  });
+  const result = await fixture.run(["sync"]);
+  assert.equal(result.code, 0, result.stderr);
+  return readSite(fixture.root, "deploy/ploi/admin.sh");
+}
+
+const languageCalls = (calls) =>
+  calls
+    .filter(
+      ([tool, command, ...args]) =>
+        tool === "wp" && (command === "language" || args[1] === "WPLANG"),
+    )
+    .map((call) => call.slice(1).join(" "));
+
+test("the deploy installs wordpress.locale's language and makes it the site's", async () => {
+  const result = await deploy(await scriptWithLocale("pt_PT_ao90"), {
+    languageInstalled: false,
+    releaseFiles: { "deploy/ploi/admin.d/10-theme.sh": recordingExtension("10-theme.sh") },
+  });
+
+  assert.equal(result.code, 0, result.output);
+  assert.deepEqual(languageCalls(result.calls), [
+    "language core is-installed pt_PT_ao90",
+    "language core install pt_PT_ao90",
+    "option update WPLANG pt_PT_ao90 --quiet",
+    "language core update --quiet",
+    "language plugin install --all pt_PT_ao90 --quiet",
+    "language plugin update --all --quiet",
+    "language theme install --all pt_PT_ao90 --quiet",
+    "language theme update --all --quiet",
+  ]);
+  // After the database update, before the site's own extensions.
+  const at = (call) => result.calls.indexOf(call);
+  const extension = result.calls.find(([tool]) => tool === "extension");
+  assert.ok(
+    at(wpCalls(result.calls, "core update-db")[0]) < at(wpCalls(result.calls, "language")[0]),
+  );
+  assert.ok(at(wpCalls(result.calls, "language").at(-1)) < at(extension));
+});
+
+test("the deploy doesn't reinstall an installed language", async () => {
+  const result = await deploy(await scriptWithLocale("pt_PT"));
+
+  assert.equal(result.code, 0, result.output);
+  assert.deepEqual(wpCalls(result.calls, "language core install"), []);
+  assert.deepEqual(wpCalls(result.calls, "option update WPLANG"), [
+    ["wp", "option", "update", "WPLANG", "pt_PT", "--quiet"],
+  ]);
+});
+
+test("a language the deploy can't install fails it; a missing translation only warns", async () => {
+  const failed = await deploy(await scriptWithLocale("pt_PT"), {
+    languageInstalled: false,
+    failing: ["language core install"],
+  });
+  assert.equal(failed.code, 1);
+  assert.deepEqual(wpCalls(failed.calls, "option update WPLANG"), []);
+  assert.match(failed.stdout, /^ACME_SHOP_DEPLOY_STATUS=failed EXIT_CODE=1 /mu);
+
+  const warned = await deploy(await scriptWithLocale("pt_PT"), {
+    failing: ["language core update", "language plugin install", "language theme update"],
+  });
+  assert.equal(warned.code, 0, warned.output);
+  assert.match(warned.stderr, /^Could not update the pt_PT core translations\.$/mu);
+  assert.match(warned.stderr, /^Some plugin translations for pt_PT are not available\.$/mu);
+  assert.match(warned.stderr, /^Could not update the theme translations for pt_PT\.$/mu);
+});
+
+test("an en_US site's deploy only makes English the site's language", async () => {
+  const result = await deploy(await scriptWithLocale("en_US"));
+
+  assert.equal(result.code, 0, result.output);
+  assert.deepEqual(languageCalls(result.calls), ["option update WPLANG  --quiet"]);
+});
+
+test("without wordpress.locale, the deploy leaves the site's language alone", async () => {
+  const result = await deploy(await generatedScript());
+
+  assert.equal(result.code, 0, result.output);
+  assert.deepEqual(languageCalls(result.calls), []);
+});
+
+test("the deploy keeps the server's language packs", async () => {
+  const result = await deploy(await scriptWithLocale("pt_PT"));
+
+  const replaced = result.calls.filter(
+    ([tool, ...args]) => tool === "rsync" && args.includes("--filter=P /.env"),
+  );
+  assert.ok(replaced.length > 0);
+  for (const call of replaced) assert.ok(call.includes("--filter=P /web/app/languages/"));
+});
+
+test("a locale that isn't a WordPress locale is refused before gq sync writes anything", async () => {
+  for (const locale of ["pt-PT", "PT_pt", "pt_PT;reboot", "$(reboot)", "-pt", "pt_PT_"]) {
+    const fixture = await createFixtureSite({
+      ops: { ...ACME, wordpress: { plugins: PLUGINS, locale } },
+    });
+
+    const result = await fixture.run(["sync"]);
+
+    assert.equal(result.code, 1, locale);
+    assert.equal(
+      result.stderr,
+      "gq: gq.ops.json is invalid: wordpress.locale must be a WordPress locale, " +
+        "like en_US, pt_PT or pt_PT_ao90.\n",
+    );
+    await assert.rejects(access(fixture.path("deploy/ploi/admin.sh")), { code: "ENOENT" });
+  }
+});

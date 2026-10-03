@@ -17,7 +17,7 @@ run it:
 ```sh
 gq --version
 gq context show [--json]
-gq new <dir> --project <name> --variant content
+gq new <dir> --project <name> --variant content [--locale <locale>]
 gq sync [--manifest] [--check] [--variant <content|commerce>] [--recreate <path>]...
 gq skills update [--check]
 

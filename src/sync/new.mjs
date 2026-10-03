@@ -2,20 +2,26 @@
 // gq.ops.json, the managed files, the create-once scaffolding (the CMS and
 // Frontend skeletons among it) and gq.lock.json, then `git init`. In a
 // terminal it asks for the values its arguments lack; elsewhere it names
-// them. Needs no network and no secrets: it prints the provisioning steps,
-// which stay in the existing commands, and runs none of them.
+// them. The site's main language (--locale, a WordPress locale) is asked for
+// too, and is en_US when not given outside a terminal. Needs no network and
+// no secrets: it prints the provisioning steps, which stay in the existing
+// commands, and runs none of them.
 import { cancel, isCancel, select, text } from "@clack/prompts";
 import { mkdir, readdir } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 
 import packageTemplate from "../../blueprint/templates/fragments/package.keys.json" with { type: "json" };
 import { MANIFEST_FILENAME, validateManifest, writeManifest } from "../manifest/manifest.mjs";
-import { SCHEMA_URL, SCHEMA_VERSION, VARIANTS } from "../manifest/schema.mjs";
+import { LOCALE_PATTERN, SCHEMA_URL, SCHEMA_VERSION, VARIANTS } from "../manifest/schema.mjs";
 import { applyManagedFiles, planManagedFiles } from "./managed-files.mjs";
 
-export const NEW_USAGE = ["gq new <dir> --project <name> --variant content"];
+export const NEW_USAGE = ["gq new <dir> --project <name> --variant content [--locale <locale>]"];
 
-const VALUE_OPTIONS = { "--project": "project", "--variant": "variant" };
+const VALUE_OPTIONS = { "--project": "project", "--variant": "variant", "--locale": "locale" };
+
+// The main language a new site gets unless it is given another.
+const DEFAULT_LOCALE = "en_US";
+const LOCALE_HINT = "a WordPress locale, like en_US, pt_PT or pt_PT_ao90";
 
 // What `project` names: npm packages, Workers, buckets and the DDEV project.
 const PROJECT_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
@@ -70,18 +76,19 @@ export async function runNewCommand(args, { cwd, env, exec, stdin, io, interacti
         `Usage: ${NEW_USAGE[0]}`,
     );
   }
-  const { directory, project, variant } = options;
+  const { directory, project, variant, locale = DEFAULT_LOCALE } = options;
   if (!PROJECT_PATTERN.test(project)) {
     throw new Error(
       `--project must be lowercase letters, digits and hyphens, starting with a letter: ${project}`,
     );
   }
+  if (!LOCALE_PATTERN.test(locale)) throw new Error(`--locale must be ${LOCALE_HINT}: ${locale}`);
   const manifest = validateManifest({
     $schema: SCHEMA_URL,
     schemaVersion: SCHEMA_VERSION,
     project,
     variant,
-    wordpress: { plugins: CONTENT_PLUGINS },
+    wordpress: { plugins: CONTENT_PLUGINS, locale },
   });
   const root = resolve(cwd, directory);
   if ((await readDirectoryIfExists(root))?.length > 0) throw new Error(`${root} is not empty.`);
@@ -95,7 +102,7 @@ export async function runNewCommand(args, { cwd, env, exec, stdin, io, interacti
     throw new Error(`git init failed in ${root}: ${(result.stderr || result.stdout).trim()}`);
   }
 
-  io.out(`Created ${project} (${variant}) in ${root}:`);
+  io.out(`Created ${project} (${variant}, ${locale}) in ${root}:`);
   for (const { path } of [{ path: MANIFEST_FILENAME }, ...plan.files, plan.lock]) {
     io.out(`  ${path}`);
   }
@@ -178,6 +185,17 @@ async function askForMissing(given, { stdin, io }) {
     });
     if (isCancel(variant)) return cancelled(io);
     options.variant = variant;
+  }
+  if (options.locale === undefined) {
+    const locale = await text({
+      message: "Main language (a WordPress locale: en_US, pt_PT, pt_PT_ao90…)",
+      initialValue: DEFAULT_LOCALE,
+      validate: (value) =>
+        LOCALE_PATTERN.test(value ?? "") ? undefined : `Must be ${LOCALE_HINT}.`,
+      ...streams,
+    });
+    if (isCancel(locale)) return cancelled(io);
+    options.locale = locale;
   }
   return options;
 }

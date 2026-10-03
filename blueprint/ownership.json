@@ -352,6 +352,16 @@
       "app": "apps/frontend"
     },
     {
+      "path": "apps/frontend/src/lib/site-language.test.ts",
+      "template": "templates/apps/frontend/src/lib/site-language.test.ts",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "apps/frontend/src/lib/site-language.ts",
+      "template": "templates/apps/frontend/src/lib/site-language.ts",
+      "app": "apps/frontend"
+    },
+    {
       "path": "apps/frontend/src/lib/wordpress.test.ts",
       "template": "templates/apps/frontend/src/lib/wordpress.test.ts",
       "app": "apps/frontend"
