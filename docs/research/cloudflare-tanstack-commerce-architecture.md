@@ -20,7 +20,7 @@ Every as-built or upstream fact below carries a source key. All source retrieval
 
 - **D — documentary:** issue decisions, ADRs, committed code, published API documentation/source. Code presence does not prove deployment or compatibility.
 - **M — mocked:** inspected tests using fake fetch, QueryClients or SQLite-backed D1. They describe intended assertions; **none were executed in this research**.
-- **L — live-runtime:** deployed Worker HTTP observations backed by a synthetic DDEV WooCommerce store, executed in the continuation below [L1]. Earlier local preflight and inspected mock tests remain distinct from this evidence.
+- **L — live-runtime:** deployed Worker HTTP observations backed by a synthetic DDEV WooCommerce store, executed in the continuation below [L1]. [L2] records an unsuccessful cache-only deployed follow-up, not additional passing cache evidence. Earlier local preflight and inspected mock tests remain distinct from this evidence.
 
 | Inspected source | Exact revision and date | Evidence and scope |
 | --- | --- | --- |
@@ -111,7 +111,7 @@ type CheckoutHandoff =
 // confirmed-order is NOT necessarily paid.
 ```
 
-- `Product`: opaque provider-qualified ID, slug/Frontend canonical route, validated title/description/media, options and Variant references, public visibility and presentation freshness. `Variant`: opaque purchasable ID/options, explicit purchasability, price and availability freshness; never infer stock count from a boolean. `Collection`: opaque category/collection reference, label and memberships where supported. Render HTML only through reviewed sanitization/contract renderers; a TypeScript cast is not validation. [W1], [E6].
+- `Product`: opaque provider-qualified ID, slug/Frontend canonical route, validated title/description/media, options and `ProductVariant` references, public visibility and presentation freshness. **Product variant** (`ProductVariant`, distinct from the glossary's Site **Variant**): opaque purchasable ID/options, explicit purchasability, price and availability freshness; never infer stock count from a boolean. `Collection`: opaque category/collection reference, label and memberships where supported. Render HTML only through reviewed sanitization/contract renderers; a TypeScript cast is not validation. [W1], [E6].
 - `Cart`: opaque client-safe reference (not credential), revision/observation, lines, provider-confirmed totals/discounts/tax/shipping, selected delivery options, warnings and requirements. `CartLine`: provider line reference + purchasable reference + quantity/limits + supported customization snapshot reference + provider totals. Totals can change at checkout. [W2], [W4], [S1].
 - `Customer`: verified shopper reference and minimal allowlisted profile. `OrderSummary`: opaque reference, order date, provider total and **separate** order/payment/fulfilment status; mapped states include pending, awaiting-payment/on-hold, processing, paid-confirmed, cancelled, failed, refunded, unknown. Preserve a provider-specific diagnostic status internally rather than coercing unknown into paid. No universal mapping from `processing` to independently verified settlement. [W4], [W6].
 - Pagination: bounded page size; opaque continuation returned by the adapter. Woo page/X-WP-Total and Shopify cursors remain adapter details; continuation binds filters/context, has limits, and is not a snapshot-isolation promise. Slug absence is missing only after a valid successful authority response. [W1], [S2].
@@ -144,7 +144,7 @@ type CheckoutHandoff =
 | Withdrawal precedence | Signed event commits withdrawal, all known routes 404; promotions check tombstone in SQL; same-time withdrawal wins. [G2], [G3] | Product/publication bridge must cover product/variation visibility, password/privacy, moves and deletion; a hidden parent must not leave purchasable children exposed. Store API docs expose some password-protected product information: apply stricter public policy where necessary. [W1] |
 | Immediate 404 | Every visit reaches primary D1; no shared HTML cache in front. [G2] | Guarantee starts **after committed acknowledgment**. Unknown/missed event + CMS outage cannot reveal a withdrawal; accepted limitation, not an invented guarantee. |
 | Missing vs unavailable | Valid authority absence gives 404; failed read/no usable state gives 503; store outage fails closed. [G2], [G3] | Empty/failed parse is not missing. Withdrawn 404 remains even if price source fails. Store unreadable must not fall back to a live read that could resurrect withdrawn content. |
-| Refresh | Complete, valid read only; failed/partial read keeps stored state. [G2], [G3] | Separate presentation, price and availability schema/epochs; never promote an error, incomplete variant set, or private context as public. |
+| Refresh | Complete, valid read only; failed/partial read keeps stored state. [G2], [G3] | Separate presentation, price and availability schema/epochs; never promote an error, incomplete product-variant set, or private context as public. |
 | Reconciliation | CMS real cron invokes signed comparison every minute; five-minute healthy-dependency target; incomplete enumeration withdraws nothing. [G2], [G3] | Add product inventory of **public identities/versions**, deletion ledger and interrupted-scan checkpoint. Catalogue enumeration/search is not transaction inventory reservation. |
 | Independent media | R2 upload path required for content readiness. [G2] | Provider-hosted media may remain until its outage behaviour is acceptable; don't claim page resilience guarantees independent images without verifying hosting. Reuse R2 path for owned assets. |
 
@@ -239,7 +239,7 @@ Dated documentation establishes a viable **narrow** second-provider seam, not pa
 
 | Capability | Woo first (D, bounded) | Shopify desk check (D) / contract consequence |
 | --- | --- | --- |
-| Products/variants/collections/search | Store products/variations/categories/search. [W1] | Storefront products/variants/collections + cursor queries. [S2] Opaque IDs and pagination seam survive; don't assume categories equal collections. |
+| Products/product variants/collections/search | Store products/variations/categories/search. [W1] | Storefront products/variants/collections + cursor queries. [S2] Opaque IDs and pagination seam survive; don't assume categories equal collections. |
 | Money/tax/market | Store precision/minor strings; plugins can alter tax/currency, not verified generic markets. [W1], [W2] | MoneyV2 Decimal, context-aware prices, CartCost estimates vs checkout final. [S1], [S3], [S4] Exact mapping + freshness/context required. |
 | Cart discounts | Coupon API. [W2] | Cart discount code operations and validation. [S1] Supported subset only, automatic discounts aren't manually equivalent coupons. |
 | Checkout | Gateway-specific Store checkout or owned native handoff. [W4], [W7] | Provider `checkoutUrl` handoff. [S1] `CheckoutHandoff` survives without imposing Woo `payment_data` on Shopify. |
@@ -422,6 +422,8 @@ flowchart LR
 
 ## One live proof: executed with failures
 
+The initial commerce proof [L1] and the unsuccessful cache-only follow-up [L2] are separate runs. The follow-up does not revise the initial **24 checks / 22 satisfied / 2 failed expectations**.
+
 ### Authorization, credential boundary and configuration — 2026-10-03
 
 **L — continuation of `d63b2c6`, not a production deployment.** Additional human instruction explicitly authorized secure Sigillo access and using its Cloudflare master token to mint narrowly scoped temporary proof credentials. Read the secrets/provisioning/manifest guides and token implementations before access. The main checkout's operations environment injected no Cloudflare credential; the documented Ekis operations environment successfully injected `CLOUDFLARE_TOKEN_MANAGER_API_TOKEN`. No Sigillo secret was exported, mounted, printed, placed in tracked files or saved into shared Sigillo. The existing Site manifest supplied the account **in memory**; account ID, project ID and hostnames are omitted here. Master-token requests were confined to `/accounts/{account}/tokens`: verify, permission-group discovery, temporary create/delete and cleanup verification. Account/security/DNS/existing-resource settings were not changed. [L1], [C14].
@@ -450,7 +452,7 @@ Final run completed **2026-10-03T20:14:16.929Z**. All assertions below use real 
 | Concurrent streaming SSR / QueryClient isolation | Ten simultaneous A/B pairs (**20 responses**), same `['identity']` query key, native customer marker read from WP, delayed **1000ms** read of that request's QueryClient. Complete raw HTML/script streams checked: **20 own markers, zero opposite-customer markers, 20 streams** with multiple received chunks separated by >100ms; all HTTP200. Paired loop elapsed **11,079ms**. | **Pass for this bounded request-scoped model.** No assertion against TanStack internals. Private page intentionally serializes its own marker through Router loader state; this is not proof that `meta.private` alone sanitizes loaders/dehydration. |
 | Public/private cache | Identical inner public requests: **MISS → HIT**, identical generated response ID. Customer A/B cookies, unknown cookie and Authorization at the **uncached outer gateway** returned distinct private no-store responses. Response Set-Cookie case: **BYPASS → BYPASS**, distinct IDs with Set-Cookie present both times. | **Pass for explicit outer classification.** Set-Cookie values were not logged. |
 | Cookie default diagnostic | Synthetic-public-only cached entrypoint filled anonymously, then requested with an arbitrary synthetic Cookie, same props: **MISS → HIT**, same generated response ID. No private data was used. | **Adverse architectural finding:** cookie-bearing requests are not automatically private/bypassed. Outer classification must precede shared reuse. This tests a named cached entrypoint, not every possible default-entrypoint/zone cache configuration. |
-| Cache keys | Four changed contexts (locale, currency, alias, meaningful filter) returned different context markers/IDs; reordered locale/currency parameters reused the normalized key; wrong Site context returned **400**. | **Pass for tested synthetic props.** Alias is a key-context fixture, not a second actual custom domain or Site deployment. These variants change both URL and props; independent same-URL/different-props partitioning was not separately asserted. |
+| Cache keys | Four changed contexts (locale, currency, alias, meaningful filter) returned different context markers/IDs; reordered locale/currency parameters reused the normalized key; wrong Site context returned **400**. | **Pass only for combined URL/context variation and query normalization; props-only isolation unproved.** Alias is a key-context fixture, not a second actual custom domain or Site deployment. Each changed-context request also changed the URL, so different IDs do not independently prove that `ctx.props` partitions the cache. The cache-only follow-up below did not establish that missing proof. |
 | Cart issue/reuse | Two anonymous bootstrap GETs **200** with distinct real tokens; A add-item **201**, original-token GET **200** with quantity1; B remained empty. In final run the add response token equalled the original; earlier run changed it as issuance time advanced. | Valid bearer reuse observed; receiving another token does not imply original-token revocation. Tokens were never printed. |
 | Native login merge | A saved cart contained the same product quantity3 plus a second product quantity2. Guest cart held the first product quantity1. Login + guest-token read **200** produced quantities **[1,2]**, repeated read unchanged. | Colliding line takes guest quantity1, **not 1+3**; saved-only line is added. Native behavior, not a custom merge. |
 | Original guest token after merge | Request **without WP login cookie** using the original guest token: **200**, the same merged **[1,2]** including saved-only customer product. | **Failed isolation expectation / security finding.** A pre-login bearer retains access to the merged cart. Mapping rotation alone cannot revoke a stolen Woo bearer; transition/revocation design is still required. Does not prove account-profile/order access. |
@@ -475,6 +477,133 @@ Initial successful identity renders had **20 own / zero other markers but zero o
 - Temporary WP files/database/synthetic data, proof key, tunnel log and fixture artifacts were removed after capturing sanitized evidence. No D1/R2/Queue/DO, persistent tunnel, domain, DNS record or Ploi resource was created. Cleanup is verified, not inferred from token expiry.
 
 **Limitations:** one Worker/account, not a fleet/custom-domain isolation proof; 20 paired responses, not a load benchmark; standard Vite/Wrangler graph, not Alchemy CI; private own-loader serialization, not a full public-dehydration audit; fixture WP-cookie bridge, not Ekis's encrypted-session/login UI; client-held tokens, not server mapping/DO coordination. No coupon merge, actual gateways, browser automation, return/cancel/async callback, unknown-gateway-destination, unauthorized order, provider-outage/restart-in-flight or storage/event tests were executed. Repeated disposable rebuild/deploys do not prove persisted-session recovery. Cost was bounded by one Worker, CPU limit, finite HTTP tests and one-hour tokens; no account-plan upgrade or billing measurement occurred. These do not erase the four targets' observed outcomes, and are not silently marked passed. [L1].
+
+### Cache-only review follow-up — attempted, not proved [L2]
+
+**Executed 2026-10-03; the props-isolation finding remains open.** The earlier cache-key verdict above is narrowed: changing both URL and props is not independent evidence for props partitioning. A new synthetic-only Worker was dry-run validated and deployed once; its uncached `/ready` HTTP check succeeded. The deployed-boundary harness then exited **1 before completing its first scenario**. Its captured stdout contained no cache observations; assertion stderr was not retained. Therefore this run establishes **zero completed scenario checks out of 17 planned**, not 17 failures or a props-isolation pass. No `CF-Cache-Status`, context or response-ID result from this follow-up is claimed. The reason for the first scenario failure is unresolved (request, parsing or assertion failure were not distinguished); neither a cache implementation defect nor successful partitioning can be inferred.
+
+**Scope/configuration:** one unique disposable Worker, workers.dev only, no previews, CPU **50ms**, observability off, no bindings/storage/domains/DNS/account changes. No Woo/DDEV/tunnel was recreated. Plain JavaScript `WorkerEntrypoint`, no application dependencies, Node **26.10.0**, Wrangler **4.147.0**, bundled workerd **1.20261001.1**, compatibility date **2026-10-03**; npm lock SHA256 `748aeb6ebeb50f20d0a643ce1a3b885993e32a71db4299516a5d54a3b3a422e1`. Wrangler dry-run and deploy each exited **0**. This is not Start/Alchemy compatibility evidence. Primary cache key/configuration/examples/limitations and Wrangler command docs were re-fetched before execution [C2], [C3], [C14].
+
+**Fixture design, not an observed result:** the outer gateway normalizes only four finite synthetic header fixtures into trusted props. Every invocation constructs the exact same inner URL, GET method and empty application header set; no outer headers/query/path are forwarded. Site/environment/generation stay constant. Canonical-host prop is simulated; actual workers.dev hostname stays fixed and is reported separately. Independent market/currency values are intentionally synthetic key dimensions, not proof of configured commerce markets or valid provider price combinations. The harness requires real `CF-Cache-Status` and body context/ID at the deployed HTTP boundary, plus a fresh outer execution marker. It plans baseline MISS/HIT, each single-dimension change MISS/HIT, combined change MISS/HIT, return-to-baseline HIT with its original marker, then four rejected allowlist values. It does not assert directly against internals.
+
+Sanitized configuration (only the generated owned name is replaced):
+
+```json
+{
+  "name": "<unique-owned-proof-worker>",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-03",
+  "workers_dev": true,
+  "preview_urls": false,
+  "limits": { "cpu_ms": 50 },
+  "observability": { "enabled": false },
+  "cache": { "enabled": false },
+  "exports": { "Public": { "type": "worker", "cache": { "enabled": true } } }
+}
+```
+
+Exact deployed application source (`worker.js`; synthetic `.invalid` names are not infrastructure identifiers):
+
+```js
+import { WorkerEntrypoint } from 'cloudflare:workers';
+const allowed = {
+  canonicalHost: ['shop-a.example.invalid', 'shop-b.example.invalid'],
+  locale: ['en-GB', 'pt-PT'], market: ['GB', 'PT'], currency: ['GBP', 'EUR'],
+};
+const innerURL = 'https://cache-proof.invalid/public';
+export class Public extends WorkerEntrypoint {
+  async fetch(request) {
+    return Response.json({
+      context: this.ctx.props, id: crypto.randomUUID(),
+      inner: { url: request.url, method: request.method, headers: [...request.headers] },
+    }, { headers: { 'Cache-Control': 'public, max-age=300' } });
+  }
+}
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (request.method !== 'GET') return new Response('method', { status: 405 });
+    if (url.pathname === '/ready') return new Response('ready', { headers: { 'Cache-Control': 'no-store' } });
+    if (url.pathname !== '/proof' || url.search) return new Response('route', { status: 400 });
+    if (request.headers.has('Cookie') || request.headers.has('Authorization'))
+      return new Response('private', { status: 400 });
+    const props = { site: 'synthetic-only', environment: 'proof', generation: 1 };
+    for (const [key, values] of Object.entries(allowed)) {
+      const input = request.headers.get(`X-Proof-${key}`) ?? values[0];
+      const normalized = values.find(value => value.toLowerCase() === input.trim().toLowerCase());
+      if (!normalized) return new Response('fixture', { status: 400, headers: { 'Cache-Control': 'no-store' } });
+      props[key] = normalized;
+    }
+    // Only synthetic allowlisted fixtures; not caller-selected production Sites.
+    // No outer URL, headers, cookies or auth are forwarded to the cached entrypoint.
+    const response = await ctx.exports.Public.fetch(new Request(innerURL, { method: 'GET' }), { props });
+    const outer = new Response(response.body, response);
+    outer.headers.set('Cache-Control', 'no-store');
+    outer.headers.set('X-Proof-Actual-Host', url.hostname);
+    outer.headers.set('X-Proof-Outer-ID', crypto.randomUUID());
+    return outer;
+  }
+};
+```
+
+Exact HTTP harness (`test.mjs`; `PROOF_URL` was injected only into the child environment, never logged):
+
+```js
+import assert from 'node:assert/strict';
+const base = { site: 'synthetic-only', environment: 'proof', generation: 1,
+  canonicalHost: 'shop-a.example.invalid', locale: 'en-GB', market: 'GB', currency: 'GBP' };
+const endpoint = new URL('/proof', process.env.PROOF_URL);
+const inner = { url: 'https://cache-proof.invalid/public', method: 'GET', headers: [] };
+const outerIDs = new Set(), contextIDs = new Set();
+let checks = 0;
+async function read(label, changes, status, previous) {
+  const context = { ...base, ...changes };
+  const headers = Object.fromEntries(Object.entries(changes).map(([k,v]) => [`X-Proof-${k}`,v]));
+  const response = await fetch(endpoint, { headers, signal: AbortSignal.timeout(15000) });
+  const body = await response.json();
+  const cache = response.headers.get('CF-Cache-Status');
+  assert.equal(response.status, 200);
+  assert.equal(cache, status);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.equal(response.headers.get('X-Proof-Actual-Host'), endpoint.hostname);
+  assert.deepEqual(body.context, context);
+  assert.deepEqual(body.inner, inner);
+  assert.match(body.id, /^[a-f0-9-]{36}$/);
+  const outerID = response.headers.get('X-Proof-Outer-ID');
+  assert.match(outerID, /^[a-f0-9-]{36}$/);
+  assert(!outerIDs.has(outerID)); outerIDs.add(outerID);
+  if (previous) assert.equal(body.id, previous.id);
+  else { assert(!contextIDs.has(body.id)); contextIDs.add(body.id); }
+  checks++;
+  console.log(JSON.stringify({label, cache, correctContext:true, constantInner:true,
+    sameMarker:!!previous, newOuter:true}));
+  return body;
+}
+const first = await read('baseline-miss', {}, 'MISS');
+await read('baseline-hit', {}, 'HIT', first);
+for (const [label, changes] of [
+  ['canonical-host', {canonicalHost:'shop-b.example.invalid'}],
+  ['locale', {locale:'pt-PT'}], ['market', {market:'PT'}], ['currency', {currency:'EUR'}],
+  ['combined', {canonicalHost:'shop-b.example.invalid',locale:'pt-PT',market:'PT',currency:'EUR'}],
+]) {
+  const miss = await read(`${label}-miss`, changes, 'MISS');
+  await read(`${label}-hit`, changes, 'HIT', miss);
+}
+await read('baseline-return', {}, 'HIT', first);
+for (const key of ['canonicalHost','locale','market','currency']) {
+  const response = await fetch(endpoint, {headers:{[`X-Proof-${key}`]:'not-allowed'}, signal:AbortSignal.timeout(15000)});
+  assert.equal(response.status,400);
+  assert.equal(response.headers.get('Cache-Control'),'no-store');
+  await response.text(); checks++;
+  console.log(JSON.stringify({label:`reject-${key}`,status:400}));
+}
+console.log(JSON.stringify({completed:new Date().toISOString(), checks, passed:checks, failed:0,
+  httpRequests:checks, distinctContexts:contextIDs.size, uniqueOuterExecutions:outerIDs.size}));
+```
+
+**Credential/cleanup outcome and deviations:** the authorized Ekis operations Sigillo environment injected the master token only for account-token API operations. Five one-hour account-scoped **Workers Scripts Read + Write** tokens were minted/deleted: one execution token and four sequential cleanup-investigation tokens. No existing token or shared Sigillo value was changed; values stayed in memory/child environment, never arguments, printed output or tracked files. The initial `finally` called `wrangler delete --force`, which exited **1**; the executor then deleted the temporary token before positively verifying Worker deletion. That cleanup ordering was a defect, not an approved pattern. It also discarded the generated-name config too early, preventing a subsequent exact-name **404** lookup. Scoped, read-only script listings (including paginated inspection) found **zero `issue50-props-` Workers**, so no remaining follow-up Worker was identified; this is inventory evidence, **not the requested exact-owned-resource 404 verification**. No recovery script deleted another Worker, and no second Worker/redeployment was created. Each of the five token deletions was followed by its exact token GET **404**; a complete token audit at **2026-10-03T20:59:24.795Z** found **zero owned follow-up tokens**. No credentials or external resources were intentionally retained.
+
+**Remaining blocker:** the actual same-URL/different-props assertions and exact Worker deletion verification were not completed. Do not enable production caching or close the review finding on this attempt. A later authorized attempt needs the owned-name manifest retained before deployment, cleanup verification before token disposal, and sanitized assertion diagnostics retained on failure. The initial [L1] resource cleanup and counts remain historical facts, not evidence that this follow-up passed.
 
 ### Historical preflight from `d63b2c6` — superseded by authorization above
 
@@ -517,7 +646,7 @@ Later tests must cover wrong-Site/cache and customer leakage; expired price/avai
 
 ## SEO and market scope
 
-**Proposed:** public product identity/content/head decisions before first streamed bytes; confirmed missing/withdrawn 404, upstream/store inability 503 with no fabricated product. Canonical is the validated **Frontend** host/route, not an unchecked provider permalink or staging URL. Move routes redirect only when authority establishes the new route; no-cache/no-store redirects so later moves aren't trapped. Sitemaps list public prepared products/editorial entries only, remove withdrawals; filter/search routes have explicit indexing/canonical policy. Add Offer price/stock only while independently current. SSR public product description/media; keyboard-accessible variant selection, form labels, focus/error summaries and pending checkout feedback. Performance budgets require measured Core Web Vitals/bundle/SSR latency, not invented benchmark claims. [E6], [G2], [T1].
+**Proposed:** public product identity/content/head decisions before first streamed bytes; confirmed missing/withdrawn 404, upstream/store inability 503 with no fabricated product. Canonical is the validated **Frontend** host/route, not an unchecked provider permalink or staging URL. Move routes redirect only when authority establishes the new route; no-cache/no-store redirects so later moves aren't trapped. Sitemaps list public prepared products/editorial entries only, remove withdrawals; filter/search routes have explicit indexing/canonical policy. Add Offer price/stock only while independently current. SSR public product description/media; keyboard-accessible product-variant selection, form labels, focus/error summaries and pending checkout feedback. Performance budgets require measured Core Web Vitals/bundle/SSR latency, not invented benchmark claims. [E6], [G2], [T1].
 
 **D — customizer business scope:** ekis#15's Decisions so far say made-to-order/no stock, Size-only native variations (or simple products), no MVP customization surcharge, and a plugin minimum-quantity rule that blocks checkout rather than add-to-cart. These are approved decision-map facts, not live configuration observations. Do not impose inventory reservations or colour variations on Ekis; synthetic stock cases in the proof test the generic boundary, not its manufacturing policy. [E9], [ekis#15](https://github.com/Quick-Release/ekis/issues/15).
 
@@ -542,7 +671,7 @@ No evidence inspected establishes multiple active Ekis markets/currencies. Langu
 
 ## Dependent implementation slices — proposals, no tickets created
 
-1. **Resolve proof findings before implementation.** [L1] executed the four-target proof and verified cleanup. Decide how cart mappings handle merged-cart bearer reuse, logout and expiry; separately qualify the actual Alchemy deploy graph. Prototype corrections stay throwaway until approved.
+1. **Resolve proof findings before implementation.** [L1] executed the bounded four-target proof and verified cleanup; its key variants do not independently prove props partitioning. [L2]'s cache-only attempt did not close that gap. Decide how cart mappings handle merged-cart bearer reuse, logout and expiry; separately qualify the actual Alchemy deploy graph. Prototype corrections stay throwaway until approved.
 2. **Generation/deploy selection (#28 execution).** After #28 decision: framework-aware managed Vite deploy/toolchain/readiness and strict schema/migration/defaults; preserve Astro content regression, create-once/site ownership, offline generation, second-sync no diff and managed-edit refusal. Coordinate #18; don't duplicate its adoption dry run.
 3. **Commerce boundary + exact money/status/freshness tracer bullet.** Depends on selected contract/capabilities and runtime proof; catalog product -> private cart -> explicit checkout pending/action. Runtime validate provider data and unsupported features. No renderer package-home choice.
 4. **Session/cart mapping + native transition slice.** Depends on proof outcomes/CART-CREDENTIAL; encrypted primary storage, expiry/rotation/cleanup, CSRF, authorization and browser private-state removal. Separate gate before account/order-history features; preserve Ekis codec without rewriting identity.
@@ -559,16 +688,18 @@ Minimal first release is a **bounded Woo pilot** with Start/Router/Query, one BF
 - Retrieved both issues and comments, related decision/recovery/capacity/content tickets and ekis#15. Reused exact capacity branch document rather than inventing prices/placement. #49 grilling overrides original Form/provider-native/full-cost/two-provider-proof assumptions.
 - Enabled web tools; fetched official Cloudflare/Woo/Shopify docs and tagged Woo token/cart source. TanStack HTML HTTP500 fell back to official GitHub Markdown; broken initial overview path corrected. Source dates/refs below are retrieval dates, not claims all docs were published that day.
 - Initial commit `d63b2c6` contained local preflight only. The continuation executed [L1]'s temporary build and deployed HTTP harness; it did **not** run gq-site/Ekis application test suites or change their production code. Synthetic fixture data only; no secret values or private infrastructure identifiers in committed evidence.
-- Deliverable self-check: five diagrams, gap verdicts, contract/capabilities/money/freshness, cache/session/gateway/failure/event/service matrices, historical blocker/plan plus actual live findings/verified cleanup, open decisions/slices and primary references. Continuation checks passed: **60 registered citation keys**, relative link targets exist, Mermaid count five, fences balanced, credential/private-key/JWT/private-ID pattern scan clear, and `git diff --check` clean. The original preflight only checked deletion help; [L1] actually deleted the owned resources and verified absence. Only this research file is committed. Spec-axis check is a **leaf self-review**, not `/code-review` subagent review (task forbids further agents).
+- Deliverable self-check: five diagrams, gap verdicts, contract/capabilities/money/freshness, cache/session/gateway/failure/event/service matrices, historical blocker/plan plus actual live findings/verified cleanup, open decisions/slices and primary references. Historical continuation checks passed: **60 registered citation keys**, relative link targets exist, Mermaid count five, fences balanced, credential/private-key/JWT/private-ID pattern scan clear, and `git diff --check` clean. The original preflight only checked deletion help; [L1] actually deleted the owned resources and verified absence. Only this research file is committed. Spec-axis check is a **leaf self-review**, not `/code-review` subagent review (task forbids further agents).
+
+- Cache-only follow-up document checks: **61 registered citation keys**, existing relative-link targets, balanced fences, five Mermaid diagrams, retained source/harness exact matches to executed local files, terminology and credential/private-ID pattern scan passed; `git diff --check` clean. These are document checks, not additional runtime scenario passes. Only this research document changed.
 
 | #50 acceptance grouping | Where addressed / evidence limitation |
 | --- | --- |
 | Stories 1–7, 37–39 | Baseline, gap matrix, TanStack/ownership/customizer/footprint; D/M, not adoption or market confirmation. |
 | Stories 8–14 | Contract, exact money, capability desk check, guarantees/freshness; proposed values not approved policies. |
-| Stories 15–23 | Guarantee/cache/session sections + [L1]: streaming isolation, cookie/cache keys and real Cart-Token lifecycle exercised; adverse reuse/expiry findings retained. Actual multi-Site/custom-domain deployment and production session codec not proved. |
+| Stories 15–23 | Guarantee/cache/session sections + [L1]: streaming isolation, cookie classification/combined URL-context keys and real Cart-Token lifecycle exercised; adverse reuse/expiry findings retained. **Independent props-only partitioning remains unproved after [L2]'s failed attempt.** Actual multi-Site/custom-domain deployment and production session codec not proved. |
 | Stories 24–28 | Gateway contract/checkout/failure semantics + [L1]: real Store API stub `redirect_url` followed via Worker 303; real gateways/async callbacks remain unbuilt/unexecuted. |
 | Stories 29–36 | Events/reconciliation, read-strategy triggers, service matrix, security, failures/SEO. |
-| Stories 40–45 | Evidence labels/date/source register, [L1] secure authorization/minting/verified cleanup, five diagrams, decisions/dependencies; only approved temporary resources created. |
+| Stories 40–45 | Evidence labels/date/source register, [L1] secure authorization/minting/verified cleanup, five diagrams, decisions/dependencies; only approved temporary resources created. [L2] separately retains source/harness and reports its incomplete exact Worker deletion verification without borrowing [L1]'s successful cleanup claim. |
 | #49 amended acceptance | Documentary areas plus bounded runtime/cache/token/redirect results [L1]; no all-green compatibility or production-readiness claim. Full cost model and Shopify runtime proof deliberately superseded/deferred. |
 
 ## Primary-source register
@@ -601,6 +732,7 @@ All E1–E8 paths below resolve under [Ekis `ce258d86b7a9cb9b55e9d362e55a038162c
 
 ### Executed evidence register
 
+- **[L2]** Cache-only leaf follow-up **2026-10-03**, cleanup-token audit **20:59:24.795Z**. The deployed source, sanitized config and exact HTTP harness are retained directly above. Dry-run/deploy succeeded; readiness HTTP succeeded; harness exit **1**, **zero completed scenario checks**. Same-URL props isolation remains unproved. Wrangler deletion exit **1** followed by scoped inventory absence, not exact Worker GET404; five temporary-token GET404 checks and final zero-owned-token audit. No Woo/DDEV/tunnel or additional resources created. This evidence records a failed attempt and cleanup-verification limitation, not a cache pass.
 - **[L1]** Leaf-executed disposable proof, **2026-10-03**, final results timestamp **20:14:16.929Z**, cleanup-token audit **20:15:29.722Z**. Sanitized results/config/corrections are recorded in the live section above; the temporary prototype was never committed/deployed to an existing Site. Source fingerprints (SHA256): request-scoped router `450385492acd7e2c602292d79122788bcb1124dba1aa7fb4d7036acba103572e`; streaming route `710904a1931e9e254a68989925304130664e5afc0f604d6668cee7484d3b671e`; Worker boundary/cache/BFF `af1f5a01e0a62ca4aedf09e5e84a3647312187608fa08a0f4f524d7e106e254e`; HTTP harness `687f3f3a27b6eb03c0af07155e9b8d201430147287ae49dae97933c6a484f105`; MU fixture `addfb1d41792b5d90e5e55d973045d2f79ad42675d5c39abfbfc77b0502d820f`. These identify inspected/executed local source, not public artifact availability or an Ekis source revision. No credential/file-value hashes retained. Temporary source/synthetic store removed; reproducibility uses the pinned packages and documented boundary recipe/config, not a retained turnkey harness.
 
 ### TanStack / deployment primary sources
