@@ -46,10 +46,7 @@ test("mirrors branch and tag pushes of the configured repository only", async ()
   assert.deepEqual(parsePushEvent(push("refs/tags/v0.2.0"), "example/site"), {
     ref: "refs/tags/v0.2.0",
   });
-  assert.equal(
-    parsePushEvent(push("refs/heads/main", "someone/else"), "example/site"),
-    null,
-  );
+  assert.equal(parsePushEvent(push("refs/heads/main", "someone/else"), "example/site"), null);
   assert.equal(parsePushEvent(push("refs/pull/1/head"), "example/site"), null);
   assert.equal(parsePushEvent(push("refs/heads/a:b"), "example/site"), null);
 });
