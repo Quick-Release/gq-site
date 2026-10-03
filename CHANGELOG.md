@@ -5,6 +5,8 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.16.1 — 2026-10-03
+
 ### Fixed
 
 - A new content site's Frontend tests pass whatever its project is called.
