@@ -5,6 +5,17 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+### Fixed
+
+- A new content site's Frontend tests pass whatever its project is called.
+  `src/routes.test.ts`, `src/entries.test.ts` and `src/settings.test.ts`
+  expected page titles ending in "— Acme". The layout ends them with the
+  project's name, so any project but `acme` failed 14 tests. They now expect
+  `{{Project}}`.
+  - **Existing sites:** the Frontend is site-owned, so syncing doesn't change
+    it. In those three files, replace "— Acme</title>" with your project's
+    name.
+
 ## 0.16.0 — 2026-10-03
 
 ### Added

@@ -71,7 +71,7 @@ describe("entries read live in local development", () => {
     const { status, html } = await render("/about/");
 
     expect(status).toBe(200);
-    expect(html).toContain("<title>About — Acme</title>");
+    expect(html).toContain("<title>About — {{Project}}</title>");
     expect(html).toContain("<p>We make things.</p>");
     expect(html).toMatch(/<a href="\/about\/"[^>]*>About us<\/a>/);
     expect(html).toContain('src="https://media.example/logo.svg"');
