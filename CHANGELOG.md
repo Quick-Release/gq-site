@@ -5,6 +5,8 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.17.0 — 2026-10-03
+
 ### Added
 
 - **The site's main language**, `wordpress.locale` in `gq.ops.json`: a
