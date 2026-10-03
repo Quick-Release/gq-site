@@ -201,6 +201,42 @@ test("db sync backs up live, imports it into DDEV and resets the local admin fro
   assert.match(result.stdout, /Live backup: r2:\/\/fixture-backups\/db\/fx_db\//u);
 });
 
+test("db sync installs the language packs of gq.ops.json's wordpress.locale", async () => {
+  const fixture = await site({ ops: { ...OPS, wordpress: { plugins: [], locale: "pt_PT_ao90" } } });
+  const { fetch } = fakeProviders();
+  // WordPress.org has no translations for the site's themes.
+  const exec = fakeLocal({
+    overrides: ({ args }) =>
+      args.join(" ").startsWith("wp language theme") ? { code: 1 } : undefined,
+  });
+
+  const result = await fixture.run(["db", "sync", "--yes"], { env: ENV, fetch, exec });
+
+  assert.equal(result.code, 0, result.stderr);
+  const lines = ddevLines(exec);
+  const languages = lines.filter((line) => line.startsWith("wp language "));
+  assert.deepEqual(languages, [
+    "wp language core install pt_PT_ao90 --quiet",
+    "wp language plugin install --all pt_PT_ao90 --quiet",
+    "wp language theme install --all pt_PT_ao90 --quiet",
+  ]);
+  assert.ok(lines.indexOf("wp core update-db --quiet") < lines.indexOf(languages[0]));
+  assert.match(result.stderr, /Some theme translations for pt_PT_ao90 are not available\./u);
+});
+
+test("db sync installs no language pack for English or without a locale", async () => {
+  for (const ops of [OPS, { ...OPS, wordpress: { plugins: [], locale: "en_US" } }]) {
+    const fixture = await site({ ops });
+    const { fetch } = fakeProviders();
+    const exec = fakeLocal();
+
+    const result = await fixture.run(["db", "sync", "--yes"], { env: ENV, fetch, exec });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.ok(!ddevLines(exec).some((line) => line.startsWith("wp language ")));
+  }
+});
+
 test("db sync updates an existing local admin with the configured address", async () => {
   const fixture = await site();
   const { fetch } = fakeProviders();

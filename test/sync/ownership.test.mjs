@@ -123,6 +123,8 @@ const CREATED_PATHS = [
   "apps/frontend/src/lib/publications.ts",
   "apps/frontend/src/lib/reconciliation.ts",
   "apps/frontend/src/lib/runtime.ts",
+  "apps/frontend/src/lib/site-language.test.ts",
+  "apps/frontend/src/lib/site-language.ts",
   "apps/frontend/src/lib/wordpress.test.ts",
   "apps/frontend/src/lib/wordpress.ts",
   "apps/frontend/src/lib/wp-block-renderer.test.ts",
@@ -176,6 +178,7 @@ test("gq new writes a v1 manifest, the managed files and the lock, then runs git
         "cimo-image-optimizer",
         "safe-svg",
       ],
+      locale: "en_US",
     },
   });
   assert.equal(await readSite(root, ".mise.toml"), MISE);
@@ -209,7 +212,7 @@ test("gq new writes a v1 manifest, the managed files and the lock, then runs git
   assert.equal(
     result.stdout.slice(0, result.stdout.indexOf("\nNext,")),
     [
-      `Created acme (content) in ${root}:`,
+      `Created acme (content, en_US) in ${root}:`,
       "  gq.ops.json",
       ...[...MANAGED_PATHS, ...SHARED_PATHS, ...CREATED_PATHS]
         .sort((a, b) => (a < b ? -1 : 1))
@@ -554,7 +557,7 @@ test("gq new refuses a commerce site and a directory that isn't empty", async ()
     ],
     [
       ["new", "acme", "--project", "acme", "--variant", "content", "--yes"],
-      "gq: Usage: gq new <dir> --project <name> --variant content\n",
+      "gq: Usage: gq new <dir> --project <name> --variant content [--locale <locale>]\n",
     ],
   ]) {
     const result = await runGq(argv, { cwd: parent });

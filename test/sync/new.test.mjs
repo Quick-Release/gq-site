@@ -27,7 +27,7 @@ test("gq new writes a v1 manifest whose plugins are the ones the CMS skeleton in
   const site = await newSite();
 
   const manifest = JSON.parse(await readSite(site.root, "gq.ops.json"));
-  assert.deepEqual(manifest.wordpress, { plugins: PLUGINS });
+  assert.deepEqual(manifest.wordpress, { plugins: PLUGINS, locale: "en_US" });
   const composer = JSON.parse(await readSite(site.root, "apps/cms/composer.json"));
   for (const plugin of PLUGINS) {
     const installed = Object.keys(composer.require).some((name) => name.endsWith(`/${plugin}`));
@@ -199,6 +199,48 @@ test("gq new refuses a project name that can't name packages, Workers and DDEV",
   assert.deepEqual(await readdir(parent), []);
 });
 
+test("gq new --locale sets the site's main language for the CMS deploy and the Frontend", async () => {
+  const parent = await temporaryDirectory();
+
+  const result = await runGq(
+    ["new", "acme", "--project", "acme", "--variant", "content", "--locale", "pt_PT_ao90"],
+    { cwd: parent },
+  );
+
+  assert.equal(result.code, 0, result.stderr);
+  const root = join(parent, "acme");
+  const manifest = JSON.parse(await readSite(root, "gq.ops.json"));
+  assert.equal(manifest.wordpress.locale, "pt_PT_ao90");
+  assert.match(result.stdout, /^Created acme \(content, pt_PT_ao90\) in /mu);
+  assert.match(await readSite(root, "deploy/ploi/admin.sh"), /^WP_LOCALE="pt_PT_ao90"$/mu);
+  // The Frontend's <html lang> reads it from gq.ops.json when it is built.
+  assert.match(
+    await readSite(root, "apps/frontend/src/layouts/Layout.astro"),
+    /<html lang=\{siteLang\}>/u,
+  );
+  assert.match(
+    await readSite(root, "apps/frontend/src/lib/site-language.ts"),
+    /^import ops from "\.\.\/\.\.\/\.\.\/\.\.\/gq\.ops\.json";$/mu,
+  );
+});
+
+test("gq new refuses a locale that isn't a WordPress locale", async () => {
+  const parent = await temporaryDirectory();
+
+  for (const locale of ["pt-PT", "portuguese", "pt_PT;reboot"]) {
+    const result = await runGq(
+      ["new", "acme", "--project", "acme", "--variant", "content", "--locale", locale],
+      { cwd: parent },
+    );
+    assert.equal(result.code, 1, locale);
+    assert.equal(
+      result.stderr,
+      `gq: --locale must be a WordPress locale, like en_US, pt_PT or pt_PT_ao90: ${locale}\n`,
+    );
+  }
+  assert.deepEqual(await readdir(parent), []);
+});
+
 test("outside a terminal, gq new names every value it is missing and writes nothing", async () => {
   const parent = await temporaryDirectory();
 
@@ -212,7 +254,7 @@ test("outside a terminal, gq new names every value it is missing and writes noth
     assert.equal(
       result.stderr,
       `gq: gq new is missing ${missing}; pass them, or run it in a terminal to be asked. ` +
-        "Usage: gq new <dir> --project <name> --variant content\n",
+        "Usage: gq new <dir> --project <name> --variant content [--locale <locale>]\n",
     );
     assert.deepEqual(result.exec.calls, []);
   }
@@ -221,16 +263,17 @@ test("outside a terminal, gq new names every value it is missing and writes noth
 
 test("in a terminal, gq new asks only for the values it is missing", async () => {
   const parent = await temporaryDirectory();
-  // Enter accepts the project's suggestion (the directory's name) and the
-  // only variant gq new can create.
-  const stdin = answering(["\r", "\r"]);
+  // Enter accepts the project's suggestion (the directory's name), the only
+  // variant gq new can create and the suggested language, en_US.
+  const stdin = answering(["\r", "\r", "\r"]);
 
   const result = await runGq(["new", "acme"], { cwd: parent, stdin, interactive: true });
 
   assert.equal(result.code, 0, result.stderr);
-  assert.equal(stdin.prompts, 2);
+  assert.equal(stdin.prompts, 3);
   assert.match(result.stdout, /Project name/u);
   assert.match(result.stdout, /Variant/u);
+  assert.match(result.stdout, /Main language/u);
   assert.doesNotMatch(result.stdout, /Directory/u);
   const manifest = JSON.parse(await readSite(join(parent, "acme"), "gq.ops.json"));
   assert.equal(manifest.project, "acme");
@@ -241,7 +284,7 @@ test("in a terminal, gq new asks for the directory and project when neither is g
   const parent = await temporaryDirectory();
   const stdin = answering(["shop\r", "\r"]);
 
-  const result = await runGq(["new", "--variant", "content"], {
+  const result = await runGq(["new", "--variant", "content", "--locale", "en_US"], {
     cwd: parent,
     stdin,
     interactive: true,

@@ -43,6 +43,9 @@ const IGNORE_SECTION = [
   "",
   "# Wrangler build output and local state",
   ".wrangler/",
+  "",
+  "# WordPress language packs, which the CMS deploy (and gq db sync) installs",
+  "apps/cms/web/app/languages/",
   "# END gq",
   "",
 ].join("\n");

@@ -5,6 +5,31 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+### Added
+
+- **The site's main language**, `wordpress.locale` in `gq.ops.json`: a
+  WordPress locale such as `pt_PT_ao90`. See
+  [The site's language](https://github.com/Quick-Release/gq-site/blob/main/docs/guides/sites.md#the-sites-language).
+  - `gq new` takes `--locale` and asks for it in a terminal. Without the
+    flag outside a terminal, the site gets `en_US`.
+  - The CMS deploy script installs the locale's core language pack when it
+    is missing and makes it the site's language. It then installs and
+    updates the plugin and theme translations WordPress.org has for it. A
+    missing core pack fails the deploy; a missing plugin or theme
+    translation only warns. Without `wordpress.locale`, the deploy leaves
+    the language alone, as before.
+  - The deploy no longer deletes `apps/cms/web/app/languages`, and the
+    generated `.gitignore` section ignores it.
+  - A new Frontend's `<html lang>` follows `wordpress.locale`
+    (`pt_PT_ao90` → `pt-PT`), through `src/lib/site-language.ts`.
+  - `gq db sync` installs the locale's language packs in DDEV.
+  - **Existing sites:** add `wordpress.locale` to `gq.ops.json`, run
+    `gq sync` (it updates `deploy/ploi/admin.sh` and `.gitignore`) and
+    release. The Frontend is site-owned, so syncing doesn't change it: copy
+    `src/lib/site-language.ts` (and its test) from a new site, and in
+    `src/layouts/Layout.astro` import `siteLang` from it and write
+    `<html lang={siteLang}>`.
+
 ## 0.16.2 — 2026-10-03
 
 ### Fixed

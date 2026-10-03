@@ -103,6 +103,11 @@
             "pattern": "^[A-Za-z0-9][\\w.-]*$"
           },
           "description": "The plugins the CMS deploy script activates, in order."
+        },
+        "locale": {
+          "description": "The site's main language, as a WordPress locale (pt_PT_ao90): the CMS deploy script installs and activates it, and the Frontend's <html lang> follows it. Left out, the deploy leaves the CMS's language as it is.",
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(?:_[A-Z]{2})?(?:_[a-z0-9]+)?$"
         }
       },
       "required": [

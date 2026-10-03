@@ -7,6 +7,7 @@ the installed `gq` ([ADR 0002](https://github.com/Quick-Release/gq-site/blob/mai
 
 ```sh
 gq new acme --project acme --variant content   # a complete content site, gq.lock.json, git init
+gq new acme --project acme --variant content --locale pt_PT_ao90   # …whose main language is Portuguese (AO90)
 gq sync           # migrate gq.ops.json, regenerate managed files, update gq.lock.json
 gq sync --check   # report every pending change, exit 1, write nothing
 gq sync --recreate README.md   # write a create-once file again
@@ -17,7 +18,9 @@ without network access or secrets: a v1 `gq.ops.json` whose
 `wordpress.plugins` are the CMS skeleton's, the managed files below, and
 the create-once scaffolding, the CMS and Frontend skeletons among it. In a
 terminal it asks for the directory, project or variant its arguments lack;
-elsewhere it names them and stops. The project must be lowercase letters,
+elsewhere it names them and stops. It asks for the site's main language too
+(`--locale`, a WordPress locale), and writes `en_US` without one outside a
+terminal. The project must be lowercase letters,
 digits and hyphens starting with a letter, since it names the site's
 packages, Workers and DDEV project. `--variant commerce` is refused until
 phase 4, and so is a target directory that isn't empty. It then prints the
@@ -78,6 +81,33 @@ in lexical (byte) order of file name, with `SITE_PATH` and `APP_PATH` set. One t
 fails the deploy with its exit code (maintenance mode is still turned off).
 Extensions run only once WordPress is installed, and not on a Composer-only
 deploy. `deploy/ploi/admin.d` is the site's, created once with a README.
+
+### The site's language
+
+`wordpress.locale` in `gq.ops.json` is the site's main language, as the
+WordPress locale WordPress.org names its language packs by: `en_US`,
+`pt_PT`, `pt_PT_ao90` (Portuguese, 1990 spelling agreement), `de_DE_formal`.
+`gq new --locale` sets it; to change it later, edit it and run `gq sync`,
+then release.
+
+- **The CMS.** On each deploy, after the database update and before the
+  extensions, the deploy script installs the locale's core language pack
+  when it is missing and makes it the site's language (`WPLANG`), then
+  installs and updates the translations WordPress.org has for the installed
+  plugins and themes. Production disallows file modifications, so the
+  WordPress admin can't install a language; the deploy can. A core pack that
+  can't be installed fails the deploy; a plugin or theme without a
+  translation (the GETQUICK plugins have none) only warns. `en_US` ships
+  with WordPress, so for it the deploy only sets the language. The language
+  packs in `apps/cms/web/app/languages` belong to the server: a deploy keeps
+  them, and `.gitignore` leaves them out. Without `wordpress.locale` the
+  deploy leaves the site's language as it is.
+- **The Frontend.** `<html lang>` is the locale's language and region
+  (`pt_PT_ao90` → `pt-PT`), read from `gq.ops.json` when the Frontend is
+  built (`apps/frontend/src/lib/site-language.ts`), so it follows the next
+  release.
+- **Locally.** `gq db sync` installs the locale's language packs in DDEV
+  after the import, so the local admin is in the site's language too.
 
 ## Shared and create-once files
 
