@@ -5,6 +5,8 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.16.2 — 2026-10-03
+
 ### Fixed
 
 - A new site's first commit no longer edits the managed `scripts/ci.test.mjs`.
