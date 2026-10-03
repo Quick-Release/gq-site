@@ -2,7 +2,7 @@
 
 > Researched **2026-10-03** for [#50](https://github.com/Quick-Release/gq-site/issues/50), applying [#49's Decisions from grilling (2026-10-03)](https://github.com/Quick-Release/gq-site/issues/49) ahead of its original proposal. This follows [tanstack-storefront-blueprint.md](tanstack-storefront-blueprint.md), introduced by `fabfc22726ed836260ce60c4eb715753bfbf726f` (2026-10-03). It is research, not an ADR, production implementation, or permission to adopt Ekis.
 >
-> **Live proof executed 2026-10-03 after additional human authorization for Sigillo token management.** All four targets were exercised at one disposable deployed Worker's HTTP boundary. The final harness recorded **24 checks: 22 satisfied, 2 failed expectations**, including old-token access to the merged cart and expiry silently creating an empty cart. This is evidence, **not a commerce-ready/security approval**. Worker, store, Quick Tunnel and all seven temporary tokens were removed and deletion verified. See [live results and limitations](#one-live-proof-executed-with-failures).
+> **Live proof executed 2026-10-03 after additional human authorization for Sigillo token management.** All four targets were exercised at one disposable deployed Worker's HTTP boundary. The initial harness recorded **24 checks: 22 satisfied, 2 failed expectations**, including old-token access to the merged cart and expiry silently creating an empty cart. This is evidence, **not a commerce-ready/security approval**. Its Worker, store, Quick Tunnel and seven temporary tokens were removed and deletion verified. **Props-only cache isolation remains open:** [L2] failed without diagnostics; [L3] verified the corrected loopback factory locally, then stopped at a deployed platform-added-header assertion (**zero completed scenarios**). [L3]'s exact Worker/token GET404 checks succeeded. See [live results and limitations](#one-live-proof-executed-with-failures).
 
 ## Findings in brief
 
@@ -20,7 +20,7 @@ Every as-built or upstream fact below carries a source key. All source retrieval
 
 - **D — documentary:** issue decisions, ADRs, committed code, published API documentation/source. Code presence does not prove deployment or compatibility.
 - **M — mocked:** inspected tests using fake fetch, QueryClients or SQLite-backed D1. They describe intended assertions; **none were executed in this research**.
-- **L — live-runtime:** deployed Worker HTTP observations backed by a synthetic DDEV WooCommerce store, executed in the continuation below [L1]. [L2] records an unsuccessful cache-only deployed follow-up, not additional passing cache evidence. Earlier local preflight and inspected mock tests remain distinct from this evidence.
+- **L — live-runtime:** deployed Worker HTTP observations backed by a synthetic DDEV WooCommerce store, executed in the continuation below [L1]. [L2] and [L3] record unsuccessful cache-only deployed follow-ups, not additional passing cache-isolation evidence; [L3] also records local invocation diagnostics. Earlier local preflight and inspected mock tests remain distinct from this evidence.
 
 | Inspected source | Exact revision and date | Evidence and scope |
 | --- | --- | --- |
@@ -422,7 +422,7 @@ flowchart LR
 
 ## One live proof: executed with failures
 
-The initial commerce proof [L1] and the unsuccessful cache-only follow-up [L2] are separate runs. The follow-up does not revise the initial **24 checks / 22 satisfied / 2 failed expectations**.
+The initial commerce proof [L1] and unsuccessful cache-only follow-ups [L2]/[L3] are separate runs. Neither follow-up revises the initial **24 checks / 22 satisfied / 2 failed expectations**.
 
 ### Authorization, credential boundary and configuration — 2026-10-03
 
@@ -452,7 +452,7 @@ Final run completed **2026-10-03T20:14:16.929Z**. All assertions below use real 
 | Concurrent streaming SSR / QueryClient isolation | Ten simultaneous A/B pairs (**20 responses**), same `['identity']` query key, native customer marker read from WP, delayed **1000ms** read of that request's QueryClient. Complete raw HTML/script streams checked: **20 own markers, zero opposite-customer markers, 20 streams** with multiple received chunks separated by >100ms; all HTTP200. Paired loop elapsed **11,079ms**. | **Pass for this bounded request-scoped model.** No assertion against TanStack internals. Private page intentionally serializes its own marker through Router loader state; this is not proof that `meta.private` alone sanitizes loaders/dehydration. |
 | Public/private cache | Identical inner public requests: **MISS → HIT**, identical generated response ID. Customer A/B cookies, unknown cookie and Authorization at the **uncached outer gateway** returned distinct private no-store responses. Response Set-Cookie case: **BYPASS → BYPASS**, distinct IDs with Set-Cookie present both times. | **Pass for explicit outer classification.** Set-Cookie values were not logged. |
 | Cookie default diagnostic | Synthetic-public-only cached entrypoint filled anonymously, then requested with an arbitrary synthetic Cookie, same props: **MISS → HIT**, same generated response ID. No private data was used. | **Adverse architectural finding:** cookie-bearing requests are not automatically private/bypassed. Outer classification must precede shared reuse. This tests a named cached entrypoint, not every possible default-entrypoint/zone cache configuration. |
-| Cache keys | Four changed contexts (locale, currency, alias, meaningful filter) returned different context markers/IDs; reordered locale/currency parameters reused the normalized key; wrong Site context returned **400**. | **Pass only for combined URL/context variation and query normalization; props-only isolation unproved.** Alias is a key-context fixture, not a second actual custom domain or Site deployment. Each changed-context request also changed the URL, so different IDs do not independently prove that `ctx.props` partitions the cache. The cache-only follow-up below did not establish that missing proof. |
+| Cache keys | Four changed contexts (locale, currency, alias, meaningful filter) returned different context markers/IDs; reordered locale/currency parameters reused the normalized key; wrong Site context returned **400**. | **Pass only for combined URL/context variation and query normalization; props-only isolation unproved.** Alias is a key-context fixture, not a second actual custom domain or Site deployment. Each changed-context request also changed the URL, so different IDs do not independently prove that `ctx.props` partitions the cache. Neither cache-only follow-up below established that missing proof. |
 | Cart issue/reuse | Two anonymous bootstrap GETs **200** with distinct real tokens; A add-item **201**, original-token GET **200** with quantity1; B remained empty. In final run the add response token equalled the original; earlier run changed it as issuance time advanced. | Valid bearer reuse observed; receiving another token does not imply original-token revocation. Tokens were never printed. |
 | Native login merge | A saved cart contained the same product quantity3 plus a second product quantity2. Guest cart held the first product quantity1. Login + guest-token read **200** produced quantities **[1,2]**, repeated read unchanged. | Colliding line takes guest quantity1, **not 1+3**; saved-only line is added. Native behavior, not a custom merge. |
 | Original guest token after merge | Request **without WP login cookie** using the original guest token: **200**, the same merged **[1,2]** including saved-only customer product. | **Failed isolation expectation / security finding.** A pre-login bearer retains access to the merged cart. Mapping rotation alone cannot revoke a stolen Woo bearer; transition/revocation design is still required. Does not prove account-profile/order access. |
@@ -605,6 +605,162 @@ console.log(JSON.stringify({completed:new Date().toISOString(), checks, passed:c
 
 **Remaining blocker:** the actual same-URL/different-props assertions and exact Worker deletion verification were not completed. Do not enable production caching or close the review finding on this attempt. A later authorized attempt needs the owned-name manifest retained before deployment, cleanup verification before token disposal, and sanitized assertion diagnostics retained on failure. The initial [L1] resource cleanup and counts remain historical facts, not evidence that this follow-up passed.
 
+### Corrected loopback follow-up — diagnosed, still not proved [L3]
+
+**Executed 2026-10-03T21:08:38.952Z–21:09:03.759Z.** One new unique disposable Worker and **one** one-hour account-scoped Workers Scripts Read + Write token; no Woo/DDEV/tunnel, storage, DNS, custom domain, other account/security settings or existing resources changed. No second deployment token was minted. This run is not a successful completion of the requested fix: **zero of 17 planned scenarios completed**. Its diagnostic failure is retained below, separately from [L2]'s missing stderr.
+
+**D/local diagnosis before provisioning:** official Context documentation specifies the loopback **factory** (`ctx.exports.Public({props}).fetch(request)`); the current cache examples conflict by putting props in fetch options. On Wrangler **4.147.0** / workerd **1.20261001.1**, the retained [L2] invocation locally returned HTTP200 JSON but `context.locale` was **undefined**; its first context assertion failed. The corrected factory invocation locally returned HTTP200 and expected props for baseline, locale-only and canonical-host-only requests; all three also reported the constant inner URL/GET/empty headers. This is local context evidence, **not edge-cache partitioning**. It explains a concrete defect in [L2]'s source, but cannot retroactively establish why [L2]'s unretained deployed assertion failed. [C15].
+
+**L — deployed diagnostic:** dry-run/deploy exited **0**, `/ready` succeeded. First `/proof` response: **HTTP200**, `Content-Type: application/json`, **CF-Cache-Status: MISS**, **382 body bytes**. The harness passed status/type parsing and its cache-status, outer no-store, actual-host and **complete baseline context equality** assertions, then failed on `body.inner`: URL/GET matched, but runtime-visible headers were **`cf-ray`, `host`, `x-forwarded-proto`**, not the expected empty list. Their observed Host value was the synthetic `cache-proof.invalid`, forwarded protocol `https`; the Ray value is omitted. The caller constructed the same headerless Request as in the local test; platform-added headers made that local empty-header expectation invalid on deployment. No HIT, changed-props, response-ID or return-to-baseline result was reached. Do not turn partial assertions into a passing baseline scenario or assume these transport headers are constant across requests. No fabricated [L2] counts are replaced.
+
+Safe retained failure summary (no host/account/credential or Ray value):
+
+```text
+baseline-miss: HTTP 200; application/json; CF-Cache-Status MISS; body bytes 382
+baseline context equality: satisfied
+inner URL/method: matched synthetic URL / GET
+inner headers: expected []; observed names [cf-ray, host, x-forwarded-proto]
+AssertionError: body.inner deep equality
+harness exit 1; completed scenarios 0; failed current scenario 1
+```
+
+**Remaining proof blocker:** correct the harness's platform-header assumption before another live attempt. Define and verify the exact caller-constructed inner URL/method/headers separately from runtime-added transport metadata, retaining raw safe header-name diagnostics; do not simply omit the header assertion or claim the platform-injected Ray is constant. Local testing alone cannot prove edge HITs. The authorized single token was already used and revoked after verified Worker deletion; this leaf did not mint another token to retry. A future live execution requires renewed authorization for its temporary token/Worker and must run the corrected harness under the same lifecycle, diagnosing failures while cleanup authority remains available. Production caching stays deferred.
+
+**Exact sanitized artifacts:** Node **26.10.0**, Wrangler **4.147.0**, workerd **1.20261001.1**, npm-lock SHA256 `51d8c01adfe6c9678f6239eb31fcaee13f896dbadcd73de2b51b17e7773d0dda`. Plain JavaScript; no Start/Alchemy/application dependencies. Configuration below replaces only the unique owned name; runtime source/harness are exact. Synthetic canonical-host props simulate output context, not an actual second domain. Outer `/proof` URL is fixed; the source constructs one constant inner URL/GET/header set; only trusted finite props vary in the planned cases. The deployed run reached only the first case.
+
+```json
+{
+  "name": "<unique-owned-proof-worker>",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-03",
+  "workers_dev": true,
+  "preview_urls": false,
+  "limits": { "cpu_ms": 50 },
+  "observability": { "enabled": false },
+  "cache": { "enabled": false },
+  "exports": { "Public": { "type": "worker", "cache": { "enabled": true } } }
+}
+```
+
+Corrected deployed `worker.js`:
+
+```js
+import { WorkerEntrypoint } from 'cloudflare:workers';
+const allowed = {
+  canonicalHost: ['shop-a.example.invalid', 'shop-b.example.invalid'],
+  locale: ['en-GB', 'pt-PT'], market: ['GB', 'PT'], currency: ['GBP', 'EUR'],
+};
+const innerURL = 'https://cache-proof.invalid/public';
+export class Public extends WorkerEntrypoint {
+  async fetch(request) {
+    return Response.json({
+      context: this.ctx.props, id: crypto.randomUUID(),
+      inner: { url: request.url, method: request.method, headers: [...request.headers] },
+    }, { headers: { 'Cache-Control': 'public, max-age=300' } });
+  }
+}
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (request.method !== 'GET') return new Response('method', { status: 405 });
+    if (url.pathname === '/ready') return new Response('ready', { headers: { 'Cache-Control': 'no-store' } });
+    if (url.pathname !== '/proof' || url.search) return new Response('route', { status: 400 });
+    if (request.headers.has('Cookie') || request.headers.has('Authorization'))
+      return new Response('private', { status: 400 });
+    const props = { site: 'synthetic-only', environment: 'proof', generation: 1 };
+    for (const [key, values] of Object.entries(allowed)) {
+      const input = request.headers.get(`X-Proof-${key}`) ?? values[0];
+      const normalized = values.find(value => value.toLowerCase() === input.trim().toLowerCase());
+      if (!normalized) return new Response('fixture', { status: 400, headers: { 'Cache-Control': 'no-store' } });
+      props[key] = normalized;
+    }
+    // Only synthetic allowlisted fixtures; not caller-selected production Sites.
+    // No outer URL, headers, cookies or auth are forwarded to the cached entrypoint.
+    const response = await ctx.exports.Public({ props }).fetch(new Request(innerURL, { method: 'GET' }));
+    const outer = new Response(response.body, response);
+    outer.headers.set('Cache-Control', 'no-store');
+    outer.headers.set('X-Proof-Actual-Host', url.hostname);
+    outer.headers.set('X-Proof-Outer-ID', crypto.randomUUID());
+    return outer;
+  }
+};
+```
+
+Executed `test.mjs` (retains the **failed** empty-runtime-header assertion for inspection, not a recommended corrected harness):
+
+```js
+import assert from 'node:assert/strict';
+const base = { site: 'synthetic-only', environment: 'proof', generation: 1,
+  canonicalHost: 'shop-a.example.invalid', locale: 'en-GB', market: 'GB', currency: 'GBP' };
+const endpoint = new URL('/proof', process.env.PROOF_URL);
+const inner = { url: 'https://cache-proof.invalid/public', method: 'GET', headers: [] };
+const outerIDs = new Set(), contextIDs = new Set();
+let checks = 0;
+async function read(label, changes, status, previous) {
+  const context = { ...base, ...changes };
+  const headers = Object.fromEntries(Object.entries(changes).map(([k,v]) => [`X-Proof-${k}`,v]));
+  const response = await fetch(endpoint, { headers, signal: AbortSignal.timeout(15000) });
+  const text = await response.text();
+  const cache = response.headers.get('CF-Cache-Status');
+  // Inspect status/type/cache before parsing; never print host or raw response body.
+  console.log(JSON.stringify({label,phase:'received',status:response.status,
+    contentType:response.headers.get('Content-Type'),cache,bytes:Buffer.byteLength(text)}));
+  assert.equal(response.status, 200, `${label}: HTTP status`);
+  assert.match(response.headers.get('Content-Type') ?? '', /application\/json/, `${label}: content type`);
+  let body; try { body = JSON.parse(text); } catch { throw new Error(`${label}: invalid JSON (${text.length} chars)`); }
+  assert.equal(cache, status, `${label}: cache status`);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert(response.headers.get('X-Proof-Actual-Host') === endpoint.hostname, `${label}: actual host mismatch`);
+  assert.deepEqual(body.context, context);
+  assert.deepEqual(body.inner, inner);
+  assert.match(body.id, /^[a-f0-9-]{36}$/);
+  const outerID = response.headers.get('X-Proof-Outer-ID');
+  assert.match(outerID, /^[a-f0-9-]{36}$/);
+  assert(!outerIDs.has(outerID)); outerIDs.add(outerID);
+  if (previous) assert.equal(body.id, previous.id);
+  else { assert(!contextIDs.has(body.id)); contextIDs.add(body.id); }
+  checks++;
+  console.log(JSON.stringify({label,cache,correctContext:true,constantInner:true,
+    sameMarker:!!previous,newOuter:true}));
+  return body;
+}
+try {
+  const first = await read('baseline-miss', {}, 'MISS');
+  await read('baseline-hit', {}, 'HIT', first);
+  for (const [label, changes] of [
+    ['canonical-host', {canonicalHost:'shop-b.example.invalid'}],
+    ['locale', {locale:'pt-PT'}], ['market', {market:'PT'}], ['currency', {currency:'EUR'}],
+    ['combined', {canonicalHost:'shop-b.example.invalid',locale:'pt-PT',market:'PT',currency:'EUR'}],
+  ]) {
+    const miss = await read(`${label}-miss`, changes, 'MISS');
+    await read(`${label}-hit`, changes, 'HIT', miss);
+  }
+  await read('baseline-return', {}, 'HIT', first);
+  for (const key of ['canonicalHost','locale','market','currency']) {
+    const response = await fetch(endpoint, {headers:{[`X-Proof-${key}`]:'not-allowed'}, signal:AbortSignal.timeout(15000)});
+    console.log(JSON.stringify({label:`reject-${key}`,phase:'received',status:response.status}));
+    assert.equal(response.status,400);
+    assert.equal(response.headers.get('Cache-Control'),'no-store');
+    await response.text(); checks++;
+    console.log(JSON.stringify({label:`reject-${key}`,status:400}));
+  }
+  console.log(JSON.stringify({completed:new Date().toISOString(),checks,passed:checks,failed:0,
+    httpRequests:checks,distinctContexts:contextIDs.size,uniqueOuterExecutions:outerIDs.size}));
+} catch(error) {
+  // Assertions contain synthetic props/status only; fetch errors may contain the actual endpoint.
+  const safe = String(error.stack ?? error).split(endpoint.hostname).join('<actual-host>');
+  console.error(safe);
+  console.log(JSON.stringify({checks,passed:checks,failedScenario:1}));
+  process.exitCode=1;
+}
+```
+
+**Credential/cleanup evidence and limitations:** pinned Sigillo **0.13.0** injected only the authorized Ekis operations environment; bootstrap routing variables were removed before the executor. Initial gq wrappers failed locally (missing dependency, then the unchanged Ekis v0 manifest); neither failure acquired a token or deployed anything. No migration was performed. The executor used the manifest in memory and API-discovered permissions. Its master stayed confined to account-token API operations and was excluded from Wrangler/harness child environments. Temporary credential values stayed in memory/child environment, never command arguments or tracked artifacts; stdout **and stderr** were captured and sanitized before reporting. The exact generated Worker name and token ID remained in a mode-0700 local workspace ownership manifest, which was retained through cleanup (no secret value in that manifest).
+
+The lifecycle's `finally` called Wrangler delete with the exact owned name and `--force`, then performed the exact settings lookup before revoking the token. Wrangler exited **1** with code **10000** on its **KV namespace listing**: the minimal script token intentionally lacked KV permissions. Nevertheless the exact owned Worker settings GET returned **404**; no additional resource permission was granted and no fallback DELETE was needed. The lifecycle had an exact script DELETE fallback if that lookup was not404, but did not execute it. Only after Worker GET404 did token DELETE return **200** and token GET return **404**. Final token listing found **zero `ISSUE50` tokens**. For the one created Worker, exact GET404 proves zero remaining owned resources; **a separate broader `issue50-props-` inventory result is not claimed**: the generic script-list pagination helper rejected repeated pages with `Listing incomplete`. That error was retained; token cleanup still proceeded because exact resource deletion had already been verified. Do not call the incomplete broader inventory a successful final audit. [C15].
+
+This run improved diagnosis and exact deletion ordering but failed the requested cache-isolation acceptance. No production source or settings changed; no additional approved footprint was used to hide the failure.
+
 ### Historical preflight from `d63b2c6` — superseded by authorization above
 
 The following blocker/recipe records the **earlier unexecuted state**, not the present credential/resource status. Expected assertions in that historical plan are not substitutes for the actual result table above.
@@ -671,7 +827,7 @@ No evidence inspected establishes multiple active Ekis markets/currencies. Langu
 
 ## Dependent implementation slices — proposals, no tickets created
 
-1. **Resolve proof findings before implementation.** [L1] executed the bounded four-target proof and verified cleanup; its key variants do not independently prove props partitioning. [L2]'s cache-only attempt did not close that gap. Decide how cart mappings handle merged-cart bearer reuse, logout and expiry; separately qualify the actual Alchemy deploy graph. Prototype corrections stay throwaway until approved.
+1. **Resolve proof findings before implementation.** [L1] executed the bounded four-target proof and verified cleanup; its key variants do not independently prove props partitioning. Neither [L2] nor [L3] closed that gap. [L3] corrected the loopback invocation but its harness still assumed empty runtime-visible headers; the next local/harness correction must distinguish exact caller-constructed headers from platform-added transport metadata before a newly authorized live run. Decide how cart mappings handle merged-cart bearer reuse, logout and expiry; separately qualify the actual Alchemy deploy graph. Prototype corrections stay throwaway until approved.
 2. **Generation/deploy selection (#28 execution).** After #28 decision: framework-aware managed Vite deploy/toolchain/readiness and strict schema/migration/defaults; preserve Astro content regression, create-once/site ownership, offline generation, second-sync no diff and managed-edit refusal. Coordinate #18; don't duplicate its adoption dry run.
 3. **Commerce boundary + exact money/status/freshness tracer bullet.** Depends on selected contract/capabilities and runtime proof; catalog product -> private cart -> explicit checkout pending/action. Runtime validate provider data and unsupported features. No renderer package-home choice.
 4. **Session/cart mapping + native transition slice.** Depends on proof outcomes/CART-CREDENTIAL; encrypted primary storage, expiry/rotation/cleanup, CSRF, authorization and browser private-state removal. Separate gate before account/order-history features; preserve Ekis codec without rewriting identity.
@@ -690,16 +846,18 @@ Minimal first release is a **bounded Woo pilot** with Start/Router/Query, one BF
 - Initial commit `d63b2c6` contained local preflight only. The continuation executed [L1]'s temporary build and deployed HTTP harness; it did **not** run gq-site/Ekis application test suites or change their production code. Synthetic fixture data only; no secret values or private infrastructure identifiers in committed evidence.
 - Deliverable self-check: five diagrams, gap verdicts, contract/capabilities/money/freshness, cache/session/gateway/failure/event/service matrices, historical blocker/plan plus actual live findings/verified cleanup, open decisions/slices and primary references. Historical continuation checks passed: **60 registered citation keys**, relative link targets exist, Mermaid count five, fences balanced, credential/private-key/JWT/private-ID pattern scan clear, and `git diff --check` clean. The original preflight only checked deletion help; [L1] actually deleted the owned resources and verified absence. Only this research file is committed. Spec-axis check is a **leaf self-review**, not `/code-review` subagent review (task forbids further agents).
 
-- Cache-only follow-up document checks: **61 registered citation keys**, existing relative-link targets, balanced fences, five Mermaid diagrams, retained source/harness exact matches to executed local files, terminology and credential/private-ID pattern scan passed; `git diff --check` clean. These are document checks, not additional runtime scenario passes. Only this research document changed.
+- [L2] cache-only follow-up document checks (historical): **61 registered citation keys**, existing relative-link targets, balanced fences, five Mermaid diagrams, retained source/harness exact matches to executed local files, terminology and credential/private-ID pattern scan passed; `git diff --check` clean. These are document checks, not additional runtime scenario passes. Only this research document changed.
+
+- [L3] document self-check: **63 registered citation keys**, relative targets exist, balanced fences, five Mermaid diagrams; retained corrected Worker and failed harness match executed files byte-for-byte, sanitized config matches except owned name. Credential/private-key/JWT/private-ID patterns and actual account/project-ID scan clear; `git diff --check` clean. These checks do not close the live isolation gap. Only this research document changed; no delegated review or application-suite run.
 
 | #50 acceptance grouping | Where addressed / evidence limitation |
 | --- | --- |
 | Stories 1–7, 37–39 | Baseline, gap matrix, TanStack/ownership/customizer/footprint; D/M, not adoption or market confirmation. |
 | Stories 8–14 | Contract, exact money, capability desk check, guarantees/freshness; proposed values not approved policies. |
-| Stories 15–23 | Guarantee/cache/session sections + [L1]: streaming isolation, cookie classification/combined URL-context keys and real Cart-Token lifecycle exercised; adverse reuse/expiry findings retained. **Independent props-only partitioning remains unproved after [L2]'s failed attempt.** Actual multi-Site/custom-domain deployment and production session codec not proved. |
+| Stories 15–23 | Guarantee/cache/session sections + [L1]: streaming isolation, cookie classification/combined URL-context keys and real Cart-Token lifecycle exercised; adverse reuse/expiry findings retained. **Independent props-only partitioning remains unproved after [L2]/[L3]'s failed attempts.** Actual multi-Site/custom-domain deployment and production session codec not proved. |
 | Stories 24–28 | Gateway contract/checkout/failure semantics + [L1]: real Store API stub `redirect_url` followed via Worker 303; real gateways/async callbacks remain unbuilt/unexecuted. |
 | Stories 29–36 | Events/reconciliation, read-strategy triggers, service matrix, security, failures/SEO. |
-| Stories 40–45 | Evidence labels/date/source register, [L1] secure authorization/minting/verified cleanup, five diagrams, decisions/dependencies; only approved temporary resources created. [L2] separately retains source/harness and reports its incomplete exact Worker deletion verification without borrowing [L1]'s successful cleanup claim. |
+| Stories 40–45 | Evidence labels/date/source register, [L1] secure authorization/minting/verified cleanup, five diagrams, decisions/dependencies; only approved temporary resources created. [L2] separately retains source/harness and reports its incomplete exact Worker deletion verification without borrowing [L1]'s successful cleanup claim. [L3] retains corrected source/harness and its header-assertion failure; exact Worker GET404 preceded token GET404, but its broader script-inventory helper failed. |
 | #49 amended acceptance | Documentary areas plus bounded runtime/cache/token/redirect results [L1]; no all-green compatibility or production-readiness claim. Full cost model and Shopify runtime proof deliberately superseded/deferred. |
 
 ## Primary-source register
@@ -732,6 +890,7 @@ All E1–E8 paths below resolve under [Ekis `ce258d86b7a9cb9b55e9d362e55a038162c
 
 ### Executed evidence register
 
+- **[L3]** Corrected loopback leaf follow-up **2026-10-03T21:08:38.952Z–21:09:03.759Z**. Official Context/cache-example discrepancy checked; local old invocation returned missing context, factory invocation passed three local context/inner-request checks. One deployed Worker, one one-hour Workers Scripts Read + Write token. First deployed `/proof` HTTP200/MISS had correct baseline props, but the harness failed on platform-added headers; **zero completed scenarios**, harness exit1. Exact Worker GET404 before token DELETE200/GET404, zero owned tokens; broader script-inventory helper failed, not represented as a pass. Corrected deployed application/config and exact failed harness retained above. No second token, Woo/DDEV/tunnel or production changes. Props-only isolation remains open.
 - **[L2]** Cache-only leaf follow-up **2026-10-03**, cleanup-token audit **20:59:24.795Z**. The deployed source, sanitized config and exact HTTP harness are retained directly above. Dry-run/deploy succeeded; readiness HTTP succeeded; harness exit **1**, **zero completed scenario checks**. Same-URL props isolation remains unproved. Wrangler deletion exit **1** followed by scoped inventory absence, not exact Worker GET404; five temporary-token GET404 checks and final zero-owned-token audit. No Woo/DDEV/tunnel or additional resources created. This evidence records a failed attempt and cleanup-verification limitation, not a cache pass.
 - **[L1]** Leaf-executed disposable proof, **2026-10-03**, final results timestamp **20:14:16.929Z**, cleanup-token audit **20:15:29.722Z**. Sanitized results/config/corrections are recorded in the live section above; the temporary prototype was never committed/deployed to an existing Site. Source fingerprints (SHA256): request-scoped router `450385492acd7e2c602292d79122788bcb1124dba1aa7fb4d7036acba103572e`; streaming route `710904a1931e9e254a68989925304130664e5afc0f604d6668cee7484d3b671e`; Worker boundary/cache/BFF `af1f5a01e0a62ca4aedf09e5e84a3647312187608fa08a0f4f524d7e106e254e`; HTTP harness `687f3f3a27b6eb03c0af07155e9b8d201430147287ae49dae97933c6a484f105`; MU fixture `addfb1d41792b5d90e5e55d973045d2f79ad42675d5c39abfbfc77b0502d820f`. These identify inspected/executed local source, not public artifact availability or an Ekis source revision. No credential/file-value hashes retained. Temporary source/synthetic store removed; reproducibility uses the pinned packages and documented boundary recipe/config, not a retained turnkey harness.
 
@@ -758,6 +917,7 @@ All E1–E8 paths below resolve under [Ekis `ce258d86b7a9cb9b55e9d362e55a038162c
 - **[C11]** [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [pricing](https://developers.cloudflare.com/d1/platform/pricing/).
 - **[C12]** [Queues limits](https://developers.cloudflare.com/queues/platform/limits/), [pricing](https://developers.cloudflare.com/queues/platform/pricing/).
 - **[C13]** [DO limits](https://developers.cloudflare.com/durable-objects/platform/limits/).
+- **[C15]** Re-retrieved 2026-10-03 for [L3]: [Context API — ctx.exports and dynamic props](https://developers.cloudflare.com/workers/runtime-apis/context/), [Workers Cache keys](https://developers.cloudflare.com/workers/cache/cache-keys/), [examples](https://developers.cloudflare.com/workers/cache/examples/), [configuration](https://developers.cloudflare.com/workers/cache/configuration/), [HTTP Service Bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/http/), [Request API](https://developers.cloudflare.com/workers/runtime-apis/request/), [script-list API](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/methods/list/). Context documents `ctx.exports.Greeter({props}).greet(...)`; the retrieved cache examples instead show `ctx.exports.CachedAPI.fetch(request,{props})`. [L3]'s local workerd comparison resolves this discrepancy for the tested runtime only; do not silently copy the conflicting cache example. The script-list API page does not document page/per_page parameters; the failed generic pagination helper is not proof of inventory absence.
 - **[C14]** Re-retrieved 2026-10-03: [account API tokens](https://developers.cloudflare.com/fundamentals/api/get-started/account-owned-tokens/), [create account token API](https://developers.cloudflare.com/api/resources/accounts/subresources/tokens/methods/create/), [permission groups](https://developers.cloudflare.com/fundamentals/api/reference/permissions/), [Wrangler commands](https://developers.cloudflare.com/workers/wrangler/commands/), [cache configuration](https://developers.cloudflare.com/workers/cache/configuration/), [Start on Workers](https://developers.cloudflare.com/workers/framework-guides/web-apps/tanstack-start/). Token API verify/group/create/delete/404 outcomes also observed [L1]. Initial workers/subdomain API reference URL returned404, so existing repository account-client patterns and the actual scoped API GET were used instead. Read complete [secrets guide](../guides/secrets.md), [provisioning guide](../guides/provisioning.md), [manifest reference](../reference/manifest.md), [`src/sigillo/commands.mjs`](../../src/sigillo/commands.mjs), [`src/cloudflare/tokens.mjs`](../../src/cloudflare/tokens.mjs), [`deploy-token.mjs`](../../src/cloudflare/deploy-token.mjs) and [`account-client.mjs`](../../src/cloudflare/account-client.mjs), at the research baseline.
 
 ### WooCommerce primary sources
