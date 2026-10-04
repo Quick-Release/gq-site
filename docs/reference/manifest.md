@@ -31,10 +31,13 @@ required, `domains` has the roles `admin` and `frontend` and an optional
 `docs`, and an unknown or misspelt key fails by its path. The blocks each
 command reads (`ploi`, `cloudflare`, `releases`, `media`, `backups`, `local`,
 `artifacts`, `ci`, `github`, `sigillo`, `wordpress.plugins`,
-`wordpress.locale`) are optional; a command names the keys it needs.
-`wordpress.locale` is the site's main language as a WordPress locale
-(`en_US`, `pt_PT`, `pt_PT_ao90`); see
-[The site's language](../guides/sites.md#the-sites-language). `offboarded` (`at`, `phase`, and `cut`,
+`wordpress.locale`, `wordpress.languages`) are optional; a command names
+the keys it needs. `wordpress.locale` is the site's main language as a
+WordPress locale (`en_US`, `pt_PT`, `pt_PT_ao90`); see
+[The site's language](../guides/sites.md#the-sites-language).
+`wordpress.languages` lists a bilingual site's other languages, each a
+`locale` and the `slug` of its URL directory; see
+[More languages](../guides/sites.md#more-languages). `offboarded` (`at`, `phase`, and `cut`,
 what the cut changed, which `--restore` brings back) is written by
 `gq offboard` and turns on the guards of an
 [offboarded Site](../guides/offboarding.md); `gq offboard --archive` adds

@@ -53,7 +53,8 @@ configuration and script (`infra/frontend.run.ts`,
 `infra/scripts/deploy-frontend.mjs`, `infra/package.json`), the CI release
 step (`scripts/ci-release.mjs`) and the tests of the CI Worker and release
 step (`scripts/ci.test.mjs`), and the CMS deploy script Ploi runs
-(`deploy/ploi/admin.sh`).
+(`deploy/ploi/admin.sh`, with `deploy/ploi/polylang.sh` for a bilingual
+site's languages).
 
 ## Generated deploy wiring
 
@@ -108,6 +109,66 @@ then release.
   release.
 - **Locally.** `gq db sync` installs the locale's language packs in DDEV
   after the import, so the local admin is in the site's language too.
+
+### More languages
+
+A bilingual site lists its other languages in `wordpress.languages`, each
+with the URL directory (`slug`) its pages live under. `wordpress.locale`
+stays the default language, without a directory:
+
+```json
+"wordpress": {
+  "plugins": ["…", "polylang-pro", "gq-polylang-graphql"],
+  "locale": "pt_PT_ao90",
+  "languages": [{ "locale": "en_US", "slug": "en" }]
+}
+```
+
+Portuguese pages are then at `/sobre/`, and English ones at `/en/about/`.
+`gq new` makes a monolingual site; to add a language, edit `gq.ops.json`,
+run `gq sync` (it updates `deploy/ploi/admin.sh`), and release.
+
+- **What `gq sync` refuses.** A locale that isn't a WordPress locale, a slug
+  that isn't a lowercase URL segment (`en`, `pt-br`), `languages` without
+  `locale`, and a locale or slug listed twice. The default language's slug
+  is its language code (`pt` for `pt_PT_ao90`), so no other language may
+  use it.
+- **The plugins.** A bilingual site needs Polylang, and
+  [GQ Polylang for WPGraphQL](https://github.com/Quick-Release/gq-polylang-graphql)
+  for the Frontend to read each language through GraphQL. Require both in
+  `apps/cms`, from the GETQUICK registry (its existing login), and list
+  them in `wordpress.plugins` so the deploy activates them; `gq sync`
+  refuses `languages` until both are listed:
+
+  ```sh
+  cd apps/cms
+  composer require getquick/polylang-pro getquick/gq-polylang-graphql
+  ```
+
+  Polylang Pro is the plugin GETQUICK licenses. The free plugin
+  (`composer require wp-plugin/polylang`, listed as `polylang`) works too.
+
+- **The deploy.** After it sets the site's language and before the
+  extensions, the deploy script installs each language's core language
+  pack, then runs `deploy/ploi/polylang.sh` with WP-CLI to make Polylang's
+  languages match `gq.ops.json`. It creates each missing language, the
+  default first, and updates one whose locale or order changed. It makes
+  `wordpress.locale` Polylang's default language, and sets the URL mode:
+  the language as a directory, the default language's hidden. Then it gives
+  every post and term without a language the default one, which is how an
+  existing site's content becomes Portuguese. Running it again changes
+  nothing.
+- **Removing a language.** The deploy never deletes a language. One
+  Polylang has that `gq.ops.json` no longer lists stops the deploy, named,
+  before anything changes: move or delete its content and delete the
+  language in WordPress (Languages), then deploy again. That includes a
+  default language set up by hand under another slug than its language
+  code (`pt-pt` rather than `pt`). Without `languages` at all, the deploy
+  leaves Polylang alone.
+- **Shared slugs.** Polylang Pro's "Share slugs" module has no setting: it
+  turns on by itself with language directories, so an editor can give a
+  translation its original's slug. Keep translated slugs unique per
+  language (`/sobre/`, `/en/about/`).
 
 ## Shared and create-once files
 

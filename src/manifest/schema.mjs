@@ -38,6 +38,21 @@ export const LOCALE_PATTERN = /^[a-z]{2,3}(?:_[A-Z]{2})?(?:_[a-z0-9]+)?$/u;
 const locale = z
   .string()
   .regex(LOCALE_PATTERN, "must be a WordPress locale, like en_US, pt_PT or pt_PT_ao90");
+// A language's URL directory (en for /en/) and Polylang slug: a lowercase
+// URL segment, which the CMS deploy script passes to wp.
+const languageSlug = z
+  .string()
+  .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u, "must be a lowercase URL segment, like en or pt-br");
+// What a bilingual Site needs in wordpress.plugins: Polylang (Pro, or the free
+// plugin) and its GraphQL integration.
+const POLYLANG_PLUGINS = ["polylang-pro", "polylang"];
+const POLYLANG_GRAPHQL_PLUGIN = "gq-polylang-graphql";
+
+// The default language's slug: its locale's language code (pt for
+// pt_PT_ao90), as Polylang names it.
+function defaultLanguageSlug(locale) {
+  return locale.split("_")[0];
+}
 
 // A pattern whose match is replaced by `replacement`, `{version}` standing
 // for the release version: the JSON form of a release config's
@@ -99,7 +114,16 @@ export const manifestSchema = z
               "script installs and activates it, and the Frontend's <html lang> follows it. " +
               "Left out, the deploy leaves the CMS's language as it is.",
           ),
+        languages: z
+          .array(z.strictObject({ locale, slug: languageSlug }))
+          .optional()
+          .describe(
+            "The languages beside the default (locale), each under its URL directory (slug): " +
+              "the CMS deploy script installs them and makes Polylang's languages match. " +
+              "Needs locale, Polylang and gq-polylang-graphql. Left out, the Site is monolingual.",
+          ),
       })
+      .superRefine(checkLanguages)
       .optional(),
     releases: z.strictObject({ bucket: z.string(), prefix: z.string().optional() }).optional(),
     media: z.strictObject({ bucket: z.string(), domain: hostname }).optional(),
@@ -181,6 +205,35 @@ export const manifestSchema = z
       ),
   })
   .meta({ title: "gq.ops.json", description: "A GETQUICK site's manifest (schema v1)." });
+
+// wordpress.languages: beside the default language, each locale and slug
+// once, and the plugins Polylang's configuration needs.
+function checkLanguages({ plugins, locale, languages }, context) {
+  if (languages === undefined) return;
+  const issue = (path, message) => context.addIssue({ code: "custom", path, message });
+  if (locale === undefined) {
+    issue(["languages"], "needs wordpress.locale, the default language");
+    return;
+  }
+  const defaults = { locale, slug: defaultLanguageSlug(locale) };
+  for (const key of ["locale", "slug"]) {
+    const seen = new Set();
+    languages.forEach((language, index) => {
+      const value = language[key];
+      if (value === defaults[key]) {
+        issue(["languages", index, key], `repeats ${value}, the default language's`);
+      } else if (seen.has(value)) issue(["languages", index, key], `repeats ${value}`);
+      seen.add(value);
+    });
+  }
+  const polylang = POLYLANG_PLUGINS.some((plugin) => plugins.includes(plugin));
+  if (!polylang || !plugins.includes(POLYLANG_GRAPHQL_PLUGIN)) {
+    issue(
+      ["plugins"],
+      "must include polylang-pro (or polylang) and gq-polylang-graphql for wordpress.languages",
+    );
+  }
+}
 
 function compiles(source, flags) {
   try {

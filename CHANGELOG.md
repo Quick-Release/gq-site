@@ -5,6 +5,30 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+### Added
+
+- **Bilingual content Sites**, `wordpress.languages` in `gq.ops.json`: the
+  languages beside `wordpress.locale` (the default), each a `locale` and the
+  `slug` of its URL directory (`{ "locale": "en_US", "slug": "en" }` for
+  `/en/`). See
+  [More languages](https://github.com/Quick-Release/gq-site/blob/main/docs/guides/sites.md#more-languages).
+  - `gq sync` refuses an invalid or repeated locale or slug, a slug that is
+    the default language's (its language code), `languages` without
+    `locale`, and `languages` without Polylang (`polylang-pro` or
+    `polylang`) and `gq-polylang-graphql` in `wordpress.plugins`.
+  - The CMS deploy script installs each language's core language pack, then
+    runs the new generated `deploy/ploi/polylang.sh`, which makes Polylang's
+    languages match with WP-CLI: it creates or updates each language, sets
+    the default and the URL mode (a directory per language, the default's
+    hidden), and gives content without a language the default one. It
+    never deletes a language: one `gq.ops.json` no longer lists stops the
+    deploy, named, before anything changes. A site without `languages`
+    deploys as before.
+  - `scripts/smoke/cms-polylang.sh` proves it on a real WordPress with
+    Polylang and GQ Polylang for WPGraphQL.
+  - **Existing sites:** `gq sync` adds `deploy/ploi/polylang.sh`, whether
+    or not the site lists `languages`.
+
 ## 0.17.0 — 2026-10-03
 
 ### Added

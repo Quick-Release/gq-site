@@ -108,7 +108,10 @@ before npm serves the release. `scripts/smoke/frontend-runtime.sh` is
 the durable published content runtime proof (see
 [Durable published content](guides/provisioning.md#durable-published-content));
 `scripts/smoke/cms-events.sh` adds a real WordPress for publication and
-settings events, and real WPGraphQL for `gq site check`'s CMS readiness. The
+settings events, and real WPGraphQL for `gq site check`'s CMS readiness.
+`scripts/smoke/cms-polylang.sh` proves a bilingual site's Polylang
+configuration (the generated `deploy/ploi/polylang.sh`) on a real WordPress
+with Polylang and GQ Polylang for WPGraphQL, read over GraphQL. The
 runtime proof also installs the CI Worker's dependencies for Wrangler's local
 workerd runtime. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
 three proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,

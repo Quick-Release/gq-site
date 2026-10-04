@@ -31,6 +31,7 @@
       "template": "templates/deploy/ploi/admin.sh",
       "executable": true
     },
+    { "path": "deploy/ploi/polylang.sh", "template": "templates/deploy/ploi/polylang.sh" },
     { "path": "infra/ci/Dockerfile", "template": "templates/infra/ci/Dockerfile" },
     { "path": "infra/ci/cloudflare.ci.ts", "template": "templates/infra/ci/cloudflare.ci.ts" },
     { "path": "infra/ci/env.ts", "template": "templates/infra/ci/env.ts" },

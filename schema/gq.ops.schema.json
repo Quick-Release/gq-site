@@ -108,6 +108,28 @@
           "description": "The site's main language, as a WordPress locale (pt_PT_ao90): the CMS deploy script installs and activates it, and the Frontend's <html lang> follows it. Left out, the deploy leaves the CMS's language as it is.",
           "type": "string",
           "pattern": "^[a-z]{2,3}(?:_[A-Z]{2})?(?:_[a-z0-9]+)?$"
+        },
+        "languages": {
+          "description": "The languages beside the default (locale), each under its URL directory (slug): the CMS deploy script installs them and makes Polylang's languages match. Needs locale, Polylang and gq-polylang-graphql. Left out, the Site is monolingual.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "locale": {
+                "type": "string",
+                "pattern": "^[a-z]{2,3}(?:_[A-Z]{2})?(?:_[a-z0-9]+)?$"
+              },
+              "slug": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+              }
+            },
+            "required": [
+              "locale",
+              "slug"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [

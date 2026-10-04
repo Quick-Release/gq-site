@@ -41,6 +41,7 @@ const MANAGED_PATHS = [
   ".vite-hooks/pre-commit",
   ".vite-hooks/pre-push",
   "deploy/ploi/admin.sh",
+  "deploy/ploi/polylang.sh",
   "docs/adr/README.md",
   "docs/agents/README.md",
   "docs/agents/domain.md",

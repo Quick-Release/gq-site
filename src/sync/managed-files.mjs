@@ -51,7 +51,9 @@ async function renderTemplate(template, manifest) {
 // `deployStatusMarker` (the CMS deploy's status line, which gq ploi release
 // waits for), `wordpress.plugins` space-separated (none until the manifest
 // lists some, so the deploy script stays valid shell), `wordpress.locale`
-// (empty without one, so the deploy leaves the language alone), the blueprint's
+// (empty without one, so the deploy leaves the language alone),
+// `wordpress.languages` as space-separated locale:slug pairs (empty for a
+// monolingual Site, so the deploy leaves Polylang alone), the blueprint's
 // own pins in the root package.json, `packageManager`
 // and `nodeEngine` (engines.node), so a copy of one can't drift, and the
 // versions a new site installs: `gqVersion` (this @getquick/site) and
@@ -74,6 +76,9 @@ function templateValues(manifest) {
     deployStatusMarker: deployStatusMarker(project),
     "wordpress.plugins": (manifest.wordpress?.plugins ?? []).join(" "),
     "wordpress.locale": manifest.wordpress?.locale ?? "",
+    "wordpress.languages": (manifest.wordpress?.languages ?? [])
+      .map(({ locale, slug }) => `${locale}:${slug}`)
+      .join(" "),
     "ci.worker": manifest.ci?.worker,
     "ci.backupBucket": manifest.ci?.backupBucket,
     "artifacts.namespace": manifest.artifacts?.namespace,
