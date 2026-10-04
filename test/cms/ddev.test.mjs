@@ -49,6 +49,8 @@ if (args[0] === 'start') {
   }, 20);
 } else if (args[0] === 'describe') {
   if (process.env.FAKE_NO_DESCRIBE === '1') process.exit(1);
+  // A slow Docker: describe answers only after FAKE_DESCRIBE_DELAY_MS.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.FAKE_DESCRIBE_DELAY_MS || 0));
   console.log(JSON.stringify({ raw: { primary_url: process.env.FAKE_URL || 'http://fixture-test.ddev.site', dbinfo: { host: 'db', dbname: 'db', username: 'db', password: 'db' } } }));
 }
 `,
@@ -175,6 +177,16 @@ test("the startup panel falls back to the checked-in local URL when DDEV cannot 
   assert.doesNotMatch(result.stdout, /admin.example.com/u);
   writeFileSync(f.gate, "ready");
   await waitFor(() => readDdevStart(f.cms)?.phase === "failed");
+});
+
+test("the startup panel waits for a slow DDEV's own URL", async (t) => {
+  const f = fixture(t);
+  const result = f.invoke(["start"], { FAKE_DESCRIBE_DELAY_MS: "1500" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /http:\/\/fixture-test.ddev.site\/wp\/wp-admin\//u);
+  assert.doesNotMatch(result.stdout, /fallback-admin/u);
+  writeFileSync(f.gate, "ready");
+  await waitFor(() => readDdevStart(f.cms)?.phase === "ready");
 });
 
 test("default startup returns before DDEV is ready, persists logs, and marks readiness after env setup", async (t) => {

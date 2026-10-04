@@ -240,10 +240,19 @@ export function localCmsLinks(value) {
   }
 }
 
+// How long the startup panel waits for `ddev describe`: it asks Docker, which
+// can take a few seconds on a busy machine. It runs beside the launch, so it
+// only holds up the panel, never startup itself.
+const DESCRIBE_TIMEOUT_MS = 5_000;
+
 async function cmsDevLinks(cmsRoot, { exec, env }) {
   // DDEV reports the actual scheme/host, even for many stopped projects.
-  // Bound this lookup so the presentation cannot hold up background startup.
-  const result = await exec("ddev", ["describe", "-j"], { cwd: cmsRoot, env, timeout: 1_000 });
+  // Bounded, so a DDEV that hangs can't hold up the panel.
+  const result = await exec("ddev", ["describe", "-j"], {
+    cwd: cmsRoot,
+    env,
+    timeout: DESCRIBE_TIMEOUT_MS,
+  });
   if (result.code === 0) {
     try {
       const payload = JSON.parse(result.stdout);
@@ -347,8 +356,11 @@ async function launchInBackground(cmsRoot, ddevArgs, { context, env, exec, io, i
   const spin = ui.spinner();
   spin.start("Preparing background startup");
   try {
-    const links = await cmsDevLinks(cmsRoot, { exec, env });
-    const launched = await launchDdevStart(cmsRoot, ddevArgs, { exec, env });
+    // The lookup runs beside the launch, so a slow DDEV doesn't delay startup.
+    const [links, launched] = await Promise.all([
+      cmsDevLinks(cmsRoot, { exec, env }),
+      launchDdevStart(cmsRoot, ddevArgs, { exec, env }),
+    ]);
     spin.stop(
       `${launched.alreadyStarting ? "DDEV startup already running" : "DDEV startup launched in background"}${launched.pid ? ` (PID ${launched.pid})` : ""}.`,
     );

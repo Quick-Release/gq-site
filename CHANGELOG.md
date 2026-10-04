@@ -60,6 +60,14 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
     `src/components/Home.astro`, `src/layouts/Layout.astro`, both pages in
     `src/pages`, and `src/languages.test.ts`.
 
+### Fixed
+
+- `gq cms start` names DDEV's own local URL on a slow machine. It waited only
+  a second for `ddev describe`, which asks Docker, and otherwise fell back to
+  `.env.example`'s URL; it now looks it up beside launching the startup, so
+  waiting up to five seconds never delays startup. This was also the
+  intermittent failure in `test/cms/ddev.test.mjs` under a loaded test run.
+
 ## 0.17.0 — 2026-10-03
 
 ### Added
