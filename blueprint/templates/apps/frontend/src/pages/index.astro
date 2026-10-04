@@ -1,13 +1,14 @@
 ---
-import Layout from "../layouts/Layout.astro";
+import Home from "../components/Home.astro";
 import { publishedHome } from "../lib/delivery";
+import { defaultLanguage } from "../lib/site-language";
 import { responseStatus } from "../lib/wordpress";
-import { blockPresetStyles } from "../lib/wp-block-styles";
 
 // Served from the publication store, last-known-good and without an age
 // limit; a visit never reads the CMS. A Site that hasn't been refreshed yet,
-// or whose store can't be read, is a 503.
-const home = await publishedHome(Astro.site?.origin);
+// or whose store can't be read, is a 503. The other languages' homes (/en/)
+// are served by [...slug].astro.
+const home = await publishedHome(Astro.site?.origin, defaultLanguage);
 // Local development without a CMS keeps a friendly placeholder. Anywhere else
 // a front page that can't be served is a 503, not a page that looks served.
 const placeholder = home.kind === "unavailable" && import.meta.env.DEV;
@@ -16,33 +17,6 @@ Astro.response.status = placeholder ? 200 : responseStatus(home);
 // must ask again before reusing it: a withdrawn front page is never presented
 // from one.
 Astro.response.headers.set("Cache-Control", "no-cache");
-const content = home.kind === "found" ? home.content.home : null;
-const chrome = home.kind === "found" ? home.content.chrome : home.kind === "missing" ? home.chrome : null;
-const { vars, colorRules } = blockPresetStyles(content?.spacingSizes ?? [], content?.colors ?? []);
-const siteTitle = content?.page.title || content?.settings.title || "{{Project}}";
-const isVideoHeroPage = content?.page.hasVideoHero ?? false;
 ---
 
-<Layout title={siteTitle} description={content?.settings.description} chrome={chrome}>
-  {content?.page.content ? (
-    <>
-      <style is:global set:html={colorRules} />
-      <main class={isVideoHeroPage ? "prose-wp prose-wp--video-hero" : "prose-wp"} style={vars} set:html={content.page.content}></main>
-    </>
-  ) : home.kind !== "unavailable" ? (
-    <main class="empty-state">
-      <h1>The front page is almost ready.</h1>
-      <p>Set a page as the front page in WordPress (Settings → Reading) and publish its blocks to show them here.</p>
-    </main>
-  ) : placeholder ? (
-    <main class="empty-state">
-      <h1>Content is on its way.</h1>
-      <p>The front page appears here once the CMS is reachable.</p>
-    </main>
-  ) : (
-    <main class="empty-state">
-      <h1>Temporarily unavailable.</h1>
-      <p>The front page can't be loaded right now. Please try again in a few minutes.</p>
-    </main>
-  )}
-</Layout>
+<Home home={home} language={defaultLanguage} placeholder={placeholder} />

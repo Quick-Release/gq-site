@@ -1,12 +1,24 @@
 ---
+import Home from "../components/Home.astro";
 import Layout from "../layouts/Layout.astro";
-import { publishedEntry } from "../lib/delivery";
+import { copyFor } from "../lib/copy";
+import { publishedEntry, publishedHome, routeOf } from "../lib/delivery";
+import { isLanguageHome, multilingual, routeLanguage } from "../lib/site-language";
 import { formatDate, responseStatus } from "../lib/wordpress";
 import { blockPresetStyles } from "../lib/wp-block-styles";
 
+const route = routeOf(Astro.url.pathname);
+const language = routeLanguage(route);
+const copy = copyFor(language);
+
+// Another language's home (/en/) is served as a home, as index.astro serves
+// the default language's.
+const home = isLanguageHome(route) ? await publishedHome(Astro.site?.origin, language) : null;
+const placeholder = home?.kind === "unavailable" && import.meta.env.DEV;
+
 // Served from the publication store, last-known-good and without an age
 // limit. Only an entry the store has never held is looked up in the CMS.
-const delivery = await publishedEntry(Astro.url.pathname, Astro.site?.origin);
+const delivery = home ?? (await publishedEntry(Astro.url.pathname, Astro.site?.origin));
 // An entry published at another URI now: its old route redirects there,
 // uncached, since the store's answer can change with the next refresh.
 if (delivery.kind === "moved") {
@@ -16,20 +28,25 @@ if (delivery.kind === "moved") {
   });
 }
 // Only a confirmed missing entry is a 404; a CMS or store failure is a 503.
-Astro.response.status = responseStatus(delivery);
+Astro.response.status = placeholder ? 200 : responseStatus(delivery);
 // Every visit is answered from the store, so a cache may keep a page but must
 // ask again before reusing it: a withdrawn entry is never presented from one.
 Astro.response.headers.set("Cache-Control", "no-cache");
-const entry = delivery.kind === "found" ? delivery.content.entry : null;
+const found = !home && delivery.kind === "found" ? delivery.content : null;
+const entry = found && "entry" in found ? found.entry : null;
 const chrome =
   delivery.kind === "found" ? delivery.content.chrome : delivery.kind === "missing" ? delivery.chrome : null;
+const alternates = found?.alternates ?? [];
 const { vars, colorRules } = blockPresetStyles(entry?.spacingSizes ?? [], entry?.colors ?? []);
 const isPost = Boolean(entry?.date);
 const title =
-  entry?.title || (delivery.kind === "unavailable" ? "Temporarily unavailable" : "Page not found");
+  entry?.title || (delivery.kind === "unavailable" ? copy.pageUnavailable.title : copy.pageMissing.title);
 ---
 
-<Layout title={title} chrome={chrome}>
+{home ? (
+  <Home home={home} language={language} placeholder={placeholder} />
+) : (
+<Layout title={title} chrome={chrome} language={language} alternates={alternates}>
   {entry ? (
     entry.hasVideoHero ? (
       <>
@@ -39,7 +56,7 @@ const title =
     ) : (
       <main>
         <h1>{entry.title}</h1>
-        {isPost && <time datetime={entry.date}>{formatDate(entry.date)}</time>}
+        {isPost && <time datetime={entry.date}>{formatDate(entry.date, multilingual ? language.lang : "en")}</time>}
         {entry.featuredImage && (
           <img class="featured-image" src={entry.featuredImage.sourceUrl} alt={entry.featuredImage.altText || ""} />
         )}
@@ -49,15 +66,16 @@ const title =
     )
   ) : delivery.kind === "missing" ? (
     <main class="empty-state">
-      <h1>Nothing here.</h1>
-      <p>This page doesn't exist in WordPress yet.</p>
-      <a href="/">Back to the front page</a>
+      <h1>{copy.pageMissing.heading}</h1>
+      <p>{copy.pageMissing.text}</p>
+      <a href={language.home}>{copy.backHome}</a>
     </main>
   ) : (
     <main class="empty-state">
-      <h1>Temporarily unavailable.</h1>
-      <p>This page can't be loaded right now. Please try again in a few minutes.</p>
-      <a href="/">Back to the front page</a>
+      <h1>{copy.pageUnavailable.heading}</h1>
+      <p>{copy.pageUnavailable.text}</p>
+      <a href={language.home}>{copy.backHome}</a>
     </main>
   )}
 </Layout>
+)}

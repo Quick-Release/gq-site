@@ -213,10 +213,11 @@ test("gq new --locale sets the site's main language for the CMS deploy and the F
   assert.equal(manifest.wordpress.locale, "pt_PT_ao90");
   assert.match(result.stdout, /^Created acme \(content, pt_PT_ao90\) in /mu);
   assert.match(await readSite(root, "deploy/ploi/admin.sh"), /^WP_LOCALE="pt_PT_ao90"$/mu);
-  // The Frontend's <html lang> reads it from gq.ops.json when it is built.
+  // The Frontend's <html lang> is the page's language, which it reads from
+  // gq.ops.json when it is built.
   assert.match(
     await readSite(root, "apps/frontend/src/layouts/Layout.astro"),
-    /<html lang=\{siteLang\}>/u,
+    /<html lang=\{language\.lang\}>/u,
   );
   assert.match(
     await readSite(root, "apps/frontend/src/lib/site-language.ts"),

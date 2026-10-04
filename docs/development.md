@@ -106,7 +106,9 @@ its Frontend dependencies (the networked step) and runs its tests,
 (`scripts/smoke/this-checkout.sh`), not from npm, so a release push is tested
 before npm serves the release. `scripts/smoke/frontend-runtime.sh` is
 the durable published content runtime proof (see
-[Durable published content](guides/provisioning.md#durable-published-content));
+[Durable published content](guides/provisioning.md#durable-published-content)),
+then its bilingual variant (`frontend-languages.mjs`, each language served
+from its own rows);
 `scripts/smoke/cms-events.sh` adds a real WordPress for publication and
 settings events, and real WPGraphQL for `gq site check`'s CMS readiness.
 `scripts/smoke/cms-polylang.sh` proves a bilingual site's Polylang

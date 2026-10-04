@@ -28,6 +28,37 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
     Polylang and GQ Polylang for WPGraphQL.
   - **Existing sites:** `gq sync` adds `deploy/ploi/polylang.sh`, whether
     or not the site lists `languages`.
+- **A new Frontend serves each language from its own rows** (the Frontend
+  skeleton). See the Frontend's README, "Languages".
+  - A route's language is its first segment when that is another language's
+    slug, and the default language otherwise. `/en/` is English's home.
+  - The store keeps `home` and `chrome` for the default language and adds
+    `home:<slug>` and `chrome:<slug>` for each other one; `design` stays
+    shared. Entries are stored with their language and translations. No
+    migration: the rows are new keys, and the new body fields are optional.
+  - A whole-Site refresh reads each language's front page (`nodeByUri`),
+    title and tagline (`language(code:)`) and menu
+    (`menuItems(where: { location, language })`). The report lists the other
+    languages under `languages`.
+  - Each page has its language's `<html lang>`, chrome and home link,
+    `hreflang` alternates to its published translations plus `x-default`,
+    and a language switcher. The 404, "Temporarily unavailable" and
+    placeholder pages are in the page's language (English and Portuguese,
+    `src/lib/copy.ts`); a monolingual Site keeps them in English.
+  - No fallback: a route without an entry in its language is a 404, and so
+    is every page of a language whose home was never stored. A front page
+    reached at another route moves to its language's home (`/en/home/` →
+    `/en/`), and withdrawing a language's front page withdraws its home.
+  - A monolingual Site renders, stores and reads the CMS as before.
+  - `frontend-runtime.sh` adds a bilingual variant
+    (`scripts/smoke/frontend-languages.mjs`) that serves `/en/` from the
+    store through an outage and a restart.
+  - **Existing sites:** the Frontend is site-owned, so syncing doesn't
+    change it. A site going bilingual copies from a new site's
+    `apps/frontend`: `src/lib/site-language.ts`, `copy.ts`, `delivery.ts`,
+    `publications.ts`, `wordpress.ts` and `reconciliation.ts`,
+    `src/components/Home.astro`, `src/layouts/Layout.astro`, both pages in
+    `src/pages`, and `src/languages.test.ts`.
 
 ## 0.17.0 — 2026-10-03
 

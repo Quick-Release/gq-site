@@ -1,5 +1,5 @@
 // What the Frontend's runtime proofs share (frontend-runtime.mjs,
-// cms-events.mjs): a stub WordPress they can take down, Alchemy's Astro
+// frontend-languages.mjs, cms-events.mjs): a stub WordPress they can take down, Alchemy's Astro
 // Cloudflare build of a generated site's Frontend (`buildInChild`, what
 // `pnpm deploy:frontend` runs in its build child), and that build served in
 // workerd (Wrangler's local mode) with a local D1 publication store migrated

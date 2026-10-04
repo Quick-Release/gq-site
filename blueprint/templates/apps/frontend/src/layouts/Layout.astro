@@ -1,6 +1,7 @@
 ---
-import { pageChrome } from "../lib/delivery";
-import { siteLang } from "../lib/site-language";
+import { copyFor } from "../lib/copy";
+import { pageChrome, type Alternate } from "../lib/delivery";
+import { defaultLanguage, languages, type SiteLanguage } from "../lib/site-language";
 import type { SiteChrome } from "../lib/wordpress";
 import "../styles/global.css";
 
@@ -9,9 +10,18 @@ interface Props {
   description?: string;
   /** The chrome the page was served with; left out, the layout looks it up. */
   chrome?: SiteChrome | null;
+  /** The page's language; left out, the site's default language. */
+  language?: SiteLanguage;
+  /** Where its readers may switch language (a multilingual Site's pages only). */
+  alternates?: Alternate[];
 }
 
-const { title = "{{Project}}", description = "" } = Astro.props;
+const {
+  title = "{{Project}}",
+  description = "",
+  language = defaultLanguage,
+  alternates = [],
+} = Astro.props;
 const chrome =
   Astro.props.chrome !== undefined ? Astro.props.chrome : await pageChrome(Astro.site?.origin);
 // Chrome that can't be served leaves the menu, logo and icon out of this
@@ -22,21 +32,37 @@ const { menuItems, siteIcon, siteLogo } = chrome ?? {
   siteLogo: null,
 };
 const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.url;
+// The page and its published translations, in the site's language order,
+// each under its language's tag, then the default language's as x-default.
+const translations = alternates.filter((alternate) => alternate.translation);
+const hreflang =
+  translations.length === 0
+    ? []
+    : languages.flatMap((siteLanguage) => {
+        if (siteLanguage === language) return [{ language: siteLanguage, href: canonical.href }];
+        const translation = translations.find((alternate) => alternate.language === siteLanguage);
+        return translation
+          ? [{ language: siteLanguage, href: new URL(translation.route, Astro.site ?? Astro.url).href }]
+          : [];
+      });
+const xDefault = hreflang.find((alternate) => alternate.language.isDefault);
 ---
 
 <!doctype html>
-<html lang={siteLang}>
+<html lang={language.lang}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     {description && <meta name="description" content={description} />}
     <link rel="icon" href={siteIcon?.sourceUrl || "/favicon.svg"} />
     <link rel="canonical" href={canonical} />
+    {hreflang.map((alternate) => <link rel="alternate" hreflang={alternate.language.lang} href={alternate.href} />)}
+    {xDefault && <link rel="alternate" hreflang="x-default" href={xDefault.href} />}
     <title>{title === "{{Project}}" ? title : `${title} — {{Project}}`}</title>
   </head>
   <body>
     <header class="site-header">
-      <a href="/" class="site-header__home">
+      <a href={language.home} class="site-header__home">
         {siteLogo ? <img src={siteLogo.sourceUrl} alt={siteLogo.altText || "{{Project}}"} /> : "{{Project}}"}
       </a>
       {menuItems.length > 0 && (
@@ -45,6 +71,19 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.u
             {menuItems.map((item) => (
               <li>
                 <a href={item.href} target={item.target ?? undefined}>{item.label}</a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
+      {alternates.length > 0 && (
+        <nav class="language-switcher" aria-label={copyFor(language).languages}>
+          <ul>
+            {alternates.map((alternate) => (
+              <li>
+                <a href={alternate.route} hreflang={alternate.language.lang} lang={alternate.language.lang}>
+                  {alternate.language.slug.toUpperCase()}
+                </a>
               </li>
             ))}
           </ul>

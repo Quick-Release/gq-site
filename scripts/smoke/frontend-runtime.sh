@@ -5,7 +5,9 @@
 # npm dependencies (the latter for Wrangler's local workerd runtime), then runs
 # frontend-runtime.mjs: the Frontend built by Alchemy's Astro Cloudflare build,
 # served in workerd with a local D1 publication store, through a stub CMS
-# outage, a Worker restart and a rebuilt redeploy.
+# outage, a Worker restart and a rebuilt redeploy. Then the same site is made
+# bilingual (gq.ops.json's wordpress.languages) and frontend-languages.mjs
+# proves that each language is served from the store.
 #
 # The site installs @getquick/site from this checkout, not npm
 # (this-checkout.sh). Generation stays offline and secret-free; only
@@ -31,3 +33,14 @@ cd acme
 CI=1 pnpm install --filter @acme/frontend... --filter @acme/ci... --filter . >/dev/null
 
 node "$repo/scripts/smoke/frontend-runtime.mjs" "$parent/acme"
+
+# shellcheck disable=SC2016 # JavaScript, not shell
+node -e '
+  const fs = require("node:fs");
+  const ops = JSON.parse(fs.readFileSync("gq.ops.json", "utf8"));
+  ops.wordpress.plugins.push("polylang-pro", "gq-polylang-graphql");
+  ops.wordpress.locale = "pt_PT_ao90";
+  ops.wordpress.languages = [{ locale: "en_US", slug: "en" }];
+  fs.writeFileSync("gq.ops.json", `${JSON.stringify(ops, null, 2)}\n`);
+'
+node "$repo/scripts/smoke/frontend-languages.mjs" "$parent/acme"

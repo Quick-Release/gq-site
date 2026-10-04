@@ -12,13 +12,19 @@ const wordpress = readFileSync(
   "utf8",
 );
 
-// GraphQL's own words; the queries' names, variables, argument names and
-// literal values are left out too.
+// GraphQL's own words; the queries' names, variables, argument names,
+// literal values and the JavaScript interpolated into a query are left out
+// too.
 const NOT_FIELDS = new Set(["query", "on", "true", "false", "if", "include", "skip", "where"]);
+// A multilingual Site's fields (GQ Polylang for WPGraphQL), which a
+// monolingual Site's CMS doesn't have: gq site check doesn't validate them
+// yet, until its readiness checks each language.
+const MULTILINGUAL_FIELDS = new Set(["language"]);
 
 function selections(text) {
   return new Set(
     text
+      .replace(/\$\{[^}]*\}/gu, "")
       .replace(/^\s*query \w+(\([^)]*\))?/mu, "")
       .replace(/\$\w+/gu, "")
       .replace(/\w+\s*:/gu, "")
@@ -32,14 +38,14 @@ test("the readiness schema check covers every field the Frontend's queries read"
   const queries = [...wordpress.matchAll(/\/\* GraphQL \*\/ `([^`]*)`/gu)].map((match) => match[1]);
   assert.equal(
     queries.length,
-    5,
-    "HomePage, SiteChrome, EntryByUri, DesignPresets, PublishedRoutes",
+    6,
+    "HomePage, another language's HomePage, SiteChrome, EntryByUri, DesignPresets, PublishedRoutes",
   );
   const checked = selections(SCHEMA_QUERY);
   const missing = new Set();
   for (const query of queries) {
     for (const field of selections(query)) {
-      if (!checked.has(field)) missing.add(field);
+      if (!checked.has(field) && !MULTILINGUAL_FIELDS.has(field)) missing.add(field);
     }
   }
   assert.deepEqual([...missing], []);

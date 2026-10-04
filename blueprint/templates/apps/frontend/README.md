@@ -115,6 +115,36 @@ state, withdrawals in force and failed events), so `pnpm site:check`
 
 `pnpm dev` has no store: it reads the CMS live, as before.
 
+## Languages
+
+A bilingual Site lists its other languages in `gq.ops.json`
+(`wordpress.languages`, beside the default `wordpress.locale`), and its CMS
+runs Polylang with GQ Polylang for WPGraphQL. `src/lib/site-language.ts`
+reads them when the Frontend is built. A route's language is its first
+segment when that is another language's slug (`/en/about/` is English), and
+the default language otherwise; `/en/` is English's home, served by
+`src/pages/[...slug].astro` as `/` is by `index.astro`
+(`src/components/Home.astro`).
+
+- **Store.** The default language keeps `home` and `chrome`; each other
+  language has `home:<slug>` and `chrome:<slug>`, its front page (with the
+  title and tagline in that language) and its menus. `design` is shared, and
+  entries stay `entry:<route>`, each stored with its language and its
+  translations, so rendering needs no CMS read. A whole-Site refresh reads
+  every language's front page and chrome.
+- **Rendering.** Each page has its language's `<html lang>`, chrome and home
+  link, `<link rel="alternate" hreflang>` to each published translation (plus
+  `x-default`, the default language's), and a language switcher to them, or
+  to the other language's home when there is none. The Frontend's own words
+  (the 404, "Temporarily unavailable", the placeholders) are in
+  `src/lib/copy.ts`, in English and Portuguese.
+- **No fallback.** A route with no entry in its language is a 404, even
+  when another language has the page, and so is every page of a language
+  whose home the store has never held.
+
+A monolingual Site has none of this: its pages, store and CMS reads are as
+they were.
+
 ## Blocks
 
 `src/lib/wp-block-renderer.ts` renders the GETQUICK Design blocks WPGraphQL
@@ -130,8 +160,9 @@ change it here; a shared renderer package is planned.
 renders the pages through Astro's Container API against a stubbed CMS
 (`vitest.config.ts` gives Vitest Astro's Vite config); `src/homepage.test.ts`,
 `src/entries.test.ts`, `src/events.test.ts`, `src/settings.test.ts`,
-`src/withdrawals.test.ts`, `src/retries.test.ts` and
-`src/reconciliation.test.ts` drive the durable homepage, entries, publication
+`src/withdrawals.test.ts`, `src/retries.test.ts`,
+`src/reconciliation.test.ts` and `src/languages.test.ts` (a bilingual Site)
+drive the durable homepage, entries, publication
 events, shared settings, withdrawals, the CMS's retries and reconciliation
 through refreshes, outages, restarts, new and moved publications, refused,
 duplicate, delayed, racing, failed, retried and missed events, with the store

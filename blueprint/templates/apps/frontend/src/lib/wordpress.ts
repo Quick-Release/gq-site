@@ -1,4 +1,5 @@
 import { z } from "astro/zod";
+import { defaultLanguage, languageSubject, multilingual, type SiteLanguage } from "./site-language";
 import { hasVideoHero, parseWordPressBlocks, renderWordPressBlocks } from "./wp-block-renderer";
 
 export interface WordPressImage {
@@ -44,7 +45,17 @@ export interface HomeContent extends DesignPresets {
   blocksOmitted: boolean;
 }
 
+/** A published translation of an entry: its URI and its language's slug. */
+export interface Translation {
+  uri: string;
+  language: string;
+}
+
 export interface EntryContent extends WordPressPost, DesignPresets {
+  /** Its language's slug, on a multilingual Site. */
+  language?: string;
+  /** Its published translations into the site's other languages, on a multilingual Site. */
+  translations?: Translation[];
   /** WordPress failed on the blocks, so this is the entry without them. */
   blocksOmitted: boolean;
   /** When WordPress last modified it (ms, the CMS's clock), if it said. */
@@ -152,10 +163,31 @@ const pageEntry = z.object({
 });
 const postEntry = pageEntry.extend({ excerpt: z.string().nullable(), date: z.string().nullable() });
 
+// On a multilingual Site, an entry's language and its translations (GQ
+// Polylang for WPGraphQL), which only include what anonymous readers may see.
+const languageRef = z.object({ slug: z.string() });
+const translated = {
+  language: languageRef.nullable(),
+  translations: z
+    .array(z.object({ uri: z.string().nullable(), language: languageRef.nullable() }))
+    .nullable(),
+};
+
 const entryData = z.object({
   postBy: postEntry.nullable(),
   pageBy: pageEntry.nullable(),
   designTokens,
+});
+
+const translatedEntryData = z.object({
+  postBy: postEntry.extend(translated).nullable(),
+  pageBy: pageEntry.extend(translated).nullable(),
+  designTokens,
+});
+
+// Another language's front page, title and tagline (GQ Polylang for WPGraphQL).
+const languageHomeData = homeData.omit({ generalSettings: true }).extend({
+  language: z.object({ title: z.string().nullable(), description: z.string().nullable() }),
 });
 
 const designData = z.object({ designTokens });
@@ -186,7 +218,9 @@ const siteChromeData = z.object({
   menuItems: z.object({ nodes: z.array(menuItem) }),
 });
 
-type RawEntry = z.infer<typeof pageEntry> & Partial<z.infer<typeof postEntry>>;
+type RawEntry = z.infer<typeof pageEntry> &
+  Partial<z.infer<typeof postEntry>> &
+  Partial<z.infer<z.ZodObject<typeof translated>>>;
 type RawMenuItem = z.infer<typeof menuItem>;
 
 // Blocks are left out (withBlocks: false) when WordPress fails to return them.
@@ -220,9 +254,43 @@ const homeQuery = /* GraphQL */ `
   }
 `;
 
+// Another language's front page (/en/), with its translated title and tagline.
+const languageHomeQuery = /* GraphQL */ `
+  query HomePage($uri: String!, $language: LanguageCodeEnum!, $withBlocks: Boolean = true) {
+    language(code: $language) {
+      title
+      description
+    }
+    nodeByUri(uri: $uri) {
+      __typename
+      ... on Page {
+        id
+        title
+        content
+        blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)
+          @include(if: $withBlocks)
+        isFrontPage
+      }
+    }
+    designTokens {
+      spacingSizes {
+        slug
+        size
+      }
+      colors {
+        slug
+        color
+      }
+    }
+  }
+`;
+
 // WPGraphQL only exposes menus assigned to a theme location to anonymous callers.
-const siteChromeQuery = /* GraphQL */ `
-  query SiteChrome($location: MenuLocationEnum!) {
+// `inLanguage`: the menu at the location in a language (GQ Polylang for
+// WPGraphQL); without, the default language's.
+function siteChromeQueryText(inLanguage: boolean) {
+  return /* GraphQL */ `
+  query SiteChrome($location: MenuLocationEnum!${inLanguage ? ", $language: LanguageCodeEnum!" : ""}) {
     generalSettings {
       siteIcon {
         node {
@@ -237,7 +305,7 @@ const siteChromeQuery = /* GraphQL */ `
         }
       }
     }
-    menuItems(where: { location: $location }, first: 100) {
+    menuItems(where: { location: $location${inLanguage ? ", language: $language" : ""} }, first: 100) {
       nodes {
         id
         parentId
@@ -248,9 +316,27 @@ const siteChromeQuery = /* GraphQL */ `
     }
   }
 `;
+}
+const siteChromeQuery = siteChromeQueryText(false);
+const languageChromeQuery = siteChromeQueryText(true);
 
 // Blocks are left out (withBlocks: false) when WordPress fails to return them.
-const entryQuery = /* GraphQL */ `
+// On a multilingual Site (`translated`), each entry comes with its language
+// and translations (GQ Polylang for WPGraphQL).
+function entryQueryText(translated: boolean) {
+  const languageFields = translated
+    ? `
+      language {
+        slug
+      }
+      translations {
+        uri
+        language {
+          slug
+        }
+      }`
+    : "";
+  return /* GraphQL */ `
   query EntryByUri($uri: String!, $withBlocks: Boolean = true) {
     designTokens {
       colors {
@@ -269,7 +355,7 @@ const entryQuery = /* GraphQL */ `
       content
       blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)
         @include(if: $withBlocks)
-      uri
+      uri${languageFields}
       date
       status
       isRestricted
@@ -287,7 +373,7 @@ const entryQuery = /* GraphQL */ `
       content
       blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)
         @include(if: $withBlocks)
-      uri
+      uri${languageFields}
       status
       isRestricted
       modifiedGmt
@@ -300,6 +386,9 @@ const entryQuery = /* GraphQL */ `
     }
   }
 `;
+}
+const entryQuery = entryQueryText(false);
+const translatedEntryQuery = entryQueryText(true);
 
 // The design presets alone, for a change to them that reaches every page.
 const designQuery = /* GraphQL */ `
@@ -515,34 +604,50 @@ async function deliver<R>(subject: string, read: () => Promise<R>): Promise<R | 
   }
 }
 
-/** The page WordPress marks as the front page. Missing when no page is. */
-export async function getHomeContent(): Promise<Delivery<HomeContent>> {
-  return deliver("the front page", async (): Promise<Found<HomeContent> | Missing> => {
-    const { data, blocksOmitted } = await queryWithBlockRecovery(homeData, homeQuery);
-    const node = data.nodeByUri;
-    if (!node || !("isFrontPage" in node) || !node.isFrontPage) return { kind: "missing" };
+/**
+ * The page WordPress marks as a language's front page, with the site's title
+ * and tagline in that language. Missing when no page is.
+ */
+export async function getHomeContent(
+  language: SiteLanguage = defaultLanguage,
+): Promise<Delivery<HomeContent>> {
+  return deliver(
+    languageSubject(language, "front page"),
+    async (): Promise<Found<HomeContent> | Missing> => {
+      const { data, blocksOmitted } = language.isDefault
+        ? await queryWithBlockRecovery(homeData, homeQuery)
+        : await queryWithBlockRecovery(languageHomeData, languageHomeQuery, {
+            uri: language.home,
+            language: language.code,
+          }).then(({ data, blocksOmitted }) => ({
+            data: { ...data, generalSettings: data.language },
+            blocksOmitted,
+          }));
+      const node = data.nodeByUri;
+      if (!node || !("isFrontPage" in node) || !node.isFrontPage) return { kind: "missing" };
 
-    const blocks = parseWordPressBlocks(node.blocks);
-    const containsVideoHero = hasVideoHero(blocks);
-    return {
-      kind: "found",
-      content: {
-        nodeId: node.id ?? null,
-        settings: {
-          title: data.generalSettings.title ?? "",
-          description: data.generalSettings.description ?? "",
+      const blocks = parseWordPressBlocks(node.blocks);
+      const containsVideoHero = hasVideoHero(blocks);
+      return {
+        kind: "found",
+        content: {
+          nodeId: node.id ?? null,
+          settings: {
+            title: data.generalSettings.title ?? "",
+            description: data.generalSettings.description ?? "",
+          },
+          page: {
+            title: node.title ?? "",
+            content: containsVideoHero ? renderWordPressBlocks(blocks) : (node.content ?? ""),
+            hasVideoHero: containsVideoHero,
+          },
+          blocksOmitted,
+          spacingSizes: data.designTokens.spacingSizes,
+          colors: data.designTokens.colors,
         },
-        page: {
-          title: node.title ?? "",
-          content: containsVideoHero ? renderWordPressBlocks(blocks) : (node.content ?? ""),
-          hasVideoHero: containsVideoHero,
-        },
-        blocksOmitted,
-        spacingSizes: data.designTokens.spacingSizes,
-        colors: data.designTokens.colors,
-      },
-    };
-  });
+      };
+    },
+  );
 }
 
 /**
@@ -552,8 +657,10 @@ export async function getHomeContent(): Promise<Delivery<HomeContent>> {
  */
 export async function getEntryByUri(uri: string): Promise<Delivery<EntryContent>> {
   return deliver(`the entry ${uri}`, async (): Promise<Found<EntryContent> | Missing> => {
-    const { data, blocksOmitted } = await queryWithBlockRecovery(entryData, entryQuery, { uri });
-    const post = data.postBy ?? data.pageBy;
+    const { data, blocksOmitted } = multilingual
+      ? await queryWithBlockRecovery(translatedEntryData, translatedEntryQuery, { uri })
+      : await queryWithBlockRecovery(entryData, entryQuery, { uri });
+    const post: RawEntry | null = data.postBy ?? data.pageBy;
     if (!post || post.isRestricted || post.status !== "publish") return { kind: "missing" };
 
     const normalized = normalizePost(post);
@@ -569,9 +676,22 @@ export async function getEntryByUri(uri: string): Promise<Delivery<EntryContent>
         modifiedAt: cmsTime(post.modifiedGmt),
         spacingSizes: data.designTokens.spacingSizes,
         colors: data.designTokens.colors,
+        ...(multilingual ? languageOf(post) : {}),
       },
     };
   });
+}
+
+/** An entry's language and published translations, as a multilingual Site stores them. */
+function languageOf(post: RawEntry): Pick<EntryContent, "language" | "translations"> {
+  return {
+    ...(post.language ? { language: post.language.slug } : {}),
+    translations: (post.translations ?? []).flatMap((translation) =>
+      translation.uri && translation.language
+        ? [{ uri: uriPath(translation.uri), language: translation.language.slug }]
+        : [],
+    ),
+  };
 }
 
 /** The design presets every page shares (GQ Design's spacing sizes and colors). */
@@ -671,15 +791,22 @@ export function buildMenuTree(items: RawMenuItem[], internalOrigins: string[]) {
 }
 
 /**
- * The menu, logo and icon every page shares. A site without them is found with
- * an empty menu and no images; a failed read is Unavailable, not that.
+ * The menu, logo and icon every page in a language shares: the logo and icon
+ * are the site's, the menu the one at the location in that language. A site
+ * without them is found with an empty menu and no images; a failed read is
+ * Unavailable, not that.
  */
 export async function getSiteChrome(
   siteOrigin?: string,
-  location = "PRIMARY",
+  {
+    location = "PRIMARY",
+    language = defaultLanguage,
+  }: { location?: string; language?: SiteLanguage } = {},
 ): Promise<Found<SiteChrome> | Unavailable> {
-  return deliver("the site chrome", async (): Promise<Found<SiteChrome>> => {
-    const data = await query(siteChromeData, siteChromeQuery, { location });
+  return deliver(languageSubject(language, "site chrome"), async (): Promise<Found<SiteChrome>> => {
+    const data = language.isDefault
+      ? await query(siteChromeData, siteChromeQuery, { location })
+      : await query(siteChromeData, languageChromeQuery, { location, language: language.code });
     const origins = [new URL(endpoint()).origin, ...(siteOrigin ? [siteOrigin] : [])];
 
     return {
@@ -700,8 +827,8 @@ export function stripHtml(value: string) {
     .trim();
 }
 
-export function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en", {
+export function formatDate(value: string, lang = "en") {
+  return new Intl.DateTimeFormat(lang, {
     day: "numeric",
     month: "long",
     year: "numeric",

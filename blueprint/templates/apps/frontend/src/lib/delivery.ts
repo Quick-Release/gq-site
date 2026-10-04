@@ -1,8 +1,9 @@
 // Published-content delivery: what visitors are served, and what a trusted
-// refresh may promote. The deployed Frontend serves the front page, the
-// entries (published pages and posts) and the site chrome from the
-// publication store (publications.ts), with the shared design presets when it
-// holds them. A refresh reads the CMS (wordpress.ts)
+// refresh may promote. The deployed Frontend serves each language's front page
+// and site chrome, the entries (published pages and posts) and the shared
+// design presets from the publication store (publications.ts). A multilingual
+// Site's pages are each served in their route's language
+// (site-language.ts), never another's. A refresh reads the CMS (wordpress.ts)
 // and promotes only what it read completely and validly; a visit reads it
 // only to look up an entry the store has never held. Last-known-good content
 // has no age limit: it is served until a refresh replaces it, or the CMS
@@ -20,6 +21,15 @@ import {
 } from "./publications";
 import { frontendBindings } from "./runtime";
 import {
+  defaultLanguage,
+  isLanguageHome,
+  languageSubject,
+  languages,
+  multilingual,
+  routeLanguage,
+  type SiteLanguage,
+} from "./site-language";
+import {
   getDesignPresets,
   getEntryByUri,
   getHomeContent,
@@ -33,6 +43,7 @@ import {
   type HomeContent,
   type Missing,
   type SiteChrome,
+  type Translation,
 } from "./wordpress";
 
 /** The front page as stored: what WordPress delivered, without read details. */
@@ -41,14 +52,28 @@ export type HomePublication = Omit<HomeContent, "blocksOmitted" | "nodeId">;
 /** A published page or post as stored, with the design presets it was read with. */
 export type EntryPublication = Omit<EntryContent, "blocksOmitted" | "modifiedAt">;
 
+/**
+ * A page in another language that a visitor of this one may switch to: its
+ * published translation (`translation`), or else that language's home.
+ */
+export interface Alternate {
+  language: SiteLanguage;
+  route: string;
+  translation: boolean;
+}
+
 export interface HomePage {
   home: HomePublication;
   chrome: SiteChrome;
+  /** The other languages' homes that are served; none on a monolingual Site. */
+  alternates: Alternate[];
 }
 
 export interface EntryPage {
   entry: EntryPublication;
   chrome: SiteChrome;
+  /** Where its readers may switch language; none on a monolingual Site. */
+  alternates: Alternate[];
 }
 
 /** The entry a route served is published at another URI now: the route redirects there. */
@@ -79,11 +104,28 @@ export type EntryDelivery =
 
 const HOME = "home";
 const CHROME = "chrome";
+/**
+ * A language's front page (with the site's title and tagline in it) and its
+ * chrome: "home" and "chrome" for the default language, "home:<slug>" and
+ * "chrome:<slug>" for the others.
+ */
+const homeKey = (language: SiteLanguage) =>
+  language.isDefault ? HOME : `${HOME}:${language.slug}`;
+const chromeKey = (language: SiteLanguage) =>
+  language.isDefault ? CHROME : `${CHROME}:${language.slug}`;
 /** The design presets every page is served with, once a refresh has stored them. */
 const DESIGN = "design";
 /** Entries are stored at "entry:<route>". */
 const ENTRY = "entry:";
 const entryKey = (route: string) => `${ENTRY}${route}`;
+/** The row a route is served from: its language's home, or its entry. */
+const routeKey = (route: string) =>
+  isLanguageHome(route) ? homeKey(routeLanguage(route)) : entryKey(route);
+/** The route a home or entry row serves. */
+const keyRoute = (key: string) => {
+  if (key.startsWith(ENTRY)) return key.slice(ENTRY.length);
+  return languages.find((language) => homeKey(language) === key)?.home ?? key;
+};
 
 /**
  * A path as entries are keyed: percent-decoded and between slashes, so
@@ -126,7 +168,11 @@ const homePublication = z.object({
   spacingSizes,
   colors,
 });
+const translation = z.object({ uri: z.string(), language: z.string() });
 const entryPublication = z.object({
+  // A multilingual Site's entries only.
+  language: z.string().optional(),
+  translations: z.array(translation).optional(),
   id: z.string(),
   title: z.string(),
   excerpt: z.string(),
@@ -186,16 +232,22 @@ function withDesign<T extends DesignPresets>(content: T, design: DesignPresets |
 }
 
 /**
- * The front page and its chrome, from the store. Outside the deployed Worker
- * there is no store: `astro dev` reads the CMS live, and a production build
- * without one is not ready rather than a CMS reader for every visitor.
+ * A language's front page and its chrome, from the store. Outside the
+ * deployed Worker there is no store: `astro dev` reads the CMS live, and a
+ * production build without one is not ready rather than a CMS reader for
+ * every visitor. A language other than the default whose home the store has
+ * never held isn't served: a 404.
  */
-export async function publishedHome(siteOrigin?: string): Promise<HomeDelivery> {
+export async function publishedHome(
+  siteOrigin?: string,
+  language: SiteLanguage = defaultLanguage,
+): Promise<HomeDelivery> {
+  const subject = languageSubject(language, "front page");
   const store = await boundStore();
   if (!store) {
-    if (import.meta.env.DEV) return liveHome(siteOrigin);
+    if (import.meta.env.DEV) return liveHome(siteOrigin, language);
     return notServed(
-      "the front page",
+      subject,
       "not-ready",
       "this Frontend has no publication store bound (PUBLICATION_DB)",
     );
@@ -204,68 +256,8 @@ export async function publishedHome(siteOrigin?: string): Promise<HomeDelivery> 
   let home, chrome, design;
   try {
     [home, chrome, design] = await Promise.all([
-      store.read(HOME, parseHome),
-      store.read(CHROME, parseChrome),
-      store.read(DESIGN, parseDesign),
-    ]);
-  } catch (error) {
-    if (!(error instanceof StoreFailure)) throw error;
-    return notServed("the front page", "store", error.message);
-  }
-
-  if (home?.state === "unusable") return notServed("the front page", "not-ready", home.message);
-  if (chrome?.state === "unusable") return notServed("the front page", "not-ready", chrome.message);
-  const storedChrome = chrome?.state === "published" ? chrome.content : null;
-  if (home?.state === "missing" || home?.state === "withdrawn") {
-    return { kind: "missing", chrome: storedChrome };
-  }
-  if (home?.state !== "published" || !storedChrome) {
-    return notServed(
-      "the front page",
-      "not-ready",
-      "the front page and its chrome haven't been refreshed into the publication store yet",
-    );
-  }
-  return {
-    kind: "found",
-    content: { home: withDesign(home.content, sharedDesign(design)), chrome: storedChrome },
-  };
-}
-
-async function liveHome(siteOrigin?: string): Promise<HomeDelivery> {
-  const [home, chrome] = await Promise.all([getHomeContent(), getSiteChrome(siteOrigin)]);
-  const liveChrome = chrome.kind === "found" ? chrome.content : null;
-  if (home.kind === "unavailable") return home;
-  if (home.kind === "missing") return { kind: "missing", chrome: liveChrome };
-  const { blocksOmitted: _, nodeId: __, ...content } = home.content;
-  return { kind: "found", content: { home: content, chrome: liveChrome ?? emptyChrome } };
-}
-
-/**
- * The published page or post at a path, with the chrome, from the store. A
- * stored entry is served without reading the CMS, through outages of any
- * length; one confirmed missing is a 404, one moved redirects. An entry the
- * store has never held is looked up (lookUpEntry). The store holds nothing to
- * serve entries with until a refresh has stored the chrome: not ready.
- */
-export async function publishedEntry(path: string, siteOrigin?: string): Promise<EntryDelivery> {
-  const route = routeOf(path);
-  const subject = `the entry ${route}`;
-  const store = await boundStore();
-  if (!store) {
-    if (import.meta.env.DEV) return liveEntry(route, siteOrigin);
-    return notServed(
-      subject,
-      "not-ready",
-      "this Frontend has no publication store bound (PUBLICATION_DB)",
-    );
-  }
-
-  let entry, chrome, design;
-  try {
-    [entry, chrome, design] = await Promise.all([
-      store.read(entryKey(route), parseEntry),
-      store.read(CHROME, parseChrome),
+      store.read(homeKey(language), parseHome),
+      store.read(chromeKey(language), parseChrome),
       store.read(DESIGN, parseDesign),
     ]);
   } catch (error) {
@@ -273,6 +265,149 @@ export async function publishedEntry(path: string, siteOrigin?: string): Promise
     return notServed(subject, "store", error.message);
   }
 
+  if (home?.state === "unusable") return notServed(subject, "not-ready", home.message);
+  if (chrome?.state === "unusable") return notServed(subject, "not-ready", chrome.message);
+  const storedChrome = chrome?.state === "published" ? chrome.content : null;
+  if (home?.state === "missing" || home?.state === "withdrawn" || (!home && !language.isDefault)) {
+    return { kind: "missing", chrome: storedChrome };
+  }
+  if (home?.state !== "published" || !storedChrome) {
+    return notServed(
+      subject,
+      "not-ready",
+      "the front page and its chrome haven't been refreshed into the publication store yet",
+    );
+  }
+  return {
+    kind: "found",
+    content: {
+      home: withDesign(home.content, sharedDesign(design)),
+      chrome: storedChrome,
+      alternates: await storedAlternates(store, language, homesOf(languages)),
+    },
+  };
+}
+
+async function liveHome(
+  siteOrigin: string | undefined,
+  language: SiteLanguage,
+): Promise<HomeDelivery> {
+  const [home, chrome] = await Promise.all([
+    getHomeContent(language),
+    getSiteChrome(siteOrigin, { language }),
+  ]);
+  const liveChrome = chrome.kind === "found" ? chrome.content : null;
+  if (home.kind === "unavailable") return home;
+  if (home.kind === "missing") return { kind: "missing", chrome: liveChrome };
+  const { blocksOmitted: _, nodeId: __, ...content } = home.content;
+  return {
+    kind: "found",
+    content: {
+      home: content,
+      chrome: liveChrome ?? emptyChrome,
+      alternates: liveAlternates(language, homesOf(languages)),
+    },
+  };
+}
+
+/** Each language's home, as the translations of a home. */
+const homesOf = (among: SiteLanguage[]): Translation[] =>
+  among.map((language) => ({ uri: language.home, language: language.slug }));
+
+/**
+ * Where a page's readers may switch language, from the store: for each other
+ * language, the page's translation into it when the store serves it, else
+ * that language's home when the store serves that. A language whose home the
+ * store has never held offers neither. A store that can't be read offers
+ * none, and the page is still served.
+ */
+async function storedAlternates(
+  store: PublicationStore,
+  language: SiteLanguage,
+  translations: Translation[],
+): Promise<Alternate[]> {
+  if (!multilingual) return [];
+  const others = languages.filter((other) => other !== language);
+  const translated = new Map(
+    others.map((other) => {
+      const found = translations.find((translation) => translation.language === other.slug);
+      return [other, found ? routeOf(found.uri) : null];
+    }),
+  );
+  let states: Map<string, string>;
+  try {
+    states = await store.states([
+      ...others.map(homeKey),
+      ...[...translated.values()].flatMap((route) => (route ? [routeKey(route)] : [])),
+    ]);
+  } catch (error) {
+    if (!(error instanceof StoreFailure)) throw error;
+    console.error(`Delivery: the page's other languages can't be offered: ${error.message}`);
+    return [];
+  }
+  return others.flatMap((other): Alternate[] => {
+    const home = states.get(homeKey(other));
+    if (!home) return [];
+    const route = translated.get(other);
+    if (route && states.get(routeKey(route)) === "published") {
+      return [{ language: other, route, translation: true }];
+    }
+    return home === "published" ? [{ language: other, route: other.home, translation: false }] : [];
+  });
+}
+
+/** Where a page read live, in `astro dev`, offers to switch language: WordPress's word for it. */
+function liveAlternates(language: SiteLanguage, translations: Translation[]): Alternate[] {
+  if (!multilingual) return [];
+  return languages
+    .filter((other) => other !== language)
+    .map((other) => {
+      const found = translations.find((translation) => translation.language === other.slug);
+      return found
+        ? { language: other, route: routeOf(found.uri), translation: true }
+        : { language: other, route: other.home, translation: false };
+    });
+}
+
+/**
+ * The published page or post at a path, with its language's chrome, from the
+ * store. A stored entry is served without reading the CMS, through outages of
+ * any length; one confirmed missing is a 404, one moved redirects. An entry
+ * the store has never held is looked up (lookUpEntry). The store holds
+ * nothing to serve entries with until a refresh has stored the chrome: not
+ * ready. On a multilingual Site an entry is served only in its own language,
+ * and a language whose home the store has never held serves nothing: a 404.
+ */
+export async function publishedEntry(path: string, siteOrigin?: string): Promise<EntryDelivery> {
+  const route = routeOf(path);
+  const language = routeLanguage(route);
+  const subject = `the entry ${route}`;
+  const store = await boundStore();
+  if (!store) {
+    if (import.meta.env.DEV) return liveEntry(route, language, siteOrigin);
+    return notServed(
+      subject,
+      "not-ready",
+      "this Frontend has no publication store bound (PUBLICATION_DB)",
+    );
+  }
+
+  let entry, chrome, design, languageHome;
+  try {
+    [entry, chrome, design, languageHome] = await Promise.all([
+      store.read(entryKey(route), parseEntry),
+      store.read(chromeKey(language), parseChrome),
+      store.read(DESIGN, parseDesign),
+      language.isDefault ? null : store.states([homeKey(language)]),
+    ]);
+  } catch (error) {
+    if (!(error instanceof StoreFailure)) throw error;
+    return notServed(subject, "store", error.message);
+  }
+
+  if (languageHome && !languageHome.has(homeKey(language))) {
+    return { kind: "missing", chrome: chrome?.state === "published" ? chrome.content : null };
+  }
   if (chrome?.state === "unusable") return notServed(subject, "not-ready", chrome.message);
   if (chrome?.state !== "published") {
     return notServed(
@@ -281,12 +416,16 @@ export async function publishedEntry(path: string, siteOrigin?: string): Promise
       "the site chrome hasn't been refreshed into the publication store yet",
     );
   }
-  const found = (content: EntryPublication): EntryDelivery => ({
+  const found = async (content: EntryPublication): Promise<EntryDelivery> => ({
     kind: "found",
-    content: { entry: withDesign(content, sharedDesign(design)), chrome: chrome.content },
+    content: {
+      entry: withDesign(content, sharedDesign(design)),
+      chrome: chrome.content,
+      alternates: await storedAlternates(store, language, content.translations ?? []),
+    },
   });
   if (!entry) {
-    const looked = await lookUpEntry(store, route, chrome.content);
+    const looked = await lookUpEntry(store, route, language, chrome.content);
     return looked.kind === "found" ? found(looked.content.entry) : looked;
   }
   switch (entry.state) {
@@ -298,8 +437,18 @@ export async function publishedEntry(path: string, siteOrigin?: string): Promise
     case "moved":
       return { kind: "moved", uri: entry.uri };
     case "published":
+      if (!inLanguage(entry.content, language)) return { kind: "missing", chrome: chrome.content };
       return found(entry.content);
   }
+}
+
+/**
+ * Whether an entry is in a language: always on a monolingual Site. An entry
+ * stored before the Site listed its languages has none: it is the default
+ * language's, until a refresh stores it with its own.
+ */
+function inLanguage(entry: { language?: string }, language: SiteLanguage) {
+  return !multilingual || (entry.language ?? defaultLanguage.slug) === language.slug;
 }
 
 /**
@@ -313,12 +462,15 @@ export async function publishedEntry(path: string, siteOrigin?: string): Promise
 async function lookUpEntry(
   store: PublicationStore,
   route: string,
+  language: SiteLanguage,
   chrome: SiteChrome,
 ): Promise<EntryDelivery> {
   const readStartedAt = Date.now();
   const read = await getEntryByUri(encodeURI(route));
   if (read.kind === "unavailable") return read;
-  if (read.kind === "missing") return { kind: "missing", chrome };
+  if (read.kind === "missing" || !inLanguage(read.content, language)) {
+    return { kind: "missing", chrome };
+  }
   const canonical = routeOf(read.content.uri);
   if (canonical !== route) return { kind: "moved", uri: canonical };
 
@@ -326,19 +478,32 @@ async function lookUpEntry(
   if (promoted.outcome.outcome === "withdrawn") return { kind: "missing", chrome };
   await supersedeMoved(store, promoted.found ? [promoted.found] : [], readStartedAt);
   const { blocksOmitted: _, modifiedAt: __, ...entry } = read.content;
-  return { kind: "found", content: { entry, chrome } };
+  return { kind: "found", content: { entry, chrome, alternates: [] } };
 }
 
-async function liveEntry(route: string, siteOrigin?: string): Promise<EntryDelivery> {
+async function liveEntry(
+  route: string,
+  language: SiteLanguage,
+  siteOrigin?: string,
+): Promise<EntryDelivery> {
   const [read, chrome] = await Promise.all([
     getEntryByUri(encodeURI(route)),
-    getSiteChrome(siteOrigin),
+    getSiteChrome(siteOrigin, { language }),
   ]);
   const liveChrome = chrome.kind === "found" ? chrome.content : null;
   if (read.kind === "unavailable") return read;
-  if (read.kind === "missing") return { kind: "missing", chrome: liveChrome };
+  if (read.kind === "missing" || !inLanguage(read.content, language)) {
+    return { kind: "missing", chrome: liveChrome };
+  }
   const { blocksOmitted: _, modifiedAt: __, ...entry } = read.content;
-  return { kind: "found", content: { entry, chrome: liveChrome ?? emptyChrome } };
+  return {
+    kind: "found",
+    content: {
+      entry,
+      chrome: liveChrome ?? emptyChrome,
+      alternates: liveAlternates(language, entry.translations ?? []),
+    },
+  };
 }
 
 /**
@@ -400,12 +565,15 @@ export interface RefreshReport extends EntriesRefreshReport {
   chrome: RecordOutcome;
   design: RecordOutcome;
   routes: RoutesOutcome;
+  /** A multilingual Site's other languages, by slug: their front page and chrome. */
+  languages?: Record<string, { home: RecordOutcome; chrome: RecordOutcome }>;
 }
 
 /**
- * Refreshes the whole Site, the explicit preparation of its store: the front
- * page, the chrome, the shared design presets, and every entry WordPress lists as published or the store
- * already holds (so one deleted or moved since is reconciled). Each read that
+ * Refreshes the whole Site, the explicit preparation of its store: each
+ * language's front page and chrome, the shared design presets, and every
+ * entry WordPress lists as published or the store already holds (so one
+ * deleted or moved since is reconciled). Each read that
  * is complete and valid is promoted; a failed one keeps what is stored, so a
  * failed chrome read doesn't touch the front page or the entries, nor the
  * reverse. Reads are anonymous, as a visitor's would be, so only published
@@ -416,16 +584,28 @@ export async function refreshSite(
   siteOrigin?: string,
 ): Promise<RefreshReport> {
   const readStartedAt = Date.now();
-  const [home, chrome, design, listing] = await Promise.all([
+  const others = languages.filter((language) => !language.isDefault);
+  const [home, chrome, design, listing, ...otherReads] = await Promise.all([
     getHomeContent(),
     getSiteChrome(siteOrigin),
     getDesignPresets(),
     getPublishedRoutes(),
+    ...others.map((language) =>
+      Promise.all([getHomeContent(language), getSiteChrome(siteOrigin, { language })]),
+    ),
   ]);
 
   const homeOutcome = await promoteHome(store, home, readStartedAt);
-  const chromeOutcome = await promoteShared(store, CHROME, chrome, readStartedAt);
-  const designOutcome = await promoteShared(store, DESIGN, design, readStartedAt);
+  const chromeOutcome = await promoteChrome(store, chrome, readStartedAt);
+  const designOutcome = await promoteDesign(store, design, readStartedAt);
+  const languageOutcomes: NonNullable<RefreshReport["languages"]> = {};
+  for (const [index, language] of others.entries()) {
+    const [languageHome, languageChrome] = otherReads[index]!;
+    languageOutcomes[language.slug] = {
+      home: await promoteHome(store, languageHome, readStartedAt, language),
+      chrome: await promoteChrome(store, languageChrome, readStartedAt, language),
+    };
+  }
 
   let stored: string[] = [];
   let routes: RoutesOutcome =
@@ -446,8 +626,8 @@ export async function refreshSite(
     );
   }
   const listed = listing.kind === "found" ? listing.content.map(routeOf) : [];
-  // The front page is the homepage's, never an entry.
-  const wanted = [...new Set([...listed, ...stored])].filter((route) => route !== "/");
+  // Each language's front page is its home's, never an entry.
+  const wanted = [...new Set([...listed, ...stored])].filter((route) => !isLanguageHome(route));
   const entries = await refreshRoutes(store, wanted, readStartedAt);
 
   let ready = false;
@@ -470,6 +650,9 @@ export async function refreshSite(
       homeOutcome.outcome !== "kept" &&
       chromeOutcome.outcome !== "kept" &&
       designOutcome.outcome !== "kept" &&
+      Object.values(languageOutcomes).every(
+        (outcomes) => outcomes.home.outcome !== "kept" && outcomes.chrome.outcome !== "kept",
+      ) &&
       routes.outcome === "listed" &&
       entries.refreshed,
     home: homeOutcome,
@@ -478,6 +661,7 @@ export async function refreshSite(
     routes,
     entries: entries.entries,
     moved: entries.moved,
+    ...(multilingual ? { languages: languageOutcomes } : {}),
   };
 }
 
@@ -514,8 +698,8 @@ export async function refreshShared(
   ]);
   const report: SharedRefreshReport = { refreshed: true };
   if (home) report.home = await promoteHome(store, home, readStartedAt);
-  if (chrome) report.chrome = await promoteShared(store, CHROME, chrome, readStartedAt);
-  if (design) report.design = await promoteShared(store, DESIGN, design, readStartedAt);
+  if (chrome) report.chrome = await promoteChrome(store, chrome, readStartedAt);
+  if (design) report.design = await promoteDesign(store, design, readStartedAt);
   report.refreshed = [report.home, report.chrome, report.design].every(
     (outcome) => outcome?.outcome !== "kept",
   );
@@ -584,10 +768,10 @@ export async function reconcileShared(
       : await promoteHome(store, home, readStartedAt),
     chrome: (await unchanged(CHROME, parseChrome, sharedRead(chrome)))
       ? { outcome: "unchanged" }
-      : await promoteShared(store, CHROME, chrome, readStartedAt),
+      : await promoteChrome(store, chrome, readStartedAt),
     design: (await unchanged(DESIGN, parseDesign, sharedRead(design)))
       ? { outcome: "unchanged" }
-      : await promoteShared(store, DESIGN, design, readStartedAt),
+      : await promoteDesign(store, design, readStartedAt),
   };
 }
 
@@ -602,18 +786,41 @@ function canonicalJson(value: unknown): string {
   );
 }
 
-/** Promotes a read of a shared row: the chrome, or the design presets. */
-function promoteShared(
+type SharedRead<T> = Found<T> | { kind: "unavailable"; failure: RefreshFailure };
+
+/** Promotes a read of a shared row. */
+function promoteShared<T>(
   store: PublicationStore,
-  key: typeof CHROME | typeof DESIGN,
-  read: Found<SiteChrome | DesignPresets> | { kind: "unavailable"; failure: RefreshFailure },
+  key: string,
+  subject: string,
+  parse: (body: unknown) => T | undefined,
+  read: SharedRead<T>,
   readStartedAt: number,
 ) {
-  const subject = key === CHROME ? "the site chrome" : "the shared design presets";
-  const parse = (key === CHROME ? parseChrome : parseDesign) as (body: unknown) => unknown;
   return promoteRead(store, key, subject, readStartedAt, parse, () =>
     read.kind === "found" ? { state: "published", content: read.content } : read.failure,
   );
+}
+
+/** Promotes a read of a language's chrome. */
+function promoteChrome(
+  store: PublicationStore,
+  read: SharedRead<SiteChrome>,
+  readStartedAt: number,
+  language: SiteLanguage = defaultLanguage,
+) {
+  const subject = languageSubject(language, "site chrome");
+  return promoteShared(store, chromeKey(language), subject, parseChrome, read, readStartedAt);
+}
+
+/** Promotes a read of the shared design presets. */
+function promoteDesign(
+  store: PublicationStore,
+  read: SharedRead<DesignPresets>,
+  readStartedAt: number,
+) {
+  const subject = "the shared design presets";
+  return promoteShared(store, DESIGN, subject, parseDesign, read, readStartedAt);
 }
 
 /**
@@ -625,15 +832,21 @@ export async function refreshHome(store: PublicationStore): Promise<RecordOutcom
   return promoteHome(store, await getHomeContent(), readStartedAt);
 }
 
-function promoteHome(store: PublicationStore, home: Delivery<HomeContent>, readStartedAt: number) {
-  return promoteRead(store, HOME, "the front page", readStartedAt, parseHome, () => {
+function promoteHome(
+  store: PublicationStore,
+  home: Delivery<HomeContent>,
+  readStartedAt: number,
+  language: SiteLanguage = defaultLanguage,
+) {
+  const subject = languageSubject(language, "front page");
+  return promoteRead(store, homeKey(language), subject, readStartedAt, parseHome, () => {
     if (home.kind === "unavailable") return home.failure;
     if (home.kind === "missing") return { state: "missing" };
     const { blocksOmitted, nodeId, ...content } = home.content;
     if (blocksOmitted) {
       return {
         reason: "partial",
-        message: "WordPress could only return the front page without its blocks",
+        message: `WordPress could only return ${subject} without its blocks`,
       };
     }
     return { state: "published", content, ...(nodeId ? { nodeId } : {}) };
@@ -704,8 +917,8 @@ interface EntryPromotion {
  * Promotes one entry read. A found entry is stored at the route WordPress
  * gives it, never at a route it was only requested at: with `recordAlias`
  * (an explicit refresh of that route), the requested route is stored as
- * moved to it. The front page is the homepage's, so a route that resolves to
- * it moves to `/`.
+ * moved to it. A language's front page is its home's, so a route that
+ * resolves to it moves to that home (`/`, `/en/`).
  */
 async function promoteEntry(
   store: PublicationStore,
@@ -736,10 +949,10 @@ async function promoteEntry(
 
   const canonical = routeOf(entry.uri);
   const moved = { state: "moved" as const, uri: canonical, nodeId: entry.id };
-  if (canonical === "/") {
+  if (isLanguageHome(canonical)) {
     const outcome = await promote(route, () => moved);
     if (outcome.outcome === "withdrawn") return { outcome };
-    return { outcome, found: { nodeId: entry.id, route: "/" } };
+    return { outcome, found: { nodeId: entry.id, route: canonical } };
   }
   const outcome = await promote(canonical, () => ({
     state: "published",
@@ -870,7 +1083,7 @@ async function promoteRead<T>(
 
 export interface WithdrawalReport {
   status: "withdrawn" | "superseded";
-  /** The routes now withdrawn (`/` for the front page). */
+  /** The routes now withdrawn (`/` or `/en/` for a language's front page). */
   withdrawn: string[];
   /** The later event that already won, when it is known. */
   by?: string;
@@ -891,14 +1104,14 @@ export async function withdrawEntry(
   event: PublicationEvent,
 ): Promise<WithdrawalReport> {
   const route = routeOf(event.uri);
-  const outcome = await store.withdraw(event, route === "/" ? HOME : entryKey(route), Date.now());
+  const outcome = await store.withdraw(event, routeKey(route), Date.now());
   if (outcome.status === "superseded") {
     console.info(
       `Withdrawal: ${event.id} for ${route} is superseded${outcome.by ? ` by the later ${outcome.by}` : ""}`,
     );
     return { status: "superseded", withdrawn: [], ...(outcome.by ? { by: outcome.by } : {}) };
   }
-  const withdrawn = outcome.keys.map((key) => (key === HOME ? "/" : key.slice(ENTRY.length)));
+  const withdrawn = outcome.keys.map(keyRoute);
   console.info(`Withdrawal: ${event.id} withdrew ${withdrawn.join(", ") || "nothing stored"}`);
   return { status: "withdrawn", withdrawn };
 }

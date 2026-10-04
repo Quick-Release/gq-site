@@ -185,6 +185,11 @@ export interface PublicationStore {
   supersede(nodeId: string, uri: string, keep: string, readBefore: number): Promise<string[]>;
   /** The keys stored under prefix, whatever their state. */
   keys(prefix: string): Promise<string[]>;
+  /**
+   * The state of each of these keys' rows ("unusable" in a format this Worker
+   * doesn't serve), in one read; a key nothing was ever promoted at is left out.
+   */
+  states(keys: string[]): Promise<Map<string, string>>;
   recordAttempt(key: string, attempt: RefreshAttempt): Promise<void>;
   /**
    * Records a CMS event unless one with its id already is. Resolves to the
@@ -390,6 +395,20 @@ export function publicationStore(db: SqlDatabase): PublicationStore {
           .all<{ key: string }>(),
       );
       return results.map((row) => row.key).sort();
+    },
+
+    async states(keys) {
+      if (keys.length === 0) return new Map();
+      const { results } = await guard("be read", () =>
+        db
+          .prepare(
+            `SELECT key, CASE WHEN format = ?1 THEN state ELSE 'unusable' END AS state
+             FROM publications WHERE key IN (SELECT value FROM json_each(?2))`,
+          )
+          .bind(PUBLICATION_FORMAT, JSON.stringify(keys))
+          .all<{ key: string; state: string }>(),
+      );
+      return new Map(results.map((row) => [row.key, row.state]));
     },
 
     async recordAttempt(key, attempt) {

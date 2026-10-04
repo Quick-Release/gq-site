@@ -42,6 +42,7 @@ import {
   type PublicationEvent,
   type PublicationStore,
 } from "./publications";
+import { isLanguageHome } from "./site-language";
 import { getPublishedEntries, type PublishedEntry } from "./wordpress";
 
 /** The most requests to WordPress one run makes (Workers' Free plan: 50 subrequests). */
@@ -284,7 +285,8 @@ function candidates(listed: PublishedEntry[], index: EntryIndex): Candidate[] {
       }
       continue;
     }
-    if (route === "/") continue;
+    // Each language's front page is its home's (reconcileShared), never an entry.
+    if (isLanguageHome(route)) continue;
     if (
       row?.state === "published" &&
       entry.id !== null &&

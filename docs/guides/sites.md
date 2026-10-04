@@ -165,6 +165,13 @@ run `gq sync` (it updates `deploy/ploi/admin.sh`), and release.
   default language set up by hand under another slug than its language
   code (`pt-pt` rather than `pt`). Without `languages` at all, the deploy
   leaves Polylang alone.
+- **The Frontend.** Each language is served from its own rows in the
+  publication store (`home:en`, `chrome:en`), with its own `<html lang>`,
+  menu, title and tagline, `hreflang` alternates and a language switcher. A
+  page without a translation in a language is a 404 there: there is no
+  fallback across languages. See the Frontend's README, "Languages". The
+  Frontend is site-owned, so an existing site adopts this from a new site's
+  skeleton (see the changelog).
 - **Shared slugs.** Polylang Pro's "Share slugs" module has no setting: it
   turns on by itself with language directories, so an editor can give a
   translation its original's slug. Keep translated slugs unique per

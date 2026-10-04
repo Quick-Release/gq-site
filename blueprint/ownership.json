@@ -278,6 +278,21 @@
       "app": "apps/frontend"
     },
     {
+      "path": "apps/frontend/src/languages.test.ts",
+      "template": "templates/apps/frontend/src/languages.test.ts",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "apps/frontend/src/components/Home.astro",
+      "template": "templates/apps/frontend/src/components/Home.astro",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "apps/frontend/src/lib/copy.ts",
+      "template": "templates/apps/frontend/src/lib/copy.ts",
+      "app": "apps/frontend"
+    },
+    {
       "path": "apps/frontend/src/lib/delivery.ts",
       "template": "templates/apps/frontend/src/lib/delivery.ts",
       "app": "apps/frontend"
