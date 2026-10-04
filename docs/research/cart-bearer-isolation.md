@@ -1,8 +1,8 @@
 # Upstream cart bearer isolation across native identity changes
 
-> **Status: isolation demonstrated locally for the tested scenarios; not a production or security approval.** Issue #57, under the #54 contract. A disposable loopback store with pinned WordPress 7.1.2, WooCommerce 11.1.2 and the real GETQUICK plugins reproduced #50's bearer failures through GQ eCommerce's storefront BFF contract. The new `CartBearerIsolation` in [GQ eCommerce](https://github.com/Quick-Release/gq-ecommerce) then stopped every captured guest and authenticated-cart bearer from reading or changing the customer's cart. The #54 deployed-Worker gate and security review are still outstanding.
+> **Status: isolation demonstrated locally for the tested scenarios; not a production or security approval.** Issue #57, under the #54 contract. A disposable loopback store with pinned WordPress 7.1.2, WooCommerce 11.1.2 and the real GETQUICK plugins reproduced #50's bearer failures through GQ eCommerce's storefront BFF contract. The new `CartBearerIsolation` in [GQ eCommerce](https://github.com/Quick-Release/gq-ecommerce) then stopped every captured guest and authenticated-cart bearer from reading or changing the customer's cart. It shipped as GQ eCommerce **0.3.0**, and Ekis adopted the contract (see [Deployed](#deployed)). The deployed acceptance gate (#65) and the security review are still outstanding.
 
-Code: GQ eCommerce branch `cart-identity` (`src/CustomerAccounts/CartBearerIsolation.php`, wired into the customer accounts `Controller`), and the proof in [`proofs/cart-identity/`](../../proofs/cart-identity/). Prior evidence: [the #50 commerce research](cloudflare-tanstack-commerce-architecture.md#one-live-proof-executed-with-failures).
+Code: GQ eCommerce 0.3.0 (`src/CustomerAccounts/CartBearerIsolation.php`, wired into the customer accounts `Controller`; [gq-ecommerce#1](https://github.com/Quick-Release/gq-ecommerce/pull/1)), and the proof in [`proofs/cart-identity/`](../../proofs/cart-identity/). Prior evidence: [the #50 commerce research](cloudflare-tanstack-commerce-architecture.md#one-live-proof-executed-with-failures).
 
 ## Findings in brief
 
@@ -23,7 +23,7 @@ Code: GQ eCommerce branch `cart-identity` (`src/CustomerAccounts/CartBearerIsola
 
   Mapping rotation and native logout alone were not counted as the fix: the baseline suite rotates the browser handle and performs native logout, and still leaks.
 
-- **Always on, by the user's decision.** The spec said "without production enablement"; the user chose to have the isolation active as soon as this GQ eCommerce version is deployed. **Ekis's BFF must adopt the new contract first**: send the guest `Cart-Token` on login and logout, and use the returned one. Otherwise a guest bearer sent with a customer session gets `409 getquick_cart_transition_required`. Customer-cart transitions still need the #54 gate.
+- **Always on, by the user's decision.** The spec said "without production enablement"; the user chose to have the isolation active as soon as this GQ eCommerce version is deployed. The storefront BFF therefore had to adopt the new contract first: send the guest `Cart-Token` on login and logout, and use the returned one. Otherwise a guest bearer sent with a customer session gets `409 getquick_cart_transition_required`. Ekis did, before 0.3.0 was released (see [Deployed](#deployed)). Customer-cart transitions still need the #54 gate.
 - **Result:** both suites pass: baseline (GQ eCommerce `0220d8c`, no isolation) and candidate (`0c4a1ac`). A mutation check (guard disabled) failed eight of the candidate suite's fourteen tests. The six that survive don't depend on the guard: sign-in, repeat sign-in, logout, saved-cart survival, the cookie-user check and the credential scan.
 - **A bypass found in review, and fixed.** The first guard compared the requested route case-sensitively. But WordPress matches routes case-insensitively, and Woo's cart routes load the Cart-Token session whatever the casing. So `/wp-json/WC/Store/v1/cart` let the customer's own bearer read their cart with no login (observed: 200). The guard now decides by the handler WordPress actually matched, and the tests probe four URL forms for every rule.
 - **Second review round, each fixed test-first:**
@@ -33,7 +33,7 @@ Code: GQ eCommerce branch `cart-identity` (`src/CustomerAccounts/CartBearerIsola
 
 ## Environment
 
-Executed **2026-10-04T16:17Z (final run; earlier iterations the same day)** on one developer machine, loopback only. User authorization covered exactly: a uniquely named local DDEV project, synthetic data, no tunnel, no Cloudflare deployment, no Sigillo access, no change to Ekis, and verified teardown. Changes to GQ eCommerce were requested by the user ("you can add the functionality there"); they were made in a separate git worktree and branch, not pushed.
+Executed **2026-10-04T16:17Z (final run; earlier iterations the same day)** on one developer machine, loopback only. User authorization covered exactly: a uniquely named local DDEV project, synthetic data, no tunnel, no Cloudflare deployment, no Sigillo access, no change to Ekis, and verified teardown. Changes to GQ eCommerce were requested by the user ("you can add the functionality there"); they were made in a separate git worktree and branch, and released later (see [Deployed](#deployed)).
 
 | Component | Version / configuration                                                                                                                                                                                                                                                                                                                                                                                                            |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -136,7 +136,7 @@ The guard applies to every request WordPress matches to a Store API handler, wha
 
 - **Local, not deployed.** Loopback DDEV and a Node Frontend. This proves the WordPress-side isolation through the BFF contract. It does not prove:
   - the #54 deployed-Worker gate
-  - Ekis's actual BFF (`apps/frontend/src/server/{auth,store-api}/bff.ts`, which doesn't yet send or adopt the new `Cart-Token`)
+  - Ekis's real BFF against a deployed store with a signed-in customer (it adopted the contract in ekis#48, but that path is untested live; see [Deployed](#deployed))
   - the D1 mapping, encryption, epochs or cross-tab behaviour
   - the recovery screen or browser automation
 
@@ -160,7 +160,17 @@ The guard applies to every request WordPress matches to a Store API handler, wha
 3. Review the registry: retention and purge, backup and restore (a restored registry must not un-retire keys; see #54 Q17), and multisite prefixes.
 4. Review the merge-flag re-arm: Woo's merge must stay Woo's, including customization cases.
 5. Review the `determine_current_user` priority change against every request path `StoreApiProxyAuthentication` serves (proxy, cookie, application password), and update its Pest test.
-6. Update Ekis's BFF to the new contract and re-run both suites against a deployed Worker with synthetic data, as #54 requires.
+6. Re-run both suites against the deployed Worker with synthetic data, as #54 requires (#65). Ekis's BFF has adopted the contract.
+
+## Deployed
+
+On 2026-10-04 the change shipped in the agreed order, so that no storefront ever met a store it couldn't talk to:
+
+1. **Ekis storefront, [ekis#48](https://github.com/Quick-Release/ekis/pull/48)** (merged `9c9caef`, deployed). The Worker holds the cart bearer behind its cart handle (#56) and hands it over on sign-in, registration and sign-out. It keeps the returned customer bearer with a conditional D1 write on a per-handle generation, drops refused bearers, and doesn't sign customers out for them. This session reviewed it against the contract and ran its tests (232 passing). It superseded a browser-held version, [ekis#47](https://github.com/Quick-Release/ekis/pull/47), which was closed. That PR's late-response race fix and 401 exemption carried over.
+2. **GQ eCommerce 0.3.0, [gq-ecommerce#1](https://github.com/Quick-Release/gq-ecommerce/pull/1)** (merged `804fedb`, tag `v0.3.0`). It was a minor version so that `^0.2` storefronts couldn't pick it up early.
+3. **Ekis CMS on `^0.3.0`, [ekis#49](https://github.com/Quick-Release/ekis/pull/49)** (merged `c8c7d49`, deployed to `ekis-admin.bnq.pt`).
+
+Afterwards, read-only: the storefront answers 200, and `/api/auth/session` is anonymous. **Not proven live:** the handoff and guard with a signed-in customer on the deployed store. The staging store has no purchasable product and no synthetic customer, so that remains the #65 gate. GQ eCommerce's Pest suites in Ekis's CMS haven't been run against 0.3.
 
 ## Safety record
 
