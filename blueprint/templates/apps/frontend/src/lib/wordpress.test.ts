@@ -1,6 +1,17 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { getEntryByUri, getHomeContent, getPublishedRoutes, getSiteChrome } from "./wordpress";
 
+// The monolingual Site this file describes: the site's gq.ops.json without
+// wordpress.languages. languages.test.ts and language-updates.test.ts cover
+// the bilingual Site.
+vi.mock("../../../../gq.ops.json", async (importOriginal) => {
+  const { default: ops } = await importOriginal<{
+    default: { wordpress: { languages?: unknown } };
+  }>();
+  const { languages: _languages, ...wordpress } = ops.wordpress;
+  return { default: { ...ops, wordpress } };
+});
+
 test("home content comes from the page marked as the WordPress front page", async () => {
   const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
     const request = JSON.parse(init.body as string) as { query: string };

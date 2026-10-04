@@ -18,6 +18,17 @@ import {
   type Answer,
 } from "./test/wordpress-stub";
 
+// The monolingual Site this file describes: the site's gq.ops.json without
+// wordpress.languages. languages.test.ts and language-updates.test.ts cover
+// the bilingual Site.
+vi.mock("../../../gq.ops.json", async (importOriginal) => {
+  const { default: ops } = await importOriginal<{
+    default: { wordpress: { languages?: unknown } };
+  }>();
+  const { languages: _languages, ...wordpress } = ops.wordpress;
+  return { default: { ...ops, wordpress } };
+});
+
 const about = {
   id: "64",
   title: "About",

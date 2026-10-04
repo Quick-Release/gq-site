@@ -5,6 +5,31 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+### Fixed
+
+- **A bilingual Site's Frontend tests pass.** Two bugs in the Frontend
+  skeleton's tests, which 0.17.1's checks missed because the generated site
+  they test is named Acme and monolingual:
+  - `src/languages.test.ts` expected every page's `<title>` to end in
+    "— Acme", the stub CMS's name, where the page renders the site's own
+    name. It failed 4 tests on any site not named Acme.
+  - The monolingual suites (`entries`, `events`, `homepage`,
+    `reconciliation`, `retries`, `routes`, `settings`, `withdrawals` and
+    `lib/wordpress`) read the site's real `gq.ops.json`, so they failed
+    (about 190 tests) once it listed `wordpress.languages`. Each now
+    mocks it without `languages`, the Site it describes;
+    `languages.test.ts` and `language-updates.test.ts` cover the bilingual
+    one.
+  - `scripts/smoke/frontend-check.sh` (CI's `generated-frontend`) now
+    generates a site not named Acme, and runs its tests and `astro check`
+    again after listing English in `wordpress.languages`.
+  - **Existing sites:** the Frontend is site-owned, so syncing doesn't
+    change it. A bilingual site copies these tests from a new site's
+    `apps/frontend/src`, or in a copy it already adapted, replaces the
+    `— Acme</title>` assertions with its own name and adds the
+    `gq.ops.json` mock to each monolingual suite. A monolingual site needs
+    neither.
+
 ## 0.17.1 — 2026-10-04
 
 ### Added
