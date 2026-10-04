@@ -20,8 +20,11 @@ export function proofEnv() {
     url: `https://${PROJECT}.ddev.site`,
     customerPassword: () => readFileSync(join(dir, ".proof/customer-password"), "utf8").trim(),
     otherPassword: () => readFileSync(join(dir, ".proof/other-password"), "utf8").trim(),
+    proxySecret: () => readFileSync(join(dir, ".proof/proxy-secret"), "utf8").trim(),
     reset: () => JSON.parse(run("reset").trim().split("\n").at(-1)),
-    extension: (state) => run("extension", state),
+    // Installs GQ eCommerce from the baseline ref or the candidate working tree.
+    ecommerce: (version) => run("ecommerce", version),
+    fault: (name) => run("fault", name),
     versions: () => JSON.parse(run("versions").trim().split("\n").at(-1)),
   };
 }
@@ -74,7 +77,7 @@ export class Browser {
 }
 
 // Wraps the Frontend's upstream fetch and records every credential it exchanges
-// with Woo, in order, so a probe can reuse them as a stolen bearer would be.
+// with WordPress, in order, so a probe can reuse them as a thief would.
 export function upstreamTap() {
   const exchanges = [];
   return {
@@ -84,36 +87,36 @@ export function upstreamTap() {
       const response = await fetch(request);
       exchanges.push({
         method: request.method,
-        path: new URL(request.url).pathname + new URL(request.url).search,
+        path: new URL(request.url).pathname,
         sentToken: request.headers.get("cart-token"),
-        sentCookie: request.headers.get("cookie"),
-        sentNonce: request.headers.get("x-wp-nonce"),
+        sentProxy: request.headers.get("x-getquick-storefront-proxy"),
+        sentSession: request.headers.get("x-getquick-upstream-session"),
         receivedToken: response.headers.get("cart-token"),
-        receivedCookies: response.headers.getSetCookie(),
+        receivedSession: response.headers.get("x-getquick-upstream-session"),
       });
       return response;
     },
-    // The last bearer Woo issued to the Frontend: what an attacker holding a copy of
-    // the Frontend's current credential would have.
+    // The last bearer WordPress issued to the Frontend: what an attacker holding a copy
+    // of the Frontend's current credential would have.
     lastBearer() {
       return exchanges.findLast((e) => e.receivedToken)?.receivedToken;
     },
-    // The WordPress login the Frontend currently forwards, for minting a native bearer.
+    // The customer's upstream session the Frontend currently forwards.
     lastLogin() {
-      const e = exchanges.findLast((x) => x.sentNonce);
-      return e && { cookie: e.sentCookie, nonce: e.sentNonce };
+      const e = exchanges.findLast((x) => x.sentSession);
+      return e && { credential: e.sentSession };
     },
     secrets() {
       const values = new Set();
       for (const e of exchanges) {
-        for (const v of [e.sentToken, e.sentNonce, e.receivedToken]) if (v) values.add(v);
-        for (const pair of (e.sentCookie ?? "").split(";")) {
-          const value = pair.split("=").slice(1).join("=").trim();
-          if (value.length > 16) values.add(value);
-        }
-        for (const cookie of e.receivedCookies) {
-          const value = cookie.split(";")[0].split("=").slice(1).join("=");
-          if (value.length > 16) values.add(value);
+        for (const value of [
+          e.sentToken,
+          e.sentProxy,
+          e.sentSession,
+          e.receivedToken,
+          e.receivedSession,
+        ]) {
+          if (value) values.add(value);
         }
       }
       return [...values];
@@ -131,13 +134,22 @@ export const URL_FORMS = {
     `${upstream}/wp-json${route}?rest_route=${encodeURIComponent(route.toUpperCase())}`,
 };
 
-// Direct Store API access with a captured bearer, and by default no WordPress cookie:
-// the probe the spec requires alongside the shopper-facing seam.
-export function storeApi(upstream) {
+// The headers the storefront BFF sends to act as a signed-in customer.
+function asCustomer(proxySecret, login) {
+  return {
+    "X-GetQuick-Storefront-Proxy": proxySecret,
+    "X-GetQuick-Upstream-Session": login.credential,
+  };
+}
+
+// Direct Store API access with a captured bearer and, by default, neither the proxy
+// secret nor a customer session: the probe the spec requires alongside the
+// shopper-facing seam. `login` presents a session as the BFF itself would.
+export function storeApi(upstream, proxySecret) {
   const call = async (bearer, method, path, body, { form = "pretty", login } = {}) => {
     const headers = {};
     if (bearer) headers["Cart-Token"] = bearer;
-    if (login) Object.assign(headers, { Cookie: login.cookie, "X-WP-Nonce": login.nonce });
+    if (login) Object.assign(headers, asCustomer(proxySecret, login));
     if (body !== undefined) headers["Content-Type"] = "application/json";
     const response = await fetch(URL_FORMS[form](upstream, `/wc/store/v1${path}`), {
       method,
@@ -162,21 +174,49 @@ export function storeApi(upstream) {
   };
 }
 
-// The extension's sign-in endpoint, called as the Frontend would.
-export async function signIn(upstream, bearer, login) {
-  const response = await fetch(`${upstream}/wp-json/gq-cart-identity/v1/sign-in`, {
+// GQ eCommerce's sign-in, called as the BFF would, presenting a guest bearer.
+export async function signIn(upstream, proxySecret, bearer, identifier, password) {
+  const response = await fetch(`${upstream}/wp-json/getquick-config/v1/woocommerce/auth/login`, {
     method: "POST",
-    headers: { "Cart-Token": bearer, Cookie: login.cookie, "X-WP-Nonce": login.nonce },
+    headers: {
+      "X-GetQuick-Storefront-Proxy": proxySecret,
+      "Content-Type": "application/json",
+      ...(bearer ? { "Cart-Token": bearer } : {}),
+    },
+    body: JSON.stringify({ identifier, password, remember: false }),
   });
-  return { status: response.status, json: await response.json().catch(() => null) };
+  return { status: response.status, token: response.headers.get("cart-token") };
 }
 
-// Whether a forwarded WordPress login cookie still authenticates (via the fixture bridge).
-export async function stillSignedIn(upstream, { cookie }) {
-  const response = await fetch(`${upstream}/?gq-proof-auth=rest-nonce`, {
+// A shopper signed in on the WordPress site itself: native login cookies plus the REST
+// nonce WordPress hands a signed-in browser.
+export async function cookieLogin(upstream, username, password) {
+  const login = await fetch(`${upstream}/wp-login.php`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Cookie: "wordpress_test_cookie=WP%20Cookie%20check",
+    },
+    body: new URLSearchParams({ log: username, pwd: password, testcookie: "1" }),
+    redirect: "manual",
+  });
+  const cookie = login.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0])
+    .filter((pair) => /^wordpress_(sec_|logged_in_)?[0-9a-f]{32}=/.test(pair))
+    .join("; ");
+  const nonce = await fetch(`${upstream}/wp-admin/admin-ajax.php?action=rest-nonce`, {
     headers: { Cookie: cookie },
   });
-  return response.status === 200;
+  return { cookie, nonce: (await nonce.text()).trim() };
+}
+
+// Whether WordPress still accepts a customer's upstream session.
+export async function stillSignedIn(upstream, proxySecret, login) {
+  const response = await fetch(`${upstream}/wp-json/getquick-config/v1/woocommerce/auth/session`, {
+    headers: asCustomer(proxySecret, login),
+  });
+  return response.ok && (await response.json()).status === "authenticated";
 }
 
 // The session key a Woo Cart-Token points to (its payload is unencrypted JSON).

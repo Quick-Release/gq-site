@@ -7,6 +7,7 @@ import { serve } from "./frontend/serve.mjs";
 import {
   Browser,
   URL_FORMS,
+  cookieLogin,
   lines,
   proofEnv,
   sessionKey,
@@ -17,14 +18,15 @@ import {
 } from "./harness.mjs";
 
 const env = proofEnv();
-const woo = storeApi(env.url);
+const proxySecret = env.proxySecret();
+const woo = storeApi(env.url, proxySecret);
 const FORMS = Object.keys(URL_FORMS);
 const MERGED = { "GQ Proof Alpha": 1, "GQ Proof Beta": 2 };
 
 // A shopper's browser on a fresh disposable Frontend, with its upstream traffic tapped.
-async function shopper(isolation) {
+async function shopper() {
   const tap = upstreamTap();
-  const server = await serve(createFrontend({ upstream: env.url, isolation, fetch: tap.fetch }));
+  const server = await serve(createFrontend({ upstream: env.url, proxySecret, fetch: tap.fetch }));
   const browser = new Browser(server.url);
   return {
     tap,
@@ -46,7 +48,7 @@ describe("a guest shopper", () => {
   let fixture, shop;
   before(async () => {
     fixture = env.reset();
-    shop = await shopper("none");
+    shop = await shopper();
   });
   after(() => shop.close());
 
@@ -61,12 +63,12 @@ describe("a guest shopper", () => {
   });
 });
 
-describe("without bearer isolation, pinned Woo reproduces the #50 findings", () => {
+describe("GQ eCommerce without bearer isolation (baseline) reproduces the #50 findings", () => {
   let fixture, shop, guestBearer, authenticatedBearer, nativeBearer, login;
   before(async () => {
+    env.ecommerce("baseline");
     fixture = env.reset();
-    env.extension("off");
-    shop = await shopper("none");
+    shop = await shopper();
     await shop.addItem(fixture.products.alpha);
     guestBearer = shop.tap.lastBearer();
   });
@@ -100,7 +102,7 @@ describe("without bearer isolation, pinned Woo reproduces the #50 findings", () 
     assert.equal(logout.json.identity, "guest");
     assert.equal(logout.json.nativeSignOut, "confirmed");
     assert.deepEqual(lines(logout.json), {});
-    assert.equal(await stillSignedIn(env.url, login), false);
+    assert.equal(await stillSignedIn(env.url, proxySecret, login), false);
   });
 
   test("the Frontend's authenticated-cart bearer still reads the customer cart after logout", async () => {
@@ -109,12 +111,12 @@ describe("without bearer isolation, pinned Woo reproduces the #50 findings", () 
     assert.deepEqual(lines(read.json), MERGED);
   });
 
-  // Observation, not isolation: Woo's own logout deletes the user-keyed session row, so
-  // this bearer only exposes the customer's cart while they are signed in somewhere.
-  test("the native user-keyed bearer reads an empty cart after this logout", async () => {
+  // The BFF signs out over REST, where Woo has no session loaded, so Woo's logout hook
+  // never deletes the user-keyed session row.
+  test("a native user-keyed bearer still reads the customer cart after logout", async () => {
     const read = await woo.cart(nativeBearer);
     assert.equal(read.status, 200);
-    assert.deepEqual(lines(read.json), {});
+    assert.deepEqual(lines(read.json), MERGED);
   });
 
   test("the pre-login guest bearer can still change the customer cart", async () => {
@@ -125,28 +127,26 @@ describe("without bearer isolation, pinned Woo reproduces the #50 findings", () 
   });
 });
 
-describe("with gq-cart-identity, retired bearers cannot reach the customer cart", () => {
+describe("GQ eCommerce with bearer isolation (candidate): retired bearers cannot reach the customer cart", () => {
   let fixture, shop, guestBearer, authenticatedBearer, nativeBearer, login;
+  const others = [];
   const refused =
     (code, status = 401) =>
     (result) =>
       assert.deepEqual([result.status, result.json?.code], [status, code]);
-  const retired = refused("gq_cart_bearer_retired");
-  const needsLogin = refused("gq_cart_identity_required");
+  const retired = refused("getquick_cart_bearer_retired");
+  const needsLogin = refused("getquick_cart_identity_required");
   // Woo's cart item key for a simple product.
   const lineKey = (productId) => createHash("md5").update(String(productId)).digest("hex");
 
   before(async () => {
+    env.ecommerce("candidate");
     fixture = env.reset();
-    env.extension("on");
-    shop = await shopper("gq-cart-identity");
+    shop = await shopper();
     await shop.addItem(fixture.products.alpha);
     guestBearer = shop.tap.lastBearer();
   });
-  after(async () => {
-    await shop.close();
-    env.extension("off");
-  });
+  after(() => shop.close());
 
   test("login shows Woo's merged cart under a fresh cart identity", async () => {
     const response = await shop.login(fixture.customer, env.customerPassword());
@@ -168,10 +168,16 @@ describe("with gq-cart-identity, retired bearers cannot reach the customer cart"
     retired(await woo.cart(guestBearer, { login }));
   });
 
-  test("repeating sign-in with the guest bearer returns the same fresh identity", async () => {
-    const repeat = await signIn(env.url, guestBearer, login);
+  test("signing in again with the retired guest bearer returns the same fresh identity", async () => {
+    const repeat = await signIn(
+      env.url,
+      proxySecret,
+      guestBearer,
+      fixture.customer,
+      env.customerPassword(),
+    );
     assert.equal(repeat.status, 200);
-    assert.equal(sessionKey(repeat.json.cart_token), sessionKey(authenticatedBearer));
+    assert.equal(sessionKey(repeat.token), sessionKey(authenticatedBearer));
   });
 
   test("customer bearers need that customer's own login, on every URL form", async () => {
@@ -180,16 +186,33 @@ describe("with gq-cart-identity, retired bearers cannot reach the customer cart"
       needsLogin(await woo.cart(authenticatedBearer, { form }));
       needsLogin(await woo.addItem(authenticatedBearer, fixture.products.gamma, { form }));
     }
+    const cart = await shop.browser.get("/api/cart");
+    assert.equal(cart.status, 200);
+    assert.deepEqual(lines(cart.json), MERGED, "the refused add-items changed nothing");
   });
 
   test("another customer's login cannot use this customer's bearers", async () => {
-    const other = await shopper("gq-cart-identity");
+    const other = await shopper();
+    others.push(other);
     try {
       assert.equal((await other.login(fixture.other, env.otherPassword())).status, 200);
       const otherLogin = other.tap.lastLogin();
       needsLogin(await woo.cart(authenticatedBearer, { login: otherLogin }));
       needsLogin(await woo.cart(nativeBearer, { login: otherLogin }));
-      assert.equal((await signIn(env.url, nativeBearer, otherLogin)).status, 403);
+      // Signing in with this customer's bearer starts the other customer afresh.
+      const switched = await signIn(
+        env.url,
+        proxySecret,
+        nativeBearer,
+        fixture.other,
+        env.otherPassword(),
+      );
+      assert.equal(switched.status, 200);
+      assert.notEqual(sessionKey(switched.token), sessionKey(nativeBearer));
+      // The other customer has no saved cart, so their fresh cart is empty.
+      const theirs = await woo.cart(switched.token, { login: otherLogin });
+      assert.equal(theirs.status, 200);
+      assert.deepEqual(lines(theirs.json), {});
       await other.browser.post("/api/logout");
     } finally {
       await other.close();
@@ -198,7 +221,7 @@ describe("with gq-cart-identity, retired bearers cannot reach the customer cart"
 
   test("a guest bearer presented with the customer's login is refused and not merged", async () => {
     const stranger = (await woo.cart(null)).token;
-    refused("gq_cart_transition_required", 409)(await woo.cart(stranger, { login }));
+    refused("getquick_cart_transition_required", 409)(await woo.cart(stranger, { login }));
     const afterwards = await woo.cart(stranger);
     assert.equal(afterwards.status, 200);
     assert.deepEqual(lines(afterwards.json), {});
@@ -210,7 +233,7 @@ describe("with gq-cart-identity, retired bearers cannot reach the customer cart"
     assert.equal(response.json.identity, "guest");
     assert.equal(response.json.nativeSignOut, "confirmed");
     assert.deepEqual(lines(response.json), {});
-    assert.equal(await stillSignedIn(env.url, login), false);
+    assert.equal(await stillSignedIn(env.url, proxySecret, login), false);
   });
 
   test("bearers issued while signed in can neither read nor change the customer cart", async () => {
@@ -241,7 +264,33 @@ describe("with gq-cart-identity, retired bearers cannot reach the customer cart"
     assert.deepEqual(lines(response.json), MERGED);
   });
 
-  test("no upstream credential reached the browser", () => {
-    assertNoCredentialReachedTheBrowser(shop);
+  test("logout still retires the bearer when the customer's session already ended", async () => {
+    assert.equal((await shop.login(fixture.customer, env.customerPassword())).status, 200);
+    const bearer = shop.tap.lastBearer();
+    env.fault("end-sessions");
+    assert.equal((await shop.browser.post("/api/logout")).status, 200);
+    retired(await woo.cart(bearer));
+  });
+
+  test("a customer bearer stays refused if the bearer registry is lost", async () => {
+    assert.equal((await shop.login(fixture.customer, env.customerPassword())).status, 200);
+    const bearer = shop.tap.lastBearer();
+    env.fault("drop-registry");
+    const read = await woo.cart(bearer);
+    assert.ok(read.status >= 400, `expected a refusal, got ${read.status}`);
+    assert.equal(lines(read.json)["GQ Proof Beta"], undefined);
+  });
+
+  test("a shopper signed in with WordPress cookies keeps their identity on the Store API", async () => {
+    const native = await cookieLogin(env.url, fixture.customer, env.customerPassword());
+    const response = await fetch(`${env.url}/wp-json/wc/store/v1/cart`, {
+      headers: { Cookie: native.cookie, "X-WP-Nonce": native.nonce },
+    });
+    assert.equal(response.status, 200);
+    assert.notEqual(response.headers.get("user-id"), "0");
+  });
+
+  test("no upstream credential reached any browser", () => {
+    for (const browser of [shop, ...others]) assertNoCredentialReachedTheBrowser(browser);
   });
 });

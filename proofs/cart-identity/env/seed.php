@@ -2,9 +2,12 @@
 /**
  * Synthetic fixtures for the cart identity proof, run with `wp eval-file seed.php <mode>`.
  *
- * install   configure Woo and create synthetic products and one synthetic customer
+ * install   configure Woo and GETQUICK customer accounts; create synthetic products and customers
  * reset     clear every cart session and bearer record, and restore the customer's saved cart
  * versions  print runtime/provider versions
+ * drop-registry  delete GQ eCommerce's bearer registry table but not its schema option,
+ *                as a restore or failed migration might
+ * end-sessions   end every WordPress session of the synthetic customer
  *
  * reset prints the fixture identifiers as JSON for the harness.
  */
@@ -41,6 +44,13 @@ switch ( $mode ) {
 		update_option( 'woocommerce_store_pages_only', 'no' );
 		update_option( 'woocommerce_onboarding_profile', array( 'skipped' => true ) );
 		update_option( 'woocommerce_currency', 'USD' );
+		if ( ! class_exists( '\GetQuick\Config\Settings' ) || ! defined( 'GETQUICK_ECOMMERCE_ACTIVE' ) ) {
+			WP_CLI::error( 'GETQUICK Config and GQ eCommerce must be active.' );
+		}
+		\GetQuick\Config\Settings::update( 'store', array( 'customer_accounts_enabled' => true ) );
+		if ( ! getquick_config_customer_accounts_enabled() ) {
+			WP_CLI::error( 'Customer accounts could not be enabled.' );
+		}
 
 		foreach ( GQ_PROOF_PRODUCTS as $slug => list( $name, $price ) ) {
 			if ( wc_get_product_id_by_sku( 'gq-proof-' . $slug ) ) {
@@ -88,8 +98,12 @@ switch ( $mode ) {
 		$products    = gq_proof_product_ids();
 
 		$wpdb->query( "DELETE FROM {$wpdb->prefix}woocommerce_sessions" );
-		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}gq_cart_bearers" );
-		delete_option( 'gq_cart_identity_schema' );
+		// GQ eCommerce's bearer registry, when the installed version has one.
+		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}getquick_ecommerce_cart_bearers" );
+		delete_option( 'getquick_ecommerce_cart_bearers_schema' );
+		// GQ eCommerce throttles sign-in to 30 per identifier per 10 minutes; back-to-back
+		// suites sign the synthetic customers in more often than that.
+		$wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '\\_transient\\_getquick\\_auth\\_limit\\_%' OR option_name LIKE '\\_transient\\_timeout\\_getquick\\_auth\\_limit\\_%'" );
 
 		// The customer's Woo saved cart: Alpha x3 and the saved-only Beta x2.
 		$saved = array();
@@ -127,10 +141,25 @@ switch ( $mode ) {
 				'wordpress'   => $wp_version,
 				'woocommerce' => WC_VERSION,
 				'database'    => $wpdb->db_server_info(),
+				'getquick-config' => defined( 'GETQUICK_CONFIG_VERSION' ) ? GETQUICK_CONFIG_VERSION : null,
+				'gq-design'       => defined( 'GETQUICK_DESIGN_VERSION' ) ? GETQUICK_DESIGN_VERSION : null,
+				'gq-ecommerce'    => defined( 'GETQUICK_ECOMMERCE_VERSION' ) ? GETQUICK_ECOMMERCE_VERSION : null,
+				'gq-ecommerce-active' => defined( 'GETQUICK_ECOMMERCE_ACTIVE' ),
 			)
 		) . "\n";
 		break;
 
+	case 'drop-registry':
+		global $wpdb;
+		$wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}getquick_ecommerce_cart_bearers" );
+		WP_CLI::success( 'Registry table dropped.' );
+		break;
+
+	case 'end-sessions':
+		WP_Session_Tokens::get_instance( gq_proof_customer_id() )->destroy_all();
+		WP_CLI::success( 'Customer sessions ended.' );
+		break;
+
 	default:
-		WP_CLI::error( 'usage: wp eval-file seed.php install|reset|versions' );
+		WP_CLI::error( 'usage: wp eval-file seed.php install|reset|versions|drop-registry|end-sessions' );
 }
