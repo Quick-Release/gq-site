@@ -3,6 +3,17 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Changed
+
+- **`docs/agents/issue-tracker.md` spells out every `/wayfinder` operation**,
+  not just its map issue: child tickets as sub-issues of the map, blocking
+  through GitHub's native issue dependencies, the frontier query, claiming
+  and resolving a ticket. It matches the `setup-matt-pocock-skills`
+  GitHub template, so `/wayfinder` no longer guesses how tickets link and
+  block. Existing sites pick it up with `gq sync`.
+
 ## 0.17.3 — 2026-10-04
 
 ### Added
