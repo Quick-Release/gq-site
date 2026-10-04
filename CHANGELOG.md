@@ -5,6 +5,8 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.17.2 — 2026-10-04
+
 ### Fixed
 
 - **A bilingual Site's Frontend tests pass.** Two bugs in the Frontend
