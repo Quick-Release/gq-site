@@ -4,9 +4,10 @@
 // (`packageManager`, .mise.toml or .nvmrc), the files each app must have
 // (the variant's defaults plus gq.ops.json `doctor.requiredFiles`), the DDEV
 // project (apps/cms/.ddev/config.yaml `name`) and gq.ops.json's `sigillo` and
-// `artifacts`. Missing required pieces fail it; drift only warns. Its one
-// network read: the Artifacts namespace's jurisdiction, with
-// ARTIFACTS_API_TOKEN from the environment or Sigillo `staging`.
+// `artifacts`. Missing required pieces fail it; drift only warns. Its network
+// reads: the Artifacts namespace's jurisdiction, with ARTIFACTS_API_TOKEN from
+// the environment or Sigillo `staging`, and each Sigillo environment's secret
+// names, which no app's env file may set.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -265,12 +266,13 @@ async function checkEnvSecrets({ context, env, exec, sigilloReady, report }) {
     return report.skip("env files not checked for Sigillo secrets: Sigillo isn't ready");
   }
   const listings = [];
-  for (const environment of Object.keys(context.config.sigillo.environments ?? {})) {
-    const secrets = await sigilloSecrets({ context, env, exec }, environment);
+  const environments = context.config.sigillo.environments ?? {};
+  for (const [environment, sigilloName] of Object.entries(environments)) {
     try {
+      const secrets = await sigilloSecrets({ context, env, exec }, environment);
       listings.push({ environment: secrets.name, listing: await secrets.list() });
     } catch {
-      report.warn(`could not list Sigillo ${secrets.name}'s secret names`);
+      report.warn(`could not list Sigillo ${sigilloName}'s secret names`);
     }
   }
   const found = secretsInEnvFiles(appEnvFiles(context.projectRoot), listings);

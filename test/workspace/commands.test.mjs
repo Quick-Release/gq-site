@@ -433,6 +433,55 @@ test("gq doctor checks every app's .env, .env.local and .dev.vars against every 
   assert.match(result.stdout, /✗ apps\/docs\/\.env sets DOCS_TOKEN, a secret Sigillo stage holds/u);
 });
 
+test("gq doctor doesn't flag what gq generated, even under a name Sigillo holds", async () => {
+  const ops = {
+    ...OPS,
+    sigillo: { ...OPS.sigillo, environments: { local: "dev", staging: "stage" } },
+  };
+  const fixture = await healthySite(
+    {
+      "apps/cms/.env.example": "WP_ENV='local'\nAUTH_KEY='fixture-local-auth-key'\nDB_NAME='db'\n",
+      // The template's salt and database name, DDEV's own URL, an empty value
+      // and an exported override.
+      "apps/cms/.env":
+        "WP_ENV='local'\nAUTH_KEY='fixture-local-auth-key'\nDB_NAME='db'\n" +
+        "WP_HOME='https://fixture-admin.ddev.site'\nS3_UPLOADS_BUCKET=''\nexport PLOI_API_TOKEN=ploi-value\n",
+    },
+    ops,
+  );
+  const exec = machine({
+    stdout: {
+      [LOCAL_LISTING.replace("--env dev", "--env stage")]:
+        "AUTH_KEY\nDB_NAME\nWP_HOME\nS3_UPLOADS_BUCKET\nPLOI_API_TOKEN\n",
+    },
+  });
+
+  const result = await fixture.run(["doctor"], { exec });
+
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(
+    result.stdout,
+    /✗ apps\/cms\/\.env sets PLOI_API_TOKEN, a secret Sigillo stage holds/u,
+  );
+  assert.doesNotMatch(result.stdout, /sets (AUTH_KEY|DB_NAME|WP_HOME|S3_UPLOADS_BUCKET)/u);
+  assert.ok(!result.stdout.includes("ploi-value"));
+});
+
+test("gq doctor still fails on R2 credentials in the CMS's .env for a site without Sigillo", async () => {
+  const fixture = await healthySite(
+    { "apps/cms/.env": "S3_UPLOADS_KEY='live-key'\n" },
+    { ...OPS, sigillo: undefined },
+  );
+  const result = await fixture.run(["doctor"], { exec: machine() });
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(
+    result.stdout,
+    /✗ apps\/cms\/\.env sets S3_UPLOADS_KEY: the local CMS would write uploads to the live bucket/u,
+  );
+  assert.doesNotMatch(result.stdout, /Secrets \(Sigillo\)|env files? not checked|secret Sigillo/u);
+  assert.ok(!result.stdout.includes("live-key"));
+});
+
 test("gq doctor confirms the env files hold no Sigillo secret, and says when it can't check", async () => {
   const healthy = await healthySite({ "apps/cms/.env": "WP_ENV='local'\n" });
   const clean = await healthy.run(["doctor"], {

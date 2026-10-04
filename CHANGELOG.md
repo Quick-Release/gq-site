@@ -10,7 +10,9 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 - **`gq doctor` fails when an app's env file holds a secret Sigillo holds.**
   It checks every app's `.env`, `.env.local` and `.dev.vars` against the
   secret names each `sigillo.environments` environment lists, comparing names
-  only (no value is read from Sigillo or printed). It warns when it can't
+  only (no value is read from Sigillo or printed). What gq generated is never
+  flagged: an empty value, the value the app's `.env.example` gives, or what
+  `gq cms start` sets from DDEV. It warns when it can't
   list an environment, and skips the check while Sigillo isn't ready; the R2
   credential check stays.
   - For a missing `apps/frontend/.env` or `apps/cms/.env`, doctor now names
