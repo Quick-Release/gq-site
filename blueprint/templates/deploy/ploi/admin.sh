@@ -268,10 +268,10 @@ if wp core is-installed; then
     require_installed plugin "$plugin"
     wp plugin activate "$plugin" --quiet
   done
-  # getquick-config is a must-use plugin (always active, invisible to
+  # gq-config is a must-use plugin (always active, invisible to
   # `wp plugin`); check that Bedrock's autoloader actually loaded it.
   if ! wp eval 'exit(defined("GETQUICK_CONFIG_VERSION") ? 0 : 1);'; then
-    echo "The getquick-config must-use plugin did not load (GETQUICK_CONFIG_VERSION is undefined)." >&2
+    echo "The gq-config must-use plugin did not load (GETQUICK_CONFIG_VERSION is undefined)." >&2
     exit 1
   fi
   wp core update-db --quiet

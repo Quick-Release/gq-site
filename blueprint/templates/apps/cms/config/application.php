@@ -147,7 +147,7 @@ Config::define('WP_DEBUG', env('WP_DEBUG') ?: false);
 Config::define('GRAPHQL_DEBUG', env('GRAPHQL_DEBUG') ?: false);
 
 /**
- * Media uploads on Cloudflare R2 (Human Made S3 Uploads; getquick-config
+ * Media uploads on Cloudflare R2 (Human Made S3 Uploads; gq-config
  * points it at S3_UPLOADS_ENDPOINT). Without the bucket and credentials,
  * uploads stay on the server; S3_UPLOADS_BUCKET_URL alone (e.g. locally)
  * serves media missing from the local uploads directory from the bucket.
@@ -172,7 +172,7 @@ if (trim((string) env('S3_UPLOADS_BUCKET_URL')) !== '') {
 }
 
 // The headless frontend's URL for this environment. When set, it replaces
-// GETQUICK → Options → Frontend (getquick-config's `frontend_url`).
+// GETQUICK → Options → Frontend (gq-config's `frontend_url`).
 if (env('GETQUICK_FRONTEND_URL')) {
     Config::define('GETQUICK_FRONTEND_URL', env('GETQUICK_FRONTEND_URL'));
 }

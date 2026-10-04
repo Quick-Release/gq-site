@@ -232,6 +232,14 @@ A site shares four more kinds of file with the blueprint:
   public configuration and placeholders only
   (`gq ploi provision` renders the server's `.env` from
   `.env.production.example`).
+  New CMS skeletons require `getquick/gq-config ^0.4.0` and
+  `getquick/getquick-theme ^0.5.1`. Existing CMS apps are site-owned:
+  `gq sync` does not rename their Composer dependency. Replace
+  `getquick/getquick-config` with `getquick/gq-config ^0.4.0`, raise the
+  theme requirement to `^0.5.1`, and update and commit `composer.lock`
+  alongside `composer.json`. The config package remains a must-use plugin,
+  not an entry in `wordpress.plugins`; its load check still uses
+  `GETQUICK_CONFIG_VERSION`, and its existing API identifiers are unchanged.
   `deploy/ploi/admin.d/10-theme.sh`, which activates `getquick-theme`,
   belongs to the CMS skeleton. A skeleton's files are written only with
   their app: while its directory is missing, so `gq sync` never adds files

@@ -48,6 +48,24 @@ test("the deploy script activates exactly the plugins gq.ops.json lists, in orde
   assert.match(result.stdout, /^ACME_SHOP_DEPLOY_STATUS=success SHA=0123abcd$/mu);
 });
 
+test("the deploy checks gq-config through its unchanged must-use plugin version constant", async () => {
+  const script = await generatedScript();
+  const check = 'eval exit(defined("GETQUICK_CONFIG_VERSION") ? 0 : 1);';
+  const loaded = await deploy(script);
+  assert.equal(loaded.code, 0, loaded.output);
+  assert.ok(wpCalls(loaded.calls, check).length === 1);
+  assert.ok(!wpCalls(loaded.calls, "plugin activate").some((call) => call.includes("gq-config")));
+
+  const missing = await deploy(script, { failing: [check] });
+  assert.equal(missing.code, 1, missing.output);
+  assert.match(
+    missing.stderr,
+    /The gq-config must-use plugin did not load \(GETQUICK_CONFIG_VERSION is undefined\)\./u,
+  );
+  assert.deepEqual(wpCalls(missing.calls, "core update-db"), []);
+  assert.doesNotMatch(missing.stdout, /^ACME_SHOP_DEPLOY_STATUS=success/mu);
+});
+
 test("the deploy script replaces exactly the paths gq ploi release ships", async () => {
   const result = await deploy(await generatedScript());
 

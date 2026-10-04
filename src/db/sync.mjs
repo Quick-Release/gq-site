@@ -168,7 +168,7 @@ export function searchReplacePairs({
 
 // The local administrator db sync creates or resets. `dev` / `dev` is the
 // GETQUICK convention; the address is the site's (gq.ops.json
-// `local.adminEmail`), since it decides what getquick-config shows the admin.
+// `local.adminEmail`), since it decides what gq-config shows the admin.
 export function localAdmin(ops) {
   return { login: "dev", password: "dev", email: ops.local.adminEmail };
 }

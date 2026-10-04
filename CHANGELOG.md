@@ -3,6 +3,22 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## 0.17.5 — 2026-10-04
+
+### Changed
+
+- **New CMS skeletons install `getquick/gq-config ^0.4.0`**, replacing
+  `getquick/getquick-config ^0.3.4`, and require
+  `getquick/getquick-theme ^0.5.1`, which depends on the renamed package.
+  The must-use plugin load check still uses `GETQUICK_CONFIG_VERSION`;
+  existing API identifiers remain unchanged.
+  - **Existing sites:** the CMS is site-owned, so `gq sync` does not migrate
+    its Composer requirements. Remove `getquick/getquick-config`, require
+    `getquick/gq-config ^0.4.0` and `getquick/getquick-theme ^0.5.1`, then
+    update and commit the site's `composer.lock` together with `composer.json`.
+    Verify the must-use plugin loads and the site's existing API routes work
+    before deploying. No consumer migration is performed by this release.
+
 ## 0.17.4 — 2026-10-04
 
 ### Changed

@@ -18,7 +18,7 @@ const STUBS = {
   // WordPress is installed unless WP_INSTALLED=0, every plugin asked about
   // is active, and every core language is installed unless
   // WP_LANGUAGE_INSTALLED=0.
-  // Of the wp eval checks, the getquick-config one passes and the S3 Uploads
+  // Of the wp eval checks, the gq-config one passes and the S3 Uploads
   // one doesn't (no bucket). Polylang's languages (polylang.sh's
   // `wp eval-file - languages`) are WP_POLYLANG_LANGUAGES. A call starting
   // with a line of WP_FAILING fails.
