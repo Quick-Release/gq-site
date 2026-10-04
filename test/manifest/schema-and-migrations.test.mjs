@@ -218,6 +218,15 @@ test("an invalid manifest fails naming each key path", async () => {
         "ploi.serverID is not a known key; " +
         "wordpress.plugins[1]: Invalid input: expected string, received number",
     ],
+    [
+      {
+        schemaVersion: 1,
+        project: "fixture",
+        variant: "content",
+        artifacts: { namespace: "fixture", repo: "fixture", jurisdiction: "ch" },
+      },
+      'artifacts.jurisdiction must be "eu" or "us" or "unrestricted"',
+    ],
     [{ schemaVersion: "1", project: "fixture" }, null],
   ]) {
     const fixture = await createFixtureSite({ ops });

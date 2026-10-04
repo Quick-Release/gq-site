@@ -91,7 +91,7 @@ export async function runCli(
   // So do the local CMS commands, whose extra arguments go to DDEV or Composer.
   if (isCmsCommand(argv)) return runCmsCommand(argv.slice(1), { cwd, env, exec, io, interactive });
   // And the workspace runners (setup, doctor, verify), with their own flags.
-  if (isWorkspaceCommand(argv)) return runWorkspaceCommand(argv, { cwd, env, exec, io });
+  if (isWorkspaceCommand(argv)) return runWorkspaceCommand(argv, { cwd, env, fetch, exec, io });
   // And gq sync, which reads a manifest older than the other commands accept.
   if (isSyncCommand(argv)) return runSyncCommand(argv.slice(1), { cwd, io });
   // And gq new, which creates the manifest instead of reading one.

@@ -9,7 +9,12 @@ import { basename } from "node:path";
 import test from "node:test";
 
 import { VERSION } from "../../src/version.mjs";
-import { createFixtureSite, recordingExec } from "../support/fixture-site.mjs";
+import {
+  createFixtureSite,
+  json,
+  recordingExec,
+  recordingFetch,
+} from "../support/fixture-site.mjs";
 import { CONTENT_CHECKS } from "../support/site-settings.mjs";
 
 const LOCAL_CHECKS = CONTENT_CHECKS.filter((line) => !line.startsWith("composer "));
@@ -373,6 +378,103 @@ test("gq doctor skips the Artifacts check for a site without an Artifacts mirror
   const result = await fixture.run(["doctor"], { exec });
   assert.doesNotMatch(result.stdout, /Artifacts/u);
   assert.ok(!actions(exec).some((line) => line.startsWith("git remote")));
+});
+
+// The Artifacts API's namespace listing, holding `namespaces`; `status`
+// fails it instead.
+function artifactsApi({ namespaces = [], status = 200 } = {}) {
+  return recordingFetch(({ method, url }) => {
+    assert.equal(method, "GET");
+    assert.equal(
+      url,
+      "https://api.cloudflare.com/client/v4/accounts/account-1/artifacts/namespaces",
+    );
+    if (status !== 200) return json({ success: false, errors: [{ message: "nope" }] }, status);
+    return { success: true, result: namespaces };
+  });
+}
+
+const STAGING_OPS = {
+  ...OPS,
+  sigillo: { ...OPS.sigillo, environments: { local: "dev", staging: "stage" } },
+};
+const STAGING_TOKEN =
+  "sigillo secrets get ARTIFACTS_API_TOKEN --api-url https://secrets.example.test " +
+  "--project PROJECT1 --env stage --raw --force";
+
+test("gq doctor fails when the Artifacts namespace is in another jurisdiction than gq.ops.json's", async () => {
+  const fixture = await healthySite({}, STAGING_OPS);
+  const exec = machine({ stdout: { [STAGING_TOKEN]: "staging-artifacts\n" } });
+  const fetch = artifactsApi({
+    namespaces: [{ namespace: "fixture-ns", jurisdiction: "unrestricted" }],
+  });
+
+  const result = await fixture.run(["doctor"], { exec, fetch });
+
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(
+    result.stdout,
+    /✗ Artifacts namespace fixture-ns is unrestricted, but gq\.ops\.json artifacts\.jurisdiction is eu \(the default\)/u,
+  );
+  assert.equal(fetch.requests[0].headers.Authorization, "Bearer staging-artifacts");
+  assert.ok(!result.stdout.includes("staging-artifacts"));
+});
+
+test("gq doctor confirms the namespace's jurisdiction with ARTIFACTS_API_TOKEN from the environment", async () => {
+  const fixture = await healthySite(
+    {},
+    {
+      ...STAGING_OPS,
+      artifacts: { ...OPS.artifacts, jurisdiction: "us" },
+    },
+  );
+  const exec = machine();
+  const fetch = artifactsApi({ namespaces: [{ namespace: "fixture-ns", jurisdiction: "us" }] });
+
+  const result = await fixture.run(["doctor"], {
+    env: { ARTIFACTS_API_TOKEN: "env-artifacts" },
+    exec,
+    fetch,
+  });
+
+  assert.equal(result.code, 0, result.stdout);
+  assert.match(result.stdout, /✓ Artifacts namespace fixture-ns is in us, as gq\.ops\.json says/u);
+  assert.equal(fetch.requests[0].headers.Authorization, "Bearer env-artifacts");
+  assert.ok(!actions(exec).some((line) => line.startsWith("sigillo secrets")));
+});
+
+test("gq doctor only warns when it can't check the namespace's jurisdiction", async () => {
+  const fixture = await healthySite({}, STAGING_OPS);
+  const env = { ARTIFACTS_API_TOKEN: "env-artifacts" };
+
+  const missing = await fixture.run(["doctor"], { env, exec: machine(), fetch: artifactsApi() });
+  assert.equal(missing.code, 0, missing.stdout);
+  assert.match(
+    missing.stdout,
+    /⚠ Artifacts namespace fixture-ns doesn't exist yet — run: gq cloudflare ci/u,
+  );
+
+  const failing = await fixture.run(["doctor"], {
+    env,
+    exec: machine(),
+    fetch: artifactsApi({ status: 403 }),
+  });
+  assert.equal(failing.code, 0, failing.stdout);
+  assert.match(
+    failing.stdout,
+    /⚠ could not read Artifacts namespace fixture-ns's jurisdiction: .*nope/u,
+  );
+});
+
+test("gq doctor skips the jurisdiction check without the Artifacts token", async () => {
+  // No Sigillo staging environment and no ARTIFACTS_API_TOKEN: nothing to ask with.
+  const fixture = await healthySite();
+  const result = await fixture.run(["doctor"], { exec: machine() });
+  assert.equal(result.code, 0, result.stdout);
+  assert.match(
+    result.stdout,
+    /· Artifacts namespace fixture-ns's jurisdiction not checked: no ARTIFACTS_API_TOKEN/u,
+  );
 });
 
 // --- gq setup ----------------------------------------------------------------

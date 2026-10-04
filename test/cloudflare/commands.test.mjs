@@ -69,15 +69,23 @@ const PERMISSION_GROUPS = [
 ].map((name, index) => ({ id: `group-${index}`, name }));
 
 // An in-memory Cloudflare account: API tokens (by name), R2 buckets with
-// custom domains, and Artifacts repositories. Every request's bearer token is
-// recorded, so a test can tell the manager token from a temporary one.
-function fakeCloudflare({ tokens = [], buckets = [], domains = {}, repos = [] } = {}) {
+// custom domains, and Artifacts namespaces (as created: `{ namespace,
+// jurisdiction? }`, unrestricted without one) and repositories. Every
+// request's bearer token is recorded, so a test can tell the manager token
+// from a temporary one.
+function fakeCloudflare({
+  tokens = [],
+  buckets = [],
+  domains = {},
+  namespaces = [],
+  repos = [],
+} = {}) {
   const state = {
     tokens: tokens.map((token) => ({ status: "active", ...token })),
     buckets: [...buckets],
     domains: structuredClone(domains),
     repos: [...repos],
-    namespaces: [],
+    namespaces: [...namespaces],
     deleted: [],
     created: [],
     updated: [],
@@ -158,10 +166,15 @@ function fakeCloudflare({ tokens = [], buckets = [], domains = {}, repos = [] } 
       return found ? ok(found) : new Response("{}", { status: 404 });
     }
     if (method === "GET" && path === "/artifacts/namespaces") {
-      return ok(state.namespaces.map((namespace) => ({ namespace })));
+      return ok(
+        state.namespaces.map(({ namespace, jurisdiction = "unrestricted" }) => ({
+          namespace,
+          jurisdiction,
+        })),
+      );
     }
     if (method === "POST" && path === "/artifacts/namespaces") {
-      state.namespaces.push(data.namespace);
+      state.namespaces.push(data);
       return ok({});
     }
     const repos = /^\/artifacts\/namespaces\/([^/]+)\/repos$/u.exec(path);
@@ -537,7 +550,8 @@ test("cloudflare ci creates the CI tokens, the backup bucket and the Artifacts r
   assert.equal(secrets.CI_BACKUP_R2_ACCESS_KEY_ID, backups.id);
   assert.equal(secrets.CI_BACKUP_R2_SECRET_ACCESS_KEY, sha256(backups.value));
   assert.equal(secrets.CI_DEPLOY_API_TOKEN, deploy.value);
-  assert.deepEqual(state.namespaces, ["fixture-ns"]);
+  // In the EU unless the Site says otherwise.
+  assert.deepEqual(state.namespaces, [{ namespace: "fixture-ns", jurisdiction: "eu" }]);
   assert.deepEqual(
     state.repos.map(({ name }) => name),
     ["fixture-repo"],
@@ -557,6 +571,7 @@ test("cloudflare ci reads the stored Artifacts token when it creates nothing", a
   const fixture = await site();
   const { fetch, state } = fakeCloudflare({
     buckets: ["fixture-ci-backups"],
+    namespaces: [{ namespace: "fixture-ns", jurisdiction: "eu" }],
     repos: [{ name: "fixture-repo", remote: "https://git.example.test/existing.git" }],
     tokens: [
       { id: "a", name: "GETQUICK FIXTURE Artifacts" },
@@ -580,6 +595,80 @@ test("cloudflare ci reads the stored Artifacts token when it creates nothing", a
   const repoRead = fetch.requests.find(({ url }) => url.includes("/artifacts/"));
   assert.equal(bearer(repoRead), "Bearer stored-artifacts");
   assert.ok(state.created.every(({ name }) => name.endsWith("(temporary)")));
+});
+
+test("cloudflare ci creates the namespace in the jurisdiction gq.ops.json names", async () => {
+  for (const [jurisdiction, created] of [
+    ["us", { namespace: "fixture-ns", jurisdiction: "us" }],
+    // The API takes no jurisdiction for an unrestricted namespace.
+    ["unrestricted", { namespace: "fixture-ns" }],
+  ]) {
+    const fixture = await site({
+      ops: { ...OPS, artifacts: { ...OPS.artifacts, jurisdiction } },
+    });
+    const { fetch, state } = fakeCloudflare();
+    const { exec } = fakeSigillo();
+
+    const result = await fixture.run(["cloudflare", "ci"], { env: ENV, fetch, exec });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(state.namespaces, [created]);
+  }
+});
+
+test("cloudflare ci stops at a namespace in another jurisdiction, creating no repository", async () => {
+  const fixture = await site();
+  const { fetch, state } = fakeCloudflare({ namespaces: [{ namespace: "fixture-ns" }] });
+  const { exec } = fakeSigillo();
+
+  const result = await fixture.run(["cloudflare", "ci"], { env: ENV, fetch, exec });
+
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stderr,
+    /Artifacts namespace fixture-ns is unrestricted, but gq\.ops\.json artifacts\.jurisdiction is eu/u,
+  );
+  assert.match(result.stderr, /set artifacts\.jurisdiction to "unrestricted"/u);
+  assert.match(result.stderr, /DELETE \/accounts\/account-1\/artifacts\/namespaces\/fixture-ns/u);
+  assert.deepEqual(state.namespaces, [{ namespace: "fixture-ns" }]);
+  assert.deepEqual(state.repos, []);
+  assert.ok(
+    !fetch.requests.some(({ method, url }) => method === "POST" && url.includes("/artifacts/")),
+  );
+});
+
+test("cloudflare ci checks an existing namespace's jurisdiction before it changes anything", async () => {
+  const provisioned = {
+    buckets: [],
+    namespaces: [{ namespace: "fixture-ns", jurisdiction: "us" }],
+    tokens: [
+      { id: "a", name: "GETQUICK FIXTURE Artifacts" },
+      { id: "b", name: "GETQUICK FIXTURE CI Backups R2" },
+      { id: "c", name: "GETQUICK FIXTURE CI Deploy" },
+    ],
+  };
+  const stored = {
+    ARTIFACTS_API_TOKEN: "stored-artifacts",
+    CI_BACKUP_R2_ACCESS_KEY_ID: "k",
+    CI_BACKUP_R2_SECRET_ACCESS_KEY: "s",
+    CI_DEPLOY_API_TOKEN: "d",
+  };
+  for (const argv of [
+    ["cloudflare", "ci"],
+    ["cloudflare", "ci", "--dry-run"],
+  ]) {
+    const fixture = await site();
+    const { fetch, state } = fakeCloudflare(provisioned);
+    const { exec } = fakeSigillo(stored);
+
+    const result = await fixture.run(argv, { env: ENV, fetch, exec });
+
+    assert.equal(result.code, 1, argv.join(" "));
+    assert.match(result.stderr, /Artifacts namespace fixture-ns is us, but .+ is eu/u);
+    assert.deepEqual(state.buckets, []);
+    assert.deepEqual(state.created, []);
+    assert.ok(!fetch.requests.some(({ method }) => method !== "GET"), argv.join(" "));
+  }
 });
 
 test("cloudflare ci names the gq.ops.json keys it needs", async () => {

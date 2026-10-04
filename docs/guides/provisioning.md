@@ -22,7 +22,7 @@ pnpm cf:deploy-token      # the Frontend's deploy token, D1 included (the store)
 pnpm cf:releases          # the CMS release bucket
 pnpm cf:media             # the media bucket on its own public domain
 pnpm ploi:media           # the CMS's .env points S3 Uploads at it
-pnpm cf:ci                # Artifacts, CI backups, the CI deploy token
+pnpm cf:ci                # Artifacts (in the EU), CI backups, the CI deploy token
 pnpm github:setup         # the push webhook (an Artifacts-only Site: nothing to do)
 pnpm git:artifacts setup  # an Artifacts-only Site: origin is Artifacts
 pnpm frontend:secrets     # FRONTEND_REFRESH_TOKEN, PUBLICATION_EVENT_SECRET
@@ -201,7 +201,18 @@ read:
   "Media R2" → `S3_UPLOADS_KEY` / `S3_UPLOADS_SECRET`, for `ploi media`.
 - `cloudflare ci`: "Artifacts" → `ARTIFACTS_API_TOKEN`, the `ci.backupBucket`
   bucket and "CI Backups R2" → `CI_BACKUP_R2_*`, "CI Deploy" →
-  `CI_DEPLOY_API_TOKEN`, and the `artifacts` namespace and repository.
+  `CI_DEPLOY_API_TOKEN`, and the `artifacts` namespace and repository. The
+  namespace is created in `artifacts.jurisdiction`: `eu` when it's left
+  out, `us`, or `unrestricted` to opt out. Cloudflare can't change a
+  namespace's jurisdiction, so an existing namespace in another one stops
+  the command: before it changes anything (`--dry-run` included) when its
+  Artifacts token is already stored, and always before it creates a
+  repository. Either set
+  `artifacts.jurisdiction` to match it, or delete the namespace
+  (`DELETE /accounts/<account>/artifacts/namespaces/<namespace>`; the name
+  can be reused), run `cloudflare ci` again and push the code again. The
+  CI Worker matches pushes by namespace and repository name, so it keeps
+  working without a redeploy. `gq doctor` reports the same mismatch.
 
 `gq sync` generates the site's CI Worker in `infra/ci`, with its own
 Wrangler (a site that keeps one elsewhere points `ci.directory` at it);

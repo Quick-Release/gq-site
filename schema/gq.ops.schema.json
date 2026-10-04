@@ -204,6 +204,15 @@
         },
         "repo": {
           "type": "string"
+        },
+        "jurisdiction": {
+          "description": "Where the Artifacts namespace keeps the Site's code: gq cloudflare ci creates it there, and stops at an existing one elsewhere. Left out, \"eu\"; \"unrestricted\" opts out. Cloudflare can't change it after the namespace is created.",
+          "type": "string",
+          "enum": [
+            "eu",
+            "us",
+            "unrestricted"
+          ]
         }
       },
       "required": [

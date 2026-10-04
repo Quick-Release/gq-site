@@ -32,7 +32,10 @@ required, `domains` has the roles `admin` and `frontend` and an optional
 command reads (`ploi`, `cloudflare`, `releases`, `media`, `backups`, `local`,
 `artifacts`, `ci`, `github`, `sigillo`, `wordpress.plugins`,
 `wordpress.locale`, `wordpress.languages`) are optional; a command names
-the keys it needs. `wordpress.locale` is the site's main language as a
+the keys it needs. `artifacts.jurisdiction` is where `gq cloudflare ci`
+creates the Artifacts namespace: `eu` (the default when it's left out),
+`us`, or `unrestricted` to opt out; see
+[Cloudflare provisioning and CI](../guides/provisioning.md#cloudflare-provisioning-and-ci). `wordpress.locale` is the site's main language as a
 WordPress locale (`en_US`, `pt_PT`, `pt_PT_ao90`); see
 [The site's language](../guides/sites.md#the-sites-language).
 `wordpress.languages` lists a bilingual site's other languages, each a

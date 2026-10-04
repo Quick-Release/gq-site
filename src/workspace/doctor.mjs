@@ -4,26 +4,31 @@
 // (`packageManager`, .mise.toml or .nvmrc), the files each app must have
 // (the variant's defaults plus gq.ops.json `doctor.requiredFiles`), the DDEV
 // project (apps/cms/.ddev/config.yaml `name`) and gq.ops.json's `sigillo` and
-// `artifacts`. Missing required pieces fail it; drift only warns.
+// `artifacts`. Missing required pieces fail it; drift only warns. Its one
+// network read: the Artifacts namespace's jurisdiction, with
+// ARTIFACTS_API_TOKEN from the environment or Sigillo `staging`.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { CMS_PATH, commandExists, ddevStatus, phpToolchainAvailable } from "../cms/local.mjs";
-import { artifactsRemoteUrl } from "../cloudflare/account-client.mjs";
-import { MANIFEST_FILENAME } from "../manifest/schema.mjs";
+import { artifactsRemoteUrl, createArtifactsClient } from "../cloudflare/account-client.mjs";
+import { jurisdictionMismatchMessage } from "../cloudflare/ci.mjs";
+import { SECRETS_ENVIRONMENT } from "../cloudflare/tokens.mjs";
+import { artifactsJurisdiction, MANIFEST_FILENAME } from "../manifest/schema.mjs";
 import { localMediaReadiness } from "../media/readiness.mjs";
 import {
   hasReleaseConfig,
   RELEASE_CONFIG_FILENAME,
   siteSettings,
 } from "../manifest/site-settings.mjs";
+import { sigilloSecrets } from "../sigillo/commands.mjs";
 import { VERSION } from "../version.mjs";
 import { FRONTEND_PATH } from "./layout.mjs";
 
 const PACKAGE_NAME = "@getquick/site";
 
-export async function runDoctor(_options, { context, env, exec, io }) {
+export async function runDoctor(_options, { context, env, fetch, exec, io }) {
   const root = context.projectRoot;
   const name = context.config.project ?? "GETQUICK";
   const project = `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
@@ -35,6 +40,7 @@ export async function runDoctor(_options, { context, env, exec, io }) {
   };
   const report = createReport(io);
   const { ok, warn, fail } = report;
+  let sigilloReady = false;
 
   io.out(`${project} workspace doctor\n`);
 
@@ -108,7 +114,13 @@ export async function runDoctor(_options, { context, env, exec, io }) {
 
   if (context.config.sigillo) {
     io.out("\nSecrets (Sigillo):");
-    await checkSigillo({ root, sigillo: context.config.sigillo, capture, report });
+    sigilloReady = await checkSigillo({ root, sigillo: context.config.sigillo, capture, report });
+  }
+
+  if (context.config.artifacts && context.config.cloudflare?.accountId) {
+    io.out("\nCloudflare Artifacts:");
+    const token = await artifactsToken({ context, env, exec, sigilloReady });
+    await checkJurisdiction({ config: context.config, token, fetch, report });
   }
 
   io.out("\nLocal WordPress:");
@@ -132,6 +144,7 @@ function createReport(io) {
   let healthy = true;
   return {
     ok: (message) => io.out(`  ✓ ${message}`),
+    skip: (message) => io.out(`  · ${message}`),
     warn: (message) => io.out(`  ⚠ ${message}`),
     fail: (message) => {
       io.out(`  ✗ ${message}`);
@@ -210,19 +223,78 @@ async function checkArtifactsRemote({ config, capture, report }) {
   report.ok("origin pushes to GitHub only (the CI Worker mirrors it to Artifacts)");
 }
 
+// Resolves to whether Sigillo is ready to read secrets (installed, a real
+// project, logged in).
 async function checkSigillo({ root, sigillo, capture, report }) {
   const binary = join(root, "node_modules", ".bin", "sigillo");
-  if (!existsSync(binary)) return report.warn("Sigillo CLI is missing — run: pnpm install");
+  if (!existsSync(binary)) {
+    report.warn("Sigillo CLI is missing — run: pnpm install");
+    return false;
+  }
   if (String(sigillo.projectId ?? "").startsWith("REPLACE_WITH_")) {
-    return report.warn(
+    report.warn(
       "gq.ops.json sigillo.projectId is still a placeholder — cms:dev and deploy:frontend will not run",
     );
+    return false;
   }
   report.ok(`Sigillo project ${sigillo.projectId}`);
   if ((await capture(binary, ["me", "--api-url", sigillo.apiUrl])).code !== 0) {
-    return report.warn("Sigillo is not logged in — run: pnpm sigillo:login");
+    report.warn("Sigillo is not logged in — run: pnpm sigillo:login");
+    return false;
   }
   report.ok("Sigillo is logged in");
+  return true;
+}
+
+// ARTIFACTS_API_TOKEN (gq cloudflare ci's) from the environment, or from
+// Sigillo `staging` when the site maps it and Sigillo is logged in; null
+// when neither has it.
+async function artifactsToken({ context, env, exec, sigilloReady }) {
+  if (env.ARTIFACTS_API_TOKEN) return env.ARTIFACTS_API_TOKEN;
+  if (!sigilloReady || !context.config.sigillo.environments?.[SECRETS_ENVIRONMENT]) return null;
+  try {
+    const secrets = await sigilloSecrets({ context, env, exec }, SECRETS_ENVIRONMENT);
+    return (await secrets.get("ARTIFACTS_API_TOKEN")) || null;
+  } catch {
+    return null;
+  }
+}
+
+// Cloudflare can't move a namespace, so one outside gq.ops.json
+// `artifacts.jurisdiction` keeps the Site's code where it shouldn't be.
+async function checkJurisdiction({ config, token, fetch, report }) {
+  const { namespace } = config.artifacts;
+  const accountId = config.cloudflare.accountId;
+  if (!token) {
+    return report.skip(
+      `Artifacts namespace ${namespace}'s jurisdiction not checked: no ARTIFACTS_API_TOKEN in the environment or Sigillo ${SECRETS_ENVIRONMENT}`,
+    );
+  }
+  const configured = artifactsJurisdiction(config);
+  let existing;
+  try {
+    existing = await createArtifactsClient({ accountId, token, fetch }).findNamespace(namespace);
+  } catch (error) {
+    return report.warn(
+      `could not read Artifacts namespace ${namespace}'s jurisdiction: ${error.message}`,
+    );
+  }
+  if (!existing) {
+    return report.warn(
+      `Artifacts namespace ${namespace} doesn't exist yet — run: gq cloudflare ci`,
+    );
+  }
+  if (existing.jurisdiction !== configured) {
+    return report.fail(
+      jurisdictionMismatchMessage({
+        accountId,
+        namespace,
+        current: existing.jurisdiction,
+        configured,
+      }),
+    );
+  }
+  report.ok(`Artifacts namespace ${namespace} is in ${configured}, as gq.ops.json says`);
 }
 
 // The Node version .mise.toml (`node = "…"`) or .nvmrc pins, if any.

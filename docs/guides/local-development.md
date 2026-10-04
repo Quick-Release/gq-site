@@ -25,10 +25,13 @@ The runners are shared; what they check is the site's.
   `{ "<app path>": ["<file>", …] }`),
   installed dependencies, a leftover Artifacts push URL (with
   `gq.ops.json` `artifacts`), the apps' `.env` files, Sigillo's project and
-  login (with `sigillo`), local media (`gq media check --local`) and the DDEV
+  login (with `sigillo`), the Artifacts namespace's jurisdiction against
+  `artifacts.jurisdiction` (read with `ARTIFACTS_API_TOKEN` from the
+  environment or Sigillo `staging`, and skipped without it), local media (`gq media check --local`) and the DDEV
   project named in `apps/cms/.ddev/config.yaml`. A missing tool, required
-  file or `node_modules`, a Node below the minimum, or R2 credentials in
-  `apps/cms/.env` fails it (exit 1); drift from a pin only warns.
+  file or `node_modules`, a Node below the minimum, R2 credentials in
+  `apps/cms/.env`, or a namespace outside its jurisdiction fails it
+  (exit 1); drift from a pin only warns.
 
 ## Local CMS (DDEV)
 

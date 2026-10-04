@@ -19,7 +19,7 @@ export function isWorkspaceCommand(argv) {
 }
 
 // Resolves to the exit code.
-export async function runWorkspaceCommand([name, ...args], { cwd, env, exec, io }) {
+export async function runWorkspaceCommand([name, ...args], { cwd, env, fetch, exec, io }) {
   const command = WORKSPACE_COMMANDS.get(name);
   const options = {};
   for (const argument of args) {
@@ -28,5 +28,5 @@ export async function runWorkspaceCommand([name, ...args], { cwd, env, exec, io 
     options[option] = true;
   }
   const context = await loadProjectContext({ cwd, env });
-  return command.run(options, { context, env, exec, io });
+  return command.run(options, { context, env, fetch, exec, io });
 }

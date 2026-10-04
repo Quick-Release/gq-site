@@ -90,17 +90,30 @@ export function createArtifactsClient({ accountId, token, fetch }) {
     return data === null ? null : (data.result ?? data);
   }
 
+  // The namespace's listing entry, its `jurisdiction` read as "unrestricted"
+  // when missing; null when there is none.
+  async function findNamespace(namespace) {
+    const namespaces = await request("GET", "/namespaces");
+    const list = Array.isArray(namespaces) ? namespaces : (namespaces.namespaces ?? []);
+    const entry = list.find((item) => (item.namespace ?? item.name) === namespace);
+    return entry ? { ...entry, jurisdiction: entry.jurisdiction ?? "unrestricted" } : null;
+  }
+
   return {
-    async ensureRepository(namespace, name, { defaultBranch = "main" } = {}) {
-      const existing = await request("GET", `/namespaces/${namespace}/repos/${name}`, undefined, {
+    findNamespace,
+    // Creates a missing namespace in `jurisdiction` ("eu", "us" or
+    // "unrestricted"); an existing one is used as it is.
+    async ensureRepository(namespace, name, { jurisdiction, defaultBranch = "main" }) {
+      if (!(await findNamespace(namespace))) {
+        await request("POST", "/namespaces", {
+          namespace,
+          ...(jurisdiction === "unrestricted" ? {} : { jurisdiction }),
+        });
+      }
+      const repository = await request("GET", `/namespaces/${namespace}/repos/${name}`, undefined, {
         allowNotFound: true,
       });
-      if (existing) return existing;
-      const namespaces = await request("GET", "/namespaces");
-      const list = Array.isArray(namespaces) ? namespaces : (namespaces.namespaces ?? []);
-      if (!list.some((entry) => (entry.namespace ?? entry.name) === namespace)) {
-        await request("POST", "/namespaces", { namespace });
-      }
+      if (repository) return repository;
       return request("POST", `/namespaces/${namespace}/repos`, {
         name,
         default_branch: defaultBranch,

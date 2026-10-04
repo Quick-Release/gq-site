@@ -16,6 +16,10 @@ export const VARIANTS = ["content", "commerce"];
 export const OFFBOARDING_PHASES = ["cut", "archived"];
 // What a check can require to run locally (see workspace/verify.mjs).
 export const CHECK_REQUIREMENTS = ["php", "ddev"];
+// Where an Artifacts namespace keeps its repositories, as the Artifacts API
+// names it. Cloudflare can't change it after the namespace is created.
+export const ARTIFACTS_JURISDICTIONS = ["eu", "us", "unrestricted"];
+export const DEFAULT_ARTIFACTS_JURISDICTION = "eu";
 
 // Where `$schema` points from a site root, through the site's own install.
 export const SCHEMA_URL = "./node_modules/@getquick/site/schema/gq.ops.schema.json";
@@ -47,6 +51,11 @@ const languageSlug = z
 // plugin) and its GraphQL integration.
 const POLYLANG_PLUGINS = ["polylang-pro", "polylang"];
 const POLYLANG_GRAPHQL_PLUGIN = "gq-polylang-graphql";
+
+// gq.ops.json `artifacts.jurisdiction`, or the default when it's left out.
+export function artifactsJurisdiction(ops) {
+  return ops.artifacts?.jurisdiction ?? DEFAULT_ARTIFACTS_JURISDICTION;
+}
 
 // The default language's slug: its locale's language code (pt for
 // pt_PT_ao90), as Polylang names it.
@@ -151,7 +160,20 @@ export const manifestSchema = z
     local: z
       .strictObject({ adminEmail: z.string().optional(), frontendUrl: z.string().optional() })
       .optional(),
-    artifacts: z.strictObject({ namespace: z.string(), repo: z.string() }).optional(),
+    artifacts: z
+      .strictObject({
+        namespace: z.string(),
+        repo: z.string(),
+        jurisdiction: z
+          .enum(ARTIFACTS_JURISDICTIONS)
+          .optional()
+          .describe(
+            "Where the Artifacts namespace keeps the Site's code: gq cloudflare ci creates it " +
+              'there, and stops at an existing one elsewhere. Left out, "eu"; "unrestricted" ' +
+              "opts out. Cloudflare can't change it after the namespace is created.",
+          ),
+      })
+      .optional(),
     ci: z
       .strictObject({
         worker: z.string().optional(),
