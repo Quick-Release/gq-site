@@ -234,8 +234,12 @@ async function inspectContents(
         `r2://${recorded.bucket}/${recorded.prefix}manifest.json ${manifest ? "doesn't match" : "is missing, unlike"} gq.ops.json offboarded.archive: stopping before anything else is deleted.`,
       );
     }
-    if (artifactsOnly && artifactsExists) await assertRefsArchived(providers, bucket, recorded);
-    return { recorded };
+    if (!artifactsOnly) return { recorded };
+    const contents = JSON.parse(
+      await text((await bucket.get(`${recorded.prefix}manifest.json`)).body),
+    );
+    if (artifactsExists) await assertRefsArchived(providers, contents, recorded);
+    return { recorded, files: contents.files };
   }
   const stop = "stopping before anything is written or deleted.";
   if (gone.length > 0) {
@@ -276,9 +280,8 @@ async function inspectContents(
 // Throws unless an Artifacts-only Site's repository, still there when an
 // archive is resumed, holds the refs the recorded manifest.json has for
 // code.bundle: anything pushed since would be lost with it.
-async function assertRefsArchived(providers, bucket, recorded) {
+async function assertRefsArchived(providers, manifest, recorded) {
   const key = `${recorded.prefix}manifest.json`;
-  const manifest = JSON.parse(await text((await bucket.get(key)).body));
   const differing = differingRefs(
     await providers.code.refs(),
     manifest.sources?.artifacts?.refs ?? {},
@@ -301,7 +304,8 @@ const todo = (area, text, apply) => ({ area, state: "todo", text, apply });
 
 // Archiving, verifying, then deleting, in order. `result()` is the recorded
 // archive once the plan is applied; `archivesRepository` whether the plan
-// pushes the record and archives the repository too.
+// pushes the record and archives the repository too. `hasCodeBundle()` reads
+// the archived files, including the recorded manifest's on a resumed run.
 export function archivePlan(site, { configPath, now = () => new Date() }) {
   const { ops, archive } = site;
   // An Artifacts-only Site's refs, as code.bundle holds them once made (none
@@ -335,6 +339,8 @@ export function archivePlan(site, { configPath, now = () => new Date() }) {
   return {
     items,
     result: () => archive.recorded ?? session.recorded,
+    hasCodeBundle: () =>
+      (archive.files ?? session.files).some(({ path }) => path === "code.bundle"),
     archivesRepository: !site.artifactsOnly && archivesRepository(site.repository),
   };
 }

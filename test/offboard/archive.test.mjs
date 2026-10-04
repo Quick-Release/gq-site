@@ -2075,7 +2075,76 @@ test("an Artifacts-only Site whose repository has no refs has no code to bundle"
   const manifest = JSON.parse(archived[`${prefix}manifest.json`].body);
   assert.deepEqual(manifest.sources.artifacts.refs, {});
   assert.ok(account.state.log.includes("artifacts repo fixture/fixture deleted"));
+  assert.match(
+    result.stdout,
+    /Code: {7}none \(the Artifacts repository fixture\/fixture had no refs, so no bundle was created\)/u,
+  );
+  assert.doesNotMatch(result.stdout, /Code:.*code\.bundle/u);
 });
+
+for (const empty of [true, false]) {
+  for (const repositoryDeleted of [true, false]) {
+    test(`a resumed ${empty ? "empty" : "nonempty"} Artifacts archive reports its actual code with the repository ${repositoryDeleted ? "deleted" : "still present"}`, async () => {
+      const { fixture, account } = await artifactsOnlySite({
+        state: { artifactsRefs: empty ? {} : ARTIFACTS_REFS },
+      });
+      const failing = intercepting(account, ({ method, url }) => {
+        if (
+          method === "DELETE" &&
+          (repositoryDeleted
+            ? url.includes("/dns_records/")
+            : url.endsWith("/artifacts/namespaces/fixture/repos/fixture"))
+        ) {
+          return new Response(JSON.stringify({ success: false, errors: [{ message: "busy" }] }), {
+            status: 500,
+          });
+        }
+      });
+      const failed = await fixture.run(["offboard", "--archive", "--yes"], {
+        env: ENV,
+        fetch: failing,
+        exec: account.exec,
+      });
+      assert.equal(failed.code, 1, failed.stdout);
+      const recorded = (await readOps(fixture)).offboarded.archive;
+      assert.ok(recorded, "the archive is recorded before deletion fails");
+      assert.equal(
+        account.state.log.includes("artifacts repo fixture/fixture deleted"),
+        repositoryDeleted,
+      );
+      const archived = snapshot(account.state.buckets["offboarded-clients"]);
+      account.fetch.requests.length = 0;
+
+      const resumed = await fixture.run(["offboard", "--archive", "--yes"], {
+        env: ENV,
+        ...account,
+      });
+
+      assert.equal(resumed.code, 0, resumed.stderr);
+      if (empty) {
+        assert.match(
+          resumed.stdout,
+          /Code: {7}none \(the Artifacts repository fixture\/fixture had no refs, so no bundle was created\)/u,
+        );
+        assert.doesNotMatch(resumed.stdout, /Code:.*code\.bundle/u);
+      } else {
+        assert.ok(
+          resumed.stdout.includes(
+            `Code:       r2://${recorded.bucket}/${recorded.prefix}code.bundle (every ref of the Artifacts repository fixture/fixture, which is deleted)`,
+          ),
+          resumed.stdout,
+        );
+      }
+      assert.deepEqual(snapshot(account.state.buckets["offboarded-clients"]), archived);
+      assert.deepEqual((await readOps(fixture)).offboarded.archive, recorded);
+      assert.ok(
+        !account.fetch.requests.some(({ method, url }) => method !== "GET" && isArchive(url)),
+        "nothing is written to the archive again",
+      );
+      assert.ok(!calledGitHub(account.exec));
+    });
+  }
+}
 
 test("a resumed archive deletes the Artifacts repository only while its refs are still the recorded code.bundle's", async () => {
   const { fixture, account } = await artifactsOnlySite();

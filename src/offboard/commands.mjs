@@ -160,7 +160,7 @@ async function runArchive(dependencies) {
     dependencies,
     async (providers) => {
       const site = await inspectArchive(providers);
-      const { items, result, archivesRepository } = archivePlan(site, {
+      const { items, result, hasCodeBundle, archivesRepository } = archivePlan(site, {
         configPath: context.configPath,
       });
       return runPlan(items, providers, {
@@ -185,7 +185,9 @@ async function runArchive(dependencies) {
                 : `Archived ${ops.project}, but not its repository yet: push gq.ops.json to ${site.repository.defaultBranch}, then run gq offboard --archive again.`,
             `  Archive:    r2://${bucket}/${prefix} (manifest.json sha256 ${manifestSha256})`,
             artifactsOnly
-              ? `  Code:       r2://${bucket}/${prefix}code.bundle (every ref of the Artifacts repository ${artifactsRepositoryName(ops)}, which is deleted)`
+              ? hasCodeBundle()
+                ? `  Code:       r2://${bucket}/${prefix}code.bundle (every ref of the Artifacts repository ${artifactsRepositoryName(ops)}, which is deleted)`
+                : `  Code:       none (the Artifacts repository ${artifactsRepositoryName(ops)} had no refs, so no bundle was created)`
               : `  Code:       https://github.com/${ops.github.repository} (${archivesRepository ? "archived, read-only" : "not archived yet"})`,
             `  Secrets:    Sigillo project ${ops.sigillo?.projectId ?? "(gq.ops.json sigillo.projectId)"}, kept`,
           ].join("\n");
