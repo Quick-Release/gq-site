@@ -6,6 +6,13 @@
 
 The runners are shared; what they check is the site's.
 
+A site's secrets live in Sigillo, and once deployed in its platform's own
+store (Ploi's server-side `.env`, the Frontend's Worker secrets). Its apps'
+`.env`, `.env.local` and `.dev.vars` files hold only non-secret, per-checkout
+wiring: `setup` creates them from the `.env.example` templates and `gq cms
+start` points the CMS's at DDEV, so a fresh clone or worktree never needs
+one copied. A command that needs a secret gets it through `gq sigillo run`.
+
 - `setup` installs the workspace (`pnpm install --frozen-lockfile`), creates
   `apps/frontend/.env` and `apps/cms/.env` from their `.env.example` when
   missing, then starts DDEV and installs Composer through the site's
@@ -25,12 +32,15 @@ The runners are shared; what they check is the site's.
   `{ "<app path>": ["<file>", …] }`),
   installed dependencies, a leftover Artifacts push URL (with
   `gq.ops.json` `artifacts`), the apps' `.env` files, Sigillo's project and
-  login (with `sigillo`), the Artifacts namespace's jurisdiction against
+  login (with `sigillo`), every app's `.env`, `.env.local` and `.dev.vars`
+  against the secret names each Sigillo environment lists (names only; no
+  value is read), the Artifacts namespace's jurisdiction against
   `artifacts.jurisdiction` (read with `ARTIFACTS_API_TOKEN` from the
   environment or Sigillo `staging`, and skipped without it), local media (`gq media check --local`) and the DDEV
   project named in `apps/cms/.ddev/config.yaml`. A missing tool, required
   file or `node_modules`, a Node below the minimum, R2 credentials in
-  `apps/cms/.env`, or a namespace outside its jurisdiction fails it
+  `apps/cms/.env`, an env file setting a secret Sigillo holds, or a
+  namespace outside its jurisdiction fails it
   (exit 1); drift from a pin only warns.
 
 ## Local CMS (DDEV)

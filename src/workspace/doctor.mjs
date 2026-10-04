@@ -24,6 +24,7 @@ import {
 } from "../manifest/site-settings.mjs";
 import { sigilloSecrets } from "../sigillo/commands.mjs";
 import { VERSION } from "../version.mjs";
+import { appEnvFiles, secretsInEnvFiles } from "./env-secrets.mjs";
 import { FRONTEND_PATH } from "./layout.mjs";
 
 const PACKAGE_NAME = "@getquick/site";
@@ -96,10 +97,20 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
   }
 
   io.out("\nEnvironment:");
+  // Env files are generated, never copied with credentials: secrets come
+  // from Sigillo (checked below).
   if (existsSync(join(root, FRONTEND_PATH, ".env"))) ok(`${FRONTEND_PATH}/.env exists`);
-  else warn(`${FRONTEND_PATH}/.env is missing — copy .env.example and set the GraphQL URL`);
+  else {
+    warn(
+      `${FRONTEND_PATH}/.env is missing — run: pnpm run setup --no-ddev (it creates it from .env.example)`,
+    );
+  }
   if (existsSync(join(root, CMS_PATH, ".env"))) ok(`${CMS_PATH}/.env exists`);
-  else warn(`${CMS_PATH}/.env is missing — copy .env.example and set local credentials`);
+  else {
+    warn(
+      `${CMS_PATH}/.env is missing — run: pnpm run setup --no-ddev (it creates it from .env.example; gq cms start points it at DDEV)`,
+    );
+  }
 
   // Local uploads only; the production prerequisite is gq media check's.
   io.out("\nMedia (local development):");
@@ -115,6 +126,7 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
   if (context.config.sigillo) {
     io.out("\nSecrets (Sigillo):");
     sigilloReady = await checkSigillo({ root, sigillo: context.config.sigillo, capture, report });
+    await checkEnvSecrets({ context, env, exec, sigilloReady, report });
   }
 
   if (context.config.artifacts && context.config.cloudflare?.accountId) {
@@ -244,6 +256,32 @@ async function checkSigillo({ root, sigillo, capture, report }) {
   }
   report.ok("Sigillo is logged in");
   return true;
+}
+
+// Fails for each name an app's .env, .env.local or .dev.vars sets that one of
+// the site's Sigillo environments holds: names only, no value is read.
+async function checkEnvSecrets({ context, env, exec, sigilloReady, report }) {
+  if (!sigilloReady) {
+    return report.skip("env files not checked for Sigillo secrets: Sigillo isn't ready");
+  }
+  const listings = [];
+  for (const environment of Object.keys(context.config.sigillo.environments ?? {})) {
+    const secrets = await sigilloSecrets({ context, env, exec }, environment);
+    try {
+      listings.push({ environment: secrets.name, listing: await secrets.list() });
+    } catch {
+      report.warn(`could not list Sigillo ${secrets.name}'s secret names`);
+    }
+  }
+  const found = secretsInEnvFiles(appEnvFiles(context.projectRoot), listings);
+  for (const { path, name, environment } of found) {
+    report.fail(
+      `${path} sets ${name}, a secret Sigillo ${environment} holds — remove it: gq sigillo run injects it`,
+    );
+  }
+  if (found.length === 0 && listings.length > 0) {
+    report.ok("no app's env file sets a secret Sigillo holds");
+  }
 }
 
 // ARTIFACTS_API_TOKEN (gq cloudflare ci's) from the environment, or from
