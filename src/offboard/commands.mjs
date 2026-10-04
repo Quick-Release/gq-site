@@ -5,7 +5,8 @@
 // `gq offboard --restore` brings everything back and removes the record.
 // Irreversible: `gq offboard --archive` archives all its content to the
 // shared offboarded-clients bucket, verifies it, then deletes its live
-// infrastructure and archives its repository (archive.mjs).
+// infrastructure and archives its GitHub repository (archive.mjs); an
+// Artifacts-only Site's code is archived with its content instead.
 // Each prints the plan (✓ done, - to do or + to restore, ! by hand), then
 // acts after confirmation, and only on what is still to do, so any of them
 // can be run again after a failure.
@@ -14,9 +15,11 @@
 //   gq offboard --restore [--dry-run] [--yes]
 //   gq offboard --archive [--dry-run] [--yes]
 
+import { isArtifactsOnly } from "../ci/git-artifacts.mjs";
 import { createReporter } from "../cli/reporter.mjs";
 import { planManagedFiles } from "../sync/managed-files.mjs";
 import { archivePlan, inspectArchive } from "./archive.mjs";
+import { artifactsRepositoryName } from "./names.mjs";
 import { runPlan } from "./plan.mjs";
 import { withOffboardingProviders, withRepositoryProviders } from "./providers.mjs";
 import { inspectRepository, repositoryItems } from "./repository.mjs";
@@ -134,6 +137,13 @@ async function runArchive(dependencies) {
   ui.intro(`Archive · ${ops.project}`);
   // Its infrastructure is deleted: what may be left is pushing the record
   // and archiving the repository, which need neither Cloudflare nor Ploi.
+  // An Artifacts-only Site's code went with its archive.
+  if (record.phase === "archived" && isArtifactsOnly(ops)) {
+    ui.outro(
+      `Nothing left to archive: ${ops.project} was archived to r2://${record.archive?.bucket}/${record.archive?.prefix}.`,
+    );
+    return 0;
+  }
   if (record.phase === "archived") {
     return withRepositoryProviders(dependencies, async (providers) =>
       runPlan(repositoryItems(await inspectRepository(providers), ops), providers, {
@@ -166,12 +176,17 @@ async function runArchive(dependencies) {
         nothing: `Nothing left to archive: ${ops.project} is archived.`,
         finished: () => {
           const { bucket, prefix, manifestSha256 } = result();
+          const artifactsOnly = isArtifactsOnly(ops);
           return [
-            archivesRepository
-              ? `Archived ${ops.project}. gq.ops.json's record is pushed.`
-              : `Archived ${ops.project}, but not its repository yet: push gq.ops.json to ${site.repository.defaultBranch}, then run gq offboard --archive again.`,
+            artifactsOnly
+              ? `Archived ${ops.project}. Commit gq.ops.json in this checkout: its Artifacts repository is deleted, so there is nowhere to push it.`
+              : archivesRepository
+                ? `Archived ${ops.project}. gq.ops.json's record is pushed.`
+                : `Archived ${ops.project}, but not its repository yet: push gq.ops.json to ${site.repository.defaultBranch}, then run gq offboard --archive again.`,
             `  Archive:    r2://${bucket}/${prefix} (manifest.json sha256 ${manifestSha256})`,
-            `  Code:       https://github.com/${ops.github.repository} (${archivesRepository ? "archived, read-only" : "not archived yet"})`,
+            artifactsOnly
+              ? `  Code:       r2://${bucket}/${prefix}code.bundle (every ref of the Artifacts repository ${artifactsRepositoryName(ops)}, which is deleted)`
+              : `  Code:       https://github.com/${ops.github.repository} (${archivesRepository ? "archived, read-only" : "not archived yet"})`,
             `  Secrets:    Sigillo project ${ops.sigillo?.projectId ?? "(gq.ops.json sigillo.projectId)"}, kept`,
           ].join("\n");
         },

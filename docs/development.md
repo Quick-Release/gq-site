@@ -67,8 +67,9 @@ Shared helpers stay in `test/support/`, with filenames describing their roles:
   defaults so the tests can detect drift.
 - `deploy-script.mjs`: the CMS deploy script harness and local tool stand-ins.
 - `offboarding.mjs`: the offboarding suites' synced Site and its in-memory
-  account (Cloudflare, R2's S3 API, Ploi, Sigillo and `gh`, each listing a
-  page at a time), with ZIP and output helpers.
+  account (Cloudflare, R2's S3 API, Ploi, Sigillo, `gh`, and git against an
+  Artifacts repository, each listing a page at a time), with ZIP, git bundle
+  and output helpers.
 
 Keep this small shared helper set rather than adding per-module helper folders
 or forwarding modules. Baseline evidence stays in `test/fixtures/`; its

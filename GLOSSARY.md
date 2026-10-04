@@ -212,7 +212,8 @@ is gone: its media, its CMS database and backups, its published content and
 its manifest, gathered in one place shared by every former client, with a
 manifest of what each file is and where it came from. It is checked against
 that manifest before anything is deleted. Its code is kept apart, in its
-archived repository.
+archived GitHub repository; an Artifacts-only Site's is in the archive, as a
+git bundle of every ref.
 _Avoid_: backup (a copy the live Site restores from), export
 
 **Offboarded Site**:

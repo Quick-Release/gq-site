@@ -16,6 +16,11 @@
 // GitHub goes through the operator's `gh` login, and git through the
 // checkout's own remote and credentials. No value is printed.
 //
+// An Artifacts-only Site (no github.repository, ADR 0012) has no GitHub to
+// reach: its code is read from its Artifacts repository with git, through a
+// read-only git token minted for each operation and handed to git in its
+// environment, never in its arguments or on disk.
+//
 // R2 objects (the archive's reads, writes and emptied buckets) go through
 // keys scoped to one bucket each, minted for the run as 1-hour tokens
 // ("GETQUICK <PROJECT> offboarding <bucket> (temporary)") and deleted with
@@ -23,7 +28,9 @@
 // scoped key can't reach another client's bucket. R2 rejects a new key for
 // a while, so each is retried until R2 first accepts it (src/r2.mjs).
 
-import { basename } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { redactText } from "../cli/redact.mjs";
@@ -32,7 +39,11 @@ import { exportLiveDatabase, runBackup } from "../db/sync.mjs";
 import { createR2Client, s3CredentialsFromToken } from "../r2.mjs";
 import { createPloiServerClient } from "../ploi/server-client.mjs";
 import { sigilloSecrets } from "../sigillo/commands.mjs";
-import { createCloudflareAccountClient } from "../cloudflare/account-client.mjs";
+import { isArtifactsOnly } from "../ci/git-artifacts.mjs";
+import {
+  artifactsRemoteUrl,
+  createCloudflareAccountClient,
+} from "../cloudflare/account-client.mjs";
 import {
   accountPolicy,
   bucketPolicies,
@@ -55,6 +66,8 @@ export const offboardingAccountPermissions = [
   "D1 Read",
 ];
 export const offboardingZonePermissions = ["Zone Read", "DNS Write", "Workers Routes Write"];
+// An Artifacts-only Site's cut revokes its repository's git tokens.
+const artifactsPermissions = ["Artifacts Read", "Artifacts Write"];
 // The archive also deletes: Workers (and their Workflows), container
 // applications, D1 stores (after exporting one), buckets, and Artifacts
 // repositories; and deletes DNS records with the zone permissions above.
@@ -63,8 +76,7 @@ export const archiveAccountPermissions = [
   "D1 Write",
   "Workers Containers Read",
   "Workers Containers Write",
-  "Artifacts Read",
-  "Artifacts Write",
+  ...artifactsPermissions,
 ];
 
 // A deletion finds what it deletes already gone (another deletion took it
@@ -81,6 +93,8 @@ const PLOI_LONGEST_WAIT_MS = 10_000;
 
 // The gq.ops.json keys offboarding reads, checked before anything runs. The
 // archive forgets ploi.siteId once it deletes the site, so it doesn't need it.
+// A Site without github.repository is Artifacts-only, so it needs its
+// Artifacts repository instead.
 const SITE_ID_KEY = ["ploi.siteId", (ops) => ops.ploi?.siteId];
 const REQUIRED_KEYS = [
   ["domains.admin", (ops) => ops.domains?.admin],
@@ -94,13 +108,15 @@ const REQUIRED_KEYS = [
   ["ci.worker", (ops) => ops.ci?.worker],
   ["cloudflare.accountId", (ops) => ops.cloudflare?.accountId],
   ["cloudflare.zoneId", (ops) => ops.cloudflare?.zoneId],
-  ["github.repository", (ops) => ops.github?.repository],
+];
+const ARTIFACTS_KEYS = [
+  ["artifacts.namespace", (ops) => ops.artifacts?.namespace],
+  ["artifacts.repo", (ops) => ops.artifacts?.repo],
 ];
 const ARCHIVE_KEYS = [
   ["releases.bucket", (ops) => ops.releases?.bucket],
   ["ci.backupBucket", (ops) => ops.ci?.backupBucket],
-  ["artifacts.namespace", (ops) => ops.artifacts?.namespace],
-  ["artifacts.repo", (ops) => ops.artifacts?.repo],
+  ...ARTIFACTS_KEYS,
 ];
 
 // Runs `work(providers)` with every provider connected, and deletes the
@@ -110,7 +126,10 @@ const ARCHIVE_KEYS = [
 export async function withOffboardingProviders(dependencies, work, { archive = false } = {}) {
   const { context, env, fetch, exec, clock } = dependencies;
   const ops = context.config;
-  const required = archive ? [...REQUIRED_KEYS, ...ARCHIVE_KEYS] : [...REQUIRED_KEYS, SITE_ID_KEY];
+  const artifactsOnly = isArtifactsOnly(ops);
+  const required = archive
+    ? [...REQUIRED_KEYS, ...ARCHIVE_KEYS]
+    : [...REQUIRED_KEYS, SITE_ID_KEY, ...(artifactsOnly ? ARTIFACTS_KEYS : [])];
   const missing = required.filter(([, read]) => !read(ops)).map(([key]) => key);
   if (missing.length > 0) {
     throw new Error(
@@ -166,7 +185,9 @@ export async function withOffboardingProviders(dependencies, work, { archive = f
       policies: [
         accountPolicy(
           accountId,
-          archive ? archiveAccountPermissions : offboardingAccountPermissions,
+          archive
+            ? archiveAccountPermissions
+            : [...offboardingAccountPermissions, ...(artifactsOnly ? artifactsPermissions : [])],
           groups,
         ),
         zonePolicy(ops.cloudflare.zoneId, offboardingZonePermissions, groups),
@@ -196,6 +217,7 @@ export async function withOffboardingProviders(dependencies, work, { archive = f
           }),
           ploi: ploiOperations(ploiClient, ops.ploi.siteId, clock),
           ...repositoryOperations(dependencies),
+          ...(artifactsOnly ? { code: codeOperations({ ...dependencies, ops, cloudflare }) } : {}),
           r2: keys.r2,
           dumpDatabase: (uploadUrl) => exportLiveDatabase(ploiClient, ops, uploadUrl),
           async backupDatabase() {
@@ -226,19 +248,18 @@ export async function withOffboardingProviders(dependencies, work, { archive = f
   );
 }
 
-// Runs `work(providers)` with only the repository and the checkout (`github`
-// and `git`): what is left once a Site's infrastructure is deleted.
+// Runs `work(providers)` with only a Site on GitHub's repository and the
+// checkout (`github` and `git`): what is left once its infrastructure is
+// deleted.
 export function withRepositoryProviders(dependencies, work) {
-  const ops = dependencies.context.config;
-  if (!ops.github?.repository) {
-    throw new Error("gq.ops.json github.repository is required to archive.");
-  }
-  return work({ ops, ...repositoryOperations(dependencies) });
+  return work({ ops: dependencies.context.config, ...repositoryOperations(dependencies) });
 }
 
+// The checkout, and the GitHub repository unless the Site is Artifacts-only.
 function repositoryOperations({ context, env, exec }) {
+  const repository = context.config.github?.repository;
   return {
-    github: githubOperations(exec, env, context.config.github.repository),
+    ...(repository ? { github: githubOperations(exec, env, repository) } : {}),
     git: gitOperations(exec, env, context.projectRoot, basename(context.configPath)),
   };
 }
@@ -408,6 +429,15 @@ function cloudflareOperations({ manager, cloudflare, zone, managerId, project, f
       cloudflare("GET", `/artifacts/namespaces/${namespace}/repos/${repo}`, undefined, {
         allowNotFound: true,
       }),
+    // The repository's active git tokens, which push to it while they last;
+    // null once it is gone (a listing would come back empty).
+    async artifactsGitTokens(namespace, repo) {
+      const path = `/artifacts/namespaces/${namespace}/repos/${repo}`;
+      if (!(await cloudflare("GET", path, undefined, GONE))) return null;
+      return cloudflare("GET", `${path}/tokens?state=active`, undefined, { paginate: true });
+    },
+    revokeArtifactsGitToken: (namespace, id) =>
+      cloudflare("DELETE", `/artifacts/namespaces/${namespace}/tokens/${id}`, undefined, GONE),
     deleteArtifactsRepository: (namespace, repo) =>
       cloudflare("DELETE", `/artifacts/namespaces/${namespace}/repos/${repo}`, undefined, GONE),
     // The zone's own name (its apex).
@@ -505,6 +535,88 @@ async function settling(clock, settled) {
     await clock.sleep(Math.min(wait, PLOI_SETTLE_MS - waited));
     wait = Math.min(wait * 2, PLOI_LONGEST_WAIT_MS);
   }
+}
+
+// An Artifacts-only Site's code, read from its Artifacts repository with git
+// (`exec`) and a read-only git token the run's temporary token (`cloudflare`)
+// mints for each operation and revokes after it: git gets it as the credential helper would (user
+// x), in an extra header set through its environment, with every other
+// credential helper turned off and no prompt. A failure names the git
+// command, with its output redacted.
+function codeOperations({ ops, cloudflare, exec, env }) {
+  const { namespace, repo } = ops.artifacts;
+  const remote = artifactsRemoteUrl({ accountId: ops.cloudflare.accountId, namespace, repo });
+  async function run(args, cwd, gitEnv) {
+    const result = await exec("git", args, { cwd, env: { ...env, ...gitEnv } });
+    if (result.code !== 0) {
+      const output = redactText(result.stderr.trim()) || `exit code ${result.code}`;
+      throw new Error(`git ${args.join(" ")} failed: ${output}`);
+    }
+    return result.stdout;
+  }
+  // git reaching the repository, with a git token minted for it and
+  // revoked once git is done, whatever happened.
+  async function remoteGit(args, cwd) {
+    const { id, plaintext } = await cloudflare(
+      "POST",
+      `/artifacts/namespaces/${namespace}/tokens`,
+      { repo, scope: "read", ttl: 3600 },
+    );
+    const authorization = Buffer.from(`x:${plaintext}`).toString("base64");
+    try {
+      return await run(args, cwd, {
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_CONFIG_COUNT: "2",
+        GIT_CONFIG_KEY_0: "credential.helper",
+        GIT_CONFIG_VALUE_0: "",
+        GIT_CONFIG_KEY_1: "http.extraHeader",
+        GIT_CONFIG_VALUE_1: `Authorization: Basic ${authorization}`,
+      });
+    } finally {
+      await cloudflare(
+        "DELETE",
+        `/artifacts/namespaces/${namespace}/tokens/${id}`,
+        undefined,
+        GONE,
+      );
+    }
+  }
+  return {
+    // Every ref under refs/ and the commit it points at, as { ref: sha }.
+    async refs() {
+      return parseRefs(await remoteGit(["ls-remote", "--refs", remote]));
+    },
+    // Calls `work({ path, refs })` with a git bundle of every ref (`refs`, as
+    // the bundle lists them), made from a mirror clone in a temporary
+    // directory that is removed afterwards whatever happens.
+    async bundle(work) {
+      const directory = await mkdtemp(join(tmpdir(), "gq-offboard-"));
+      try {
+        const mirror = join(directory, "repository.git");
+        const path = join(directory, "code.bundle");
+        await remoteGit(["clone", "--mirror", "--quiet", remote, mirror]);
+        await run(["bundle", "create", "--quiet", path, "--all"], mirror);
+        await run(["bundle", "verify", "--quiet", path], mirror);
+        const refs = parseRefs(await run(["bundle", "list-heads", path], mirror));
+        return await work({ path, refs });
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  };
+}
+
+// `<sha> <ref>` lines (tab- or space-separated) as { ref: sha }, only refs
+// under refs/ (a bundle may list HEAD too).
+function parseRefs(text) {
+  return Object.fromEntries(
+    text
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/u))
+      .filter(([sha, ref]) => sha && ref?.startsWith("refs/"))
+      .map(([sha, ref]) => [ref, sha])
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  );
 }
 
 // The repository's webhooks through the operator's `gh` login (it needs repo

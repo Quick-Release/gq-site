@@ -7,6 +7,8 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  ARTIFACTS_ONLY,
+  artifactsOnlyState,
   changes,
   CROWDED_CRONTABS,
   CROWDED_HOOKS,
@@ -808,14 +810,193 @@ test("offboard needs the token-manager token and names the gq.ops.json keys it l
   assert.equal(withoutManager.code, 1);
   assert.match(withoutManager.stderr, /CLOUDFLARE_TOKEN_MANAGER_API_TOKEN is missing/u);
 
-  const { media, github, ...ops } = OPS;
+  const { media, ...ops } = OPS;
   void media;
-  void github;
   const partial = await offboardingSite({ ops });
   const result = await partial.run(["offboard", "--dry-run"], { env: ENV });
   assert.equal(result.code, 1);
   assert.match(
     result.stderr,
-    /gq\.ops\.json media\.bucket, media\.domain, github\.repository are required to offboard\./u,
+    /gq\.ops\.json media\.bucket, media\.domain are required to offboard\./u,
+  );
+
+  // An Artifacts-only Site needs its Artifacts repository instead.
+  const { artifacts, ...withoutArtifacts } = ARTIFACTS_ONLY;
+  void artifacts;
+  const artifactsOnly = await offboardingSite({ ops: withoutArtifacts });
+  const unnamed = await artifactsOnly.run(["offboard", "--restore", "--dry-run"], { env: ENV });
+  assert.equal(unnamed.code, 1);
+  assert.match(
+    unnamed.stderr,
+    /gq\.ops\.json artifacts\.namespace, artifacts\.repo are required to offboard\./u,
+  );
+});
+
+// An Artifacts-only Site (no github.repository, ADR 0012): pushes to its
+// Artifacts repository start CI, with no GitHub webhook to deactivate.
+async function artifactsOnlySite() {
+  const fixture = await offboardingSite({ ops: ARTIFACTS_ONLY });
+  const account = fakeAccount(artifactsOnlyState());
+  return { fixture, account };
+}
+
+test("an Artifacts-only Site's cut takes every push credential away right after the backup, instead of a webhook", async () => {
+  const { fixture, account } = await artifactsOnlySite();
+
+  const dryRun = await fixture.run(["offboard", "--dry-run"], { env: ENV, ...account });
+
+  assert.equal(dryRun.code, 0, dryRun.stderr);
+  const plan = dryRun.stdout.split("\n").filter((line) => /^ {2}[-✓!] /u.test(line));
+  assert.deepEqual(plan.slice(1, 5), [
+    "  - Backup: back up fixture_db to r2://fixture-releases/db/ before anything is cut",
+    "  - CI: disable GETQUICK FIXTURE Artifacts, so no git token for the Artifacts repository fixture/fixture can be minted (fixture is Artifacts-only: a push there starts CI)",
+    "  - CI: revoke every active git token for the Artifacts repository fixture/fixture (1 now)",
+    "  - CI: switch the CI Worker fixture-ci's workers.dev off",
+  ]);
+  assert.deepEqual(
+    plan.filter((line) => line.includes("Tokens:")),
+    [
+      "  - Tokens: disable GETQUICK FIXTURE Staging Alchemy",
+      "  - Tokens: disable GETQUICK FIXTURE Releases R2",
+      "  - Tokens: disable GETQUICK FIXTURE Media R2",
+      "  - Tokens: disable GETQUICK FIXTURE CI Deploy",
+    ],
+  );
+  assert.doesNotMatch(dryRun.stdout, /GitHub/u);
+
+  const result = await fixture.run(["offboard", "--yes"], { env: ENV, ...account });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(account.state.log, [
+    "database backed up",
+    "token t-artifacts disabled",
+    "artifacts token git-1 revoked",
+    'workers.dev fixture-ci {"enabled":false,"previews_enabled":false}',
+    "crontab 7 deleted",
+    "ploi site suspended (offboarded)",
+    "worker domain wd-1 detached",
+    'workers.dev fixture-fe {"enabled":false,"previews_enabled":false}',
+    "media domain fixture-media.example.test disabled",
+    "token t-alchemy disabled",
+    "token t-releases disabled",
+    "token t-media disabled",
+    "token t-deploy disabled",
+  ]);
+  // Another repository's git tokens stay.
+  assert.equal(account.state.artifactsTokens.find(({ id }) => id === "git-other").state, "active");
+  assert.ok(
+    account.exec.calls.every(({ command }) => command !== "gh"),
+    "an Artifacts-only Site's cut never calls GitHub",
+  );
+  const { offboarded, ...rest } = await readOps(fixture);
+  assert.deepEqual(rest, ARTIFACTS_ONLY);
+  assert.equal(offboarded.cut.webhook, undefined);
+  assert.deepEqual(offboarded.cut.tokens, [
+    "t-artifacts",
+    "t-alchemy",
+    "t-releases",
+    "t-media",
+    "t-deploy",
+  ]);
+
+  account.state.log.length = 0;
+  const again = await fixture.run(["offboard", "--dry-run"], { env: ENV, ...account });
+  assert.equal(again.code, 0, again.stderr);
+  assert.match(again.stdout, /✓ CI: GETQUICK FIXTURE Artifacts is disabled/u);
+  assert.match(
+    again.stdout,
+    /✓ CI: no active git token for the Artifacts repository fixture\/fixture/u,
+  );
+  assert.doesNotMatch(again.stdout, /^ {2}- /mu);
+});
+
+test("an Artifacts-only Site's cut revokes git tokens minted before its Artifacts token was disabled", async () => {
+  const { fixture, account } = await artifactsOnlySite();
+  account.state.tokens.find(({ id }) => id === "t-artifacts").status = "disabled";
+  account.state.artifactsTokens.push({
+    id: "git-3",
+    repo: "fixture",
+    scope: "read",
+    state: "active",
+  });
+
+  const result = await fixture.run(["offboard", "--yes"], { env: ENV, ...account });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /✓ CI: GETQUICK FIXTURE Artifacts is disabled/u);
+  assert.match(
+    result.stdout,
+    /- CI: revoke every active git token for the Artifacts repository fixture\/fixture \(2 now\)/u,
+  );
+  assert.deepEqual(account.state.log.slice(0, 3), [
+    "database backed up",
+    "artifacts token git-1 revoked",
+    "artifacts token git-3 revoked",
+  ]);
+  // The cut didn't disable it, so --restore won't enable it.
+  assert.ok(!(await readOps(fixture)).offboarded.cut.tokens.includes("t-artifacts"));
+});
+
+test("an Artifacts-only Site's --restore re-enables its Artifacts token with the others, and calls no GitHub", async () => {
+  const { fixture, account } = await artifactsOnlySite();
+  assert.equal((await fixture.run(["offboard", "--yes"], { env: ENV, ...account })).code, 0);
+  account.state.log.length = 0;
+  account.exec.calls.length = 0;
+
+  const result = await fixture.run(["offboard", "--restore", "--yes"], { env: ENV, ...account });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(account.state.log, [
+    "token t-alchemy active",
+    "token t-releases active",
+    "token t-media active",
+    "token t-deploy active",
+    "token t-artifacts active",
+    "media domain fixture-media.example.test enabled",
+    "worker domain fixture-fe.example.test attached to fixture-fe",
+    'workers.dev fixture-fe {"enabled":false,"previews_enabled":true}',
+    "ploi site resumed",
+    `crontab added: ${RETRY_CRONTAB.command}`,
+    'workers.dev fixture-ci {"enabled":true,"previews_enabled":false}',
+  ]);
+  assert.ok(account.exec.calls.every(({ command }) => command !== "gh"));
+  assert.deepEqual(await readOps(fixture), ARTIFACTS_ONLY);
+});
+
+test("an Artifacts-only Site's cut also revokes a git token minted after its plan was read", async () => {
+  const { fixture, account } = await artifactsOnlySite();
+  const fetch = recordingFetch((request) => {
+    // Minted with the Artifacts token just before the cut disables it.
+    if (request.method === "PUT" && request.url.endsWith("/tokens/t-artifacts")) {
+      account.state.artifactsTokens.push({
+        id: "git-late",
+        repo: "fixture",
+        scope: "write",
+        state: "active",
+      });
+    }
+    return account.fetch(request.url, request);
+  });
+
+  const result = await fixture.run(["offboard", "--yes"], { env: ENV, fetch, exec: account.exec });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(account.state.log.slice(1, 4), [
+    "token t-artifacts disabled",
+    "artifacts token git-1 revoked",
+    "artifacts token git-late revoked",
+  ]);
+});
+
+test("an Artifacts-only Site whose Artifacts repository is gone has nothing to revoke", async () => {
+  const { fixture, account } = await artifactsOnlySite();
+  account.state.artifacts = account.state.artifacts.filter(({ name }) => name !== "fixture");
+
+  const result = await fixture.run(["offboard", "--dry-run"], { env: ENV, ...account });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(
+    result.stdout,
+    /✓ CI: the Artifacts repository fixture\/fixture is gone, so nothing can be pushed to it/u,
   );
 });

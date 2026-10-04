@@ -153,7 +153,8 @@ Choices made where the spec left room:
 - `--dry-run` reads only, but it mints and deletes the run's temporary token,
   since the manager token can't read Workers or R2.
 - Offboarding requires the whole configuration (domains, Ploi, backups,
-  media, CI, Cloudflare zone, GitHub repository), named when missing, rather
+  media, CI, Cloudflare zone, and the GitHub repository or, for an
+  Artifacts-only Site, the Artifacts repository), named when missing, rather
   than skipping a part: every Blueprint Site has them.
 - `phase` is `"cut"` or `"archived"` in the schema, so restore can refuse an
   archived Site.
@@ -330,6 +331,51 @@ Choices made where the spec left room:
 - `--dry-run` reads only, but mints and deletes the run's tokens, including
   the scoped keys it lists the media and backups buckets with.
 
+### An Artifacts-only Site
+
+An Artifacts-only Site (no `github.repository`,
+[ADR 0012](0012-keep-a-sites-code-in-artifacts-when-it-has-no-github-repository.md))
+is offboarded the same way, with its Artifacts repository where GitHub was.
+It needs `artifacts.namespace` and `artifacts.repo` instead, and gq never
+calls `gh` for it.
+
+- **The cut takes every push credential away.** A push to its Artifacts
+  repository starts CI directly, so there is no webhook to deactivate.
+  Straight after the backup, where a Site on GitHub has its webhook
+  deactivated, the cut disables the "GETQUICK <PROJECT> Artifacts" token (the
+  one the credential helper mints git tokens with), noted with the other
+  tokens, then revokes every git token still active for the repository,
+  listed again once the token is disabled so that none minted since the plan
+  was read survives (a repository already gone has nothing to revoke). The
+  CI Worker's workers.dev is switched off as for any Site. Restore
+  re-enables the token with the others; no git token comes back, since the
+  credential helper mints new ones. The run's temporary token can read
+  and revoke Artifacts git tokens for such a Site.
+- **The record can't be pushed until restore.** With no credential left to
+  push with, nobody can start CI, so the committed record guards only the
+  operator's checkout, and nothing else needs it.
+- **The code is archived with the content.** The archive's files include
+  `code.bundle`: a git bundle (`git bundle create --all`) of a mirror clone
+  of the Artifacts repository, made in a temporary directory removed
+  afterwards. `git bundle verify` checks it, and `manifest.json` records its
+  refs (`sources.artifacts.refs`) and `sources.github: null`. The clone and
+  the reads of the repository's refs go through read-only git tokens the
+  run's temporary token mints for each and revokes after it, passed to git
+  in its environment (an `http.extraHeader`, every other credential helper
+  off, no prompt), never in its arguments or on disk. The repository is a source a new
+  archive requires. A repository without refs has nothing to bundle, which
+  the plan says.
+- **Verified before the repository goes.** The verification reads the
+  repository's refs again and compares them with the bundle's: a push since
+  the bundle was made stops the run before anything is deleted. A resumed
+  run (the archive recorded, the repository still there) compares them with
+  the refs the recorded `manifest.json` has for `code.bundle`, and stops the
+  same way when they differ.
+- **Nothing to push.** The Artifacts repository is deleted with the rest, so
+  there is no webhook to delete, no record to push and no repository to
+  archive. The plan says to commit the record in the checkout, and a rerun
+  once archived reaches nothing.
+
 ## Considered options
 
 - **Delete at once, as gq-smoke-down does.** Rejected: irreversible before
@@ -374,6 +420,15 @@ Choices made where the spec left room:
   branch doesn't reach the default branch the record must be on, one with
   other changes or commits publishes what the operator hasn't decided to,
   and a forced push could drop a teammate's commits.
+- **Make an Artifacts-only Site's repository read-only** for the cut.
+  Rejected: Artifacts' API sets `read_only` only when a repository is
+  created, forked or imported.
+- **Push the record to the Artifacts repository** before the archive deletes
+  it. Rejected: the repository is deleted in the same run, and `code.bundle`
+  is read before the record changes.
+- **Bundle an Artifacts-only Site's code from the operator's checkout.**
+  Rejected: a checkout may lack branches, tags or commits the repository
+  has; the repository itself is what gets deleted.
 - **Give up on Ploi's 422 at once**, for a rerun to finish. Rejected: Lombardi's
   rerun minutes later worked, so the run waits that long itself.
 

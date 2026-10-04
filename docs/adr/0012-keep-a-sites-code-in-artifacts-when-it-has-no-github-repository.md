@@ -49,9 +49,11 @@ provision, and later to offboard. CESAM is the first.
 - Moving a Site onto GitHub later means naming `github.repository`, running
   `gq sync`, `gq github setup`, `gq ci deploy` and `gq git artifacts setup`,
   and pointing `origin` at GitHub.
-- `gq offboard` still requires `github.repository`: it deactivates the
-  webhook, and its archive phase archives the GitHub repository. Offboarding
-  an Artifacts-only Site needs that support first (archiving its code from
-  Artifacts).
+- `gq offboard` works on an Artifacts-only Site
+  ([ADR 0011](0011-offboard-a-site-by-cutting-access-before-archiving.md)).
+  Its cut disables the Artifacts token and revokes the repository's git
+  tokens instead of deactivating a webhook. Its archive keeps the code as
+  `code.bundle`, a git bundle of every ref, checked against the repository
+  before the repository is deleted.
 - An Artifacts-only Site has no pull requests or commit statuses; the
   pre-push hook (`pnpm verify`) and CI are its checks.

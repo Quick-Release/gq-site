@@ -7,7 +7,7 @@
 // network or a real account.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { crc32 } from "node:zlib";
@@ -58,6 +58,30 @@ export const DUMP = "dump";
 export const PUBLICATIONS_SQL =
   "CREATE TABLE publications (id TEXT);\nINSERT INTO publications VALUES ('home');\n";
 export const HEAD_COMMIT = "0123456789abcdef0123456789abcdef01234567";
+
+// An Artifacts-only Site (ADR 0012): no github.repository, its code in its
+// Artifacts repository, and the "GETQUICK FIXTURE Artifacts" token that
+// mints git tokens for it besides the other project tokens.
+export const ARTIFACTS_ONLY = Object.freeze(
+  Object.fromEntries(Object.entries(OPS).filter(([key]) => key !== "github")),
+);
+export const ARTIFACTS_REMOTE =
+  "https://account-1.artifacts.cloudflare.net/git/fixture/fixture.git";
+export const ARTIFACTS_REFS = Object.freeze({
+  "refs/heads/main": HEAD_COMMIT,
+  "refs/tags/v1.0.0": "fedcba9876543210fedcba9876543210fedcba98",
+});
+export function artifactsOnlyState() {
+  const { tokens } = exposedState();
+  return { tokens: [...tokens, projectToken("t-artifacts", "Artifacts")] };
+}
+
+// What `git bundle create` writes for `refs`: the bundle's header (its refs),
+// then a stand-in for the pack.
+export function bundleOf(refs) {
+  const heads = Object.entries(refs).map(([ref, sha]) => `${sha} ${ref}\n`);
+  return `# v2 git bundle\n${heads.join("")}\nPACK ${Object.keys(refs).length}\n`;
+}
 
 // Synced with this blueprint, as `gq offboard` requires of the deploy files.
 export async function offboardingSite({ ops = OPS } = {}) {
@@ -252,6 +276,14 @@ export function exposedState() {
     siteLingers: 0,
     systemUserRefusals: 0,
     repository: { archived: false, head: HEAD_COMMIT, defaultBranch: "main" },
+    // The Artifacts repositories' git tokens (minted ones too, with their
+    // plaintext) and the Site's repository's refs.
+    artifactsTokens: [
+      { id: "git-1", repo: "fixture", scope: "write", state: "active" },
+      { id: "git-2", repo: "fixture", scope: "read", state: "expired" },
+      { id: "git-other", repo: "other", scope: "write", state: "active" },
+    ],
+    artifactsRefs: { ...ARTIFACTS_REFS },
     // The operator's checkout: its branch and that branch's remote, the
     // paths changed besides gq.ops.json, how many commits the remote branch
     // and the checkout each have that the other lacks, and gq.ops.json as
@@ -493,6 +525,48 @@ export function fakeAccount(overrides = {}) {
         return ok(null);
       }
     }
+    const gitTokens = /^\/artifacts\/namespaces\/fixture\/repos\/([^/]+)\/tokens\?(.+)$/u.exec(
+      path,
+    );
+    if (method === "GET" && gitTokens) {
+      if (
+        !state.artifacts.some(
+          ({ namespace, name }) => namespace === "fixture" && name === gitTokens[1],
+        )
+      ) {
+        return notFound();
+      }
+      const query = new URLSearchParams(gitTokens[2]);
+      const wanted = query.get("state") ?? "active";
+      return paged(
+        state.artifactsTokens
+          .filter(({ repo, state: status }) => repo === gitTokens[1] && status === wanted)
+          // A listing never hands out a token's plaintext.
+          .map((token) => ({ ...token, plaintext: undefined })),
+        query,
+      );
+    }
+    if (method === "POST" && path === "/artifacts/namespaces/fixture/tokens") {
+      const token = {
+        id: `git-minted-${next}`,
+        repo: data.repo,
+        scope: data.scope,
+        state: "active",
+        plaintext: `git-secret-${next}`,
+      };
+      next += 1;
+      state.artifactsTokens.push(token);
+      return ok({ id: token.id, plaintext: token.plaintext });
+    }
+    const revoked = /^\/artifacts\/namespaces\/fixture\/tokens\/([^/]+)$/u.exec(path)?.[1];
+    if (method === "DELETE" && revoked) {
+      const token = state.artifactsTokens.find(({ id }) => id === revoked);
+      if (!token) return notFound();
+      token.state = "revoked";
+      // Those gq mints for a run are its own, like its temporary tokens.
+      if (!token.plaintext) state.log.push(`artifacts token ${revoked} revoked`);
+      return ok({ id: revoked });
+    }
     const repo = /^\/artifacts\/namespaces\/([^/]+)\/repos\/([^/]+)$/u.exec(path);
     if (repo) {
       const found = state.artifacts.find(
@@ -729,8 +803,11 @@ export function fakeAccount(overrides = {}) {
   }
 
   // Sigillo staging (read with `secrets get --raw`) and gh's REST calls.
-  const exec = recordingExec(({ command, args, input, cwd }) => {
+  const exec = recordingExec(({ command, args, input, cwd, env }) => {
     if (command === "gh") return gh(args, input);
+    if (command === "git" && ["ls-remote", "clone", "bundle"].includes(args[0])) {
+      return artifactsGit(args, cwd, env);
+    }
     if (command === "git") return git(args, cwd);
     assert.ok(command.endsWith(SIGILLO_BIN), `unexpected child: ${command}`);
     const environment = args[args.indexOf("--env") + 1];
@@ -836,6 +913,63 @@ export function fakeAccount(overrides = {}) {
       return {};
     }
     return { code: 1, stderr: `unexpected git ${command}` };
+  }
+
+  // git against the Artifacts repository, which takes only a live git token
+  // for it (sent as git's credential helper would, in an extra header from
+  // the environment's config): its refs, a mirror clone (a directory holding
+  // the refs it cloned), and bundles of a mirror.
+  async function artifactsGit(args, cwd, env) {
+    if (args[0] === "bundle") {
+      const file = args.find((argument) => argument.endsWith(".bundle"));
+      if (args[1] === "create") {
+        assert.ok(args.includes("--all"), "the bundle holds every ref");
+        const refs = JSON.parse(await readFile(join(cwd, "refs.json"), "utf8"));
+        await writeFile(file, bundleOf(refs));
+        state.log.push("code bundled");
+        return {};
+      }
+      const bundle = await readFile(file, "utf8");
+      if (args[1] === "verify") {
+        return bundle.startsWith("# v2 git bundle\n") ? {} : { code: 1, stderr: "not a bundle" };
+      }
+      if (args[1] === "list-heads")
+        return { stdout: bundle.split("\n\n")[0].split("\n").slice(1).join("\n") };
+    }
+    const config = {};
+    for (let index = 0; index < Number(env?.GIT_CONFIG_COUNT ?? 0); index += 1) {
+      config[env[`GIT_CONFIG_KEY_${index}`]] = env[`GIT_CONFIG_VALUE_${index}`];
+    }
+    assert.equal(config["credential.helper"], "", "no other credential helper answers");
+    assert.equal(env.GIT_TERMINAL_PROMPT, "0", "git never prompts");
+    const password = Buffer.from(
+      /^Authorization: Basic (.+)$/u.exec(config["http.extraHeader"] ?? "")?.[1] ?? "",
+      "base64",
+    )
+      .toString()
+      .replace(/^x:/u, "");
+    const token = state.artifactsTokens.find((candidate) => candidate.plaintext === password);
+    assert.ok(
+      token?.state === "active" && token.repo === "fixture",
+      "a live git token for fixture",
+    );
+    assert.ok(args.includes(ARTIFACTS_REMOTE), `git reaches ${ARTIFACTS_REMOTE}`);
+    if (
+      !state.artifacts.some(({ namespace, name }) => namespace === "fixture" && name === "fixture")
+    ) {
+      return { code: 128, stderr: "fatal: repository not found\n" };
+    }
+    const refs = Object.entries(state.artifactsRefs);
+    if (args[0] === "ls-remote") {
+      assert.ok(args.includes("--refs"), "only refs, no HEAD or peeled tags");
+      return { stdout: refs.map(([ref, sha]) => `${sha}\t${ref}\n`).join("") };
+    }
+    assert.deepEqual(args.slice(0, 3), ["clone", "--mirror", "--quiet"]);
+    const into = args.at(-1);
+    await mkdir(into, { recursive: true });
+    await writeFile(join(into, "refs.json"), JSON.stringify(state.artifactsRefs));
+    state.cloned = into;
+    return {};
   }
 
   // GitHub lists hooks a page at a time (30 unless asked, at most 100); gh

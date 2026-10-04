@@ -119,7 +119,10 @@ then deletes its Ploi site, Workers, D1 stores, buckets, its own backups,
 Artifacts repository, its own DNS records and its tokens (only what is named
 exactly as gq names the project's own), archives its GitHub repository, and
 records `offboarded.phase: "archived"`; in a terminal it asks for the
-project's name, elsewhere `--yes`. See
+project's name, elsewhere `--yes`. An Artifacts-only Site (no
+`github.repository`) needs no gh: its cut disables its Artifacts token and
+revokes the repository's git tokens instead of the webhook, and its archive
+keeps its code as `code.bundle`, a git bundle of every ref. See
 [Offboarding a Site](../guides/offboarding.md).
 `gq skills update` works from any Git repository and is documented in the
 [agent skills guide](../guides/skills.md).

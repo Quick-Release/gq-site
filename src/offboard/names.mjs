@@ -36,6 +36,11 @@ export function isOwn(project, role, name) {
   return name === ownName(project, role);
 }
 
+// gq.ops.json `artifacts`'s repository, as `<namespace>/<repo>`.
+export function artifactsRepositoryName(ops) {
+  return `${ops.artifacts.namespace}/${ops.artifacts.repo}`;
+}
+
 // The Worker binding that ties a Frontend stage to its publication store.
 export const PUBLICATION_BINDING = "PUBLICATION_DB";
 

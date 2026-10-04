@@ -7,6 +7,20 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ### Added
 
+- **`gq offboard` supports Artifacts-only Sites** (no `github.repository`),
+  which needed GitHub before
+  ([ADR 0011](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0011-offboard-a-site-by-cutting-access-before-archiving.md)).
+  Such a Site needs `artifacts.namespace` and `artifacts.repo` instead, and
+  gq calls no `gh` for it.
+  - The cut disables the `GETQUICK <PROJECT> Artifacts` token right after the
+    backup, then revokes the repository's active git tokens, so nobody can
+    push and start CI. `--restore` re-enables the token.
+  - `--archive` adds `code.bundle` to the Site Archive, a git bundle of every
+    ref of the Artifacts repository, with its refs in `manifest.json`. The
+    verification reads the repository's refs again, so a push since the
+    bundle stops the run before anything is deleted. The repository is then
+    deleted, and there is no webhook to delete or record to push.
+
 - **Artifacts namespaces are created in the EU by default**,
   `artifacts.jurisdiction` in `gq.ops.json`: `"eu"` (the default when it's
   left out), `"us"` or `"unrestricted"` (the opt-out). Cloudflare can't

@@ -10,17 +10,33 @@
 // with the project's tokens last, then GitHub's webhook; then the record,
 // committed and pushed before the repository is archived (repository.mjs).
 //
+// An Artifacts-only Site (no github.repository, ADR 0012) has no GitHub
+// repository to archive read-only: its code is archived too, as code.bundle
+// (a git bundle of every ref of its Artifacts repository), whose refs are
+// read again from the repository when the archive is verified, so nothing
+// pushed since is lost when the repository is deleted. There is no webhook
+// to delete, and nowhere to push the record.
+//
 // A rerun skips a recorded archive (it never archives over a verified one)
 // and deletes only what is still there, so a failed run is finished by
 // running it again.
 
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { text } from "node:stream/consumers";
 
+import { isArtifactsOnly } from "../ci/git-artifacts.mjs";
 import { webhookUrl } from "../ci/github-setup.mjs";
 import { updateManifest } from "../manifest/manifest.mjs";
 import { VERSION } from "../version.mjs";
-import { frontendWorker, isOwn as isOwnName, ownName, publicationsStore } from "./names.mjs";
+import {
+  artifactsRepositoryName,
+  frontendWorker,
+  isOwn as isOwnName,
+  ownName,
+  publicationsStore,
+} from "./names.mjs";
 import { archivesRepository, inspectRepository, repositoryItems } from "./repository.mjs";
 import { assertOwnDatabase, assertOwnPloiSite, frontendStages, unclearStage } from "./steps.mjs";
 import { ZIP_TAIL_BYTES, zipEntryCount, zipStream } from "./zip.mjs";
@@ -39,6 +55,7 @@ const DELETE_CONCURRENCY = 8;
 // (withOffboardingProviders with `archive`). `now` dates a new archive.
 export async function inspectArchive(providers, { now = () => new Date() } = {}) {
   const { ops, cloudflare, ploi, github } = providers;
+  const artifactsOnly = isArtifactsOnly(ops);
   const site = await ploi.existingSite();
   if (site) {
     assertOwnPloiSite(ops, site);
@@ -85,6 +102,10 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
   const database = (await ploi.databases()).find(({ name }) => name === ops.ploi.database);
   const d1 = await cloudflare.d1(d1Name);
   const { stages, unclear, unbound } = await frontendStages(cloudflare, ops.project, workers);
+  const artifacts = await cloudflare.artifactsRepository(
+    ops.artifacts.namespace,
+    ops.artifacts.repo,
+  );
   // What a new archive reads from, so it can't be gone already.
   const sources = [
     [site, `the Ploi site ${ops.domains.admin}`],
@@ -92,6 +113,9 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
     [frontendExists, `the Frontend Worker ${frontend}`],
     [d1, `the D1 store ${d1Name}`],
     ...(mediaOwn ? [[mediaExists, `the media bucket ${ops.media.bucket}`]] : []),
+    ...(artifactsOnly
+      ? [[artifacts, `the Artifacts repository ${artifactsRepositoryName(ops)}`]]
+      : []),
   ];
   const gone = sources.filter(([present]) => !present).map(([, source]) => source);
   const backups = await inspectBackups(providers, buckets);
@@ -103,6 +127,8 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
       gone,
       wholeBackups: backups.withBucket,
       mediaOwn,
+      artifactsOnly,
+      artifactsExists: Boolean(artifacts),
     }),
     ploi: {
       site,
@@ -134,7 +160,9 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
       container: (await cloudflare.containerApplications()).find(
         ({ name }) => name.toLowerCase() === containerName,
       ),
-      hook: (await github.hooks()).find((hook) => hook.config?.url === ciUrl),
+      hook: artifactsOnly
+        ? undefined
+        : (await github.hooks()).find((hook) => hook.config?.url === ciUrl),
     },
     mediaOwn,
     mediaDomain:
@@ -143,12 +171,13 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
         : undefined,
     buckets,
     backups,
-    artifacts: await cloudflare.artifactsRepository(ops.artifacts.namespace, ops.artifacts.repo),
+    artifacts,
+    artifactsOnly,
     records,
     apexHosts,
     zoneName,
     tokens: await cloudflare.projectTokens(),
-    repository: await inspectRepository(providers),
+    repository: artifactsOnly ? undefined : await inspectRepository(providers),
   };
 }
 
@@ -188,8 +217,13 @@ function isOwn(ops, role, name) {
 // nothing is under its prefix yet: either would mean an archive whose record
 // was lost, which a new one would overwrite or miss content from. Its
 // backups/ holds the Site's own backups, or everything under backups.prefix
-// when the backups bucket goes whole (`wholeBackups`).
-async function inspectContents(providers, { now, gone, wholeBackups, mediaOwn }) {
+// when the backups bucket goes whole (`wholeBackups`). An Artifacts-only
+// Site's code is read from its Artifacts repository (`code`: its refs);
+// another's is in its GitHub repository (`head`: its HEAD commit).
+async function inspectContents(
+  providers,
+  { now, gone, wholeBackups, mediaOwn, artifactsOnly, artifactsExists },
+) {
   const { ops, cloudflare, github } = providers;
   const recorded = ops.offboarded?.archive;
   if (recorded) {
@@ -200,6 +234,7 @@ async function inspectContents(providers, { now, gone, wholeBackups, mediaOwn })
         `r2://${recorded.bucket}/${recorded.prefix}manifest.json ${manifest ? "doesn't match" : "is missing, unlike"} gq.ops.json offboarded.archive: stopping before anything else is deleted.`,
       );
     }
+    if (artifactsOnly && artifactsExists) await assertRefsArchived(providers, bucket, recorded);
     return { recorded };
   }
   const stop = "stopping before anything is written or deleted.";
@@ -232,8 +267,32 @@ async function inspectContents(providers, { now, gone, wholeBackups, mediaOwn })
     backups,
     backupsPrefix,
     backupsFrom,
-    head: await github.headCommit(),
+    ...(artifactsOnly
+      ? { code: { refs: await providers.code.refs() } }
+      : { head: await github.headCommit() }),
   };
+}
+
+// Throws unless an Artifacts-only Site's repository, still there when an
+// archive is resumed, holds the refs the recorded manifest.json has for
+// code.bundle: anything pushed since would be lost with it.
+async function assertRefsArchived(providers, bucket, recorded) {
+  const key = `${recorded.prefix}manifest.json`;
+  const manifest = JSON.parse(await text((await bucket.get(key)).body));
+  const differing = differingRefs(
+    await providers.code.refs(),
+    manifest.sources?.artifacts?.refs ?? {},
+  );
+  if (differing.length > 0) {
+    throw new Error(
+      `The Artifacts repository ${artifactsRepositoryName(providers.ops)}'s refs differ from those r2://${recorded.bucket}/${key} records for code.bundle (${differing.join(", ")}): stopping before anything else is deleted.`,
+    );
+  }
+}
+
+// The refs `a` and `b` (each { ref: sha }) don't agree on.
+function differingRefs(a, b) {
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((ref) => a[ref] !== b[ref]);
 }
 
 const done = (area, text) => ({ area, state: "done", text });
@@ -245,7 +304,9 @@ const todo = (area, text, apply) => ({ area, state: "todo", text, apply });
 // pushes the record and archives the repository too.
 export function archivePlan(site, { configPath, now = () => new Date() }) {
   const { ops, archive } = site;
-  const session = { files: [] };
+  // An Artifacts-only Site's refs, as code.bundle holds them once made (none
+  // for a repository without refs, which has nothing to bundle).
+  const session = { files: [], ...(archive.code ? { refs: {} } : {}) };
   const items = [
     ...archiveItems(site, { configPath, now, session }),
     ...deletionItems(site, { configPath }),
@@ -258,7 +319,14 @@ export function archivePlan(site, { configPath, now = () => new Date() }) {
         };
       }),
     ),
-    ...repositoryItems(site.repository, ops),
+    ...(site.artifactsOnly
+      ? [
+          manual(
+            "Git",
+            `commit gq.ops.json's archived record in this checkout: ${ops.project} is Artifacts-only, so its repository, deleted above, takes no push (code.bundle keeps its code)`,
+          ),
+        ]
+      : repositoryItems(site.repository, ops)),
     manual(
       "Sigillo",
       `the project ${ops.sigillo?.projectId ?? "(gq.ops.json sigillo.projectId)"} is kept, with the Site's secrets`,
@@ -267,7 +335,7 @@ export function archivePlan(site, { configPath, now = () => new Date() }) {
   return {
     items,
     result: () => archive.recorded ?? session.recorded,
-    archivesRepository: archivesRepository(site.repository),
+    archivesRepository: !site.artifactsOnly && archivesRepository(site.repository),
   };
 }
 
@@ -346,6 +414,7 @@ function archiveItems(site, { configPath, now, session }) {
         }
       },
     ),
+    ...(archive.code ? [codeItem(site, at, session)] : []),
     todo(
       "Archive",
       `${at}gq.ops.json, and manifest.json (each file's size and sha256, and the source resources)`,
@@ -358,7 +427,7 @@ function archiveItems(site, { configPath, now, session }) {
           "application/json",
         );
         session.files.push({ path: "gq.ops.json", ...stored });
-        session.manifest = manifestOf(site, session.files, now());
+        session.manifest = manifestOf(site, session, now());
         const written = await bucket.upload(
           `${archive.prefix}manifest.json`,
           [Buffer.from(`${JSON.stringify(session.manifest, null, 2)}\n`)],
@@ -369,7 +438,15 @@ function archiveItems(site, { configPath, now, session }) {
     ),
     todo(
       "Verify",
-      `re-read every archived file against manifest.json${archive.media ? `, and count uploads.zip's entries against ${ops.media.bucket}` : ""}; nothing is deleted unless all match, then gq.ops.json records the archive`,
+      `${listed([
+        "re-read every archived file against manifest.json",
+        ...(archive.media ? [`count uploads.zip's entries against ${ops.media.bucket}`] : []),
+        ...(archive.code
+          ? [
+              `read the Artifacts repository ${artifactsRepositoryName(ops)}'s refs again against code.bundle's`,
+            ]
+          : []),
+      ])}; nothing is deleted unless all match, then gq.ops.json records the archive`,
       async (p) => {
         await verifyArchive(p, archive.prefix, session);
         session.recorded = {
@@ -383,6 +460,42 @@ function archiveItems(site, { configPath, now, session }) {
       },
     ),
   ];
+}
+
+// "a", "a, and b", "a, b, and c".
+function listed(parts) {
+  if (parts.length < 3) return parts.join(", and ");
+  return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
+}
+
+// An Artifacts-only Site's code: a git bundle of every ref of its Artifacts
+// repository, made from a mirror clone; `session.refs` become the refs it
+// holds, which the verification reads again from the repository.
+function codeItem(site, at, session) {
+  const { ops, archive } = site;
+  const { refs } = archive.code;
+  const count = Object.keys(refs).length;
+  if (count === 0) {
+    return done(
+      "Archive",
+      `the Artifacts repository ${artifactsRepositoryName(ops)} has no refs: there is no code to archive`,
+    );
+  }
+  return todo(
+    "Archive",
+    `${at}code.bundle ← the ${count} ref${count > 1 ? "s" : ""} of the Artifacts repository ${artifactsRepositoryName(ops)} (a git bundle of every ref)`,
+    (p) =>
+      p.code.bundle(async ({ path, refs: bundled }) => {
+        const bucket = await p.r2(ARCHIVE_BUCKET);
+        const stored = await bucket.upload(
+          `${archive.prefix}code.bundle`,
+          createReadStream(path),
+          "application/x-git-bundle",
+        );
+        session.files.push({ path: "code.bundle", ...stored });
+        session.refs = bundled;
+      }),
+  );
 }
 
 // Every media object into one ZIP, streamed object by object.
@@ -421,7 +534,8 @@ async function* listedBytes(body, object, bucket, prefix) {
 }
 
 // What manifest.json records: each file, and where everything came from.
-function manifestOf(site, files, date) {
+// An Artifacts-only Site's refs are those code.bundle holds.
+function manifestOf(site, { files, refs }, date) {
   const { ops, archive, ploi, frontend, ci } = site;
   return {
     project: ops.project,
@@ -456,8 +570,12 @@ function manifestOf(site, files, date) {
         workflows: ci.workflows,
         containerApplication: ci.container?.name ?? null,
       },
-      artifacts: { namespace: ops.artifacts.namespace, repo: ops.artifacts.repo },
-      github: { repository: ops.github.repository, head: archive.head },
+      artifacts: {
+        namespace: ops.artifacts.namespace,
+        repo: ops.artifacts.repo,
+        ...(site.artifactsOnly ? { refs } : {}),
+      },
+      github: site.artifactsOnly ? null : { repository: ops.github.repository, head: archive.head },
       cloudflare: {
         accountId: ops.cloudflare.accountId,
         zoneId: ops.cloudflare.zoneId,
@@ -492,6 +610,16 @@ async function verifyArchive(providers, prefix, session) {
           `uploads.zip holds ${entries ?? "no readable"} entries, but ${providers.ops.media.bucket} has ${objects} objects`,
         );
       }
+    }
+  }
+  // Nothing pushed to an Artifacts-only Site's repository since code.bundle
+  // was made: it is deleted next.
+  if (session.refs) {
+    const differing = differingRefs(await providers.code.refs(), session.refs);
+    if (differing.length > 0) {
+      problems.push(
+        `the Artifacts repository ${artifactsRepositoryName(providers.ops)}'s refs differ from code.bundle's (${differing.join(", ")})`,
+      );
     }
   }
   const manifest = await readBack(bucket, `${prefix}manifest.json`);
@@ -736,11 +864,17 @@ function deletionItems(site, { configPath }) {
           todo("Tokens", `delete ${token.name}`, (p) => p.cloudflare.deleteToken(token)),
         )
       : [done("Tokens", `no GETQUICK ${ops.project.toUpperCase()} token is left`)]),
-    ci.hook
-      ? todo("GitHub", `delete the push webhook ${ci.hook.id} on ${ops.github.repository}`, (p) =>
-          p.github.deleteHook(ci.hook.id),
-        )
-      : done("GitHub", "no push webhook to the CI Worker is left"),
+    ...(site.artifactsOnly
+      ? []
+      : [
+          ci.hook
+            ? todo(
+                "GitHub",
+                `delete the push webhook ${ci.hook.id} on ${ops.github.repository}`,
+                (p) => p.github.deleteHook(ci.hook.id),
+              )
+            : done("GitHub", "no push webhook to the CI Worker is left"),
+        ]),
   ];
 }
 

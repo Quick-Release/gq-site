@@ -8,8 +8,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import test from "node:test";
 
 import { fakeClock, recordingExec, recordingFetch } from "../support/fixture-site.mjs";
+import { access } from "node:fs/promises";
+
 import {
   answering,
+  ARTIFACTS_ONLY,
+  ARTIFACTS_REFS,
+  artifactsOnlyState,
+  bundleOf,
   changes,
   CROWDED_HOOKS,
   CROWDED_TOKENS,
@@ -1888,4 +1894,227 @@ test("an uploads.zip larger than one part goes up as a multipart upload", async 
   assert.equal(entries.length, 5);
   assert.deepEqual(entries.find(({ name }) => name === "video/large.mp4").body, large);
   assert.equal(entries.find(({ name }) => name === "empty.txt").body.length, 0);
+});
+
+// --- an Artifacts-only Site: its code archived from Artifacts ------------------
+
+// An Artifacts-only Site (no github.repository, ADR 0012) phase 1 has cut.
+const artifactsOnlySite = ({ state = {} } = {}) =>
+  cutSite({ ops: ARTIFACTS_ONLY, state: { ...artifactsOnlyState(), ...state } });
+
+const calledGitHub = (exec) => exec.calls.some(({ command }) => command === "gh");
+
+test("an Artifacts-only Site's archive plans code.bundle and checks it, with nothing to push or archive on GitHub", async () => {
+  const { fixture, account } = await artifactsOnlySite();
+
+  const result = await fixture.run(["offboard", "--archive", "--dry-run"], {
+    env: ENV,
+    ...account,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const prefix = `r2://offboarded-clients/fixture/${today()}/`;
+  const plan = planLines(result.stdout);
+  assert.deepEqual(plan.slice(4, 8), [
+    `  - Archive: ${prefix}backups/ ← the 2 database backups in r2://fixture-releases/db/`,
+    `  - Archive: ${prefix}code.bundle ← the 2 refs of the Artifacts repository fixture/fixture (a git bundle of every ref)`,
+    `  - Archive: ${prefix}gq.ops.json, and manifest.json (each file's size and sha256, and the source resources)`,
+    "  - Verify: re-read every archived file against manifest.json, count uploads.zip's entries against fixture-media, and read the Artifacts repository fixture/fixture's refs again against code.bundle's; nothing is deleted unless all match, then gq.ops.json records the archive",
+  ]);
+  assert.ok(plan.includes("  - Artifacts: delete the repository fixture/fixture"));
+  assert.deepEqual(plan.slice(-4), [
+    "  - Tokens: delete GETQUICK FIXTURE Artifacts",
+    '  - Record: offboarded.phase becomes "archived" in gq.ops.json',
+    "  ! Git: commit gq.ops.json's archived record in this checkout: fixture is Artifacts-only, so its repository, deleted above, takes no push (code.bundle keeps its code)",
+    "  ! Sigillo: the project PROJECT123 is kept, with the Site's secrets",
+  ]);
+  assert.doesNotMatch(result.stdout, /GitHub/u);
+  assert.deepEqual(account.state.log, []);
+  assert.ok(!calledGitHub(account.exec));
+  assert.ok(everyMintedTokenRevoked(account.state));
+});
+
+// Whether every git token the run minted (to read the repository) is
+// revoked once used.
+const everyMintedTokenRevoked = (state) => {
+  const minted = state.artifactsTokens.filter(({ id }) => id.startsWith("git-minted-"));
+  return minted.length > 0 && minted.every((token) => token.state === "revoked");
+};
+
+test("an Artifacts-only Site's archive keeps every ref in code.bundle, checked before its repository is deleted", async () => {
+  const { fixture, account } = await artifactsOnlySite();
+  const { state } = account;
+
+  const result = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
+
+  assert.equal(result.code, 0, result.stderr);
+  const deletions = DELETIONS.filter(
+    (entry) => typeof entry !== "string" || !/^(github |gq\.ops\.json )/u.test(entry),
+  );
+  deletions.splice(deletions.indexOf("token t-deploy deleted") + 1, 0, "token t-artifacts deleted");
+  assertLog(state.log, [
+    "bucket offboarded-clients created",
+    "database backed up",
+    "code bundled",
+    ...deletions,
+  ]);
+
+  const prefix = `fixture/${today()}/`;
+  const archived = state.buckets["offboarded-clients"];
+  assert.equal(archived[`${prefix}code.bundle`].body.toString(), bundleOf(ARTIFACTS_REFS));
+  const manifestBody = archived[`${prefix}manifest.json`].body;
+  const manifest = JSON.parse(manifestBody);
+  const bundle = manifest.files.find(({ path }) => path === "code.bundle");
+  assert.equal(bundle.sha256, sha256(archived[`${prefix}code.bundle`].body));
+  assert.deepEqual(manifest.sources.artifacts, {
+    namespace: "fixture",
+    repo: "fixture",
+    refs: ARTIFACTS_REFS,
+  });
+  assert.equal(manifest.sources.github, null);
+
+  // Cloned with read-only git tokens; the clone and the bundle are gone.
+  const minted = state.artifactsTokens.filter(({ id }) => id.startsWith("git-minted-"));
+  assert.ok(minted.length > 0 && minted.every(({ scope }) => scope === "read"));
+  assert.ok(everyMintedTokenRevoked(state));
+  await assert.rejects(access(state.cloned), { code: "ENOENT" });
+  assert.ok(
+    account.exec.calls.every(({ args }) => !args.some((arg) => /git-secret/u.test(arg))),
+    "no git token in git's arguments",
+  );
+  assert.doesNotMatch(result.stdout + result.stderr, /git-secret/u);
+  assert.ok(!calledGitHub(account.exec));
+
+  const ops = await readOps(fixture);
+  assert.equal(ops.offboarded.phase, "archived");
+  assert.equal(ops.offboarded.archive.manifestSha256, sha256(manifestBody));
+  assert.match(
+    result.stdout,
+    new RegExp(
+      `Code: {7}r2://offboarded-clients/${prefix}code\\.bundle \\(every ref of the Artifacts repository fixture/fixture, which is deleted\\)`,
+      "u",
+    ),
+  );
+  assert.match(result.stdout, /Commit gq\.ops\.json in this checkout/u);
+
+  // A rerun has nothing to do, and reaches nothing.
+  account.fetch.requests.length = 0;
+  account.exec.calls.length = 0;
+  state.log.length = 0;
+  const again = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
+  assert.equal(again.code, 0, again.stderr);
+  assert.match(
+    again.stdout,
+    new RegExp(
+      `Nothing left to archive: fixture was archived to r2://offboarded-clients/${prefix}\\.`,
+      "u",
+    ),
+  );
+  assert.deepEqual(account.fetch.requests, []);
+  assert.deepEqual(account.exec.calls, []);
+  assert.deepEqual(state.log, []);
+});
+
+test("a push to the Artifacts repository after code.bundle was made stops the archive before anything is deleted", async () => {
+  const { fixture, account } = await artifactsOnlySite();
+  const exec = recordingExec(async (call) => {
+    const result = await account.exec(call.command, call.args, call);
+    if (call.args[0] === "bundle" && call.args[1] === "create") {
+      account.state.artifactsRefs["refs/heads/main"] = "a".repeat(40);
+    }
+    return result;
+  });
+
+  const result = await fixture.run(["offboard", "--archive", "--yes"], {
+    env: ENV,
+    fetch: account.fetch,
+    exec,
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stderr,
+    /failed verification: the Artifacts repository fixture\/fixture's refs differ from code\.bundle's \(refs\/heads\/main\)\. Nothing was deleted\./u,
+  );
+  assert.deepEqual(account.state.log, [
+    "bucket offboarded-clients created",
+    "database backed up",
+    "code bundled",
+  ]);
+  assert.equal((await readOps(fixture)).offboarded.archive, undefined);
+});
+
+test("an Artifacts-only Site whose Artifacts repository is gone, with no archive recorded, isn't archived", async () => {
+  const { fixture, account } = await artifactsOnlySite();
+  account.state.artifacts = account.state.artifacts.filter(({ name }) => name !== "fixture");
+
+  const result = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
+
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stderr,
+    /the Artifacts repository fixture\/fixture is already gone, but gq\.ops\.json records no archive/u,
+  );
+  assert.deepEqual(account.state.log, []);
+});
+
+test("an Artifacts-only Site whose repository has no refs has no code to bundle", async () => {
+  const { fixture, account } = await artifactsOnlySite({ state: { artifactsRefs: {} } });
+
+  const result = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(
+    result.stdout,
+    /✓ Archive: the Artifacts repository fixture\/fixture has no refs: there is no code to archive/u,
+  );
+  assert.ok(!account.state.log.includes("code bundled"));
+  const prefix = `fixture/${today()}/`;
+  const archived = account.state.buckets["offboarded-clients"];
+  assert.equal(archived[`${prefix}code.bundle`], undefined);
+  const manifest = JSON.parse(archived[`${prefix}manifest.json`].body);
+  assert.deepEqual(manifest.sources.artifacts.refs, {});
+  assert.ok(account.state.log.includes("artifacts repo fixture/fixture deleted"));
+});
+
+test("a resumed archive deletes the Artifacts repository only while its refs are still the recorded code.bundle's", async () => {
+  const { fixture, account } = await artifactsOnlySite();
+  let refused = false;
+  // The run stops at the repository's deletion, once the archive is recorded.
+  const fetch = recordingFetch((request) => {
+    if (
+      !refused &&
+      request.method === "DELETE" &&
+      request.url.endsWith("/artifacts/namespaces/fixture/repos/fixture")
+    ) {
+      refused = true;
+      return new Response(JSON.stringify({ success: false, errors: [{ message: "busy" }] }), {
+        status: 500,
+      });
+    }
+    return account.fetch(request.url, request);
+  });
+  const failed = await fixture.run(["offboard", "--archive", "--yes"], {
+    env: ENV,
+    fetch,
+    exec: account.exec,
+  });
+  assert.equal(failed.code, 1);
+  assert.ok((await readOps(fixture)).offboarded.archive, "the archive is recorded");
+
+  account.state.artifactsRefs["refs/heads/hotfix"] = "b".repeat(40);
+  account.state.log.length = 0;
+  const changed = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
+
+  assert.equal(changed.code, 1);
+  assert.match(
+    changed.stderr,
+    /The Artifacts repository fixture\/fixture's refs differ from those r2:\/\/offboarded-clients\/fixture\/[\d-]+\/manifest\.json records for code\.bundle \(refs\/heads\/hotfix\): stopping before anything else is deleted\./u,
+  );
+  assert.deepEqual(account.state.log, []);
+
+  delete account.state.artifactsRefs["refs/heads/hotfix"];
+  const resumed = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
+  assert.equal(resumed.code, 0, resumed.stderr);
+  assert.ok(account.state.log.includes("artifacts repo fixture/fixture deleted"));
 });

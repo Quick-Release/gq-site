@@ -9,12 +9,20 @@
 // The cut writes gq.ops.json `offboarded` before anything else, so the
 // guards hold while it is half done, and notes in `offboarded.cut` each
 // change once made; --restore brings back only those.
+//
+// An Artifacts-only Site (no github.repository, ADR 0012) has no GitHub
+// webhook: a push to its Artifacts repository starts CI. Its cut silences CI
+// by taking away every push credential instead: the Artifacts token that
+// mints git tokens, then the git tokens still live.
 
+import { isArtifactsOnly } from "../ci/git-artifacts.mjs";
 import { webhookUrl } from "../ci/github-setup.mjs";
+import { tokenName } from "../cloudflare/tokens.mjs";
 import { parseDotenv } from "../dotenv-text.mjs";
 import { retryCrontab } from "../ploi/events.mjs";
 import { updateManifest } from "../manifest/manifest.mjs";
 import {
+  artifactsRepositoryName,
   frontendWorker,
   isOwn,
   ownName,
@@ -111,13 +119,15 @@ export async function inspectSite(providers) {
     (entry) => entry.user === crontab.user && entry.command === crontab.command,
   );
   const ciUrl = webhookUrl(ops.ci.worker, await cloudflare.accountSubdomain());
-  const hooks = await github.hooks();
+  const artifactsOnly = isArtifactsOnly(ops);
+  const hooks = artifactsOnly ? [] : await github.hooks();
   // The production Frontend first, then its other stages.
   const { stages, unclear } = await frontendStages(
     cloudflare,
     ops.project,
     await cloudflare.workers(),
   );
+  const tokens = await cloudflare.projectTokens();
   const frontends = [];
   for (const worker of [frontendWorker(ops.project), ...stages.map((stage) => stage.worker)]) {
     frontends.push({
@@ -143,7 +153,20 @@ export async function inspectSite(providers) {
       hooks,
       hook: hooks.find((hook) => hook.config?.url === ciUrl),
     },
-    tokens: await cloudflare.projectTokens(),
+    tokens,
+    // What can push to an Artifacts-only Site's repository.
+    artifacts: artifactsOnly
+      ? {
+          repository: artifactsRepositoryName(ops),
+          tokenName: tokenName(ops.project, "Artifacts"),
+          token: tokens.find(({ name }) => name === tokenName(ops.project, "Artifacts")),
+          // null once the repository is gone.
+          gitTokens: await cloudflare.artifactsGitTokens(
+            ops.artifacts.namespace,
+            ops.artifacts.repo,
+          ),
+        }
+      : undefined,
     record: ops.offboarded,
   };
 }
@@ -164,7 +187,9 @@ const workersDev = (subdomain) => ({
 // (every stage) and media, and the project's tokens last, since the steps
 // before them may need what they grant.
 export function cutPlan(site, { configPath, now = () => new Date() }) {
-  const { ops, cms, frontends, media, ci, tokens } = site;
+  const { ops, cms, frontends, media, ci, artifacts } = site;
+  // An Artifacts-only Site's Artifacts token goes with CI, not last.
+  const tokens = site.tokens.filter((token) => token !== artifacts?.token);
   const backups = `r2://${ops.backups.bucket}/${ops.backups.prefix ?? "db/"}`;
   // A todo that applies, then notes its change in offboarded.cut: a change
   // that failed is never undone by --restore. With `before`, the note (an
@@ -180,6 +205,16 @@ export function cutPlan(site, { configPath, now = () => new Date() }) {
       await apply(providers);
       if (!before) await noteCut(note);
     });
+  const disableToken = (area, token, text = `disable ${token.name}`) =>
+    cut(
+      area,
+      text,
+      (record) => {
+        const disabled = (record.tokens ??= []);
+        if (!disabled.includes(token.id)) disabled.push(token.id);
+      },
+      (p) => p.cloudflare.setTokenStatus(token, "disabled"),
+    );
   return [
     site.record
       ? done("Record", `gq.ops.json has offboarded (${site.record.phase}, since ${site.record.at})`)
@@ -205,16 +240,20 @@ export function cutPlan(site, { configPath, now = () => new Date() }) {
         ),
     // CI first: a push from now on can deploy nothing (the record isn't
     // committed yet, so CI would not refuse).
-    ci.hook?.active
-      ? cut(
-          "CI",
-          `deactivate the GitHub push webhook ${ci.hook.id} on ${ops.github.repository}`,
-          (record) => {
-            record.webhook = ci.hook.id;
-          },
-          (p) => p.github.updateHook(ci.hook.id, { active: false }),
-        )
-      : done("CI", `no active GitHub push webhook to ${ci.webhookUrl}`),
+    ...(artifacts
+      ? silenceArtifacts(site, disableToken)
+      : [
+          ci.hook?.active
+            ? cut(
+                "CI",
+                `deactivate the GitHub push webhook ${ci.hook.id} on ${ops.github.repository}`,
+                (record) => {
+                  record.webhook = ci.hook.id;
+                },
+                (p) => p.github.updateHook(ci.hook.id, { active: false }),
+              )
+            : done("CI", `no active GitHub push webhook to ${ci.webhookUrl}`),
+        ]),
     !isOwn(ops.project, "ciWorker", ci.worker)
       ? manual(
           "CI",
@@ -321,17 +360,49 @@ export function cutPlan(site, { configPath, now = () => new Date() }) {
           ),
     ...tokens.map((token) =>
       token.status === "active"
-        ? cut(
-            "Tokens",
-            `disable ${token.name}`,
-            (record) => {
-              const disabled = (record.tokens ??= []);
-              if (!disabled.includes(token.id)) disabled.push(token.id);
-            },
-            (p) => p.cloudflare.setTokenStatus(token, "disabled"),
-          )
+        ? disableToken("Tokens", token)
         : done("Tokens", `${token.name} is ${token.status}`),
     ),
+  ];
+}
+
+// An Artifacts-only Site's push credentials taken away: its Artifacts token
+// disabled first, so no git token can be minted, then every git token still
+// active revoked, listed again once the token is disabled, so none minted
+// since the plan was read survives. Git tokens last an hour at most, and the
+// credential helper mints new ones once the token is enabled again, so
+// --restore brings none back.
+function silenceArtifacts(site, disableToken) {
+  const { ops, artifacts } = site;
+  const { token, gitTokens, repository } = artifacts;
+  const { namespace, repo } = ops.artifacts;
+  // While the token is active, a git token can still be minted before it is
+  // disabled.
+  const minting = token?.status === "active";
+  return [
+    !token
+      ? done("CI", `there is no ${artifacts.tokenName} token to mint git tokens with`)
+      : minting
+        ? disableToken(
+            "CI",
+            token,
+            `disable ${token.name}, so no git token for the Artifacts repository ${repository} can be minted (${ops.project} is Artifacts-only: a push there starts CI)`,
+          )
+        : done("CI", `${token.name} is ${token.status}`),
+    gitTokens === null
+      ? done("CI", `the Artifacts repository ${repository} is gone, so nothing can be pushed to it`)
+      : minting || gitTokens.length > 0
+        ? todo(
+            "CI",
+            `revoke every active git token for the Artifacts repository ${repository} (${gitTokens.length} now)`,
+            async (p) => {
+              const live = (await p.cloudflare.artifactsGitTokens(namespace, repo)) ?? [];
+              for (const gitToken of live) {
+                await p.cloudflare.revokeArtifactsGitToken(namespace, gitToken.id);
+              }
+            },
+          )
+        : done("CI", `no active git token for the Artifacts repository ${repository}`),
   ];
 }
 

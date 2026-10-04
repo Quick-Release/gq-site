@@ -24,7 +24,8 @@ It has two phases:
   guards nothing but your own copy.
 - **gh 2.48 or later**, logged in with admin on the repository (`gh --version`;
   the webhooks are listed with `gh api --paginate --slurp`). An older gh fails
-  while the plan is read, before anything changes.
+  while the plan is read, before anything changes. An Artifacts-only Site
+  needs no gh (see [An Artifacts-only Site](#an-artifacts-only-site)).
 - Ask the team not to push while the cut runs; the cut silences CI first, but
   a push already under way can still deploy.
 
@@ -66,15 +67,15 @@ These checks come first, and stop the run before anything changes:
 The plan marks each item `✓` (already done), `-` (to cut) or `!` (by hand),
 and is applied in this order:
 
-| Part     | What happens                                                                                                                                                                                                                                                   |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Record   | `offboarded: { "at": …, "phase": "cut" }` is written to `gq.ops.json` first, so the guards hold even if a later step fails. Commit and push it once the cut is done.                                                                                           |
-| Backup   | `gq db backup` of the live database into the backups bucket, before anything is cut.                                                                                                                                                                           |
-| CI       | The GitHub push webhook is deactivated and the CI Worker's workers.dev switched off, first, so a push from then on can't deploy the Frontend again. A CI Worker not named `<project>-ci` may serve other repositories: it is listed for you (`!`) and left on. |
-| CMS      | The retry crontab is deleted and the Ploi site suspended ("offboarded"); its files, `.env` and database stay.                                                                                                                                                  |
-| Frontend | The Worker's custom domains are detached and its workers.dev and preview URLs switched off, and its other stages' too. The Workers and their D1 stores stay.                                                                                                   |
-| Media    | The media bucket's custom domain is disabled. The bucket and its uploads stay. A media bucket not named `<project>-media` may serve other clients: it is listed for you (`!`) and its domain left on.                                                          |
-| Tokens   | Every `GETQUICK <PROJECT> …` Cloudflare token is disabled, last, since the steps before need them. The token-manager token is never touched.                                                                                                                   |
+| Part     | What happens                                                                                                                                                                                                                                                                                                                            |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Record   | `offboarded: { "at": …, "phase": "cut" }` is written to `gq.ops.json` first, so the guards hold even if a later step fails. Commit and push it once the cut is done (an Artifacts-only Site's can only be committed).                                                                                                                   |
+| Backup   | `gq db backup` of the live database into the backups bucket, before anything is cut.                                                                                                                                                                                                                                                    |
+| CI       | The GitHub push webhook is deactivated (on an Artifacts-only Site, every push credential is taken away instead) and the CI Worker's workers.dev switched off, first, so a push from then on can't deploy the Frontend again. A CI Worker not named `<project>-ci` may serve other repositories: it is listed for you (`!`) and left on. |
+| CMS      | The retry crontab is deleted and the Ploi site suspended ("offboarded"); its files, `.env` and database stay.                                                                                                                                                                                                                           |
+| Frontend | The Worker's custom domains are detached and its workers.dev and preview URLs switched off, and its other stages' too. The Workers and their D1 stores stay.                                                                                                                                                                            |
+| Media    | The media bucket's custom domain is disabled. The bucket and its uploads stay. A media bucket not named `<project>-media` may serve other clients: it is listed for you (`!`) and its domain left on.                                                                                                                                   |
+| Tokens   | Every `GETQUICK <PROJECT> …` Cloudflare token is disabled, last, since the steps before need them. The token-manager token is never touched.                                                                                                                                                                                            |
 
 As it goes, the cut notes in `offboarded.cut` each thing it has changed (the
 crontab, the suspension, each detached domain, each Worker's workers.dev
@@ -105,6 +106,32 @@ hand-deployed `<project>-fe-redirects`; `<project>-fe-shop-fe`) may not be
 the Site's: the plan lists it for you to check, and leaves it alone. Once the Ploi site is suspended the backup
 counts as done: a suspended CMS can't change its database, so the backup
 taken before it is the final one.
+
+## An Artifacts-only Site
+
+A Site with no `github.repository` in `gq.ops.json` keeps its code only in its
+Artifacts repository
+([ADR 0012](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0012-keep-a-sites-code-in-artifacts-when-it-has-no-github-repository.md)).
+Pushes there start CI directly, and nothing goes through GitHub, so `gh`
+isn't needed. Offboarding it needs `artifacts.namespace` and `artifacts.repo`
+in `gq.ops.json`, and differs in these ways:
+
+- **The cut.** Straight after the backup, where a Site on GitHub has its
+  webhook deactivated, the cut disables the `GETQUICK <PROJECT> Artifacts`
+  token, so no git token can be minted. It then revokes every git token
+  still active for the repository. Nobody can push from then on, you
+  included: commit `gq.ops.json`, and push it once the Site is restored.
+- **Restore** re-enables the Artifacts token with the other tokens; the
+  credential helper mints new git tokens from it.
+- **The archive** clones the repository into a temporary directory and
+  stores every ref in `code.bundle`, which `manifest.json` lists with its
+  refs. When the archive is verified, the repository's refs are read again
+  and must match the bundle's, so a push made after the bundle stops the run
+  before anything is deleted; a resumed run checks them against the recorded
+  `manifest.json` again before the repository goes. The repository is then deleted with the rest.
+  There is no webhook to delete and nowhere to push the record: commit
+  `gq.ops.json` in your checkout. The run prints `code.bundle`'s location
+  where a Site on GitHub has its archived repository.
 
 ## While a Site is offboarded
 
@@ -175,12 +202,15 @@ former client (created if missing, with no public domain), under
 | `database.sql.gz`  | A fresh dump of the CMS database (still there, on the suspended site).                                                                                                                                                                                   |
 | `publications.sql` | The Frontend's D1 publication store, exported (and `publications-<stage>.sql` for each other stage's). A Site without one (no durable delivery) can't be archived yet.                                                                                   |
 | `backups/`         | Copies of the Site's own database backups (`<backups.prefix><database>/`), the cut's final backup among them. When the backups bucket is deleted whole (it is the project's releases bucket, as is usual), everything under `backups.prefix` instead.    |
+| `code.bundle`      | An Artifacts-only Site's code: a git bundle of every ref of its Artifacts repository. A Site on GitHub has none: its repository is archived instead.                                                                                                     |
 | `gq.ops.json`      | The Site's manifest as it was.                                                                                                                                                                                                                           |
-| `manifest.json`    | Each file's size and sha256, and where everything came from: buckets, Ploi IDs, Workers, the D1 store, the repository's HEAD.                                                                                                                            |
+| `manifest.json`    | Each file's size and sha256, and where everything came from: buckets, Ploi IDs, Workers, the D1 store, the GitHub repository's HEAD (an Artifacts-only Site's refs instead).                                                                             |
 
 Each media object and backup must hold as many bytes as its bucket lists.
 Then every file is read back and checked against `manifest.json`, and
-`uploads.zip`'s entries are counted against the media bucket's objects. **If
+`uploads.zip`'s entries are counted against the media bucket's objects. An
+Artifacts-only Site's repository refs are read again and must match
+`code.bundle`'s. **If
 anything differs, the run stops before deleting anything.** Only a verified
 archive is recorded in `gq.ops.json` (`offboarded.archive`: its bucket, prefix
 and `manifest.json`'s sha256).
@@ -210,9 +240,9 @@ In this order, only after the archive is recorded:
 | Artifacts | The Artifacts repository. The empty namespace stays (the plan says so).                                                                                                                                       |
 | DNS       | The `A`, `AAAA` and `CNAME` records named exactly as the Site's hosts: `domains.admin`, `domains.frontend` and `media.domain`. Each is listed in the plan.                                                    |
 | Tokens    | Every `GETQUICK <PROJECT> …` token, deleted last on Cloudflare.                                                                                                                                               |
-| GitHub    | The push webhook is deleted.                                                                                                                                                                                  |
-| Record    | `offboarded.phase` becomes `"archived"`, and gq commits `gq.ops.json` and pushes it to the default branch.                                                                                                    |
-| GitHub    | Last, once the record is pushed, the repository is archived: read-only, its code and history kept.                                                                                                            |
+| GitHub    | The push webhook is deleted (not on an Artifacts-only Site).                                                                                                                                                  |
+| Record    | `offboarded.phase` becomes `"archived"`, and gq commits `gq.ops.json` and pushes it to the default branch (an Artifacts-only Site's you commit yourself).                                                     |
+| GitHub    | Last, once the record is pushed, the repository is archived: read-only, its code and history kept (not on an Artifacts-only Site).                                                                            |
 
 The zone is shared with other Sites (`bnq.pt` holds every client's staging
 hosts): it is never deleted, and neither is any record that isn't one of the
