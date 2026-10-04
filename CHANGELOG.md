@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.17.3 — 2026-10-04
 
 ### Added
 
@@ -45,6 +45,13 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   No `gq sync` migration sets it for them (ADR 0014): set
   `"jurisdiction": "unrestricted"` to keep it, or recreate it in the EU
   (see [Cloudflare provisioning and CI](https://github.com/Quick-Release/gq-site/blob/main/docs/guides/provisioning.md#cloudflare-provisioning-and-ci)).
+
+### Fixed
+
+- **Empty Artifacts-only code archives report no bundle.** The archive summary
+  no longer points to a nonexistent `code.bundle` when the repository has no
+  refs. Resumed archives read the saved manifest to report the actual archived
+  files, even after the Artifacts repository has been deleted.
 
 ## 0.17.2 — 2026-10-04
 
