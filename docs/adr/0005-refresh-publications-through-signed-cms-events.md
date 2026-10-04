@@ -6,6 +6,8 @@
   signed `reconcile` event asks the Frontend to compare the whole store with
   WordPress) and [ADR 0010](0010-declare-a-new-content-site-ready-through-one-readiness-gate.md)
   (the `check` event's answer also reports the store's states and counts)
+  and [ADR 0013](0013-serve-each-language-from-its-own-shared-rows.md) (an entry's event names its language; a language's front
+  page is at its home, `/en/`)
 - Date: 2026-10-02
 
 ## Context

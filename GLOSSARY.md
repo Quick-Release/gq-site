@@ -92,6 +92,8 @@ the entries) and shared chrome, in the Frontend's own D1 database, which
 visitors are served from
 ([ADR 0003](docs/adr/0003-serve-published-content-from-a-durable-store.md),
 [ADR 0004](docs/adr/0004-serve-entries-from-the-store-with-a-cold-lookup.md)).
+A multilingual Site keeps each language's front page and chrome in its own
+rows ([ADR 0013](docs/adr/0013-serve-each-language-from-its-own-shared-rows.md)).
 It outlives CMS outages, Worker restarts and redeploys.
 _Avoid_: cache (it isn't evicted), KV
 
@@ -137,6 +139,9 @@ a settings event, a publication event naming the setting instead of an entry,
 which refreshes only the shared rows it is part of, so it reaches every page
 without republishing them
 ([ADR 0007](docs/adr/0007-refresh-shared-settings-through-settings-events.md)).
+On a multilingual Site the menus, title and tagline are each language's own:
+a change to them names its language and refreshes only that language's rows
+([ADR 0013](docs/adr/0013-serve-each-language-from-its-own-shared-rows.md)).
 _Avoid_: options, theme settings (for the WordPress mechanisms behind them)
 
 **Public delivery**:
@@ -164,8 +169,10 @@ establishes it ([ADR 0010](docs/adr/0010-declare-a-new-content-site-ready-throug
 WordPress installed with every WPGraphQL field the Frontend reads, the
 Frontend's secrets and store bound, its store prepared by a whole-Site
 refresh, the CMS's scheduler having it reconcile, and an upload proving
-independent media. A running Worker, a running DDEV, an HTTP 200 or a matching
-title is not readiness.
+independent media. A multilingual Site's holds in every language: each
+exists in the CMS, and its front page, chrome and homepage are served. A
+running Worker, a running DDEV, an HTTP 200 or a matching title is not
+readiness.
 _Avoid_: up, healthy, deployed (for a ready Site)
 
 **Cold lookup**:

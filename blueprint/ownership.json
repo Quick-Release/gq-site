@@ -278,6 +278,11 @@
       "app": "apps/frontend"
     },
     {
+      "path": "apps/frontend/src/language-updates.test.ts",
+      "template": "templates/apps/frontend/src/language-updates.test.ts",
+      "app": "apps/frontend"
+    },
+    {
       "path": "apps/frontend/src/languages.test.ts",
       "template": "templates/apps/frontend/src/languages.test.ts",
       "app": "apps/frontend"

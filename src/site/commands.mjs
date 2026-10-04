@@ -17,6 +17,7 @@ import { CMS_PATH, ddevStatus } from "../cms/local.mjs";
 import { relaunchWithLocalCa } from "../db/sync.mjs";
 import { parseDotenv } from "../dotenv-text.mjs";
 import { frontendOrigin } from "../frontend/commands.mjs";
+import { siteLanguages } from "../manifest/schema.mjs";
 import { localMediaReadiness } from "../media/readiness.mjs";
 import { cmsReadiness, notReady, ok, result, siteReadiness } from "./readiness.mjs";
 
@@ -117,7 +118,11 @@ async function localReadiness({ context, env, fetch, exec }) {
   } else {
     checks.push({ area: "cms", ...ok("ddev", `DDEV is running and serves ${home}`) });
     checks.push(
-      ...(await cmsReadiness({ graphqlUrl: `${home.replace(/\/+$/u, "")}/wp/graphql`, fetch })),
+      ...(await cmsReadiness({
+        graphqlUrl: `${home.replace(/\/+$/u, "")}/wp/graphql`,
+        fetch,
+        languages: siteLanguages(context.config),
+      })),
     );
   }
   const media = localMediaReadiness({ ops: context.config, cmsEnv });

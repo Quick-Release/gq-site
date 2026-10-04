@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
 
-import { SCHEMA_QUERY } from "../../src/site/readiness.mjs";
+import { LANGUAGES_QUERY, SCHEMA_QUERY, schemaQuery } from "../../src/site/readiness.mjs";
 import { createFixtureSite, recordingExec, recordingFetch } from "../support/fixture-site.mjs";
 
 const OPS = Object.freeze({
@@ -66,7 +66,12 @@ const CMS_ENV = [
 function world(overrides = {}) {
   const state = {
     cms: "ready", // "down", "not-installed", "no-graphql", "ready"
+    schemaQuery: SCHEMA_QUERY,
     schemaErrors: [],
+    // A bilingual Site's: Polylang's languages, as GQ Polylang for WPGraphQL
+    // lists them (null: it isn't active), and each other language's homepage.
+    cmsLanguages: null,
+    languageHomeStatus: {},
     eventKey: SECRETS.PUBLICATION_EVENT_SECRET, // the Worker's; null when unbound
     refreshToken: SECRETS.FRONTEND_REFRESH_TOKEN, // the Worker's; null when unbound
     frontendDown: false,
@@ -108,7 +113,12 @@ function world(overrides = {}) {
         }
         const { query } = JSON.parse(body);
         if (query === "{ __typename }") return { data: { __typename: "RootQuery" } };
-        assert.equal(query, SCHEMA_QUERY);
+        if (query === LANGUAGES_QUERY) {
+          return state.cmsLanguages
+            ? { data: { languages: state.cmsLanguages.map((slug) => ({ slug })) } }
+            : { errors: [{ message: 'Cannot query field "languages" on type "RootQuery".' }] };
+        }
+        assert.equal(query, state.schemaQuery);
         return state.schemaErrors.length > 0
           ? { errors: state.schemaErrors.map((message) => ({ message })) }
           : { data: {} };
@@ -179,6 +189,13 @@ function world(overrides = {}) {
           headers: { "content-type": "text/html", ...state.homeHeaders },
         });
       }
+      const language = /^\/([a-z-]+)\/$/u.exec(pathname)?.[1];
+      if (method === "GET" && language && state.cmsLanguages?.includes(language)) {
+        return new Response("<main><h1>Welcome</h1></main>", {
+          status: state.languageHomeStatus[language] ?? 200,
+          headers: { "content-type": "text/html", ...state.homeHeaders },
+        });
+      }
     }
     if (hostname === "ploi.io") {
       assert.equal(headers.Authorization, `Bearer ${SECRETS.PLOI_API_TOKEN}`);
@@ -212,8 +229,8 @@ function world(overrides = {}) {
   return { fetch, state };
 }
 
-async function check(overrides = {}, { env = SECRETS, argv = [] } = {}) {
-  const fixture = await createFixtureSite({ ops: OPS });
+async function check(overrides = {}, { env = SECRETS, argv = [], ops = OPS } = {}) {
+  const fixture = await createFixtureSite({ ops });
   const { fetch, state } = world(overrides);
   const result = await fixture.run(["site", "check", "--json", ...argv], { env, fetch });
   const report = JSON.parse(result.stdout);
@@ -422,6 +439,161 @@ test("without the Sigillo secrets every credentialed check says how to run it", 
   for (const name of ["frontend-events", "frontend-refresh", "cms-events"]) {
     assert.match(byName[name].action, /gq sigillo run staging \(pnpm site:check\)/u, name);
   }
+});
+
+// A bilingual Site: Portuguese by default, English under /en/.
+const BILINGUAL = Object.freeze({
+  ...OPS,
+  wordpress: {
+    ...OPS.wordpress,
+    plugins: [...OPS.wordpress.plugins, "polylang-pro", "gq-polylang-graphql"],
+    locale: "pt_PT_ao90",
+    languages: [{ locale: "en_US", slug: "en" }],
+  },
+});
+
+const LANGUAGES = [
+  { locale: "pt_PT_ao90", slug: "pt", code: "PT", home: "/", isDefault: true },
+  { locale: "en_US", slug: "en", code: "EN", home: "/en/", isDefault: false },
+];
+
+/** A bilingual Site that is ready unless `overrides` say otherwise. */
+const checkBilingual = (overrides = {}) =>
+  check(
+    {
+      cmsLanguages: ["pt", "en"],
+      schemaQuery: schemaQuery(LANGUAGES),
+      store: { ...PREPARED, languages: { en: { home: "published", chrome: "published" } } },
+      ...overrides,
+    },
+    { ops: BILINGUAL },
+  );
+
+test("a bilingual Site is ready when every language's front page, chrome and homepage are served", async () => {
+  const { code, report, byName, fetch } = await checkBilingual();
+
+  assert.equal(code, 0, JSON.stringify(notReady(report)));
+  for (const name of [
+    "languages",
+    "wpgraphql-schema",
+    "publication-store",
+    "homepage",
+    "homepage-en",
+  ]) {
+    assert.equal(byName[name]?.status, "ok", `${name}: ${byName[name]?.detail}`);
+  }
+  assert.match(
+    byName.languages.detail,
+    /Polylang has every language gq\.ops\.json declares: pt, en/u,
+  );
+  assert.match(byName["publication-store"].detail, /en: front page \(published\), site chrome/u);
+  assert.match(byName["homepage-en"].detail, /https:\/\/www\.example\.test\/en\/ serves/u);
+  // The CMS probe validates each language's front page, title and menu.
+  const schema = schemaQuery(LANGUAGES);
+  assert.match(schema, /nodeByUri\(uri: "\/en\/"\) @skip\(if: true\)/u);
+  assert.match(schema, /language\(code: EN\) @skip\(if: true\) \{\s+title\s+description/u);
+  assert.match(
+    schema,
+    /menuItems\(where: \{ location: PRIMARY, language: EN \}, first: 100\) @skip/u,
+  );
+  assert.match(schema, /language: ALL/u);
+  assert.ok(
+    fetch.requests.some(
+      ({ body }) => body?.includes("GqSiteCheck") && body.includes("language(code: EN)"),
+    ),
+  );
+});
+
+test("a missing English home fails readiness and names it", async () => {
+  const { code, byName } = await checkBilingual({
+    store: { ...PREPARED, languages: { en: { home: null, chrome: "published" } } },
+    languageHomeStatus: { en: 404 },
+  });
+
+  assert.equal(code, 1);
+  assert.equal(byName["publication-store"].status, "not-ready");
+  assert.match(byName["publication-store"].detail, /the store holds no en front page/u);
+  assert.match(byName["publication-store"].action, /pnpm frontend:refresh/u);
+});
+
+test("a bilingual Site whose CMS publishes no English front page is not ready", async () => {
+  const { code, byName } = await checkBilingual({
+    store: { ...PREPARED, languages: { en: { home: "missing", chrome: "published" } } },
+    languageHomeStatus: { en: 404 },
+  });
+
+  assert.equal(code, 1);
+  assert.equal(byName["publication-store"].status, "not-ready");
+  assert.match(byName["publication-store"].detail, /WordPress has no published en front page/u);
+  assert.match(byName["publication-store"].action, /translate the front page into en/u);
+  assert.equal(byName["homepage-en"].status, "not-ready");
+  assert.match(
+    byName["homepage-en"].detail,
+    /\/en\/ is a 404: WordPress confirms no en front page/u,
+  );
+});
+
+test("a bilingual Site without a published default front page is not ready either", async () => {
+  const { code, byName } = await checkBilingual({
+    store: {
+      ...PREPARED,
+      home: "missing",
+      languages: { en: { home: "published", chrome: "published" } },
+    },
+    homeStatus: 404,
+  });
+
+  assert.equal(code, 1);
+  assert.equal(byName["publication-store"].status, "not-ready");
+  assert.equal(byName.homepage.status, "not-ready");
+});
+
+test("an English homepage that isn't served is not ready", async () => {
+  const { code, byName } = await checkBilingual({ languageHomeStatus: { en: 503 } });
+
+  assert.equal(code, 1);
+  assert.equal(byName.homepage.status, "ok");
+  assert.equal(byName["homepage-en"].status, "not-ready");
+  assert.match(byName["homepage-en"].detail, /\/en\/ answers HTTP 503/u);
+});
+
+test("a CMS without a declared language, or without GQ Polylang for WPGraphQL, is not ready", async () => {
+  const missing = await checkBilingual({ cmsLanguages: ["pt"] });
+  assert.equal(missing.code, 1);
+  assert.equal(missing.byName.languages.status, "not-ready");
+  assert.match(missing.byName.languages.detail, /Polylang has no en language/u);
+  assert.match(missing.byName.languages.action, /release the CMS/u);
+
+  const inactive = await checkBilingual({
+    cmsLanguages: null,
+    schemaErrors: ['Unknown type "LanguageCodeEnum".'],
+  });
+  assert.equal(inactive.code, 1);
+  assert.match(inactive.byName.languages.detail, /GQ Polylang for WPGraphQL/u);
+  assert.match(
+    inactive.byName["wpgraphql-schema"].detail,
+    /GQ Polylang for WPGraphQL \(gq-polylang-graphql\)/u,
+  );
+});
+
+test("a Frontend that doesn't report each language's rows is not ready", async () => {
+  const { code, byName } = await checkBilingual({ store: PREPARED });
+
+  assert.equal(code, 1);
+  assert.match(
+    byName["publication-store"].detail,
+    /doesn't report each language's front page and chrome/u,
+  );
+});
+
+test("a monolingual Site asks the CMS for no languages and fetches only /", async () => {
+  const { fetch } = await check();
+
+  assert.ok(!fetch.requests.some(({ body }) => body?.includes("languages")));
+  const pages = fetch.requests
+    .filter(({ method, url }) => method === "GET" && url.startsWith("https://www.example.test"))
+    .map(({ url }) => url);
+  assert.deepEqual([...new Set(pages)], ["https://www.example.test/"]);
 });
 
 test("--url checks another Frontend origin", async () => {

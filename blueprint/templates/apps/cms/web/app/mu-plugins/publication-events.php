@@ -10,11 +10,14 @@
 /*
  * Each publication of a page or post becomes an event: an identity, the time
  * it happened, the entry's WPGraphQL id and its URI (and the one it left, if
- * it moved). It is recorded on the entry (post meta `_gq_publication_event`)
- * as pending before it is sent, then posted to the Frontend's /gq/events,
- * signed with PUBLICATION_EVENT_SECRET (HMAC-SHA256 of "<timestamp>.<body>").
- * The Frontend refreshes the entry from WordPress's public GraphQL, so the
- * event carries no content.
+ * it moved). On a multilingual Site (Polylang) it also names the entry's
+ * language, its URI is in that language's directory (`/en/about/`), and a
+ * language's front page is at that language's home (`/en/`). It is recorded
+ * on the entry (post meta `_gq_publication_event`) as pending before it is
+ * sent, then posted to the Frontend's /gq/events, signed with
+ * PUBLICATION_EVENT_SECRET (HMAC-SHA256 of "<timestamp>.<body>"). The
+ * Frontend refreshes the entry from WordPress's public GraphQL, so the event
+ * carries no content.
  *
  * An entry that stops being public (unpublished, made private or
  * password-protected, trashed, or deleted while published) sends a withdraw
@@ -82,20 +85,53 @@ function secret(): string
     return strlen($secret) >= 32 ? $secret : '';
 }
 
-/** The entry's URI as WPGraphQL gives it: a path, `/` for the front page. */
+/**
+ * The entry's URI as WPGraphQL gives it: a path, its language's home for a
+ * language's front page.
+ */
 function uri_of(WP_Post $post): string
 {
-    if (
-        $post->post_type === 'page'
-        && get_option('show_on_front') === 'page'
-        && (int) get_option('page_on_front') === $post->ID
-    ) {
-        return '/';
+    $home = front_page_home($post);
+    if ($home !== null) {
+        return $home;
     }
 
     $path = (string) wp_parse_url((string) get_permalink($post), PHP_URL_PATH);
 
     return $path === '' ? '/' : $path;
+}
+
+/**
+ * The home a page is the front page of, or null: `/` for the static front
+ * page. With Polylang, which filters `page_on_front` per language, each of its
+ * translations is its language's front page, at `/<slug>/` (the default
+ * language's at `/`).
+ */
+function front_page_home(WP_Post $post): ?string
+{
+    if ($post->post_type !== 'page' || get_option('show_on_front') !== 'page') {
+        return null;
+    }
+    $front = (int) get_option('page_on_front');
+    if ($front === 0) {
+        return null;
+    }
+    if (function_exists('pll_get_post_translations') && function_exists('pll_default_language')) {
+        $language = array_search($post->ID, array_map('intval', pll_get_post_translations($front)), true);
+        if (is_string($language)) {
+            return $language === pll_default_language('slug') ? '/' : "/{$language}/";
+        }
+    }
+
+    return $front === $post->ID ? '/' : null;
+}
+
+/** The entry's language (Polylang's slug), or null on a Site without Polylang. */
+function language_of(WP_Post $post): ?string
+{
+    $language = function_exists('pll_get_post_language') ? pll_get_post_language($post->ID, 'slug') : null;
+
+    return is_string($language) && $language !== '' ? $language : null;
 }
 
 /** WPGraphQL's global id of a page or post. */
@@ -129,7 +165,12 @@ function event_for(WP_Post $post, ?WP_Post $before): ?array
         'action' => 'publish',
         'occurredAt' => (int) floor(microtime(true) * 1000),
         'entry' => array_filter(
-            ['id' => node_id($post), 'uri' => $uri, 'previousUri' => $previous !== $uri ? $previous : null],
+            [
+                'id' => node_id($post),
+                'uri' => $uri,
+                'previousUri' => $previous !== $uri ? $previous : null,
+                'language' => language_of($post),
+            ],
             static fn($value) => $value !== null,
         ),
     ];
@@ -157,8 +198,17 @@ function withdrawal_for(WP_Post $post, ?WP_Post $before): ?array
         'id' => wp_generate_uuid4(),
         'action' => 'withdraw',
         'occurredAt' => (int) floor(microtime(true) * 1000),
-        'entry' => ['id' => node_id($post), 'uri' => uri_of($unpublished ? $before : $post)],
+        'entry' => entry_of($post, uri_of($unpublished ? $before : $post)),
     ];
+}
+
+/** A withdrawn entry, as its event names it: its id, the URI it had and its language. */
+function entry_of(WP_Post $post, string $uri): array
+{
+    return array_filter(
+        ['id' => node_id($post), 'uri' => $uri, 'language' => language_of($post)],
+        static fn($value) => $value !== null,
+    );
 }
 
 /** Posts being deleted in this request: their records go to DELETED_OPTION. */
@@ -376,7 +426,7 @@ add_action('before_delete_post', static function (int $post_id, WP_Post $post): 
         'id' => wp_generate_uuid4(),
         'action' => 'withdraw',
         'occurredAt' => (int) floor(microtime(true) * 1000),
-        'entry' => ['id' => node_id($post), 'uri' => uri_of($post)],
+        'entry' => entry_of($post, uri_of($post)),
     ]);
 }, 10, 2);
 

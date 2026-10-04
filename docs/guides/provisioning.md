@@ -39,21 +39,23 @@ pnpm site:check           # the readiness gate: exit 0 only when ready
 is the only "ready". It reports every check, grouped by part, and what to run
 for each that fails. What a Site that isn't ready looks like:
 
-| Check               | Not ready when                                                                                                            | Visitors meanwhile                                       |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `wordpress`         | the CMS doesn't answer, redirects to its installer, or answers without WPGraphQL                                          | stored pages are served; refreshes keep what is stored   |
-| `wpgraphql-schema`  | a field the Frontend reads is missing (named, with the plugin or theme that adds it)                                      | every refresh fails and keeps what is stored             |
-| `frontend-events`   | the Worker doesn't answer, has no store or event key bound, or another key                                                | events are refused; the CMS retries them                 |
-| `frontend-refresh`  | the Worker has no refresh token, or another one                                                                           | the Site can't be prepared or refreshed by an operator   |
-| `publication-store` | the store can't be read, holds no front page or chrome (never prepared), or a format this Worker doesn't serve            | 503 for every page                                       |
-| `homepage`          | the homepage isn't a 200, or a cache in front could outlive a withdrawal                                                  | as answered                                              |
-| `reconciliation`    | the Frontend hasn't matched WordPress in ten minutes, or never: the CMS's cron isn't running or its events don't reach it | the last good content; missed changes wait               |
-| `cms-events`        | Ploi's `.env` lacks this Site's key, or the server lacks the every-minute crontab                                         | publications and withdrawals aren't delivered or retried |
-| media checks        | `gq media check --upload` isn't ready (see [Independent media](#independent-media))                                       | uploads go down with the CMS                             |
+| Check               | Not ready when                                                                                                               | Visitors meanwhile                                       |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `wordpress`         | the CMS doesn't answer, redirects to its installer, or answers without WPGraphQL                                             | stored pages are served; refreshes keep what is stored   |
+| `languages`         | a bilingual Site's CMS lacks a language `gq.ops.json` declares, or GQ Polylang for WPGraphQL                                 | that language's refreshes fail and keep what is stored   |
+| `wpgraphql-schema`  | a field the Frontend reads is missing (named, with the plugin or theme that adds it)                                         | every refresh fails and keeps what is stored             |
+| `frontend-events`   | the Worker doesn't answer, has no store or event key bound, or another key                                                   | events are refused; the CMS retries them                 |
+| `frontend-refresh`  | the Worker has no refresh token, or another one                                                                              | the Site can't be prepared or refreshed by an operator   |
+| `publication-store` | the store can't be read, holds no front page or chrome (never prepared) in a language, or a format this Worker doesn't serve | 503 for every page (404 for a language never prepared)   |
+| `homepage`          | the homepage (and each language's, `homepage-en` for `/en/`) isn't a 200, or a cache in front could outlive a withdrawal     | as answered                                              |
+| `reconciliation`    | the Frontend hasn't matched WordPress in ten minutes, or never: the CMS's cron isn't running or its events don't reach it    | the last good content; missed changes wait               |
+| `cms-events`        | Ploi's `.env` lacks this Site's key, or the server lacks the every-minute crontab                                            | publications and withdrawals aren't delivered or retried |
+| media checks        | `gq media check --upload` isn't ready (see [Independent media](#independent-media))                                          | uploads go down with the CMS                             |
 
 Warnings don't block readiness: events waiting on a failed refresh
 (`delivery-delays`, which `wp gq-events delays` details), a front page
-WordPress confirms isn't set, or no shared design presets stored yet.
+WordPress confirms isn't set (on a monolingual Site: a bilingual Site needs
+every language's), or no shared design presets stored yet.
 
 `gq site check --local` (`pnpm site:check:local`) asks the same of this
 machine's CMS: DDEV running is only its first check; WordPress must be
@@ -405,6 +407,13 @@ tagline), never each entry.
   the event stays recorded as failed for a retry.
 - `wp gq-events settings status` lists each setting's last event and how it
   went; `wp gq-events settings retry <setting>` sends it again.
+- On a bilingual Site, a language's own menus (Polylang's per-language menu
+  locations, or a menu assigned in it) and its title and tagline (Polylang's
+  string translations) send an event naming that language, and the Frontend
+  refreshes only its rows; they are recorded apart, as `menus:en` and
+  `identity:en`. The logo, the icon, the design and the site's own title and
+  tagline name no language and refresh every language's
+  ([ADR 0013](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0013-serve-each-language-from-its-own-shared-rows.md)).
 - A whole-Site refresh stores the shared design presets too; a Site last
   refreshed before them serves each page with the presets it was read with.
 

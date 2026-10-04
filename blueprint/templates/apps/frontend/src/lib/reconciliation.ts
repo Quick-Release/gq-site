@@ -6,15 +6,15 @@
 // publication store with what WordPress publishes and refreshes what differs
 // (ADR 0009):
 //
-// - the shared rows (front page with the site's title and tagline, chrome,
-//   design presets) are read and compared with what is stored, so a change to
-//   any shared setting is caught whatever saved it;
-// - WordPress's list of published pages and posts (id, URI, modification
-//   time) is compared with the stored entries: a new entry, one whose URI or
-//   modification time differs, one stored but no longer listed, and one
-//   withdrawn but published again since are refreshed. A few stored entries are
-//   also re-read each run, oldest first, so a change that didn't touch the
-//   modification time is caught too, later.
+// - the shared rows (each language's front page with its title and tagline,
+//   and its chrome; the design presets) are read and compared with what is
+//   stored, so a change to any shared setting is caught whatever saved it;
+// - WordPress's list of published pages and posts in every language (id,
+//   URI, modification time) is compared with the stored entries: a new
+//   entry, one whose URI or modification time differs, one stored but no
+//   longer listed, and one withdrawn but published again since are
+//   refreshed. A few stored entries are also re-read each run, oldest first,
+//   so a change that didn't touch the modification time is caught too, later.
 //
 // Nothing here decides what is served: a change found in an entry becomes a
 // publication event, recorded and processed like the CMS's own
@@ -24,15 +24,18 @@
 // published, never by a failed or incomplete read; and a withdrawal in force
 // is lifted only by a modification WordPress made after it.
 //
-// One run makes at most CMS_REQUEST_BUDGET requests to WordPress (Workers' Free
-// plan allows 50 subrequests per invocation); what doesn't fit is left for the
-// next run, oldest-attempted first. A lease in the store keeps runs from
-// overlapping, and an interrupted run's lease expires.
+// One run makes at most CMS_REQUEST_BUDGET requests to WordPress (Workers'
+// Free plan allows 50 subrequests per invocation); what doesn't fit is left
+// for the next run, oldest-attempted first. Each language's shared rows are
+// two more reads, so a multilingual Site catches up fewer entries per run. A
+// lease in the store keeps runs from overlapping, and an interrupted run's
+// lease expires.
 import {
   eachLimited,
   reconcileShared,
   refreshEntries,
   routeOf,
+  sharedOutcomes,
   type RecordOutcome,
   type SharedReconciliation,
 } from "./delivery";
@@ -42,13 +45,16 @@ import {
   type PublicationEvent,
   type PublicationStore,
 } from "./publications";
-import { isLanguageHome } from "./site-language";
+import { isLanguageHome, languages } from "./site-language";
 import { getPublishedEntries, type PublishedEntry } from "./wordpress";
 
 /** The most requests to WordPress one run makes (Workers' Free plan: 50 subrequests). */
 export const CMS_REQUEST_BUDGET = 40;
-/** The shared rows' reads each run: the front page, the chrome and the design presets. */
-const SHARED_REQUESTS = 3;
+/**
+ * The shared rows' reads each run: the design presets, then each language's
+ * front page and chrome (3 on a monolingual Site).
+ */
+const SHARED_REQUESTS = 1 + 2 * languages.length;
 /** An entry read can take two requests: WordPress failing on its blocks is asked again without them. */
 const REQUESTS_PER_READ = 2;
 /** Stored entries re-read each run, when the budget allows, though WordPress lists them unchanged. */
@@ -192,7 +198,7 @@ async function run(
   ]);
   const failures: Failure[] = [];
   let changed = 0;
-  for (const outcome of Object.values(shared)) {
+  for (const outcome of sharedOutcomes(shared)) {
     if (outcome.outcome === "kept") failures.push(outcome.failure);
     if (outcome.outcome === "promoted") changed += 1;
   }
@@ -438,9 +444,12 @@ function routeOutcome(outcome: RecordOutcome | undefined): EntryOutcome {
 
 /** The first part of a refresh that kept its stored version, in a publication's answer. */
 function firstFailure(body: Record<string, unknown>): Failure | undefined {
-  const outcomes = [body.home, ...Object.values((body.entries as object | undefined) ?? {})];
-  for (const outcome of outcomes as Array<RecordOutcome | undefined>) {
-    if (outcome?.outcome === "kept") return outcome.failure;
+  const outcomes = [
+    ...sharedOutcomes(body as Parameters<typeof sharedOutcomes<RecordOutcome>>[0]),
+    ...Object.values((body.entries as object | undefined) ?? {}),
+  ];
+  for (const outcome of outcomes as RecordOutcome[]) {
+    if (outcome.outcome === "kept") return outcome.failure;
   }
   return undefined;
 }

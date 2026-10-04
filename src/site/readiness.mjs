@@ -8,9 +8,13 @@
 //   cms       WordPress is installed and answers GraphQL, and WPGraphQL has
 //             every field the Frontend reads (which the GETQUICK plugins and
 //             theme add): GraphQL validates them without running anything.
+//             A bilingual Site's CMS has each of its languages (Polylang's,
+//             listed by GQ Polylang for WPGraphQL), and every language's
+//             front page, title and menu are fields too.
 //   frontend  the deployed Worker accepts this Site's signed events and its
-//             refresh token, its store holds a prepared Site (the signed
-//             check reports states and counts, never content), and the
+//             refresh token, its store holds a prepared Site, every
+//             language's front page and chrome (the signed check reports
+//             states and counts, never content), and each language's
 //             homepage is served from it with nothing caching it.
 //   delivery  the CMS's .env has this Site's event key and its server has
 //             the retry crontab (Ploi), and the CMS's scheduler has had the
@@ -26,6 +30,7 @@
 // not-ready.
 
 import { RECONCILIATION_STALE_MS, sendCheckEvent } from "../frontend/commands.mjs";
+import { siteLanguages } from "../manifest/schema.mjs";
 import { productionMediaReadiness } from "../media/readiness.mjs";
 import { EVENT_SECRET, inspectCmsEvents } from "../ploi/events.mjs";
 
@@ -39,9 +44,55 @@ const RELEASE_CMS =
  * Every field the Frontend skeleton's queries read (apps/frontend/src/lib/
  * wordpress.ts), each skipped: GraphQL validates a skipped field against the
  * schema, so an answer without errors proves they all exist, and nothing is
- * resolved or read.
+ * resolved or read. A bilingual Site's (`languages`, siteLanguages) adds each
+ * other language's front page, title and tagline, and menu, which also
+ * proves LanguageCodeEnum has it, each entry's language and translations,
+ * and the entries of every language.
  */
-export const SCHEMA_QUERY = /* GraphQL */ `
+export function schemaQuery(languages = []) {
+  const translated = languages.length > 0;
+  const languageFields = translated
+    ? `
+      language {
+        slug
+      }
+      translations {
+        uri
+        language {
+          slug
+        }
+      }`
+    : "";
+  const perLanguage = languages
+    .filter((language) => !language.isDefault)
+    .map(
+      ({ code, home }) => /* GraphQL */ `
+    front_${code}: nodeByUri(uri: "${home}") @skip(if: true) {
+      __typename
+      ... on Page {
+        id
+        title
+        content
+        blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)
+        isFrontPage
+      }
+    }
+    language_${code}: language(code: ${code}) @skip(if: true) {
+      title
+      description
+    }
+    menu_${code}: menuItems(where: { location: PRIMARY, language: ${code} }, first: 100) @skip(if: true) {
+      nodes {
+        id
+        parentId
+        label
+        url
+        target
+      }
+    }`,
+    )
+    .join("");
+  return /* GraphQL */ `
   query GqSiteCheck {
     generalSettings @skip(if: true) {
       title
@@ -94,7 +145,7 @@ export const SCHEMA_QUERY = /* GraphQL */ `
       excerpt
       content
       blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)
-      uri
+      uri${languageFields}
       date
       status
       isRestricted
@@ -111,7 +162,7 @@ export const SCHEMA_QUERY = /* GraphQL */ `
       title
       content
       blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)
-      uri
+      uri${languageFields}
       status
       isRestricted
       modifiedGmt
@@ -122,7 +173,7 @@ export const SCHEMA_QUERY = /* GraphQL */ `
         }
       }
     }
-    contentNodes(first: 100, where: { contentTypes: [PAGE, POST] }) @skip(if: true) {
+    contentNodes(first: 100, where: { contentTypes: [PAGE, POST]${translated ? ", language: ALL" : ""} }) @skip(if: true) {
       pageInfo {
         hasNextPage
         endCursor
@@ -132,9 +183,18 @@ export const SCHEMA_QUERY = /* GraphQL */ `
         id
         modifiedGmt
       }
-    }
+    }${perLanguage}
   }
 `;
+}
+
+/** A monolingual Site's: every field the Frontend reads. */
+export const SCHEMA_QUERY = schemaQuery();
+
+/** A bilingual Site's languages in its CMS, as GQ Polylang for WPGraphQL lists them. */
+export const LANGUAGES_QUERY = "{ languages { slug } }";
+
+const POLYLANG_GRAPHQL = "GQ Polylang for WPGraphQL (gq-polylang-graphql)";
 
 // What adds the fields WPGraphQL's own schema lacks, by what a validation
 // error names.
@@ -145,17 +205,19 @@ const SCHEMA_PROVIDERS = [
     "WPGraphQL Blocks (wpgraphql-blocks)",
   ],
   [/PRIMARY|MenuLocationEnum/u, "getquick-theme (its primary menu location)"],
+  [/"languages?"|"translations"|LanguageCode/u, POLYLANG_GRAPHQL],
 ];
 
 // --- the CMS -----------------------------------------------------------------
 
 /**
  * Whether the CMS at `graphqlUrl` is ready for the Frontend: WordPress is
- * installed and answers GraphQL (WPGraphQL is active), and its schema has
- * every field the Frontend reads. A CMS that is merely running, or answers
- * only some of them, is not ready.
+ * installed and answers GraphQL (WPGraphQL is active), a bilingual Site's has
+ * each of its `languages` (siteLanguages), and its schema has every field the
+ * Frontend reads. A CMS that is merely running, or answers only some of them,
+ * is not ready.
  */
-export async function cmsReadiness({ graphqlUrl, fetch }) {
+export async function cmsReadiness({ graphqlUrl, fetch, languages = [] }) {
   const checks = [];
   const add = (check) => checks.push({ area: "cms", ...check });
   const location = new URL(graphqlUrl);
@@ -202,10 +264,11 @@ export async function cmsReadiness({ graphqlUrl, fetch }) {
     return checks;
   }
   add(ok("wordpress", `WordPress is installed and answers GraphQL at ${location.href}`));
+  if (languages.length > 0) add(await languagesCheck({ graphqlUrl, fetch, languages }));
 
   let errors;
   try {
-    const validated = await postGraphql(fetch, graphqlUrl, SCHEMA_QUERY);
+    const validated = await postGraphql(fetch, graphqlUrl, schemaQuery(languages));
     const result = await validated.json().catch(() => null);
     if (!result) throw new Error(`HTTP ${validated.status} without a GraphQL answer`);
     errors = (result.errors ?? []).map((error) => String(error?.message ?? error));
@@ -219,7 +282,7 @@ export async function cmsReadiness({ graphqlUrl, fetch }) {
     add(
       ok(
         "wpgraphql-schema",
-        "WPGraphQL has every field the Frontend reads (GETQUICK Design's design tokens and logo, WPGraphQL Blocks, getquick-theme's primary menu)",
+        `WPGraphQL has every field the Frontend reads (GETQUICK Design's design tokens and logo, WPGraphQL Blocks, getquick-theme's primary menu${languages.length > 0 ? ", each language's front page, title and menu" : ""})`,
       ),
     );
     return checks;
@@ -235,6 +298,38 @@ export async function cmsReadiness({ graphqlUrl, fetch }) {
     ),
   );
   return checks;
+}
+
+/** Whether Polylang has each language gq.ops.json declares, as GQ Polylang for WPGraphQL lists them. */
+async function languagesCheck({ graphqlUrl, fetch, languages }) {
+  const name = "languages";
+  const declared = languages.map(({ slug }) => slug);
+  let answer;
+  try {
+    const response = await postGraphql(fetch, graphqlUrl, LANGUAGES_QUERY);
+    answer = await response.json().catch(() => null);
+  } catch (error) {
+    return notReady(name, `the languages couldn't be read: ${messageOf(error)}`, "retry");
+  }
+  const listed = answer?.data?.languages;
+  if (!Array.isArray(listed)) {
+    const reason = answer?.errors?.[0]?.message ?? "no languages in its answer";
+    return notReady(
+      name,
+      `WPGraphQL lists no languages (${reason}): ${POLYLANG_GRAPHQL} and Polylang aren't active`,
+      RELEASE_CMS,
+    );
+  }
+  const slugs = new Set(listed.map((language) => language?.slug));
+  const missing = declared.filter((slug) => !slugs.has(slug));
+  if (missing.length > 0) {
+    return notReady(
+      name,
+      `Polylang has no ${missing.join(", ")} language${missing.length > 1 ? "s" : ""}, which gq.ops.json declares`,
+      "release the CMS (pnpm push fix): its deploy creates gq.ops.json's languages in Polylang (deploy/ploi/polylang.sh)",
+    );
+  }
+  return ok(name, `Polylang has every language gq.ops.json declares: ${declared.join(", ")}`);
 }
 
 function postGraphql(fetch, url, query) {
@@ -257,13 +352,20 @@ function postGraphql(fetch, url, query) {
  * PUBLICATION_EVENT_SECRET and FRONTEND_REFRESH_TOKEN, which are only sent
  * to the Frontend (the secret as a signature).
  */
-export async function frontendReadiness({ origin, project, env, fetch, now = Date.now }) {
+export async function frontendReadiness({
+  origin,
+  project,
+  env,
+  fetch,
+  now = Date.now,
+  languages = [],
+}) {
   const checks = [];
   const add = (area, check) => checks.push({ area, ...check });
   const answer = await checkEvents({ origin, project, env, fetch, add });
   await checkRefreshToken({ origin, env, fetch, add });
   if (answer) {
-    add("frontend", storeCheck(answer));
+    add("frontend", storeCheck(answer, languages));
     add("delivery", reconciliationCheck(answer.reconciliation, now));
     add("delivery", delaysCheck(answer.store));
   } else {
@@ -271,7 +373,11 @@ export async function frontendReadiness({ origin, project, env, fetch, now = Dat
     add("frontend", skipped("publication-store", unknown));
     add("delivery", skipped("reconciliation", unknown));
   }
-  add("frontend", await homepageCheck({ origin, fetch }));
+  const others = languages.filter(({ isDefault }) => !isDefault);
+  add("frontend", await homepageCheck({ origin, fetch, required: others.length > 0 }));
+  for (const language of others) {
+    add("frontend", await homepageCheck({ origin, fetch, language, required: true }));
+  }
   return checks;
 }
 
@@ -391,8 +497,11 @@ async function checkRefreshToken({ origin, env, fetch, add }) {
 
 const PREPARE = "prepare the Site: pnpm frontend:refresh (a whole-Site refresh), then check again";
 
-/** The store, as the signed check reports it: a prepared Site holds its front page and chrome. */
-function storeCheck(answer) {
+/**
+ * The store, as the signed check reports it: a prepared Site holds its front
+ * page and chrome, and a bilingual Site every other language's too.
+ */
+function storeCheck(answer, languages) {
   const name = "publication-store";
   if (!("store" in answer)) {
     return notReady(
@@ -409,6 +518,14 @@ function storeCheck(answer) {
       "check the Worker's PUBLICATION_DB binding and the D1 database in the Cloudflare dashboard, then redeploy",
     );
   }
+  const others = languages.filter(({ isDefault }) => !isDefault);
+  if (others.length > 0 && !store.languages) {
+    return notReady(
+      name,
+      "the Frontend's check doesn't report each language's front page and chrome: it predates bilingual Sites",
+      "adopt src/lib/delivery.ts and src/lib/events.ts from a newly generated site, and deploy",
+    );
+  }
   const shared = { home: "front page", chrome: "site chrome" };
   const absent = Object.entries(shared)
     .filter(([key]) => store[key] === null)
@@ -420,9 +537,29 @@ function storeCheck(answer) {
       PREPARE,
     );
   }
-  const unusable = Object.entries({ ...shared, design: "design presets" })
-    .filter(([key]) => store[key] === "unusable")
-    .map(([, label]) => label);
+  // The other languages' rows in a state (null: never stored), each named
+  // as "en front page".
+  const languageRows = (matches) =>
+    others.flatMap(({ slug }) =>
+      Object.entries(shared)
+        .filter(([key]) => matches(store.languages[slug]?.[key]))
+        .map(([, label]) => ({ slug, label: `${slug} ${label}` })),
+    );
+  const absentInLanguage = languageRows((state) => state === undefined || state === null);
+  if (absentInLanguage.length > 0) {
+    const slugs = [...new Set(absentInLanguage.map(({ slug }) => slug))];
+    return notReady(
+      name,
+      `the store holds no ${absentInLanguage.map(({ label }) => label).join(" or ")}: the Site was never prepared in ${slugs.join(", ")}, so those pages aren't served`,
+      PREPARE,
+    );
+  }
+  const unusable = [
+    ...Object.entries({ ...shared, design: "design presets" })
+      .filter(([key]) => store[key] === "unusable")
+      .map(([, label]) => label),
+    ...languageRows((state) => state === "unusable").map(({ label }) => label),
+  ];
   if (unusable.length > 0 || store.entries?.unusable > 0) {
     return notReady(
       name,
@@ -433,12 +570,27 @@ function storeCheck(answer) {
   const counts = Object.entries(store.entries ?? {})
     .map(([state, count]) => `${count} ${state}`)
     .join(", ");
-  const summary = `front page (${store.home}), site chrome and ${store.design ? "design presets" : "no shared design presets"} stored; entries: ${counts || "none"}`;
+  const inLanguages = others
+    .map(({ slug }) => `; ${slug}: front page (${store.languages[slug].home}), site chrome`)
+    .join("");
+  const summary = `front page (${store.home}), site chrome and ${store.design ? "design presets" : "no shared design presets"} stored${inLanguages}; entries: ${counts || "none"}`;
   if (store.home !== "published") {
-    return warn(
+    // A bilingual Site needs every language's front page, its default's too.
+    return (others.length > 0 ? notReady : warn)(
       name,
       `${summary}. WordPress has no published front page, so the homepage is a 404`,
       "set a front page in WordPress (Settings → Reading) and publish it",
+    );
+  }
+  // Every language of a bilingual Site must have its front page: without
+  // one, its home is a 404 and its visitors have no way in.
+  const unpublished = others.filter(({ slug }) => store.languages[slug].home !== "published");
+  if (unpublished.length > 0) {
+    const slugs = unpublished.map(({ slug }) => slug).join(", ");
+    return notReady(
+      name,
+      `${summary}. WordPress has no published ${slugs} front page, so ${unpublished.map(({ home }) => home).join(", ")} is a 404`,
+      `translate the front page into ${slugs} in WordPress and publish it`,
     );
   }
   if (!store.design) {
@@ -497,9 +649,16 @@ function delaysCheck(store) {
   );
 }
 
-async function homepageCheck({ origin, fetch }) {
-  const name = "homepage";
-  const url = new URL("/", origin);
+/**
+ * Whether a language's homepage (the default's, `/`, unless `language`) is
+ * served from the store with nothing caching it. Unless `required` (every
+ * homepage of a bilingual Site), one WordPress confirms has no front page
+ * only warns.
+ */
+async function homepageCheck({ origin, fetch, language, required = false }) {
+  const name = language ? `homepage-${language.slug}` : "homepage";
+  const url = new URL(language?.home ?? "/", origin);
+  const front = language ? `${language.slug} front page` : "front page";
   let response;
   try {
     response = await fetch(url.href, { redirect: "manual", signal: AbortSignal.timeout(TIMEOUT) });
@@ -520,7 +679,12 @@ async function homepageCheck({ origin, fetch }) {
     );
   }
   if (response.status === 404) {
-    return warn(name, `${url.href} is a 404: WordPress confirms no front page`, "set a front page");
+    const detail = `${url.href} is a 404: WordPress confirms no ${front}`;
+    return (required ? notReady : warn)(
+      name,
+      detail,
+      language ? `translate the front page into ${language.slug} and publish it` : `set a ${front}`,
+    );
   }
   return notReady(
     name,
@@ -608,9 +772,21 @@ export async function siteReadiness({ ops, env, fetch, origin, upload = true, no
     ]);
   }
   const frontend = origin ?? new URL(`https://${ops.domains.frontend}`);
+  const languages = siteLanguages(ops);
   const checks = [
-    ...(await cmsReadiness({ graphqlUrl: `https://${ops.domains.admin}/wp/graphql`, fetch })),
-    ...(await frontendReadiness({ origin: frontend, project: ops.project, env, fetch, now })),
+    ...(await cmsReadiness({
+      graphqlUrl: `https://${ops.domains.admin}/wp/graphql`,
+      fetch,
+      languages,
+    })),
+    ...(await frontendReadiness({
+      origin: frontend,
+      project: ops.project,
+      env,
+      fetch,
+      now,
+      languages,
+    })),
     ...(await cmsDeliveryReadiness({ ops, env, fetch })),
   ];
   const media = await productionMediaReadiness({ ops, env, fetch, upload, now });

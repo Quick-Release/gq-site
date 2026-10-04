@@ -1,6 +1,8 @@
 # ADR 0007: Refresh shared settings through settings events
 
-- Status: Accepted
+- Status: Accepted; amended by [ADR 0013](0013-serve-each-language-from-its-own-shared-rows.md)
+  (a language's own menus, title and tagline send events naming it, which
+  refresh only its rows; the rest refresh every language's)
 - Date: 2026-10-02
 
 ## Context

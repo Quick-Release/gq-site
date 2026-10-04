@@ -59,6 +59,44 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
     `publications.ts`, `wordpress.ts` and `reconciliation.ts`,
     `src/components/Home.astro`, `src/layouts/Layout.astro`, both pages in
     `src/pages`, and `src/languages.test.ts`.
+- **Every language kept current and checked**
+  ([ADR 0013](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0013-serve-each-language-from-its-own-shared-rows.md),
+  which amends ADRs 0003, 0004, 0005, 0007, 0009 and 0010).
+  - **Publication events** (the CMS skeleton's `publication-events.php`) name
+    the entry's `language`, and its `uri` is in that language's directory.
+    A language's front page sends its home (`/en/`), not `/`. The Frontend
+    refreshes that language's home for a home URI, and the entry otherwise;
+    it refuses an entry whose language isn't its URI's.
+  - **Settings events** (`settings-events.php`) name the language a change
+    is in: English's menu locations (Polylang's `nav_menus`) or a menu
+    assigned in English refresh only `chrome:en`, and English's string
+    translations (its title and tagline) only `home:en`. The logo, the icon,
+    the design and the site's own title and tagline name no language and
+    refresh every language's rows. Each language's settings are recorded
+    and retried apart (`menus:en`, `identity:en` in
+    `wp gq-events settings`).
+  - **Refresh.** A whole-Site refresh is `ready` only once every language's
+    front page and chrome are stored, and `gq frontend refresh` lists each
+    language. A targeted refresh refuses `/en/` as it refuses `/`.
+  - **Reconciliation** reads the design and each language's front page and
+    chrome (1 + 2 per language of its 40 requests), so it catches up fewer
+    entries per run on a bilingual Site, and lists every language's entries
+    (`language: ALL`).
+  - **`gq site check`** asks the CMS for its languages and requires each
+    `gq.ops.json` declares, validates each language's front page, title and
+    menu, requires every language's front page and chrome in the store
+    (naming one that is missing) and every language's front page published,
+    and fetches `/` and each `/<slug>/` (`homepage-<slug>`). The signed check reports the other languages' rows
+    as `store.languages`.
+  - A monolingual Site's events, refresh, reconciliation and readiness are
+    unchanged.
+  - `scripts/smoke/cms-polylang.sh` proves the CMS's events per language on
+    a real WordPress with Polylang.
+  - **Existing sites:** a site going bilingual also copies, from a new
+    site, `apps/frontend/src/lib/events.ts` and
+    `src/pages/gq/refresh.ts`, `src/language-updates.test.ts`, and the CMS's
+    `web/app/mu-plugins/publication-events.php`, `settings-events.php` and
+    `delivery-retries.php`. A monolingual site needs none of them.
 
 ### Fixed
 

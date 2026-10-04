@@ -1,13 +1,15 @@
 // The trusted refresh: POST with `Authorization: Bearer <FRONTEND_REFRESH_TOKEN>`
 // reads published content from the CMS and promotes what it read completely
 // into the publication store (src/lib/delivery.ts). `gq frontend refresh`
-// calls it. An empty JSON object refreshes the whole Site: the front page, the
-// site chrome and every published entry. `{"uris": ["/about/"]}` refreshes
-// only the entries at those paths: a new publication, or a changed URI. The
-// answer is a report for the operator: 200 when everything was refreshed, 503
-// when something kept its stored version.
+// calls it. An empty JSON object refreshes the whole Site: each language's
+// front page and site chrome, the design presets and every published entry,
+// in every language. `{"uris": ["/about/"]}` refreshes only the entries at
+// those paths: a new publication, or a changed URI. The answer is a report for
+// the operator: 200 when everything was refreshed, 503 when something kept
+// its stored version.
 import type { APIRoute } from "astro";
 import { isAuthorized, refreshAuthority, refreshEntries, refreshSite } from "../../lib/delivery";
+import { isLanguageHome, languageSubject, routeLanguage } from "../../lib/site-language";
 
 export const prerender = false;
 
@@ -48,8 +50,9 @@ async function requestedPaths(
     if (typeof uri !== "string" || !/^\/(?!\/)[^?#\s]*$/.test(uri) || uri.length > 2048) {
       return { invalid: `uris must be paths such as /about/, not ${JSON.stringify(uri)}.` };
     }
-    if (uri === "/") {
-      return { invalid: "/ is the front page: refresh the whole Site for it." };
+    if (isLanguageHome(uri)) {
+      const subject = languageSubject(routeLanguage(uri), "front page");
+      return { invalid: `${uri} is ${subject}: refresh the whole Site for it.` };
     }
   }
   return { paths: uris as string[] };

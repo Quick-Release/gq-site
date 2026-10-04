@@ -1,7 +1,9 @@
 # ADR 0004: Serve entries from the store, with a cold lookup
 
 - Status: Accepted (design presets amended by
-  [ADR 0007](0007-refresh-shared-settings-through-settings-events.md))
+  [ADR 0007](0007-refresh-shared-settings-through-settings-events.md); each
+  language's chrome, and its front page at its own home, amended by
+  [ADR 0013](0013-serve-each-language-from-its-own-shared-rows.md))
 - Date: 2026-10-02
 
 ## Context

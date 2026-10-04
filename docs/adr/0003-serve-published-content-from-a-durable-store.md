@@ -5,7 +5,8 @@
   [ADR 0005](0005-refresh-publications-through-signed-cms-events.md) (CMS
   publication events; CI releases bind the refresh token) and
   [ADR 0010](0010-declare-a-new-content-site-ready-through-one-readiness-gate.md)
-  (the deploy token's D1 permission; readiness requires a prepared store)
+  (the deploy token's D1 permission; readiness requires a prepared store) and
+  [ADR 0013](0013-serve-each-language-from-its-own-shared-rows.md) (each language's front page and chrome have their own rows)
 - Date: 2026-10-02
 
 ## Context

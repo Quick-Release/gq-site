@@ -1,6 +1,8 @@
 # ADR 0009: Reconcile missed changes on the CMS's scheduler
 
-- Status: Accepted
+- Status: Accepted; amended by [ADR 0013](0013-serve-each-language-from-its-own-shared-rows.md)
+  (the shared reads are the design and each language's front page and
+  chrome; the entries of every language are listed)
 - Date: 2026-10-03
 
 ## Context

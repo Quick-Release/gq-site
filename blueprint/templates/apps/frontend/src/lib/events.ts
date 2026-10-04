@@ -13,7 +13,9 @@
 // "withdraw" for one that stopped being public, "settings" for a shared
 // setting (menus, logo, site identity, design presets), and "reconcile", which
 // the CMS's scheduler sends every minute to have the Frontend catch up with
-// any change whose own event never arrived (reconciliation.ts).
+// any change whose own event never arrived (reconciliation.ts). On a
+// multilingual Site an event names the language its change is in, so only
+// that language's rows are refreshed.
 //
 // A withdrawal is the one event that changes what is served without reading
 // the CMS: the event's signature and the entry's identity are the authority,
@@ -21,10 +23,12 @@
 // happened after it can make the entry public again.
 import { z } from "astro/zod";
 import {
+  languageRowStates,
   refreshEntries,
   refreshHome,
   refreshShared,
   routeOf,
+  sharedOutcomes,
   withdrawEntry,
   type RecordOutcome,
   type SharedPart,
@@ -37,6 +41,7 @@ import {
 } from "./publications";
 import { reconcile } from "./reconciliation";
 import { frontendBindings } from "./runtime";
+import { isLanguageHome, languages, routeLanguage } from "./site-language";
 
 /** The Site this Frontend serves: events for any other are refused. */
 export const SITE = "{{project}}";
@@ -64,6 +69,26 @@ const envelope = {
   occurredAt: z.number().int().positive(),
 };
 
+/** A language's slug, as Polylang names it (en, pt-br). */
+const languageSlug = z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, "must be a language slug");
+
+/**
+ * An entry's language must be the one its URI is in (its directory, or the
+ * default language's): a CMS whose languages this Frontend doesn't serve has
+ * its events refused, not stored in another language.
+ */
+function inItsLanguage(entry: { uri: string; language?: string }, context: z.RefinementCtx) {
+  if (entry.language === undefined) return;
+  const language = routeLanguage(routeOf(entry.uri));
+  if (entry.language !== language.slug) {
+    context.addIssue({
+      code: "custom",
+      path: ["language"],
+      message: `${entry.language} isn't the language of ${entry.uri} (${language.slug})`,
+    });
+  }
+}
+
 /** Proves the Frontend accepts this Site's events; changes nothing. */
 const checkEvent = z.object({ ...envelope, action: z.literal("check") }).strict();
 
@@ -74,7 +99,10 @@ const checkEvent = z.object({ ...envelope, action: z.literal("check") }).strict(
  */
 const reconcileEvent = z.object({ ...envelope, action: z.literal("reconcile") }).strict();
 
-/** A page or post was published or updated (and, with previousUri, moved). */
+/**
+ * A page or post was published or updated (and, with previousUri, moved).
+ * `language` is its language's slug, on a multilingual Site.
+ */
 const publishEvent = z
   .object({
     ...envelope,
@@ -84,8 +112,10 @@ const publishEvent = z
         id: z.string().min(1).max(200),
         uri: path,
         previousUri: path.nullable().optional(),
+        language: languageSlug.optional(),
       })
-      .strict(),
+      .strict()
+      .superRefine(inItsLanguage),
   })
   .strict();
 
@@ -100,7 +130,10 @@ const withdrawEvent = z
   .object({
     ...envelope,
     action: z.literal("withdraw"),
-    entry: z.object({ id: z.string().min(1).max(200), uri: path }).strict(),
+    entry: z
+      .object({ id: z.string().min(1).max(200), uri: path, language: languageSlug.optional() })
+      .strict()
+      .superRefine(inItsLanguage),
   })
   .strict();
 
@@ -119,17 +152,46 @@ const SETTINGS = {
   design: ["design"],
 } as const satisfies Record<string, SharedPart[]>;
 
-/** A setting is recorded as the subject "setting:<name>", so its events are ordered apart. */
+/**
+ * What a change in one language refreshes, for the settings a language has
+ * its own of: its menus (its chrome's) and its title and tagline (its
+ * home's). The logo, the icon and the design are shared by every language.
+ */
+const LANGUAGE_SETTINGS = {
+  menus: ["chrome"],
+  identity: ["home"],
+} as const satisfies Partial<Record<keyof typeof SETTINGS, SharedPart[]>>;
+
+/**
+ * A setting is recorded as the subject "setting:<name>", or
+ * "setting:<name>:<language>" for a change in one language, so its events
+ * are ordered apart.
+ */
 const SETTING = "setting:";
 
-/** A shared setting was changed. */
+/**
+ * A shared setting was changed: in one language (`language`, its slug), or
+ * for every language.
+ */
 const settingsEvent = z
   .object({
     ...envelope,
     action: z.literal("settings"),
     setting: z.enum(Object.keys(SETTINGS) as [keyof typeof SETTINGS]),
+    language: z
+      .enum(languages.map((language) => language.slug) as [string, ...string[]])
+      .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((event, context) => {
+    if (event.language !== undefined && !Object.hasOwn(LANGUAGE_SETTINGS, event.setting)) {
+      context.addIssue({
+        code: "custom",
+        path: ["language"],
+        message: `isn't one: ${event.setting} is shared by every language`,
+      });
+    }
+  });
 
 type SettingsEvent = z.infer<typeof settingsEvent>;
 
@@ -181,7 +243,9 @@ async function handleCheck(store: PublicationStore): Promise<EventAnswer> {
   let status = null;
   try {
     reconciliation = await store.reconciliation();
-    status = await store.status();
+    // A multilingual Site's other languages' front page and chrome too.
+    const others = await languageRowStates(store);
+    status = { ...(await store.status()), ...(others ? { languages: others } : {}) };
   } catch (error) {
     if (!(error instanceof StoreFailure)) throw error;
   }
@@ -309,9 +373,10 @@ export async function receiveEvent(
 
 /**
  * A publication: the entry's route, and the one it left if it moved, are
- * refreshed (the front page's, `/`, refreshes the front page). Refreshed, the
- * event supersedes the entry's older ones; failed, it is kept on record and
- * the stored versions stay served.
+ * refreshed (a language's front page, at its home, `/` or `/en/`, refreshes
+ * that language's front page). Refreshed, the event supersedes the entry's
+ * older ones; failed, it is kept on record and the stored versions stay
+ * served.
  */
 async function handlePublish(store: PublicationStore, event: PublishEvent): Promise<EventAnswer> {
   return applyPublication(store, {
@@ -355,18 +420,25 @@ export async function applyPublication(
   const routes = [
     ...new Set([recorded.uri, recorded.previousUri].filter((uri) => uri !== null).map(routeOf)),
   ];
-  let home: RecordOutcome | undefined;
-  if (routes.includes("/")) home = await refreshHome(store);
+  // Each language's front page is its home's: the default's is reported as
+  // `home`, another language's under `languages`.
+  const homes: { home?: RecordOutcome; languages?: Record<string, { home: RecordOutcome }> } = {};
+  for (const route of routes.filter((route) => isLanguageHome(route))) {
+    const language = routeLanguage(route);
+    const home = await refreshHome(store, language);
+    if (language.isDefault) homes.home = home;
+    else (homes.languages ??= {})[language.slug] = { home };
+  }
   const {
     refreshed: entriesRefreshed,
     entries,
     moved,
   } = await refreshEntries(
     store,
-    routes.filter((route) => route !== "/"),
+    routes.filter((route) => !isLanguageHome(route)),
   );
-  const failures = [home, ...Object.values(entries)].flatMap((outcome) =>
-    outcome?.outcome === "kept" ? [outcome.failure] : [],
+  const failures = [...sharedOutcomes(homes), ...Object.values(entries)].flatMap((outcome) =>
+    outcome.outcome === "kept" ? [outcome.failure] : [],
   );
   const refreshed = entriesRefreshed && failures.length === 0;
   await store.finishEvent(
@@ -387,7 +459,7 @@ export async function applyPublication(
     body: {
       event: event.id,
       status: refreshed ? "refreshed" : "failed",
-      ...(home ? { home } : {}),
+      ...homes,
       entries,
       moved,
     },
@@ -427,9 +499,10 @@ async function handleWithdraw(store: PublicationStore, event: WithdrawEvent): Pr
 /**
  * A shared setting's change: the rows every affected page is served with are
  * refreshed (refreshShared), so the change reaches every page without reading
- * or republishing each entry. A setting's events are ordered like an entry's:
- * a duplicate isn't processed again, and an event older than one refreshed for
- * the same setting is superseded. Failed, it is kept on record for a retry and
+ * or republishing each entry; a change in one language, only that language's.
+ * A setting's events are ordered like an entry's: a duplicate isn't processed
+ * again, and an event older than one refreshed for the same setting (in the
+ * same language) is superseded. Failed, it is kept on record for a retry and
  * the stored chrome, design and front page stay served.
  */
 async function handleSettings(
@@ -440,7 +513,7 @@ async function handleSettings(
   const { recorded, duplicate } = await store.receiveEvent({
     id: event.id,
     action: event.action,
-    nodeId: `${SETTING}${event.setting}`,
+    nodeId: `${SETTING}${event.setting}${event.language ? `:${event.language}` : ""}`,
     // Every route: a shared setting is on every page.
     uri: "/",
     previousUri: null,
@@ -458,27 +531,31 @@ async function handleSettings(
   }
 
   await store.startEvent(event.id);
+  const language = languages.find((each) => each.slug === event.language);
   const { refreshed, ...parts } = await refreshShared(
     store,
-    [...SETTINGS[event.setting]],
+    language
+      ? [...LANGUAGE_SETTINGS[event.setting as keyof typeof LANGUAGE_SETTINGS]]
+      : [...SETTINGS[event.setting]],
     siteOrigin,
+    language,
   );
-  const failure = Object.values(parts).find((outcome) => outcome.outcome === "kept");
+  const failure = sharedOutcomes(parts).find((outcome) => outcome.outcome === "kept");
   await store.finishEvent(
     recorded,
     failure?.outcome === "kept"
       ? { status: "failed", reason: failure.failure.reason, message: failure.failure.message }
       : { status: "refreshed" },
   );
-  console.info(
-    `Events: ${event.id} (settings ${event.setting}) ${refreshed ? "refreshed" : "failed"}`,
-  );
+  const subject = `${event.setting}${event.language ? ` in ${event.language}` : ""}`;
+  console.info(`Events: ${event.id} (settings ${subject}) ${refreshed ? "refreshed" : "failed"}`);
   return {
     status: refreshed ? 200 : 503,
     body: {
       event: event.id,
       status: refreshed ? "refreshed" : "failed",
       setting: event.setting,
+      ...(event.language ? { language: event.language } : {}),
       ...parts,
     },
   };

@@ -119,6 +119,7 @@ const CREATED_PATHS = [
   "apps/frontend/src/entries.test.ts",
   "apps/frontend/src/events.test.ts",
   "apps/frontend/src/homepage.test.ts",
+  "apps/frontend/src/language-updates.test.ts",
   "apps/frontend/src/languages.test.ts",
   "apps/frontend/src/layouts/Layout.astro",
   "apps/frontend/src/lib/copy.ts",

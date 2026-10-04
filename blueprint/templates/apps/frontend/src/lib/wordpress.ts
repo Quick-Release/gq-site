@@ -408,10 +408,12 @@ const designQuery = /* GraphQL */ `
 
 // Anonymous readers only get what is published: no drafts, private entries or
 // revisions. The id and the modification time let reconciliation tell which
-// entries changed without reading each one.
-const publishedRoutesQuery = /* GraphQL */ `
+// entries changed without reading each one. On a multilingual Site
+// (`everyLanguage`), the entries of every language (GQ Polylang for WPGraphQL).
+function publishedRoutesQueryText(everyLanguage: boolean) {
+  return /* GraphQL */ `
   query PublishedRoutes($after: String) {
-    contentNodes(first: 100, after: $after, where: { contentTypes: [PAGE, POST] }) {
+    contentNodes(first: 100, after: $after, where: { contentTypes: [PAGE, POST]${everyLanguage ? ", language: ALL" : ""} }) {
       pageInfo {
         hasNextPage
         endCursor
@@ -424,6 +426,8 @@ const publishedRoutesQuery = /* GraphQL */ `
     }
   }
 `;
+}
+const publishedRoutesQuery = publishedRoutesQueryText(multilingual);
 
 function endpoint() {
   return (

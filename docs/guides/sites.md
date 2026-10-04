@@ -172,6 +172,18 @@ run `gq sync` (it updates `deploy/ploi/admin.sh`), and release.
   fallback across languages. See the Frontend's README, "Languages". The
   Frontend is site-owned, so an existing site adopts this from a new site's
   skeleton (see the changelog).
+- **Keeping each language current.** The CMS's events name the language a
+  change is in, so publishing an English page refreshes only its `/en/`
+  entry, and changing English's menu or tagline only English's rows.
+  Reconciliation reads every language's front page and chrome, and catches
+  up fewer entries per run as languages are added. `gq frontend refresh`
+  lists each language, and `gq site check` is ready only when every
+  language exists in Polylang and its front page, chrome and homepage are
+  served
+  ([ADR 0013](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0013-serve-each-language-from-its-own-shared-rows.md)).
+  The CMS's event plugins are site-owned too: adopt
+  `publication-events.php`, `settings-events.php` and
+  `delivery-retries.php` from a new site's skeleton.
 - **Shared slugs.** Polylang Pro's "Share slugs" module has no setting: it
   turns on by itself with language directories, so an editor can give a
   translation its original's slug. Keep translated slugs unique per

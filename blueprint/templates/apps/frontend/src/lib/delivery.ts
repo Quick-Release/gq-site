@@ -559,7 +559,7 @@ export interface EntriesRefreshReport {
 }
 
 export interface RefreshReport extends EntriesRefreshReport {
-  /** Whether the front page can be served from the store after this refresh. */
+  /** Whether every language's front page can be served from the store after this refresh. */
   ready: boolean;
   home: RecordOutcome;
   chrome: RecordOutcome;
@@ -632,15 +632,21 @@ export async function refreshSite(
 
   let ready = false;
   try {
-    const [storedHome, storedChrome] = await Promise.all([
-      store.read(HOME, parseHome),
-      store.read(CHROME, parseChrome),
-    ]);
-    ready =
-      usable(storedHome) !== null &&
-      (storedHome?.state === "missing" ||
-        storedHome?.state === "withdrawn" ||
-        usable(storedChrome)?.state === "published");
+    const stored = await Promise.all(
+      languages.map((language) =>
+        Promise.all([
+          store.read(homeKey(language), parseHome),
+          store.read(chromeKey(language), parseChrome),
+        ]),
+      ),
+    );
+    ready = stored.every(
+      ([storedHome, storedChrome]) =>
+        usable(storedHome) !== null &&
+        (storedHome?.state === "missing" ||
+          storedHome?.state === "withdrawn" ||
+          usable(storedChrome)?.state === "published"),
+    );
   } catch (error) {
     if (!(error instanceof StoreFailure)) throw error;
   }
@@ -668,41 +674,76 @@ export async function refreshSite(
 /** What a shared setting's change refreshes: the rows every affected page is served with. */
 export type SharedPart = "home" | "chrome" | "design";
 
-export interface SharedRefreshReport {
+/**
+ * A report of the shared rows: the default language's front page and chrome,
+ * the design presets, and a multilingual Site's other languages' front page
+ * and chrome, by slug.
+ */
+interface SharedRows<T> {
+  home?: T;
+  chrome?: T;
+  design?: T;
+  languages?: Record<string, { home?: T; chrome?: T }>;
+}
+
+/** Every outcome in a report of shared rows, each language's included. */
+export function sharedOutcomes<T>(rows: SharedRows<T>): T[] {
+  return [
+    rows.home,
+    rows.chrome,
+    rows.design,
+    ...Object.values(rows.languages ?? {}).flatMap((language) => [language.home, language.chrome]),
+  ].filter((outcome): outcome is T => outcome !== undefined);
+}
+
+export interface SharedRefreshReport extends SharedRows<RecordOutcome> {
   /** Whether every part was promoted (or superseded by a newer read). */
   refreshed: boolean;
-  home?: RecordOutcome;
-  chrome?: RecordOutcome;
-  design?: RecordOutcome;
 }
 
 /**
  * Refreshes shared settings: the chrome (menu, logo, icon), the shared design
  * presets, or the front page (which holds the site's title and tagline).
  * Every page is served with the stored chrome and design, so promoting them
- * reaches every page at once, without reading the entries again. Each part is
- * promoted only from a complete, valid read; a failed one keeps what is
- * stored, so a failed read never erases navigation, branding or design.
+ * reaches every page at once, without reading the entries again. With
+ * `language`, only that language's front page and chrome: its title, tagline
+ * and menus are its own. Without, every language's, since what changed (the
+ * logo, the icon, the title a language doesn't translate) is shared by them
+ * all. Each part is promoted only from a complete, valid read; a failed one
+ * keeps what is stored, so a failed read never erases navigation, branding or
+ * design.
  */
 export async function refreshShared(
   store: PublicationStore,
   parts: SharedPart[],
   siteOrigin?: string,
+  language?: SiteLanguage,
 ): Promise<SharedRefreshReport> {
   const readStartedAt = Date.now();
   const wanted = new Set(parts);
-  const [home, chrome, design] = await Promise.all([
-    wanted.has("home") ? getHomeContent() : undefined,
-    wanted.has("chrome") ? getSiteChrome(siteOrigin) : undefined,
-    wanted.has("design") ? getDesignPresets() : undefined,
+  const scope = language ? [language] : languages;
+  const [reads, design] = await Promise.all([
+    Promise.all(
+      scope.map((each) =>
+        Promise.all([
+          wanted.has("home") ? getHomeContent(each) : undefined,
+          wanted.has("chrome") ? getSiteChrome(siteOrigin, { language: each }) : undefined,
+        ]),
+      ),
+    ),
+    wanted.has("design") && !language ? getDesignPresets() : undefined,
   ]);
   const report: SharedRefreshReport = { refreshed: true };
-  if (home) report.home = await promoteHome(store, home, readStartedAt);
-  if (chrome) report.chrome = await promoteChrome(store, chrome, readStartedAt);
+  for (const [index, each] of scope.entries()) {
+    const [home, chrome] = reads[index]!;
+    const rows: { home?: RecordOutcome; chrome?: RecordOutcome } = each.isDefault
+      ? report
+      : ((report.languages ??= {})[each.slug] = {});
+    if (home) rows.home = await promoteHome(store, home, readStartedAt, each);
+    if (chrome) rows.chrome = await promoteChrome(store, chrome, readStartedAt, each);
+  }
   if (design) report.design = await promoteDesign(store, design, readStartedAt);
-  report.refreshed = [report.home, report.chrome, report.design].every(
-    (outcome) => outcome?.outcome !== "kept",
-  );
+  report.refreshed = sharedOutcomes(report).every((outcome) => outcome.outcome !== "kept");
   return report;
 }
 
@@ -713,24 +754,51 @@ export interface SharedReconciliation {
   home: SharedOutcome;
   chrome: SharedOutcome;
   design: SharedOutcome;
+  /** A multilingual Site's other languages, by slug: their front page and chrome. */
+  languages?: Record<string, { home: SharedOutcome; chrome: SharedOutcome }>;
 }
 
 /**
- * Reconciles the shared rows with WordPress: reads the front page (with the
- * site's title and tagline), the chrome and the design presets, compares each
- * read with what is stored, and promotes the ones that differ, by the same
- * rules as any refresh. A failed read keeps what is stored. Comparing what
- * WordPress returns, rather than asking it what changed, catches a change to
- * any shared setting, whatever saved it.
+ * The state of each other language's front page and chrome in the store, by
+ * slug ("unusable" in a format this Worker doesn't serve, null when nothing
+ * was ever stored); undefined on a monolingual Site.
+ */
+export async function languageRowStates(
+  store: PublicationStore,
+): Promise<Record<string, { home: string | null; chrome: string | null }> | undefined> {
+  if (!multilingual) return undefined;
+  const others = languages.filter((language) => !language.isDefault);
+  const states = await store.states(others.flatMap((other) => [homeKey(other), chromeKey(other)]));
+  return Object.fromEntries(
+    others.map((other) => [
+      other.slug,
+      {
+        home: states.get(homeKey(other)) ?? null,
+        chrome: states.get(chromeKey(other)) ?? null,
+      },
+    ]),
+  );
+}
+
+/**
+ * Reconciles the shared rows with WordPress: reads each language's front page
+ * (with its title and tagline) and chrome, and the design presets, compares
+ * each read with what is stored, and promotes the ones that differ, by the
+ * same rules as any refresh. A failed read keeps what is stored. Comparing
+ * what WordPress returns, rather than asking it what changed, catches a change
+ * to any shared setting, in any language, whatever saved it.
  */
 export async function reconcileShared(
   store: PublicationStore,
   siteOrigin?: string,
 ): Promise<SharedReconciliation> {
   const readStartedAt = Date.now();
-  const [home, chrome, design] = await Promise.all([
-    getHomeContent(),
-    getSiteChrome(siteOrigin),
+  const [reads, design] = await Promise.all([
+    Promise.all(
+      languages.map((language) =>
+        Promise.all([getHomeContent(language), getSiteChrome(siteOrigin, { language })]),
+      ),
+    ),
     getDesignPresets(),
   ]);
   const unchanged = async <T>(
@@ -752,26 +820,42 @@ export async function reconcileShared(
     }
   };
 
-  let homeRead: { state: "published"; content: HomePublication } | { state: "missing" } | null =
-    null;
-  if (home.kind === "missing") homeRead = { state: "missing" };
-  if (home.kind === "found" && !home.content.blocksOmitted) {
+  const homeRead = (
+    home: Delivery<HomeContent>,
+  ): { state: "published"; content: HomePublication } | { state: "missing" } | null => {
+    if (home.kind === "missing") return { state: "missing" };
+    if (home.kind !== "found" || home.content.blocksOmitted) return null;
     const { blocksOmitted: _, nodeId: __, ...content } = home.content;
-    homeRead = { state: "published", content };
-  }
-  const sharedRead = (read: typeof chrome | typeof design) =>
+    return { state: "published", content };
+  };
+  const sharedRead = (read: SharedRead<SiteChrome> | SharedRead<DesignPresets>) =>
     read.kind === "found" ? ({ state: "published", content: read.content } as const) : null;
 
+  const outcomes: Array<{ home: SharedOutcome; chrome: SharedOutcome }> = [];
+  for (const [index, language] of languages.entries()) {
+    const [home, chrome] = reads[index]!;
+    outcomes.push({
+      home: (await unchanged(homeKey(language), parseHome, homeRead(home)))
+        ? { outcome: "unchanged" }
+        : await promoteHome(store, home, readStartedAt, language),
+      chrome: (await unchanged(chromeKey(language), parseChrome, sharedRead(chrome)))
+        ? { outcome: "unchanged" }
+        : await promoteChrome(store, chrome, readStartedAt, language),
+    });
+  }
+  const [own, ...others] = outcomes;
   return {
-    home: (await unchanged(HOME, parseHome, homeRead))
-      ? { outcome: "unchanged" }
-      : await promoteHome(store, home, readStartedAt),
-    chrome: (await unchanged(CHROME, parseChrome, sharedRead(chrome)))
-      ? { outcome: "unchanged" }
-      : await promoteChrome(store, chrome, readStartedAt),
+    ...own!,
     design: (await unchanged(DESIGN, parseDesign, sharedRead(design)))
       ? { outcome: "unchanged" }
       : await promoteDesign(store, design, readStartedAt),
+    ...(multilingual
+      ? {
+          languages: Object.fromEntries(
+            others.map((outcome, index) => [languages[index + 1]!.slug, outcome]),
+          ),
+        }
+      : {}),
   };
 }
 
@@ -824,12 +908,15 @@ function promoteDesign(
 }
 
 /**
- * Refreshes the front page only (not the chrome or the entries): the front
- * page itself was published or changed.
+ * Refreshes a language's front page only (not its chrome or the entries): the
+ * front page itself was published or changed.
  */
-export async function refreshHome(store: PublicationStore): Promise<RecordOutcome> {
+export async function refreshHome(
+  store: PublicationStore,
+  language: SiteLanguage = defaultLanguage,
+): Promise<RecordOutcome> {
   const readStartedAt = Date.now();
-  return promoteHome(store, await getHomeContent(), readStartedAt);
+  return promoteHome(store, await getHomeContent(language), readStartedAt, language);
 }
 
 function promoteHome(

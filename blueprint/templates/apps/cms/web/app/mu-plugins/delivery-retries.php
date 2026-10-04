@@ -86,6 +86,15 @@ const SETTING_NAMES = [
     'design' => 'The design',
 ];
 
+/** How editors are told about a setting, or one language's ("menus:en": "The menus (en)"). */
+function setting_name(string $subject): string
+{
+    [$setting, $language] = array_pad(explode(':', $subject, 2), 2, null);
+    $name = SETTING_NAMES[$setting] ?? $setting;
+
+    return $language === null ? $name : "{$name} ({$language})";
+}
+
 /** Now, in seconds. Filterable so a proof can move time on. */
 function now(): int
 {
@@ -139,7 +148,8 @@ function deliveries(): array
         ];
     }
     if (function_exists('GetQuick\\Site\\SettingsEvents\\deliver')) {
-        foreach (\GetQuick\Site\SettingsEvents\SETTINGS as $setting) {
+        // Each setting's, and on a multilingual Site each language's own ("menus:en").
+        foreach (\GetQuick\Site\SettingsEvents\subjects() as $setting) {
             $recorded = \GetQuick\Site\SettingsEvents\recorded($setting);
             if ($recorded === null) {
                 continue;
@@ -684,7 +694,7 @@ function reporting(): void
             $failed = $failed || $row['state'] === 'failed';
             $setting = str_starts_with($row['subject'], 'setting:') ? substr($row['subject'], 8) : null;
             $name = $setting !== null
-                ? SETTING_NAMES[$setting] ?? $setting
+                ? setting_name($setting)
                 : trim(sprintf('%s (%s)', get_the_title((int) ($row['post'] ?? 0)), $row['label']));
             $items[] = sprintf(
                 '<li>%s: %s</li>',

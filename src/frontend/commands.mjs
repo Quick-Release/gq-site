@@ -2,12 +2,12 @@
 // content. It asks the deployed Frontend (POST /gq/refresh, the Frontend's
 // src/pages/gq/refresh.ts) to read published content from the CMS and promote
 // what it read completely into its publication store: the whole Site (front
-// page, site chrome and every published page and post), or with --uri only the
-// entries at those paths (a new publication, or a changed URI). The bearer
-// token is FRONTEND_REFRESH_TOKEN, injected by gq sigillo run staging; it is
-// sent only to the Frontend and never printed. Exits 1 until everything asked
-// for was refreshed (and, for the whole Site, the homepage is ready), so it
-// can gate a script.
+// page, site chrome and every published page and post, each language's on a
+// bilingual Site), or with --uri only the entries at those paths (a new
+// publication, or a changed URI). The bearer token is FRONTEND_REFRESH_TOKEN,
+// injected by gq sigillo run staging; it is sent only to the Frontend and
+// never printed. Exits 1 until everything asked for was refreshed (and, for
+// the whole Site, the homepage is ready), so it can gate a script.
 //
 // `gq frontend events check` proves the deployed Frontend accepts this Site's
 // publication events (POST /gq/events, src/pages/gq/events.ts): it sends a
@@ -30,6 +30,7 @@ import { createHmac, randomBytes, randomUUID } from "node:crypto";
 
 import { createReporter } from "../cli/reporter.mjs";
 import { SECRETS_ENVIRONMENT } from "../cloudflare/tokens.mjs";
+import { siteLanguages } from "../manifest/schema.mjs";
 import { sigilloSecrets } from "../sigillo/commands.mjs";
 
 export const FRONTEND_USAGE = [
@@ -102,12 +103,20 @@ function describe(outcome) {
   return `${outcome.outcome} (${outcome.state}${outcome.uri ? ` to ${outcome.uri}` : ""})`;
 }
 
-const REPORTED = new Set(["home", "chrome", "design", "routes", "entries", "moved"]);
+const REPORTED = new Set(["home", "chrome", "design", "routes", "entries", "moved", "languages"]);
 
-function printReport(body, io) {
+// A bilingual Site's report names each language's front page and chrome: the
+// default language's (`home`, `chrome`) by its slug, the others' under
+// `languages`.
+function printReport(body, io, languages) {
   const lines = [];
-  if (body.home) lines.push(["front page", body.home]);
-  if (body.chrome) lines.push(["site chrome", body.chrome]);
+  const own = body.languages && languages.length > 0 ? `${languages[0].slug} ` : "";
+  if (body.home) lines.push([`${own}front page`, body.home]);
+  if (body.chrome) lines.push([`${own}site chrome`, body.chrome]);
+  for (const [slug, rows] of Object.entries(body.languages ?? {})) {
+    if (rows?.home) lines.push([`${slug} front page`, rows.home]);
+    if (rows?.chrome) lines.push([`${slug} site chrome`, rows.chrome]);
+  }
   if (body.design) lines.push(["design presets", body.design]);
   // A record a Site adds to its refresh (such as its patterns), by its name.
   for (const [key, value] of Object.entries(body)) {
@@ -186,7 +195,8 @@ export async function runFrontendCommand({ context, parsed, env, fetch, exec, io
     io.out(JSON.stringify(body, null, 2));
   } else {
     io.out(`Frontend refresh (${url.origin})`);
-    printReport(body, io);
+    const languages = siteLanguages(context.config);
+    printReport(body, io, languages);
     if (!site) {
       io.out(
         body.refreshed
@@ -199,7 +209,9 @@ export async function runFrontendCommand({ context, parsed, env, fetch, exec, io
           ? body.refreshed
             ? "Ready: published content is served from the publication store."
             : "Ready, but not refreshed: visitors get the last stored versions until a refresh succeeds."
-          : "Not ready: pages are a 503 until a refresh stores the front page and the site chrome.",
+          : languages.length > 0
+            ? "Not ready: pages are a 503 until a refresh stores every language's front page and site chrome."
+            : "Not ready: pages are a 503 until a refresh stores the front page and the site chrome.",
       );
     }
   }

@@ -54,6 +54,26 @@ function defaultLanguageSlug(locale) {
   return locale.split("_")[0];
 }
 
+/**
+ * A bilingual Site's languages, the default (wordpress.locale) first, as the
+ * Frontend serves them: each with its slug, its GraphQL LanguageCodeEnum
+ * value (the slug in upper case) and its home route (`/`, `/en/`). Empty for
+ * a monolingual Site (no wordpress.languages).
+ */
+export function siteLanguages(ops) {
+  const { locale, languages } = ops.wordpress ?? {};
+  if (!locale || !languages?.length) return [];
+  return [{ locale, slug: defaultLanguageSlug(locale) }, ...languages].map(
+    ({ locale, slug }, index) => ({
+      locale,
+      slug,
+      code: slug.toUpperCase().replaceAll("-", "_"),
+      home: index === 0 ? "/" : `/${slug}/`,
+      isDefault: index === 0,
+    }),
+  );
+}
+
 // A pattern whose match is replaced by `replacement`, `{version}` standing
 // for the release version: the JSON form of a release config's
 // { regexp: /…/flags, replacement: (version) => `…${version}…` }.

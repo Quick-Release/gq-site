@@ -141,6 +141,20 @@ the default language otherwise; `/en/` is English's home, served by
 - **No fallback.** A route with no entry in its language is a 404, even
   when another language has the page, and so is every page of a language
   whose home the store has never held.
+- **Events.** An entry's event names its language, and its URI is in that
+  language's directory: a language's front page is at its home (`/en/`), and
+  refreshes that language's `home:<slug>` only. A settings event in one
+  language (`language`: its menus, or its title and tagline) refreshes only
+  that language's `chrome:<slug>` or `home:<slug>`; one without (the logo,
+  the icon, the design, the site's own title) refreshes every language's.
+  An entry whose language isn't its URI's, or a language this Frontend
+  doesn't serve, is refused.
+- **Refresh and checks.** A whole-Site refresh is `ready` only once every
+  language's home and chrome are stored, and lists the others under
+  `languages`; the signed check reports them as `store.languages`.
+- **Reconciliation.** Each run reads the design and every language's front
+  page and chrome (1 + 2 per language of its 40 requests), so fewer entries
+  are caught up per run, and lists every language's entries.
 
 A monolingual Site has none of this: its pages, store and CMS reads are as
 they were.

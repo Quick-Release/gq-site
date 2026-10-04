@@ -25,8 +25,11 @@ const REFRESHED = Object.freeze({
   moved: {},
 });
 
-async function refresh(argv = [], { env = { FRONTEND_REFRESH_TOKEN: TOKEN }, respond } = {}) {
-  const fixture = await createFixtureSite({ ops: OPS });
+async function refresh(
+  argv = [],
+  { env = { FRONTEND_REFRESH_TOKEN: TOKEN }, respond, ops = OPS } = {},
+) {
+  const fixture = await createFixtureSite({ ops });
   const fetch = recordingFetch(respond ?? (() => json(REFRESHED)));
   return fixture.run(["frontend", "refresh", ...argv], { env, fetch });
 }
@@ -97,6 +100,45 @@ test("a Frontend that isn't ready yet exits 1", async () => {
 
   assert.equal(code, 1);
   assert.match(stdout, /^Not ready: pages are a 503/mu);
+});
+
+const BILINGUAL = Object.freeze({
+  ...OPS,
+  wordpress: {
+    plugins: ["wp-graphql", "polylang-pro", "gq-polylang-graphql"],
+    locale: "pt_PT_ao90",
+    languages: [{ locale: "en_US", slug: "en" }],
+  },
+});
+
+test("a bilingual Site's refresh lists each language's front page and chrome", async () => {
+  const report = {
+    ...REFRESHED,
+    refreshed: false,
+    ready: false,
+    languages: {
+      en: {
+        home: { outcome: "promoted", state: "published" },
+        chrome: { outcome: "kept", failure: { reason: "network", message: "unreachable" } },
+      },
+    },
+  };
+  const { code, stdout } = await refresh([], {
+    ops: BILINGUAL,
+    respond: () => json(report, 503),
+  });
+
+  assert.equal(code, 1);
+  assert.match(stdout, /✓ pt front page: promoted \(published\)/u);
+  assert.match(stdout, /✓ pt site chrome: promoted \(published\)/u);
+  assert.match(stdout, /✓ en front page: promoted \(published\)/u);
+  assert.match(stdout, /✗ en site chrome: kept the stored version \(network\): unreachable/u);
+  assert.match(stdout, /✓ design presets: promoted \(published\)/u);
+  assert.doesNotMatch(stdout, /\? /u);
+  assert.match(
+    stdout,
+    /^Not ready: pages are a 503 until a refresh stores every language's front page and site chrome\.$/mu,
+  );
 });
 
 test("a refused refresh is reported without the token", async () => {

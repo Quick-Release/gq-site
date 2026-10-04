@@ -1,6 +1,8 @@
 # ADR 0010: Declare a new content Site ready through one readiness gate
 
-- Status: Accepted
+- Status: Accepted; amended by [ADR 0013](0013-serve-each-language-from-its-own-shared-rows.md)
+  (a bilingual Site is ready only when every language exists in the CMS and
+  its front page, chrome and homepage are served)
 - Date: 2026-10-03
 
 ## Context

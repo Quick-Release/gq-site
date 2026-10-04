@@ -113,7 +113,9 @@ from its own rows);
 settings events, and real WPGraphQL for `gq site check`'s CMS readiness.
 `scripts/smoke/cms-polylang.sh` proves a bilingual site's Polylang
 configuration (the generated `deploy/ploi/polylang.sh`) on a real WordPress
-with Polylang and GQ Polylang for WPGraphQL, read over GraphQL. The
+with Polylang and GQ Polylang for WPGraphQL, read over GraphQL, and the
+events its CMS sends per language (the site's `publication-events.php` and
+`settings-events.php`). The
 runtime proof also installs the CI Worker's dependencies for Wrangler's local
 workerd runtime. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
 three proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
