@@ -47,6 +47,7 @@ the installed npm package; decisions are linked, not copied into guides.
 - [ADR 0011: Offboard a Site by cutting its access before archiving it](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0011-offboard-a-site-by-cutting-access-before-archiving.md): `gq offboard`, its guards, `--restore` and `--archive`.
 - [ADR 0012: Keep a Site's code in Artifacts when it has no GitHub repository](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0012-keep-a-sites-code-in-artifacts-when-it-has-no-github-repository.md): Artifacts-only Sites.
 - [ADR 0013: Serve each language from its own shared rows](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0013-serve-each-language-from-its-own-shared-rows.md): bilingual Sites' rows, events, reconciliation and readiness.
+- [ADR 0014: Keep a Site's code in the EU unless it opts out](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0014-keep-a-sites-code-in-the-eu-unless-it-opts-out.md): Artifacts namespace jurisdictions.
 - [Rollout plan and evidence](https://github.com/Quick-Release/gq-site/blob/main/docs/plans/getquick-blueprint-rollout.md): accepted gates, passed phases and adoption checklist.
 - [Research](https://github.com/Quick-Release/gq-site/tree/main/docs/research): dated inventories and implementation research.
 - [Agent guidance](https://github.com/Quick-Release/gq-site/tree/main/docs/agents): issue tracking, triage and domain-document use.

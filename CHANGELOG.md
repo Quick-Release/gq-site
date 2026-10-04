@@ -10,7 +10,8 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 - **Artifacts namespaces are created in the EU by default**,
   `artifacts.jurisdiction` in `gq.ops.json`: `"eu"` (the default when it's
   left out), `"us"` or `"unrestricted"` (the opt-out). Cloudflare can't
-  change a namespace's jurisdiction after it is created.
+  change a namespace's jurisdiction after it is created
+  ([ADR 0014](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0014-keep-a-sites-code-in-the-eu-unless-it-opts-out.md)).
   - `gq cloudflare ci` creates a missing namespace there. An existing one
     elsewhere stops it, naming the namespace, both jurisdictions and the
     ways out: set `artifacts.jurisdiction` to match, or delete the
@@ -27,7 +28,8 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 - **Existing sites:** one without `artifacts.jurisdiction` whose Artifacts
   namespace is unrestricted (every namespace `gq cloudflare ci` created
   before this release) now stops `gq cloudflare ci` and fails `gq doctor`.
-  Set `"jurisdiction": "unrestricted"` to keep it, or recreate it in the EU
+  No `gq sync` migration sets it for them (ADR 0014): set
+  `"jurisdiction": "unrestricted"` to keep it, or recreate it in the EU
   (see [Cloudflare provisioning and CI](https://github.com/Quick-Release/gq-site/blob/main/docs/guides/provisioning.md#cloudflare-provisioning-and-ci)).
 
 ## 0.17.2 — 2026-10-04

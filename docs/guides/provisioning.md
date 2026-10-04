@@ -203,8 +203,10 @@ read:
   bucket and "CI Backups R2" → `CI_BACKUP_R2_*`, "CI Deploy" →
   `CI_DEPLOY_API_TOKEN`, and the `artifacts` namespace and repository. The
   namespace is created in `artifacts.jurisdiction`: `eu` when it's left
-  out, `us`, or `unrestricted` to opt out. Cloudflare can't change a
-  namespace's jurisdiction, so an existing namespace in another one stops
+  out, `us`, or `unrestricted` to opt out
+  ([ADR 0014](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0014-keep-a-sites-code-in-the-eu-unless-it-opts-out.md)).
+  Cloudflare can't change a namespace's jurisdiction, so an existing
+  namespace in another one stops
   the command: before it changes anything (`--dry-run` included) when its
   Artifacts token is already stored, and always before it creates a
   repository. Either set
