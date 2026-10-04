@@ -341,8 +341,15 @@ test("gq doctor reports stopped DDEV, missing env files and a logged-out Sigillo
   });
   const result = await fixture.run(["doctor"], { exec });
   assert.equal(result.code, 0, result.stdout);
-  assert.match(result.stdout, /⚠ apps\/frontend\/\.env is missing/u);
-  assert.match(result.stdout, /⚠ apps\/cms\/\.env is missing/u);
+  assert.match(
+    result.stdout,
+    /⚠ apps\/frontend\/\.env is missing — run: pnpm run setup --no-ddev \(it creates it from \.env\.example\)/u,
+  );
+  assert.match(
+    result.stdout,
+    /⚠ apps\/cms\/\.env is missing — run: pnpm run setup --no-ddev \(it creates it from \.env\.example; gq cms start points it at DDEV\)/u,
+  );
+  assert.doesNotMatch(result.stdout, /copy \.env\.example|set local credentials/u);
   assert.match(result.stdout, /⚠ Sigillo is not logged in — run: pnpm sigillo:login/u);
   assert.match(
     result.stdout,
@@ -366,6 +373,136 @@ test("gq doctor checks local media only, and fails when the local CMS would writ
     /✗ apps\/cms\/\.env sets S3_UPLOADS_SECRET: the local CMS would write uploads to the live bucket — remove/u,
   );
   assert.ok(!result.stdout.includes("live-secret"));
+});
+
+const LOCAL_LISTING =
+  "sigillo secrets --api-url https://secrets.example.test --project PROJECT1 --env dev";
+
+test("gq doctor fails when an app's env file sets a secret Sigillo holds, naming it but not its value", async () => {
+  const fixture = await healthySite({
+    "apps/cms/.env": "WP_ENV='local'\nPLOI_API_TOKEN='ploi-value'\n",
+    "apps/frontend/.dev.vars": "FRONTEND_REFRESH_TOKEN=refresh-value\nPUBLIC_URL=x\n",
+  });
+  const exec = machine({
+    stdout: { [LOCAL_LISTING]: "NAME\nPLOI_API_TOKEN\nFRONTEND_REFRESH_TOKEN\nCOMPOSER_AUTH\n" },
+  });
+
+  const result = await fixture.run(["doctor"], { exec });
+
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(
+    result.stdout,
+    /✗ apps\/cms\/\.env sets PLOI_API_TOKEN, a secret Sigillo dev holds — remove it: gq sigillo run injects it/u,
+  );
+  assert.match(
+    result.stdout,
+    /✗ apps\/frontend\/\.dev\.vars sets FRONTEND_REFRESH_TOKEN, a secret Sigillo dev holds/u,
+  );
+  assert.doesNotMatch(result.stdout, /WP_ENV|PUBLIC_URL|COMPOSER_AUTH/u);
+  assert.ok(!result.stdout.includes("ploi-value"));
+  assert.ok(!result.stdout.includes("refresh-value"));
+  assert.ok(!actions(exec).some((line) => /secrets get/u.test(line)));
+});
+
+test("gq doctor checks every app's .env, .env.local and .dev.vars against every Sigillo environment", async () => {
+  const ops = {
+    ...OPS,
+    sigillo: { ...OPS.sigillo, environments: { local: "dev", staging: "stage" } },
+  };
+  const fixture = await healthySite(
+    {
+      "apps/frontend/.env.local": "CLOUDFLARE_API_TOKEN=x\n",
+      "apps/docs/.env": "DOCS_TOKEN=y\n",
+    },
+    ops,
+  );
+  const exec = machine({
+    stdout: {
+      [LOCAL_LISTING]: "CLOUDFLARE_API_TOKEN\n",
+      [LOCAL_LISTING.replace("--env dev", "--env stage")]: "DOCS_TOKEN\n",
+    },
+  });
+
+  const result = await fixture.run(["doctor"], { exec });
+
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(
+    result.stdout,
+    /✗ apps\/frontend\/\.env\.local sets CLOUDFLARE_API_TOKEN, a secret Sigillo dev holds/u,
+  );
+  assert.match(result.stdout, /✗ apps\/docs\/\.env sets DOCS_TOKEN, a secret Sigillo stage holds/u);
+});
+
+test("gq doctor doesn't flag what gq generated, even under a name Sigillo holds", async () => {
+  const ops = {
+    ...OPS,
+    sigillo: { ...OPS.sigillo, environments: { local: "dev", staging: "stage" } },
+  };
+  const fixture = await healthySite(
+    {
+      "apps/cms/.env.example": "WP_ENV='local'\nAUTH_KEY='fixture-local-auth-key'\nDB_NAME='db'\n",
+      // The template's salt and database name, DDEV's own URL, an empty value
+      // and an exported override.
+      "apps/cms/.env":
+        "WP_ENV='local'\nAUTH_KEY='fixture-local-auth-key'\nDB_NAME='db'\n" +
+        "WP_HOME='https://fixture-admin.ddev.site'\nS3_UPLOADS_BUCKET=''\nexport PLOI_API_TOKEN=ploi-value\n",
+    },
+    ops,
+  );
+  const exec = machine({
+    stdout: {
+      [LOCAL_LISTING.replace("--env dev", "--env stage")]:
+        "AUTH_KEY\nDB_NAME\nWP_HOME\nS3_UPLOADS_BUCKET\nPLOI_API_TOKEN\n",
+    },
+  });
+
+  const result = await fixture.run(["doctor"], { exec });
+
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(
+    result.stdout,
+    /✗ apps\/cms\/\.env sets PLOI_API_TOKEN, a secret Sigillo stage holds/u,
+  );
+  assert.doesNotMatch(result.stdout, /sets (AUTH_KEY|DB_NAME|WP_HOME|S3_UPLOADS_BUCKET)/u);
+  assert.ok(!result.stdout.includes("ploi-value"));
+});
+
+test("gq doctor still fails on R2 credentials in the CMS's .env for a site without Sigillo", async () => {
+  const fixture = await healthySite(
+    { "apps/cms/.env": "S3_UPLOADS_KEY='live-key'\n" },
+    { ...OPS, sigillo: undefined },
+  );
+  const result = await fixture.run(["doctor"], { exec: machine() });
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(
+    result.stdout,
+    /✗ apps\/cms\/\.env sets S3_UPLOADS_KEY: the local CMS would write uploads to the live bucket/u,
+  );
+  assert.doesNotMatch(result.stdout, /Secrets \(Sigillo\)|env files? not checked|secret Sigillo/u);
+  assert.ok(!result.stdout.includes("live-key"));
+});
+
+test("gq doctor confirms the env files hold no Sigillo secret, and says when it can't check", async () => {
+  const healthy = await healthySite({ "apps/cms/.env": "WP_ENV='local'\n" });
+  const clean = await healthy.run(["doctor"], {
+    exec: machine({ stdout: { [LOCAL_LISTING]: "PLOI_API_TOKEN\n" } }),
+  });
+  assert.equal(clean.code, 0, clean.stdout);
+  assert.match(clean.stdout, /✓ no app's env file sets a secret Sigillo holds/u);
+
+  const unlisted = await healthy.run(["doctor"], {
+    exec: machine({ codes: { [LOCAL_LISTING]: 1 } }),
+  });
+  assert.equal(unlisted.code, 0, unlisted.stdout);
+  assert.match(unlisted.stdout, /⚠ could not list Sigillo dev's secret names/u);
+
+  const loggedOut = await healthy.run(["doctor"], {
+    exec: machine({ codes: { "sigillo me --api-url https://secrets.example.test": 1 } }),
+  });
+  assert.match(
+    loggedOut.stdout,
+    /· env files not checked for Sigillo secrets: Sigillo isn't ready/u,
+  );
 });
 
 test("gq doctor skips the Artifacts check for a site without an Artifacts mirror", async () => {
@@ -440,7 +577,7 @@ test("gq doctor confirms the namespace's jurisdiction with ARTIFACTS_API_TOKEN f
   assert.equal(result.code, 0, result.stdout);
   assert.match(result.stdout, /✓ Artifacts namespace fixture-ns is in us, as gq\.ops\.json says/u);
   assert.equal(fetch.requests[0].headers.Authorization, "Bearer env-artifacts");
-  assert.ok(!actions(exec).some((line) => line.startsWith("sigillo secrets")));
+  assert.ok(!actions(exec).some((line) => line.startsWith("sigillo secrets get")));
 });
 
 test("gq doctor only warns when it can't check the namespace's jurisdiction", async () => {

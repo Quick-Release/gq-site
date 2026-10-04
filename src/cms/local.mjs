@@ -49,6 +49,15 @@ export async function describeDdev(exec, cmsRoot, env) {
   return JSON.parse(result.stdout).raw;
 }
 
+// The names ddevEnvValues sets in apps/cms/.env.
+export const DDEV_ENV_NAMES = Object.freeze([
+  "DB_NAME",
+  "DB_USER",
+  "DB_PASSWORD",
+  "DB_HOST",
+  "WP_HOME",
+]);
+
 // The Bedrock values DDEV decides: its database credentials and the URL it
 // actually serves (http unless mkcert's local CA is installed).
 export function ddevEnvValues(project) {
