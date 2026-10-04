@@ -5,6 +5,8 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.17.1 — 2026-10-04
+
 ### Added
 
 - **Bilingual content Sites**, `wordpress.languages` in `gq.ops.json`: the
