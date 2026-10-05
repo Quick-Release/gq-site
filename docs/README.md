@@ -12,6 +12,7 @@
 | [Provisioning and deployment](guides/provisioning.md) | The new content Site flow and readiness, Ploi provisioning/releases/media, database backup and live-to-local sync, Cloudflare tokens/buckets, CI and GitHub wiring. |
 | [Offboarding a Site](guides/offboarding.md)           | Cutting a leaving client's public URLs and credentials, the guards while it is offboarded, restoring it, and archiving it before deleting its infrastructure.       |
 | [Agent skills](guides/skills.md)                      | Register, update, lock and safely check upstream agent skills under `.agents/skills`.                                                                               |
+| [Agent scope](guides/agent-scope.md)                  | The hooks that keep an agent session in its own repository: the router and the write fence.                                                                         |
 
 ## Reference
 

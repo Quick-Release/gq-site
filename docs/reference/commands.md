@@ -20,6 +20,8 @@ gq context show [--json]
 gq new <dir> --project <name> --variant content [--locale <locale>]
 gq sync [--manifest] [--check] [--variant <content|commerce>] [--recreate <path>]...
 gq skills update [--check]
+gq scope route [--hook] [<request>...]
+gq scope fence --hook
 
 gq setup [--no-ddev]
 gq doctor
@@ -125,7 +127,8 @@ revokes the repository's git tokens instead of the webhook, and its archive
 keeps its code as `code.bundle`, a git bundle of every ref. See
 [Offboarding a Site](../guides/offboarding.md).
 `gq skills update` works from any Git repository and is documented in the
-[agent skills guide](../guides/skills.md).
+[agent skills guide](../guides/skills.md). So do `gq scope route` and
+`gq scope fence`, the agent hooks in the [agent scope guide](../guides/agent-scope.md).
 
 See [release and version behavior](release.md), [local development](../guides/local-development.md),
 [provisioning](../guides/provisioning.md), [offboarding](../guides/offboarding.md), and [secret injection](../guides/secrets.md)
