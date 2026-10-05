@@ -3,6 +3,29 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **The generated `AGENTS.md` section starts with a Scope rule** for every
+  harness that reads `AGENTS.md` (Claude Code through `CLAUDE.md`, Codex, pi).
+  An agent in a Site changes only that Site. A request owned by another
+  repository (the blueprint, a GETQUICK plugin or package, or gq-platform)
+  gets that repository named and a new session there suggested, with nothing
+  changed.
+  - **Existing sites:** `gq sync` rewrites the section; commit the result.
+- **`gq scope route` and `gq scope fence` keep an agent session in its own
+  repository**, as Claude Code hooks (`--hook`) or by hand.
+  - `route` tells the agent which other repositories a request names, who
+    owns each and where its clone is.
+  - `fence` denies edits, git and gh writes, and file commands aimed outside
+    the repository; another checkout of the same repository counts as
+    inside.
+  - `GQ_SCOPE=off` turns both off for deliberate orchestration.
+  - This repository's `.claude/settings.json` runs both; the
+    [agent scope guide](docs/guides/agent-scope.md) shows the user-level
+    wiring that covers every repository on a machine.
+
 ## 0.17.5 — 2026-10-04
 
 ### Changed

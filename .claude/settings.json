@@ -24,5 +24,30 @@
       "Bash(git merge:*)",
       "Bash(pnpm install:*)"
     ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/bin/gq.mjs\" scope route --hook",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/bin/gq.mjs\" scope fence --hook",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }
