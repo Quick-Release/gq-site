@@ -38,8 +38,10 @@ const eventSecret = process.env.PUBLICATION_EVENT_SECRET?.trim();
 const Publications = Effect.gen(function* () {
   const { stage } = yield* Stack;
   const production = stage === "prod";
+  // The project's name stays in a constant, as in Website below.
+  const database = "lombardi-fe-publications";
   return yield* Cloudflare.D1.Database("LombardiPublications", {
-    name: production ? "lombardi-fe-publications" : `lombardi-fe-publications-${stage}`,
+    name: production ? database : `${database}-${stage}`,
     migrations: publicationMigrations,
   }).pipe(Alchemy.RemovalPolicy.retain(production));
 });
@@ -49,15 +51,17 @@ export const Website = Cloudflare.Website.Astro(
   Effect.gen(function* () {
     const { stage } = yield* Stack;
     const production = stage === "prod";
+    // The project's name stays in constants: in the lines below, a shorter or
+    // longer one would make the site's formatter rewrap them, editing this file.
+    const worker = "lombardi-fe";
+    const name = production ? worker : `${worker}-${stage}`;
 
     return {
-      name: production ? "lombardi-fe" : `lombardi-fe-${stage}`,
+      name,
       rootDir: "../apps/frontend",
       ...(production && !offboarded ? { domain: productionHostname } : {}),
       astro: {
-        site: production
-          ? `https://${productionHostname}`
-          : `https://lombardi-fe-${stage}.workers.dev`,
+        site: production ? `https://${productionHostname}` : `https://${name}.workers.dev`,
         output: "server",
       },
       workersDev: offboarded

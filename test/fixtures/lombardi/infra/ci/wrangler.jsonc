@@ -11,7 +11,12 @@
   "compatibility_date": "2026-06-16",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
-  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "lombardi" }],
+  "artifacts": [
+    {
+      "binding": "ARTIFACTS",
+      "namespace": "lombardi",
+    },
+  ],
   "containers": [
     {
       "class_name": "CiSandbox",
@@ -29,19 +34,40 @@
   "durable_objects": { "bindings": [{ "name": "SANDBOX", "class_name": "CiSandbox" }] },
   "exports": { "CiSandbox": { "type": "durable-object", "storage": "sqlite" } },
   "workflows": [
-    { "name": "lombardi-ci", "binding": "CI_WORKFLOW", "class_name": "CI" },
-    { "name": "lombardi-mirror", "binding": "MIRROR_WORKFLOW", "class_name": "Mirror" },
+    {
+      "name": "lombardi-ci",
+      "binding": "CI_WORKFLOW",
+      "class_name": "CI",
+    },
+    {
+      "name": "lombardi-mirror",
+      "binding": "MIRROR_WORKFLOW",
+      "class_name": "Mirror",
+    },
   ],
   "triggers": {
     "events": [
       {
         "type": "cf.artifacts.repo.pushed",
-        "filter": { "namespace": "lombardi", "repo_name": "lombardi" },
-        "targets": [{ "type": "workflow", "workflow_name": "lombardi-ci" }],
+        "filter": {
+          "namespace": "lombardi",
+          "repo_name": "lombardi",
+        },
+        "targets": [
+          {
+            "type": "workflow",
+            "workflow_name": "lombardi-ci",
+          },
+        ],
       },
     ],
   },
-  "r2_buckets": [{ "binding": "BACKUP_BUCKET", "bucket_name": "lombardi-ci-backups" }],
+  "r2_buckets": [
+    {
+      "binding": "BACKUP_BUCKET",
+      "bucket_name": "lombardi-ci-backups",
+    },
+  ],
   "vars": {
     "BACKUP_BUCKET_NAME": "lombardi-ci-backups",
     "CLOUDFLARE_ACCOUNT_ID": "8f38791a8c37b182239af2a385ab3c31",

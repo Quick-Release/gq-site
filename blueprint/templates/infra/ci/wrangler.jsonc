@@ -11,7 +11,12 @@
   "compatibility_date": "2026-06-16",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
-  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "{{artifacts.namespace}}" }],
+  "artifacts": [
+    {
+      "binding": "ARTIFACTS",
+      "namespace": "{{artifacts.namespace}}",
+    },
+  ],
   "containers": [
     {
       "class_name": "CiSandbox",
@@ -29,19 +34,40 @@
   "durable_objects": { "bindings": [{ "name": "SANDBOX", "class_name": "CiSandbox" }] },
   "exports": { "CiSandbox": { "type": "durable-object", "storage": "sqlite" } },
   "workflows": [
-    { "name": "{{ci.worker}}", "binding": "CI_WORKFLOW", "class_name": "CI" },
-    { "name": "{{project}}-mirror", "binding": "MIRROR_WORKFLOW", "class_name": "Mirror" },
+    {
+      "name": "{{ci.worker}}",
+      "binding": "CI_WORKFLOW",
+      "class_name": "CI",
+    },
+    {
+      "name": "{{project}}-mirror",
+      "binding": "MIRROR_WORKFLOW",
+      "class_name": "Mirror",
+    },
   ],
   "triggers": {
     "events": [
       {
         "type": "cf.artifacts.repo.pushed",
-        "filter": { "namespace": "{{artifacts.namespace}}", "repo_name": "{{artifacts.repo}}" },
-        "targets": [{ "type": "workflow", "workflow_name": "{{ci.worker}}" }],
+        "filter": {
+          "namespace": "{{artifacts.namespace}}",
+          "repo_name": "{{artifacts.repo}}",
+        },
+        "targets": [
+          {
+            "type": "workflow",
+            "workflow_name": "{{ci.worker}}",
+          },
+        ],
       },
     ],
   },
-  "r2_buckets": [{ "binding": "BACKUP_BUCKET", "bucket_name": "{{ci.backupBucket}}" }],
+  "r2_buckets": [
+    {
+      "binding": "BACKUP_BUCKET",
+      "bucket_name": "{{ci.backupBucket}}",
+    },
+  ],
   "vars": {
     "BACKUP_BUCKET_NAME": "{{ci.backupBucket}}",
     "CLOUDFLARE_ACCOUNT_ID": "{{cloudflare.accountId}}",

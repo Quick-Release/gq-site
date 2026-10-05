@@ -47,6 +47,13 @@ skips the webhook and commit statuses. `lombardi/scripts/ci.test.mjs` now tests
 the push-event filter with a fixed repository, `example/site`, instead of the
 site's, since a site may have none.
 
+Formatter-stable deploy files ([issue #52][formatter-stability]) likewise
+updated the Lombardi `infra/frontend.run.ts` and `infra/ci/wrangler.jsonc`
+alongside their blueprint sources. The Frontend config holds the project's name
+only in constants, and the CI Worker config writes each object holding a site
+value expanded, so a site's pre-commit formatter leaves them as they are for a
+project name of any length. The configured names and URLs are unchanged.
+
 ## Preservation
 
 - Preserve fixture paths, contents and version identifiers during organization,
@@ -79,3 +86,4 @@ For helper roles and targeted test commands, see
 [legacy-extraction]: https://github.com/Quick-Release/gq-site/commit/348a73a
 [git-isolation-fix]: https://github.com/Quick-Release/gq-site/commit/86e701f
 [event-secret-binding]: https://github.com/Quick-Release/gq-site/commit/38eed6a
+[formatter-stability]: https://github.com/Quick-Release/gq-site/issues/52

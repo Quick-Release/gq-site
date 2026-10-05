@@ -84,12 +84,13 @@ test("every site value in the deploy files comes from gq.ops.json", async () => 
   for (const line of [
     "  // AcmeShop CI on Cloudflare: pushes to the Artifacts repository (gq.ops.json",
     '  "name": "acme-builds",',
-    '  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "acme-ns" }],',
-    '    { "name": "acme-builds", "binding": "CI_WORKFLOW", "class_name": "CI" },',
-    '    { "name": "acme-shop-mirror", "binding": "MIRROR_WORKFLOW", "class_name": "Mirror" },',
-    '        "filter": { "namespace": "acme-ns", "repo_name": "acme-repo" },',
-    '        "targets": [{ "type": "workflow", "workflow_name": "acme-builds" }],',
-    '  "r2_buckets": [{ "binding": "BACKUP_BUCKET", "bucket_name": "acme-snapshots" }],',
+    '      "namespace": "acme-ns",',
+    '      "name": "acme-builds",',
+    '      "name": "acme-shop-mirror",',
+    '          "namespace": "acme-ns",',
+    '          "repo_name": "acme-repo",',
+    '            "workflow_name": "acme-builds",',
+    '      "bucket_name": "acme-snapshots",',
     '    "BACKUP_BUCKET_NAME": "acme-snapshots",',
     '    "CLOUDFLARE_ACCOUNT_ID": "0123456789abcdef0123456789abcdef",',
     '    "CLOUDFLARE_DEPLOY_ACCOUNT_ID": "0123456789abcdef0123456789abcdef",',
@@ -101,7 +102,10 @@ test("every site value in the deploy files comes from gq.ops.json", async () => 
   }
   const frontend = await readSite(fixture.root, "infra/frontend.run.ts");
   assert.match(frontend, /^ {2}"AcmeShopFrontend",$/mu);
-  assert.match(frontend, /name: production \? "acme-shop-fe" : `acme-shop-fe-\$\{stage\}`,/u);
+  assert.match(frontend, /^ {4}const worker = "acme-shop-fe";$/mu);
+  assert.match(frontend, /^ {4}const name = production \? worker : `\$\{worker\}-\$\{stage\}`;$/mu);
+  assert.match(frontend, /: `https:\/\/\$\{name\}\.workers\.dev`,$/mu);
+  assert.match(frontend, /^ {2}const database = "acme-shop-fe-publications";$/mu);
   assert.match(await readSite(fixture.root, "infra/ci/package.json"), /"name": "@acme-shop\/ci",/u);
   assert.match(
     await readSite(fixture.root, "infra/ci/github.ts"),
