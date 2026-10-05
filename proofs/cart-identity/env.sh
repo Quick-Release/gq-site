@@ -15,7 +15,7 @@
 # Plugin sources (local clones, read only):
 #   GQ_CONFIG_REPO            GETQUICK Config, installed from its HEAD as a must-use plugin
 #   GQ_DESIGN_REPO            GQ Design, installed from its HEAD
-#   GQ_ECOMMERCE_REPO         GQ eCommerce; `ecommerce baseline` installs GQ_ECOMMERCE_BASELINE (default main)
+#   GQ_ECOMMERCE_REPO         GQ eCommerce; `ecommerce baseline` installs GQ_ECOMMERCE_BASELINE (default 0220d8c, the last commit without isolation)
 #   GQ_ECOMMERCE_CANDIDATE    GQ eCommerce working tree that `ecommerce candidate` installs
 set -euo pipefail
 
@@ -124,7 +124,7 @@ ecommerce() {
   case "${1:-}" in
     baseline)
       require_source GQ_ECOMMERCE_REPO
-      install_ref "$GQ_ECOMMERCE_REPO" "$PLUGINS/gq-ecommerce" "${GQ_ECOMMERCE_BASELINE:-main}"
+      install_ref "$GQ_ECOMMERCE_REPO" "$PLUGINS/gq-ecommerce" "${GQ_ECOMMERCE_BASELINE:-0220d8c}"
       ;;
     candidate)
       require_source GQ_ECOMMERCE_CANDIDATE

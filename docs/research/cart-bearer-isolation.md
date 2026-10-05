@@ -101,11 +101,11 @@ The proof Frontend sends its guest bearer on login and uses the returned bearer.
 | Authenticated-cart bearer presented with a fresh session of the same customer                                                                                     | `401 getquick_cart_bearer_retired`                                                                                                                              |
 | Sign in again through the Frontend                                                                                                                                | 200, **Alpha ×1 + Beta ×2**: the saved cart survived logout. Woo writes the saved cart only for a signed-in customer, so this shows preservation, not isolation |
 | Logout after the customer's sessions were ended out of band                                                                                                       | 200; the bearer is `401 getquick_cart_bearer_retired`                                                                                                           |
-| The registry table is dropped (its schema option kept, as a restore might), then the customer's bearer is used                                                    | refused (503), no cart lines                                                                                                                                    |
-| A shopper signed in on the WordPress site with native cookies and a REST nonce reads the Store API                                                                | 200, as that customer (`User-ID` not 0)                                                                                                                         |
+| The registry table is dropped (its schema option kept, as a restore might), then the customer's bearer is used                                                    | refused, no cart lines (the suite asserts a 4xx/5xx; the guard's code is 503)                                                                                   |
+| A shopper signed in on the WordPress site with native cookies and a REST nonce reads the Store API                                                                | 200, not anonymous (`User-ID` not 0)                                                                                                                            |
 | Every browser response in the run, both shoppers                                                                                                                  | contains none of the bearers, upstream sessions or proxy secret exchanged upstream                                                                              |
 
-Final run: **22 tests in 3 suites, 22 passed, 0 failed, 0 cancelled (2026-10-04T16:17Z, GQ eCommerce baseline `0220d8c`, candidate `0c4a1ac` clean). Every assertion is listed in `proofs/cart-identity/isolation.test.mjs`**.
+Final run: **22 tests in 3 suites, 22 passed, 0 failed, 0 cancelled (2026-10-04T16:17Z, GQ eCommerce baseline `0220d8c`, candidate `0c4a1ac` clean; the released `v0.3.0` differs from `0c4a1ac` only in its version number). Every assertion is listed in `proofs/cart-identity/isolation.test.mjs`**.
 
 ## Threat model
 
@@ -151,7 +151,7 @@ The guard applies to every request WordPress matches to a Store API handler, wha
 - **Not run:** GQ eCommerce's Pest suites, which live in Ekis's CMS (`tests/Feature/GetQuick*Test.php`), so running them would mean changing the Ekis repo, which wasn't authorized. A unit test that asserts `StoreApiProxyAuthentication`'s filter priority would need updating.
 - **One pinned version.** Behaviour depends on Woo 11.1.2 internals: the token format, `woocommerce_sessions`, the merge flag and session-handler selection. Re-run both suites on every Woo upgrade; the baseline shows whether the failure still exists.
 - **Registry growth.** Registry rows are never purged. Production needs a purge that keeps a retired row until the last token for its key has expired: `changed_at` plus the session lifetime, since every Store API response re-mints a token with a fresh `exp`. Every sign-in mints a fresh key and row.
-- **Text domain.** The four new messages use the branch's text domain, `getquick-ecommerce`, and were added to its canonical `.pot`. Uncommitted work on the plugin's main checkout renames that domain to `gq-ecommerce`, so merging will need the four strings carried over.
+- **Text domain.** The four new messages use the text domain `getquick-ecommerce`, which 0.3.0 kept, and are in its canonical `.pot`. A later rename to `gq-ecommerce` must carry them over.
 
 ## Security review required before any production use
 

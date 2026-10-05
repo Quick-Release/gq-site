@@ -25,7 +25,7 @@ loopback.
 export GQ_PROOF_DIR="$TMPDIR/gq-cart-identity-proof"   # outside the repository
 export GQ_CONFIG_REPO=…/getquick-config GQ_DESIGN_REPO=…/gq-design
 export GQ_ECOMMERCE_REPO=…/gq-ecommerce                 # baseline comes from here
-export GQ_ECOMMERCE_BASELINE=<ref>                      # GQ eCommerce without isolation (default main)
+export GQ_ECOMMERCE_BASELINE=<ref>                      # GQ eCommerce without isolation (default 0220d8c)
 export GQ_ECOMMERCE_CANDIDATE=…/gq-ecommerce-worktree   # the working tree under test
 proofs/cart-identity/env.sh up        # create the project, install WP 7.1.2 + Woo 11.1.2 + plugins
 proofs/cart-identity/run.sh           # baseline and candidate suites
