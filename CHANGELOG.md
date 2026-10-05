@@ -3,6 +3,18 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **The generated `AGENTS.md` section starts with a Scope rule** for every
+  harness that reads `AGENTS.md` (Claude Code through `CLAUDE.md`, Codex, pi).
+  An agent in a Site changes only that Site. A request owned by another
+  repository (the blueprint, a GETQUICK plugin or package, or gq-platform)
+  gets that repository named and a new session there suggested, with nothing
+  changed.
+  - **Existing sites:** `gq sync` rewrites the section; commit the result.
+
 ## 0.17.5 — 2026-10-04
 
 ### Changed

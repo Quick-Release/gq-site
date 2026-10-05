@@ -69,6 +69,8 @@ test("gq new writes AGENTS.md and .gitignore as their generated sections, hashed
   const agents = await readSite(site.root, "AGENTS.md");
   assert.ok(agents.startsWith(`${AGENTS_BEGIN}\n`), agents);
   assert.ok(agents.endsWith(`\n${AGENTS_END}\n`), agents);
+  assert.match(agents, /^## Scope$/mu);
+  assert.match(agents, /start a new session there/u);
   assert.match(agents, /^## Managed files$/mu);
   assert.match(agents, /^### Issue tracker$/mu);
 
