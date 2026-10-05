@@ -16,12 +16,13 @@
 
 ## Reference
 
-| Document                                               | Use it for                                                                             |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| [Site manifest and environment](reference/manifest.md) | Site discovery, schema v1, manifest migrations and provider token/ID precedence.       |
-| [Commands](reference/commands.md)                      | Command syntax, output and mutation confirmation.                                      |
-| [Release and version commands](reference/release.md)   | Variant defaults, release/verify/doctor additions and legacy release-config migration. |
-| [Programmatic use](reference/programmatic-use.md)      | The existing `run()` interface and injected adapters.                                  |
+| Document                                               | Use it for                                                                                       |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| [Site manifest and environment](reference/manifest.md) | Site discovery, schema v1, manifest migrations and provider token/ID precedence.                 |
+| [Commands](reference/commands.md)                      | Command syntax, output and mutation confirmation.                                                |
+| [Release and version commands](reference/release.md)   | Variant defaults, release/verify/doctor additions and legacy release-config migration.           |
+| [Programmatic use](reference/programmatic-use.md)      | The existing `run()` interface and injected adapters.                                            |
+| [Reference Site](reference/reference-site.md)          | Cooldown Gaming, the live content Site the blueprint is tested against: its repository and URLs. |
 
 ## Contributors
 
