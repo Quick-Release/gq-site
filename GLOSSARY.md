@@ -39,8 +39,8 @@ site's plugins, such as activating its theme.
 _Avoid_: deploy hook (hooks are the Git hooks)
 
 **Variant**:
-The kind of site the blueprint supports: content or commerce. Lombardi is a
-content site; Ekis is a commerce site.
+The kind of site the blueprint supports: content or commerce. Ekis is a
+commerce site.
 
 ### Published content
 

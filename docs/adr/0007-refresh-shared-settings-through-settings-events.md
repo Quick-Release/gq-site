@@ -20,7 +20,7 @@ setting-specific.
 
 The owned CMS packages were inspected for where the settings live and which
 hooks fire when they change (getquick-design 0.2.18, getquick-theme 0.4.0,
-getquick-config):
+gq-config):
 
 - **Menus:** getquick-theme registers the `primary` location
   (`functions.php`), and the Frontend reads that location's menu items.
@@ -69,8 +69,8 @@ with (ADR 0004).
   own (a `DesignPresets` query). Once a refresh has stored it, the homepage
   and every entry are served with it instead of the presets in their own rows.
   A whole-Site refresh stores it too.
-  - A Site last refreshed before the row existed, or one holding a format this
-    Frontend can't read, serves each page with its own presets, as before.
+  - A Site whose store has no `design` row, or holds one in a format this
+    Frontend can't read, serves each page with the presets in its own row.
   - No migration and no format change.
   - This amends ADR 0004's "design presets stay in each entry's row": a change
     to them is one read, applied to every page at once, not one read per entry.
@@ -83,10 +83,11 @@ with (ADR 0004).
     superseded and never read;
   - a refreshed one supersedes that setting's older failed ones.
 
-  Settings are ordered apart from each other and from entries. #46 can
-  retry any recorded event by its action and subject.
+  Settings are ordered apart from each other and from entries. A retry
+  ([ADR 0008](0008-retry-event-delivery-from-the-cms-on-a-server-cron.md))
+  resends any recorded event by its action and subject.
 
-- **The CMS hooks live in the site-owned skeleton.** A new must-use plugin,
+- **The CMS hooks live in the site-owned skeleton.** A must-use plugin,
   `settings-events.php`, sits beside `publication-events.php` and reuses its
   endpoint, key and signed `send()`.
   - It listens to:
@@ -117,9 +118,10 @@ with (ADR 0004).
 - **Listening to `getquick_design_cache_invalidated`.** It doesn't fire for
   global styles, the logo, the icon or the title, and it fires for layout
   changes the Frontend doesn't render.
-- **Putting the plugin in `getquick-design`.** Choosing a shared package home
-  is [#32](https://github.com/Quick-Release/gq-site/issues/32)'s decision. The
-  plugin can move once that is decided.
+- **Putting the plugin in `getquick-design`.** The content runtime's shared
+  home is `gq-content`
+  ([ADR 0015](0015-hold-only-the-blueprint-in-this-repository.md)), not
+  getquick-design.
 - **The site title on entry pages.** Entries are titled with the project's
   name, not WordPress's title. The issue asks to refresh the existing
   representation, so an identity change shows on the homepage (title,
@@ -130,10 +132,11 @@ with (ADR 0004).
 - A menu, logo, identity or design change reaches every page within the
   event's round trip, through later outages. If the trip fails, the previous
   settings stay served until a retry: `wp gq-events settings retry`, an
-  operator's `gq frontend refresh`, or #46.
+  operator's `gq frontend refresh`, or the automated retry (ADR 0008).
 - Pages are served with the stored `design` row even when an entry's own read
   is newer. A lost design event is caught by the next design event, a
-  whole-Site refresh, or later reconciliation.
+  whole-Site refresh, or reconciliation
+  ([ADR 0009](0009-reconcile-missed-changes-on-the-cms-scheduler.md)).
 - `wp_navigation` posts (block-theme navigation), fonts, the logo variation
   and a front-page change in Settings → Reading send no settings event. The
   Frontend doesn't render the first three; the last is a publication matter.

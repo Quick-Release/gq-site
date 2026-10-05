@@ -48,7 +48,7 @@ what the cut changed, which `--restore` brings back) is written by
 is verified. `$schema` points editors at the JSON
 Schema generated from it ([schema/gq.ops.schema.json](../../schema/gq.ops.schema.json)).
 
-A manifest without `schemaVersion` is v0, the shape before versioning. Every
+A manifest without `schemaVersion` is v0, the unversioned shape. Every
 command refuses it, and one newer than the installed `gq` reads, with the
 step to take. `gq sync` migrates it:
 
@@ -58,8 +58,8 @@ gq sync --manifest --check             # report pending migrations, exit 1, writ
 ```
 
 v0 never recorded the variant, so the v0 → v1 migration takes it from
-`--variant` rather than guessing. It drops the keys of flows `gq` no longer
-has (`credentials`, `github.environment`, `github.secrets`,
+`--variant` rather than guessing. It drops the keys of flows `gq` doesn't
+have (`credentials`, `github.environment`, `github.secrets`,
 `github.variables`) and names each one. `gq sync` needs no network access
 and no secrets.
 

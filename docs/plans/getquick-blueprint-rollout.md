@@ -5,17 +5,12 @@ The accepted requirements, phases, and gates for
 tooling that does not exist yet; accepting them is not a claim that the fleet
 tooling or rollout machinery is built. The
 [update-mechanics and fleet review](../research/getquick-blueprint-update-mechanics.md)
-records the evidence behind them. This plan moved here from Lombardi on
-2026-10-01, with the blueprint's decision record, once `getquick-site` (since renamed `gq-site`)
-existed ([#2](https://github.com/Quick-Release/gq-site/issues/2));
-Lombardi's side, superseding its ADR 0001 with a record of its own adoption, is
-[Quick-Release/lombardi#20](https://github.com/Quick-Release/lombardi/issues/20).
+records the evidence behind them.
 
 Start with fleet inventory and durable rollout automation, not a large
 management UI. Release, health-check, and recovery guarantees come before
-convenience. Third-party skills follow their own gate in
-[Lombardi's ADR 0002](https://github.com/Quick-Release/lombardi/blob/main/docs/adr/0002-install-third-party-agent-skills.md) and do not block
-this work.
+convenience. Third-party agent skills are installed by `gq skills`
+([Agent skills](../guides/skills.md)) and do not block this work.
 
 ## Managed-file ownership and manifest evolution
 
@@ -134,17 +129,17 @@ test the code rollback and data recovery procedures separately.
 
 | Phase          | What happens                                                                                                                                                                      | Gate                                                                                                                                                                                     |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Extract     | Inventory Lombardi and Ekis scripts as shared CLI code, site-owned code/tests, or obsolete. Move shared tools into `@getquick/site`; keep site-owned migration extensions.        | Lombardi uses published packages without vendored shared tools; retained site code/tests still pass and a release deploys.                                                               |
+| 1. Extract     | Inventory sites' scripts as shared CLI code, site-owned code/tests, or obsolete. Move shared tools into `@getquick/site`; keep site-owned migration extensions.                   | A content site uses published packages without vendored shared tools; retained site code/tests still pass and a release deploys.                                                         |
 | 2. Generate    | Build `gq new`/`gq sync`, the ownership manifest, and versioned `gq.ops.json` schema from the extracted layout. Reconcile both sites' manifest shapes without persisting secrets. | A generated content site passes `pnpm verify` and deploys to throwaway staging; check/diff, idempotency, schema upgrades, and preservation of owned files are tested.                    |
-| 3. Prove       | Regenerate Lombardi's managed surfaces.                                                                                                                                           | Managed output matches the reference; a second sync has no diff and site-owned files are unchanged.                                                                                      |
+| 3. Prove       | Regenerate an existing content site's managed surfaces.                                                                                                                           | Managed output matches the site's existing files; a second sync has no diff and site-owned files are unchanged.                                                                          |
 | 4. Adopt       | Bring Ekis onto the blueprint and test representative content/commerce upgrades, including compatible platform versions and recovery.                                             | Both variants pass upgrade, runtime-health, and code/data-recovery checks; define rollout policy values, generation execution, and capacity placement.                                   |
 | 5. Fleet proof | Exercise one approved platform release through pilot sites and bounded batches in disposable staging.                                                                             | A deliberately failed health gate prevents promotion; interruption resumes without duplicate migrations; one site can be recovered without reverting healthy sites or losing newer data. |
 
-**Phase 1 passed** on 2026-10-01: Lombardi v0.9.0, on `@getquick/site` 0.8.0 with no vendored shared tooling, deployed the CMS and Frontend from Cloudflare CI ([#18](https://github.com/Quick-Release/lombardi/issues/18)).
+**Phase 1 passed** on 2026-10-01: a content site on `@getquick/site` 0.8.0, with no vendored shared tooling, deployed its CMS and Frontend from Cloudflare CI.
 
 **Phase 2 passed** on 2026-10-02: `gq-smoke`, generated by `gq new` from `@getquick/site` 0.12.0, passed `pnpm verify`, and its v0.1.1 tag deployed the CMS (Ploi, the tagged commit) and the Frontend through its Cloudflare CI Worker, confirmed on `gq-smoke-cms.bnq.pt/wp/graphql` and `gq-smoke-fe.bnq.pt`; its infrastructure was then torn down ([#7](https://github.com/Quick-Release/gq-site/issues/7)).
 
-**Phase 3 passed** on 2026-10-02: Lombardi v0.10.0, adopted on `@getquick/site` 0.13.0 ([Quick-Release/lombardi#21](https://github.com/Quick-Release/lombardi/issues/21)), was deployed by the generated CMS deploy script, which ran its deploy extension `deploy/ploi/admin.d/10-theme.sh`; `lombardi-theme` stayed active, the CMS and Frontend served the new version with GraphQL content, and `gq sync --check` still reported nothing pending afterwards ([Quick-Release/lombardi#22](https://github.com/Quick-Release/lombardi/issues/22)).
+**Phase 3 passed** on 2026-10-02: a content site adopted on `@getquick/site` 0.13.0 was deployed by the generated CMS deploy script, which ran its deploy extension `deploy/ploi/admin.d/10-theme.sh`; its theme stayed active, the CMS and Frontend served the new version with GraphQL content, and `gq sync --check` reported nothing pending afterwards. Blueprint changes therefore originate here and reach sites as update PRs ([ADR 0001](../adr/0001-the-getquick-site-blueprint.md)).
 
 **Phase 2** is specified in [#1](https://github.com/Quick-Release/gq-site/issues/1);
 its design decisions are [ADR 0002](../adr/0002-generate-sites-from-a-versioned-manifest.md).
@@ -156,24 +151,24 @@ through generating, verifying, provisioning and releasing it, and
 tears its infrastructure down, keeping the repository and Sigillo project
 for repeat runs.
 
-The `getquick-site` repository was created at the start of phase 1. Root
-commands become thin wrappers over `@getquick/site` where appropriate, while
-site-owned commands and their dependencies remain.
+A site's root commands are thin wrappers over `@getquick/site` where
+appropriate; site-owned commands and their dependencies stay the site's.
 
 ### Adoption checklist
 
-The procedure Lombardi followed in phase 3 and Ekis follows in phase 4:
+The procedure an existing site follows to adopt the blueprint (Ekis, in
+phase 4):
 
 1. Bump `@getquick/site` and run `gq sync --check` to see what adoption changes.
 2. Move the site's own deploy steps out of `deploy/ploi/admin.sh` into deploy
-   extensions under `deploy/ploi/admin.d/` (Lombardi's theme activation is
+   extensions under `deploy/ploi/admin.d/` (such as a theme activation in
    `10-theme.sh`). Drop one-off clean-ups that have already run on the server,
    after checking it read-only.
 3. Delete the conflicting `admin.sh` and run `gq sync`; commit `gq.lock.json`.
 4. Remove the site's own content that the generated `AGENTS.md` and
-   `.gitignore` sections now repeat, keeping site-specific text outside the
+   `.gitignore` sections repeat, keeping site-specific text outside the
    sections.
-5. `git mv CONTEXT.md GLOSSARY.md`, and point the site's vendored agent skills
-   that name `CONTEXT.md` at `GLOSSARY.md`.
+5. If the site has a `CONTEXT.md`, `git mv CONTEXT.md GLOSSARY.md`, and point
+   the site's vendored agent skills that name `CONTEXT.md` at `GLOSSARY.md`.
 6. A second `gq sync --check` reports nothing pending, `pnpm verify` passes,
    and a release deploys.

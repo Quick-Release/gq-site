@@ -32,7 +32,7 @@ holds the blueprint only:
   Commerce storefront behaviour belongs to `gq-storefront`, and the cart
   guarantee and auth contract belong to `gq-ecommerce`. The commerce variant
   only wires them up (#28).
-- **Issues, proofs and research whose owner is now known move to that
+- **Issues, proofs and research whose owner is known move to that
   owner.** A one-line stub stays at each moved document's old path.
 
 ## Consequences

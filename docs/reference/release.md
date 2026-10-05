@@ -7,7 +7,7 @@ The release commands, `verify` and `doctor` read their settings from
 additions the site declares. Additions are appended to the defaults; a site
 can't remove one. Every path is relative to the site root.
 
-The `content` defaults (Lombardi's settings):
+The `content` defaults:
 
 - version file `VERSION` and changelog `CHANGELOG.md`, for every site;
 - JSON files whose `version` follows `VERSION`: `package.json` and
@@ -22,8 +22,8 @@ The `content` defaults (Lombardi's settings):
 - required files: `apps/cms` `composer.json` and `.ddev/config.yaml`,
   `apps/frontend` `package.json` and `astro.config.mjs`.
 
-`commerce` has no defaults until a commerce site adopts the blueprint, so a
-commerce site declares everything as additions.
+`commerce` has no defaults, so a commerce site declares everything as
+additions.
 
 ```json
 {
@@ -69,10 +69,10 @@ version.
   tag. Command output streams through as it runs. Nothing deploys from here:
   Cloudflare CI deploys the pushed `v*` tag.
 
-Sites used to keep these settings in `shop-devtools.config.mjs`.
-`gq sync --manifest` folds that module into `gq.ops.json`, keeping only what
+A site that keeps these settings in a `shop-devtools.config.mjs` module
+migrates them with `gq sync --manifest`, which folds the module into `gq.ops.json`, keeping only what
 differs from the variant's defaults, and removes it. It names each default the
-module left out (gq now adds it) and each check it moves after the defaults,
+module left out (gq adds it) and each check it moves after the defaults,
 and refuses settings `gq.ops.json` can't express: another version file or
-changelog, `composer`, `deploys` and `docsChangelogPath`. Until the module is
-folded, the release commands and `verify` refuse to run, and `doctor` fails.
+changelog, `composer`, `deploys` and `docsChangelogPath`. While the module
+exists, the release commands and `verify` refuse to run, and `doctor` fails.

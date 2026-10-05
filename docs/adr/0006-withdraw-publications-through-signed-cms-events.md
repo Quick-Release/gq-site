@@ -58,7 +58,7 @@ Two facts shaped the decision:
   in the same SQL statement as the write, any row for an entry whose
   withdrawal is in force. This covers a publication event's refresh, an
   operator's whole-Site or targeted refresh, a cold lookup and a front page
-  read (the home query now asks for the page's `id`). The refusal is
+  read (the home query asks for the page's `id`). The refusal is
   reported as `{ "outcome": "withdrawn" }`. So nothing can bring the entry
   back while the withdrawal is in force:
   - a stale CMS answer;
@@ -99,9 +99,9 @@ Two facts shaped the decision:
   by the Frontend's clock, so a read that starts after the withdrawal, from
   a CMS that still returns the entry, would win. The entry-level record
   orders by the CMS's own time and survives the rows being re-read.
-- **Treating a password as an ordinary publication** (ADR 0005 did: the
-  refresh reads it as missing). A stale answer could still restore the
-  content, so a password is now a withdrawal.
+- **Treating a password as an ordinary publication**, which the refresh reads
+  as missing. A stale answer could still restore the content, so a password
+  is a withdrawal.
 - **An edge cache with purge-on-withdrawal.** Purges propagate eventually, and
   a failed purge would keep serving withdrawn content.
 
@@ -109,8 +109,10 @@ Two facts shaped the decision:
 
 - A withdrawal takes effect within the event's round trip. If the event
   never reaches the Frontend and the CMS is down too, the Frontend keeps
-  serving the entry. This is the limitation spec #38 accepts. Reconciliation
-  (#47) covers missed withdrawals once the CMS is back.
+  serving the entry. This is the limitation spec #38 accepts. Once the CMS is
+  back, reconciliation
+  ([ADR 0009](0009-reconcile-missed-changes-on-the-cms-scheduler.md)) makes
+  the entry a 404 when WordPress confirms it missing.
 - If a republication's event is lost, the entry stays a 404, the safe
   direction. Updating or republishing it again, or `wp gq-events retry
 <post>`, sends a newer event. Reconciliation can lift a withdrawal only

@@ -1,16 +1,15 @@
 # GETQUICK site blueprint: update mechanics and fleet gaps
 
-Review notes for Lombardi's ADR 0001, now [ADR 0001](../adr/0001-the-getquick-site-blueprint.md) here,
-researched on 2026-09-30 against the pre-acceptance document and Lombardi's
-deployment code at `2ae4a47`. The recommendations were subsequently accepted:
-the skills findings in [Lombardi's ADR 0002](https://github.com/Quick-Release/lombardi/blob/main/docs/adr/0002-install-third-party-agent-skills.md), the
-fleet requirements in the [rollout plan](../plans/getquick-blueprint-rollout.md).
-Moved here from Lombardi on 2026-10-01; links to Lombardi's code point at
-that revision.
-This note preserves the original findings and evidence; statements about gaps
-or incorrect examples refer to the document before that amendment. It covers
-the Lombardi document and deployment code, not the shared write-up where the
-blueprint was first proposed.
+The evidence behind the [rollout plan](../plans/getquick-blueprint-rollout.md)
+and [ADR 0001](../adr/0001-the-getquick-site-blueprint.md): how a blueprint
+update becomes a verified production rollout across independently deployed
+sites, and where the deploy path falls short of that. Deploy-path findings are
+checked against the files the blueprint generates (`blueprint/templates/`).
+External documentation was retrieved on 2026-09-30.
+
+This research is supporting rationale, not evidence that the requirements it
+leads to are implemented. The rollout plan holds those requirements and their
+gates.
 
 ## Assessment
 
@@ -19,15 +18,13 @@ foundation. The missing specification is how a package update becomes a
 verified production rollout across independently deployed sites. Creating
 consistent repositories and operating a fleet are different capabilities.
 
-The accepted requirements and implementation gates now live in the rollout
-plan and Lombardi's ADR 0002; this research is supporting rationale, not evidence that
-they are implemented.
+## Installing third-party agent skills
 
-## Verified mechanics needing correction or clarification
+These findings bear on installing upstream agent skills into a site's
+`.agents/skills/`, which [`gq skills`](../guides/skills.md) does.
 
-### 1. The proposed Git ignore exception does not work
+### 1. Git can't re-include a child of an excluded directory
 
-Git cannot re-include a child of an excluded directory. Consequently,
 `.agents/skills/` followed by `!.agents/skills/browser-testing/` does not make
 new files in the site-owned skill visible to Git. Already-tracked files remain
 tracked; the problem affects the intended whitelist and new files.
@@ -42,16 +39,16 @@ Use this instead:
 
 Verified against the [official Git documentation](https://git-scm.com/docs/gitignore)
 and reproduced with `git check-ignore --no-index` in a disposable repository:
-the ADR pattern ignores `browser-testing/SKILL.md`; the corrected pattern does
-not.
+the directory pattern ignores `browser-testing/SKILL.md`; the `/*` pattern
+does not.
 
-### 2. The skill-selection commands use the wrong list syntax
+### 2. The `skills` CLI takes a space-separated skill list
 
 At the inspected `vercel-labs/skills` source revision `c5ad3a85`,
 [`parseAddOptions`](https://github.com/vercel-labs/skills/blob/c5ad3a85/src/add.ts#L1904)
 collects successive space-separated arguments after `--skill`; it does not
-split commas. The ADR's comma-joined list is treated as one skill name. If
-nothing matches, `runAdd` reports the failure and exits with status 1.
+split commas. A comma-joined list is treated as one skill name. If nothing
+matches, `runAdd` reports the failure and exits with status 1.
 
 Example of the intended argument shape:
 
@@ -59,12 +56,12 @@ Example of the intended argument shape:
 skills add mattpocock/skills -y --skill ask-matt code-review codebase-design
 ```
 
-Pin the CLI version as well as the installed content; the ADR's unversioned
+Pin the CLI version as well as the installed content; an unversioned
 `npx -y skills` permits installer behavior to change between machines.
 The inspected source revision is evidence of behavior, not verification of
 which published npm version every machine will execute.
 
-### 3. The skills lock is not a frozen-content installation guarantee
+### 3. The `skills` lock is not a frozen-content installation guarantee
 
 At the same revision,
 [`runInstallFromLock`](https://github.com/vercel-labs/skills/blob/c5ad3a85/src/install.ts)
@@ -88,7 +85,7 @@ routes `experimental_install` to lock restoration, while `install` and `i`
 route to `add`. Retain the documented experimental command until the chosen,
 pinned release demonstrably supports another interface.
 
-### 4. Renovate cannot universally run `gq sync` out of the box
+## Renovate cannot universally run `gq sync` out of the box
 
 The [Mend-hosted FAQ](https://docs.renovatebot.com/mend-hosted/faq/) specifies:
 
@@ -103,10 +100,10 @@ allowlist. Its
 [`postUpgradeTasks`](https://docs.renovatebot.com/configuration-options/#postupgradetasks)
 can run generation and include the resulting files in the update branch.
 
-The ADR needs to choose the execution model: appropriately configured
-Renovate, or a separate trusted generation job that writes back to the PR.
-Lombardi already uses Cloudflare CI, so GitHub Actions is not a prerequisite
-and should not be introduced implicitly.
+So the fleet needs an execution model: appropriately configured Renovate, or a
+separate trusted generation job that writes back to the PR. Sites deploy
+through Cloudflare CI, so GitHub Actions is not a prerequisite and should not
+be introduced implicitly.
 
 A separate job must verify the bot identity, repository, expected dependency
 change, and exact revision; a `renovate/` branch prefix alone is not authority.
@@ -120,11 +117,12 @@ scoped credentials remain necessary.
 
 ### Close the PR-to-production gap
 
-ADR 0001 describes opening and checking update PRs, but
-[`infra/ci/release.ts`](https://github.com/Quick-Release/lombardi/blob/2ae4a47/infra/ci/release.ts) deploys only `v*` tags.
-Merging an update does not deploy it. Define which trusted automation merges,
-creates the site release through the existing version tooling, waits for the
-tag deployment, verifies runtime health, and records the result.
+Update PRs are opened and checked, but a site's CI release step
+([`infra/ci/release.ts`](../../blueprint/templates/infra/ci/release.ts))
+deploys only `v*` tags. Merging an update does not deploy it. Define which
+trusted automation merges, creates the site release through the existing
+version tooling, waits for the tag deployment, verifies runtime health, and
+records the result.
 
 Separate tooling-only changes from runtime changes so a skills or hook update
 does not unnecessarily redeploy every public site.
@@ -156,18 +154,20 @@ The fleet controller should not be required to serve ordinary website traffic.
 
 ### Harden deployment and data recovery before multiplying it
 
-[`deploy/ploi/admin.sh`](https://github.com/Quick-Release/lombardi/blob/2ae4a47/deploy/ploi/admin.sh) replaces live files with
-`rsync`, installs Composer dependencies on the server, and invokes
-`wp core update-db`. There is no atomic code switch or integrated pre-migration
-backup/restore gate in this deploy path. A live database export facility does
-already exist through `pnpm db:backup`; this is not a claim that the project
-has no backups.
+The generated CMS deploy script
+([`deploy/ploi/admin.sh`](../../blueprint/templates/deploy/ploi/admin.sh))
+replaces live files with `rsync`, installs Composer dependencies on the
+server, and invokes `wp core update-db`. There is no atomic code switch or
+integrated pre-migration backup/restore gate in this deploy path. A live
+database export facility exists through `pnpm db:backup`; this is not a claim
+that sites have no backups.
 
-[`scripts/ci-release.mjs`](https://github.com/Quick-Release/lombardi/blob/2ae4a47/scripts/ci-release.mjs) deploys the CMS first
-and frontend second. A frontend failure can leave a mixed-version site.
-`gq ploi release` ([`@getquick/site`](../../src/ploi/release.mjs)) checks the deployed
-commit, but this does not replace a GraphQL/content health probe or frontend
-smoke checks.
+The generated release step
+([`scripts/ci-release.mjs`](../../blueprint/templates/scripts/ci-release.mjs))
+deploys the CMS first and the frontend second. A frontend failure can leave a
+mixed-version site. `gq ploi release` ([source](../../src/ploi/release.mjs))
+checks the deployed commit, but this does not replace a GraphQL/content health
+probe or frontend smoke checks.
 
 Build each site's release artifact once where practical and promote the same
 verified artifact. Define atomic code activation, previous-artifact retention,
@@ -185,16 +185,18 @@ provide an explicit site-owned extension point for imperative migrations.
 
 Specify manifest schema versions/migrations, deterministic and idempotent
 `gq sync`, a check/diff mode, and refusal to silently discard unexpected edits.
-The phase-3 empty-diff gate should apply to generated surfaces while preserving
-site-owned code. Demonstrate upgrades on both Lombardi and Ekis before claiming
-fleet readiness.
+An empty-diff gate should apply to generated surfaces while preserving
+site-owned code. Demonstrate upgrades on representative content and commerce
+sites before claiming fleet readiness.
 
 ### Budget infrastructure and isolate authority
 
-The present layout has a frontend Worker and a dedicated CI Worker per site
-(`infra/frontend.run.ts`, `infra/ci/wrangler.jsonc`). At 300 sites, copying this
-layout into one account means at least 600 Workers before staging environments.
-The retrieved [Workers limits](https://developers.cloudflare.com/workers/platform/limits/#number-of-workers)
+Each site has a frontend Worker and a dedicated CI Worker
+([`infra/frontend.run.ts`](../../blueprint/templates/infra/frontend.run.ts),
+[`infra/ci/wrangler.jsonc`](../../blueprint/templates/infra/ci/wrangler.jsonc)).
+At 300 sites, copying this layout into one account means at least 600 Workers
+before staging environments. The retrieved
+[Workers limits](https://developers.cloudflare.com/workers/platform/limits/#number-of-workers)
 list 500 Workers per paid account. This is a planning example, not a claim about
 GETQUICK's negotiated account limits or future placement.
 
@@ -228,6 +230,5 @@ without requiring WordPress Multisite or a shared tenant database.
   distinguishes fleet management from serving tenant workloads and recommends
   scaling management automation to actual needs.
 
-External documentation was retrieved on 2026-09-30. Skills-source claims are
-scoped to the linked revision; validate the selected published version before
-implementation.
+Skills-source claims are scoped to the linked revision; validate the selected
+published version before implementation.

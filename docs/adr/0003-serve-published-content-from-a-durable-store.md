@@ -88,8 +88,7 @@ Facts checked against the pinned stack (Alchemy 2.0.0-beta.79,
   and precedence across keys, and diagnostics, are queries D1 already offers.
 - **Cache API or HTTP caching in front of the Worker**: per-location,
   evictable and best-effort, so it can't be the last-known-good copy, and edge
-  invalidation can't guarantee an immediate withdrawal. Not layered on top
-  for now.
+  invalidation can't guarantee an immediate withdrawal. Not layered on top.
 - **A refresh run by `gq` writing D1 over Cloudflare's API**: it would need
   the Site's renderer in the CLI and a Cloudflare token as refresh authority.
 
@@ -98,8 +97,8 @@ Facts checked against the pinned stack (Alchemy 2.0.0-beta.79,
 - D1 has one primary location: a visitor far from it pays a round trip per
   request. Read replication or a cache in front stays possible, provided it
   never outlives a withdrawal.
-- Until #43 adds WordPress events, the homepage changes only when an operator
-  runs `pnpm frontend:refresh`; until #42, entries still read the CMS live.
-- Cloudflare CI releases don't pass `FRONTEND_REFRESH_TOKEN` yet (#43 wires
-  runtime credentials), so a CI release deploys without it: refresh is then
-  refused until a deploy with it, while stored content keeps being served.
+- Stored content changes only through a trusted refresh: an operator's
+  `pnpm frontend:refresh`, or the CMS's signed events
+  ([ADR 0005](0005-refresh-publications-through-signed-cms-events.md)).
+- A deploy without `FRONTEND_REFRESH_TOKEN` bound leaves refresh refused
+  until a deploy with it, while stored content keeps being served.

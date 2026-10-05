@@ -5,12 +5,11 @@
 
 ## Context
 
-A client is leaving: Lombardi asked to be removed from Cloudflare. Until now
-nothing in gq took a Site down; the only teardown was the gq-smoke wizard's
-(`scripts/smoke/gq-smoke-down.sh`), which deletes a throwaway Site outright.
-A client's Site can't go that way. Its content (the database, the uploads,
-the publication store) and its code must survive, and the first thing the
-client wants is that nothing of theirs is reachable any more.
+When a client leaves, the first thing they want is that nothing of theirs is
+reachable, and their content (the database, the uploads, the publication
+store) and code must survive. The gq-smoke wizard's teardown
+(`scripts/smoke/gq-smoke-down.sh`) deletes a throwaway Site outright, so a
+client's Site can't go that way.
 
 A Site is exposed in many places, each made by a different command: the CMS
 on Ploi (its site, its retry crontab, its deploy webhook, a DNS record added
@@ -393,24 +392,25 @@ calls `gh` for it.
   be forgotten by a new command's author. The deploy scripts check for
   themselves because they run outside gq.
 - **Restore as the Blueprint configures it**, without remembering what was
-  cut. Rejected: it re-enabled tokens disabled on purpose before the cut,
-  re-attached only `domains.frontend`, and re-added a crontab the Site never
+  cut. Rejected: it would re-enable tokens disabled on purpose before the
+  cut, re-attach only `domains.frontend`, and re-add a crontab the Site never
   had.
 - **Match ownership by a `<project>-` prefix.** Rejected: it couldn't tell
   `acme` from a sibling project `acme-shop` (whose `acme-shop-media` a copied
   gq.ops.json might name) or `acme-fe` (whose production Worker `acme-fe-fe`
-  looked like one of `acme`'s stages).
-- **Note each change before making it.** Rejected: a change that failed was
-  still noted, so restore could re-enable a token the cut never disabled
+  looks like one of `acme`'s stages).
+- **Note each change before making it.** Rejected: a change that failed would
+  still be noted, so restore could re-enable a token the cut never disabled
   and someone had disabled since.
 - **Write the record last**, once everything is cut. Rejected: a failure
-  halfway left the Site half cut and unguarded until a rerun.
+  halfway would leave the Site half cut and unguarded until a rerun.
 - **Delete every bucket gq.ops.json names.** Rejected: a backups bucket can
   hold every client's backups, and nothing in gq.ops.json says a bucket is
   this Site's alone but its name.
-- **Archive the repository, then write the record**, as gq 0.15.1 did.
-  Rejected: archiving Lombardi left its record unpushable, and the operator
-  had to unarchive the repository, push, and archive it again.
+- **Archive the repository, then write the record.** Rejected: an archived
+  repository takes no push, so the record would be left unpushable, and the
+  operator would have to unarchive the repository, push, and archive it
+  again.
 - **Write the record through GitHub's contents API** rather than the
   checkout's git. Rejected: it would commit to the default branch whatever
   the checkout holds, overwrite a gq.ops.json changed on the remote since,
@@ -429,8 +429,9 @@ calls `gh` for it.
 - **Bundle an Artifacts-only Site's code from the operator's checkout.**
   Rejected: a checkout may lack branches, tags or commits the repository
   has; the repository itself is what gets deleted.
-- **Give up on Ploi's 422 at once**, for a rerun to finish. Rejected: Lombardi's
-  rerun minutes later worked, so the run waits that long itself.
+- **Give up on Ploi's 422 at once**, for a rerun to finish. Rejected: Ploi
+  accepts the deletion once its background site deletion finishes, minutes
+  later, so the run waits that long itself.
 
 ## Consequences
 

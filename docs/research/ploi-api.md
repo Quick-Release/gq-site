@@ -1,6 +1,6 @@
 # Ploi API endpoint inventory
 
-> Research snapshot: 2026-09-18. This is a documentation inventory, not an implementation. It uses Ploi's first-party API reference and MCP documentation only. No live API mutations were made.
+> Researched on 2026-09-18 against Ploi's documentation. This is a documentation inventory, not the CLI reference. It uses Ploi's first-party API reference and MCP documentation only. No live API mutations were made.
 
 ## Scope and conventions
 
@@ -9,7 +9,7 @@
 - **Path notation.** Braced segments are logical parameter names. Where the source cURL used a literal example ID/domain, this inventory normalizes it and flags the ambiguity in the notes.
 - **Pagination.** A row marked 'yes' has the documented Laravel-style 'data' + 'links' + 'meta' envelope. Follow 'links.next'; the pagination guide documents 'page', 'per_page' (default 15, maximum 50; values above 50 revert to 15), and the query guide documents 'search' for list views. Sources: [pagination](https://developers.ploi.io/getting-started/pagination), [query parameters](https://developers.ploi.io/getting-started/query-parameters). A row marked 'no' does not show that envelope on its endpoint page; this is not an assertion that undocumented query parameters are rejected.
 - **Request fields.** 'body' is the JSON field set shown under Required/Optional attributes or parameters; 'query' is shown under query-parameter headings or in the cURL URL. Required/optional status is copied from the page.
-- **CLI names.** These are logical names proposed to fit this repository's vocabulary: existing commands are 'gq ploi servers list', 'gq ploi server show', 'gq ploi sites list', and 'gq ploi site show'; every other command below is **not currently implemented**. The current provider uses 'https://ploi.io/api', Bearer auth, unwraps 'data' for detail calls, and follows 'links.next' or 'meta.next_page_url'; source: [src/providers/ploi.mjs](../../src/providers/ploi.mjs) and [src/cli.mjs](../../src/cli.mjs).
+- **CLI names.** Each 'Logical CLI' entry is a descriptive name in this repository's vocabulary, not a command. The CLI reaches every operation through `gq ploi api <operation-id>`, whose IDs follow the docs' routes (such as `sites.log-site`), plus the dedicated `gq ploi` commands; the [command reference](../reference/commands.md) is the CLI contract. The CLI's client uses 'https://ploi.io/api', Bearer auth, unwraps 'data' for detail calls, and follows 'links.next' or 'meta.next_page_url'; source: [src/ploi/api-client.mjs](../../src/ploi/api-client.mjs) and [src/ploi/server-client.mjs](../../src/ploi/server-client.mjs).
 
 ## aliases
 
@@ -2332,19 +2332,19 @@
 - **Request:** body — —; query — —
 - **Pagination:** no documented pagination envelope
 - **Response:** { message, images, links }; **notes:** documented response status is 418
-- **Logical CLI:** **gq ploi teapot show** (not currently implemented)
+- **Logical CLI:** `gq ploi teapot show`
 - **Source:** [Ploi API reference — Teapot](https://developers.ploi.io/getting-started/teapot)
 
 ## Ambiguities, duplicates, and undocumented behavior
 
-- **No deprecation markers found.** The official resource sitemap, Teapot page, and endpoint pages contain no explicit “deprecated” designation as of this snapshot. Absence of a marker is not proof that an undocumented legacy route is supported.
+- **No deprecation markers found.** The official resource sitemap, Teapot page, and endpoint pages contain no explicit “deprecated” designation. Absence of a marker is not proof that an undocumented route is supported.
 - **Literal examples vs parameterized paths.** Several pages show concrete values in cURL instead of placeholders (aliases, Docker containers, backup IDs, load-balancer domains, tenant domains, source-control provider IDs). The inventory records the logical parameter and flags those rows; callers should not copy the example literal.
 - **Same path, different operation semantics.** Site update and robot-access are both `PATCH /api/servers/{server}/sites/{site-or-id}` and are distinguished by their body fields. WordPress plugin/theme operations also reuse action-shaped paths with fields and the `ondemand` query switch.
 - **Optional Horizon path segment.** The Horizon page's route badge is `GET /api/servers/{server}/sites/laravel/horizon/{type}`, but its default cURL uses the same path without `/{type}`. The page calls `type` optional and defaults it to `stats`, so this inventory records both route forms rather than treating `type` as a request body field.
 - **Navigation method badges disagree with endpoint pages.** The API-reference landing page labels Update server, Update site, Update NGINX configuration, and Update container as `PUT`, and Change PHP version as `PUT`; the dedicated endpoint pages and cURL samples document `PATCH`, `PATCH`, `PATCH`, `PATCH`, and `POST`, respectively. This inventory follows each dedicated endpoint page. Sources: [API-reference landing page](https://developers.ploi.io/), [Update server](https://developers.ploi.io/servers/update-server), [Update site](https://developers.ploi.io/sites/update-site), [Update NGINX configuration](https://developers.ploi.io/sites/update-nginx-configuration), [Update container](https://developers.ploi.io/containers/update-container), and [Change PHP version](https://developers.ploi.io/sites/change-php-version).
 - **Log pair.** [Log site](https://developers.ploi.io/sites/log-site) lists paginated log entries at '/log'; [Get log site](https://developers.ploi.io/sites/get-log-site) fetches one full entry at '/log/{log}'. The two pages are related, not duplicate operations.
 - **NGINX pair.** Site and tenant NGINX pages have the same operation names but different paths; both say retrieval/update may happen on-demand and the update response asks the caller to reload/restart NGINX.
-- **Pagination inconsistencies.** Some list-named pages show only `data` (for example aliases, queues, schedules, network rules, tenants, and WordPress resources) while others show `links`/`meta`. Database-backup list documents filters `server`, `site`, and `per_page`, but its example pagination links use `database_page`; this is recorded as the source shows it and should be treated as ambiguous. The repository provider additionally follows `meta.next_page_url`, although the current official pagination guide documents `links.next` but not that fallback.
+- **Pagination inconsistencies.** Some list-named pages show only `data` (for example aliases, queues, schedules, network rules, tenants, and WordPress resources) while others show `links`/`meta`. Database-backup list documents filters `server`, `site`, and `per_page`, but its example pagination links use `database_page`; this is recorded as the source shows it and should be treated as ambiguous. The CLI's client additionally follows `meta.next_page_url`, although the official pagination guide documents `links.next` but not that fallback.
 - **Response inconsistencies.** Delete pages variously document an empty body, a 'message', or a 'data' object; some pages show HTTP response headers rather than a JSON body. Consumers should follow each row's source rather than assume one envelope.
 - **Scope metadata.** The scopes guide says each endpoint has its own token scope, and the MCP guide says REST-style matching read/create scopes apply, but most resource pages do not state a required scope. Treat the scope as **undocumented per endpoint** unless the cited page explicitly provides one; do not infer it from the HTTP verb.
 - **MCP is curated, not a one-to-one REST catalogue.** Ploi documents the streamable HTTP MCP server at 'https://ploi.io/api/mcp'; OAuth requires 'mcp:use', while API-token access uses REST scopes. Its published tool list omits infrastructure delete operations and includes some capabilities whose REST reference page is not a direct one-to-one tool (for example 'list-deployments', 'get-deployment-log', and 'reset-database-user-password'). Source: [MCP documentation](https://developers.ploi.io/getting-started/mcp).
@@ -2367,5 +2367,4 @@ Source: [Ploi MCP documentation](https://developers.ploi.io/getting-started/mcp)
 - [x] Sitemap-derived endpoint page set downloaded and checked: 224 resource URLs plus the Teapot endpoint, excluding one non-endpoint type catalogue from operation coverage.
 - [x] All 224 endpoint pages have at least one documented route; the custom-server page has two operation sections, yielding 225 operations and 226 route forms when the Horizon endpoint's optional `/{type}` form is counted.
 - [x] Every operation below records method, path, path parameters, request fields, pagination status, response shape/notes, logical CLI name, and a precise endpoint-page citation.
-- [x] Current repository terminology and implementation status checked against 'src/cli.mjs' and 'src/providers/ploi.mjs'; existing working-tree changes were not touched.
 - [x] No live Ploi mutation was attempted.

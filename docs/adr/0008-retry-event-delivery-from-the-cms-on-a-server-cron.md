@@ -12,8 +12,8 @@ signed event to the Frontend when an editor publishes an entry or changes a
 shared setting. Publishing never waits on it. When the event can't be sent, or
 the Frontend can't read WordPress back, the previous version stays served and
 the CMS records the failure: per entry in post meta (`_gq_publication_event`),
-per setting in an option (`gq_settings_event_<setting>`). Only an operator's
-`wp gq-events retry` sent it again.
+per setting in an option (`gq_settings_event_<setting>`). Without a scheduler,
+only an operator's `wp gq-events retry` sends it again.
 
 [#46](https://github.com/Quick-Release/gq-site/issues/46) asks for:
 
@@ -27,8 +27,8 @@ per setting in an option (`gq_settings_event_<setting>`). Only an operator's
 What the stack provides:
 
 - **WP-Cron is not a scheduler here.** Production's `.env` sets
-  `DISABLE_WP_CRON='true'`, and nothing replaced it: no Ploi crontab, no
-  `wp cron event run`. WP-Cron would only run on visits anyway.
+  `DISABLE_WP_CRON='true'`, and a Ploi server has no crontab that runs
+  WordPress's scheduled events. WP-Cron would only run on visits anyway.
 - **Ploi** manages per-server crontabs through its API
   (`POST /servers/{server}/crontabs`: user, command, frequency). Its servers
   have WP-CLI in `/usr/local/bin`, and a site lives in
@@ -36,11 +36,11 @@ What the stack provides:
 - **A Cloudflare Cron Trigger** on the Frontend would run without visits too.
   But it is unverified on the pinned Alchemy Astro build (the Worker's entry
   is Astro's). And it couldn't recover a dispatch failure: an event that
-  never reached the Frontend left nothing there to retry.
+  never reaches the Frontend leaves nothing there to retry.
 
 ## Decision
 
-- **The CMS retries, by resending the recorded event.** A new site-owned
+- **The CMS retries, by resending the recorded event.** A site-owned
   must-use plugin, `web/app/mu-plugins/delivery-retries.php`, reads every
   delivery on record as one list, whatever the event's action:
   - entries from publication-events.php's records, publications and
@@ -51,8 +51,8 @@ What the stack provides:
   - another kind of event through the `gq_events_deliveries` filter.
 
   A retry sends the same event, with the same id and `occurredAt` and a fresh
-  signature, through the existing `deliver()`. So the Frontend's
-  duplicate, supersede and `read_started_at` rules (ADR 0005) still order it:
+  signature, through the same `deliver()`. So the Frontend's
+  duplicate, supersede and `read_started_at` rules (ADR 0005) order it:
   a retry can't overwrite a newer publication or undo a newer withdrawal. The
   same retry recovers a dispatch failure (`network`, `rejected`,
   `not-configured`) and a receiver-side one (`refresh`, including a CMS
@@ -62,8 +62,9 @@ What the stack provides:
   - A failed one: after 1, 2, 5, 10 and 30 minutes, then hourly, up to 12
     attempts (about seven hours).
   - Then it is **failed**: reported, not retried. An operator's
-    `wp gq-events retry`, a newer event for the same subject, or #47's
-    reconciliation delivers it.
+    `wp gq-events retry`, a newer event for the same subject, or
+    reconciliation ([ADR 0009](0009-reconcile-missed-changes-on-the-cms-scheduler.md))
+    delivers it.
   - A **pending** one whose own request ended before sending it (a killed PHP
     worker): two minutes after it was queued.
   - Each attempt is counted on the record. The served version is never
@@ -103,21 +104,20 @@ What the stack provides:
     delivery: subject, action, event id, state, reason, attempts, next attempt
     and message. It also shows the scheduler's last run.
   - Neither shows the key, the event's body or content.
-  - A refresh failure now records the Frontend's own reason (such as
-    `network: WordPress couldn't be reached`) instead of only "HTTP 503".
+  - A refresh failure records the Frontend's own reason (such as
+    `network: WordPress couldn't be reached`), not only "HTTP 503".
     Those messages come from the Frontend's anonymous reads.
 
 ## Considered options
 
 - **WP-Cron driven by `wp cron event run --due-now` from a system cron.** It
   is the usual WordPress pattern. But it would also start every other
-  plugin's scheduled events, which have never run in production, as a side
-  effect of this slice. A command of our own does one thing.
+  plugin's scheduled events, which don't run in production, as a side
+  effect. A command of our own does one thing.
 - **A Cloudflare Cron Trigger retrying the Frontend's failed events.** It
   can't recover an event the Frontend never received. It needs runtime
   support unverified on the pinned build, and a second retry path beside the
-  CMS's. #47's reconciliation may still add a Frontend-side schedule for
-  missed events.
+  CMS's.
 - **Action Scheduler or a queue table in the CMS.** It needs a runner too, and
   the records ADR 0005 and 0007 keep already hold the one event per subject
   that matters.
@@ -141,7 +141,7 @@ What the stack provides:
 - The cron's `wp` runs every minute. A run with nothing due reads the records
   and writes `gq_events_scheduler`.
 - Withdrawals (ADR 0006) are retried like publications, including a deleted
-  entry's from its option. A later kind of event recorded elsewhere joins
+  entry's from its option. Another kind of event recorded elsewhere joins
   through `gq_events_deliveries`.
 - Unverified live: the Ploi crontab API and its command on a real server,
   `wp` on cron's PATH there, and the block editor notices against the real

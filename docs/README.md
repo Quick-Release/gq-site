@@ -15,12 +15,12 @@
 
 ## Reference
 
-| Document                                               | Use it for                                                                             |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| [Site manifest and environment](reference/manifest.md) | Site discovery, schema v1, manifest migrations and provider token/ID precedence.       |
-| [Commands](reference/commands.md)                      | Command syntax, output and mutation confirmation.                                      |
-| [Release and version commands](reference/release.md)   | Variant defaults, release/verify/doctor additions and legacy release-config migration. |
-| [Programmatic use](reference/programmatic-use.md)      | The existing `run()` interface and injected adapters.                                  |
+| Document                                               | Use it for                                                                       |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| [Site manifest and environment](reference/manifest.md) | Site discovery, schema v1, manifest migrations and provider token/ID precedence. |
+| [Commands](reference/commands.md)                      | Command syntax, output and mutation confirmation.                                |
+| [Release and version commands](reference/release.md)   | Variant defaults, release/verify/doctor additions and release-config migration.  |
+| [Programmatic use](reference/programmatic-use.md)      | The existing `run()` interface and injected adapters.                            |
 
 ## Contributors
 
@@ -29,9 +29,10 @@ test naming and fixture-site seam, schema generation, and npm publishing.
 
 ## Design and records
 
-The glossary, ADRs, plans, research and agent guidance keep their existing
-repository homes. These links point to the repository so they also work from
-the installed npm package; decisions are linked, not copied into guides.
+The glossary, ADRs, plans, research and agent guidance live in the
+repository, not the npm package. These links point to the repository so they
+also work from the installed package; decisions are linked, not copied into
+guides.
 
 - [Glossary](https://github.com/Quick-Release/gq-site/blob/main/GLOSSARY.md): domain terminology.
 - [ADR 0001: The GETQUICK site blueprint](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0001-the-getquick-site-blueprint.md): the blueprint decision.
@@ -52,7 +53,7 @@ the installed npm package; decisions are linked, not copied into guides.
 - [Research](https://github.com/Quick-Release/gq-site/tree/main/docs/research): dated inventories and implementation research.
 - [Agent guidance](https://github.com/Quick-Release/gq-site/tree/main/docs/agents): issue tracking, triage and domain-document use.
 
-The [Ploi API endpoint inventory](research/ploi-api.md) remains a
-2026-09-18 research snapshot and is included in the package. Its proposed CLI
-names and historical source links are not the current CLI contract; use the
-[command reference](reference/commands.md) for that.
+The [Ploi API endpoint inventory](research/ploi-api.md), researched on
+2026-09-18, is included in the package. Its logical CLI names are descriptive,
+not commands; the [command reference](reference/commands.md) is the CLI
+contract.

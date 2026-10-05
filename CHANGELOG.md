@@ -955,7 +955,8 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
 
 ### Added
 
-- The managed files that need no site values, extracted from Lombardi: the
+- The managed files that need no site values, extracted from an existing
+  content site: the
   Git hooks (`.vite-hooks/pre-commit` and `pre-push`, written executable),
   the Node version file (`.nvmrc`), the staged lint/format config
   (`vite.config.ts`), the docs skeleton's READMEs (`docs/adr`, `docs/plans`,
@@ -964,11 +965,11 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
   (`.claude/skills` → `../.agents/skills`). A site's own ADRs, plans and
   research next to them stay site-owned.
 - Generated sections: `AGENTS.md` gets the blueprint's base guidance and
-  `.gitignore` its ignore rules (Lombardi's), each between `BEGIN gq` and
+  `.gitignore` its ignore rules, each between `BEGIN gq` and
   `END gq` lines. Content outside the markers is the site's.
 - Managed keys in the root `package.json`: the `packageManager` and
   `engines.node` pins, the hook install (`prepare`) and the root scripts
-  that wrap `gq`, taken from Lombardi. `package.json` is edited as text, so
+  that wrap `gq`. `package.json` is edited as text, so
   every other key is left byte for byte. A managed key the blueprint
   retires is removed unless the site has changed it.
 - Create-once files: the glossary (`CONTEXT.md`) and `README.md`, written by
@@ -976,7 +977,7 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
   once present, so they are never rewritten or restored after.
   `gq sync --recreate <path>` writes one again.
 - The site's deploy wiring, fully generated from `gq.ops.json` and
-  extracted from Lombardi: the Cloudflare CI Worker (`infra/ci`: Wrangler
+  extracted from an existing content site: the Cloudflare CI Worker (`infra/ci`: Wrangler
   config, CI and mirror Workflows, webhook, release check, sandbox image),
   the Frontend deploy configuration and script (`infra/frontend.run.ts`,
   `infra/scripts/deploy-frontend.mjs`, `infra/package.json`), the CI release
@@ -984,28 +985,28 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
   Worker, Workflow, namespace, bucket, account and repository names come
   from `ci`, `artifacts`, `cloudflare` and `github`, the rest from
   `project`; a value the manifest doesn't have yet is written as a
-  placeholder naming its key (`<ci.worker>`). Lombardi's manifest renders
-  Lombardi's files byte for byte.
+  placeholder naming its key (`<ci.worker>`). The content-site fixture's
+  manifest renders that site's files byte for byte.
 - Managed root scripts for the deploy wiring: `deploy:frontend`,
   `deploy:frontend:raw` (the release step's Frontend deploy),
   `plan:frontend`, `infra:check`, `ci:check` and `test:scripts` (checks the
   content variant's `gq verify` runs).
 - The CMS deploy script Ploi runs (`deploy/ploi/admin.sh`), fully generated
-  and extracted from Lombardi: release download, Composer with the registry
+  and extracted from an existing content site: release download, Composer with the registry
   login, the copy-back of shipped plugins and themes, maintenance mode, the
   PHP-FPM reload and the `<PROJECT>_DEPLOY_STATUS` line. It activates the
   plugins `wordpress.plugins` lists, in order, then runs the site's deploy
   extensions (`deploy/ploi/admin.d/*.sh`, created once with a README) in
-  lexical order; one that exits non-zero fails the deploy. Lombardi's
-  manifest renders Lombardi's script without its own steps (its theme, the
-  plugin retirements and the clean-up of its git-based deploys), which move
-  to an extension.
+  lexical order; one that exits non-zero fails the deploy. The content-site
+  fixture's manifest renders that site's script without its own steps (its
+  theme, the plugin retirements and the clean-up of its git-based deploys),
+  which belong in an extension.
 - `gq new` writes a complete content site: create-once CMS and Frontend
-  skeletons extracted from Lombardi without its plugins, child theme and
-  pages (the CMS installs the GETQUICK plugins and `getquick-theme` from the
+  skeletons extracted from an existing content site without its plugins,
+  child theme and pages (the CMS installs the GETQUICK plugins and `getquick-theme` from the
   registry, a `10-theme.sh` deploy extension activates the theme, and the
   Frontend renders GETQUICK blocks over WPGraphQL with its own copy of
-  Lombardi's block renderer), env templates holding public configuration and
+  the block renderer), env templates holding public configuration and
   placeholders only, the workspace config (`pnpm-workspace.yaml`),
   `VERSION`, and a root `package.json` started with the site's own scripts
   and dependencies (`@getquick/site` pinned to the installed version). Its
@@ -1065,8 +1066,8 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
 - `gq.ops.json` v1 `release` (`jsonFiles`, `textFiles`, `paths`), `verify`
   (`checks`) and `doctor` (`requiredFiles`): additions appended to the
   blueprint's defaults for the site's variant, validated like every other
-  key. The `content` defaults are Lombardi's release config; `commerce` has
-  none yet. A text-file pattern is `{ regexp, flags?, replacement }`, with
+  key. The `content` defaults are a content site's release config; `commerce`
+  has none. A text-file pattern is `{ regexp, flags?, replacement }`, with
   `{version}` in the replacement.
 - `gq sync --manifest` folds a site's `shop-devtools.config.mjs` into
   `gq.ops.json` (with the v0 → v1 migration, or into a manifest gq 0.9.0
@@ -1126,7 +1127,7 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
 
 ### Added
 
-- Lombardi's workspace runners as `gq setup [--no-ddev]`, `gq doctor` and
+- The workspace runners as `gq setup [--no-ddev]`, `gq doctor` and
   `gq verify [--ci]` (`scripts/setup.mjs`, `doctor.mjs` and `verify.mjs`).
   The site still supplies what they check: `verify` runs the release config's
   `checks`, and `doctor` reads the required app files from its new
@@ -1149,7 +1150,7 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
 
 ### Added
 
-- Lombardi's local CMS commands as `gq cms start [--foreground]`, `status`,
+- The local CMS commands as `gq cms start [--foreground]`, `status`,
   `stop` and `describe` (`scripts/ddev.mjs`, with
   `scripts/lib/ddev-background.mjs` and `cms-dev-links.mjs`): background DDEV
   startup by a detached `gq` worker whose phase and log stay in
@@ -1164,14 +1165,14 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
 ### Changed
 
 - The local Design override's generated DDEV hooks run
-  `../../node_modules/.bin/gq cms design [refresh]` instead of Lombardi's
+  `../../node_modules/.bin/gq cms design [refresh]` instead of the site's
   `scripts/cms-local-design.mjs`; the next `gq cms start` rewrites them.
 
 ## 0.6.0 — 2026-10-01
 
 ### Added
 
-- Lombardi's Cloudflare provisioning as `gq cloudflare deploy-token`,
+- The Cloudflare provisioning as `gq cloudflare deploy-token`,
   `releases`, `media` and `ci` (each `[--dry-run]`;
   `scripts/cloudflare-deploy-token.mjs`, `cloudflare-releases.mjs`,
   `cloudflare-media.mjs` and `cloudflare-ci.mjs`), with their account-scoped
@@ -1179,7 +1180,7 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
   `project`; account, zone, buckets, domain and Artifacts repository come
   from `cloudflare`, `releases`, `media`, `artifacts` and `ci`. What they mint
   goes to the `staging` Sigillo environment over stdin.
-- Lombardi's CI Worker commands as `gq ci deploy` and `gq ci runs`
+- The CI Worker commands as `gq ci deploy` and `gq ci runs`
   (`scripts/ci-deploy.mjs`), `gq github setup [--dry-run]`
   (`scripts/github-setup.mjs`) and `gq git artifacts setup|get|store|erase`
   (`scripts/git-artifacts.mjs`). The Worker lives in the new
@@ -1196,7 +1197,7 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
 
 ### Added
 
-- Lombardi's database sync as `gq db sync [--yes]` (`scripts/db-sync.mjs`
+- The database sync as `gq db sync [--yes]` (`scripts/db-sync.mjs`
   with `db-sync-run.mjs`'s relaunch under mkcert's CA) and `gq db backup`
   (`db-sync.mjs --backup-only`). It stays live → local only, and the
   export-only guard still refuses, before Ploi receives it, any server script
@@ -1205,26 +1206,26 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
   `local.adminEmail` (required by `sync`) is the local `dev` administrator's
   address, and `local.frontendUrl` (default `http://localhost:4321`) the
   local frontend the live one is replaced with.
-- The modules `db sync` needs from Lombardi's local CMS tooling, as is: the
+- The modules `db sync` needs from the local CMS tooling, as is: the
   local Design source override (`scripts/lib/cms-local-design.mjs`, with an
   async `withDesignRegistryInstall` and `runDesignCommand` through `exec`),
   the host Composer install around it (`cms-composer.mjs`'s
   `composerInstall`), DDEV status and `apps/cms/.env` wiring
   (`scripts/lib/ddev.mjs`, `cms-env.mjs`; `S3_UPLOADS_BUCKET_URL` defaults
   from `media.domain`). They have no commands of their own yet, and the
-  override's generated DDEV hooks still run Lombardi's
+  override's generated DDEV hooks run the site's
   `scripts/cms-local-design.mjs` until its DDEV startup moves into `gq`.
 
 ### Changed
 
 - The export marker is named after `gq.ops.json` `project`:
-  `<PROJECT>_DB_EXPORT`, so Lombardi's `LOMBARDI_DB_EXPORT` is unchanged.
+  `<PROJECT>_DB_EXPORT`, so an existing site's marker is unchanged.
 
 ## 0.4.0 — 2026-10-01
 
 ### Added
 
-- Lombardi's Ploi workflows as `gq ploi provision [--dry-run | --yes]`
+- The Ploi workflows as `gq ploi provision [--dry-run | --yes]`
   (`scripts/ploi-provision.mjs`), `gq ploi release [--ref <ref>]
 [--git-dir <dir>]` (`scripts/ploi-release.mjs`) and `gq ploi media
 [--dry-run]` (`scripts/cloudflare-media.mjs --ploi-env`), with their
@@ -1244,16 +1245,16 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
 
 - The deploy status line `ploi release` waits for is named after
   `gq.ops.json` `project`: `<PROJECT>_DEPLOY_STATUS` (upper-cased, other
-  characters as `_`), so Lombardi's `LOMBARDI_DEPLOY_STATUS` is unchanged.
+  characters as `_`), so an existing site's status line is unchanged.
 - Outside a terminal the workflows print plain progress lines instead of
   Clack's spinners; the plan and results are the same.
-- Hints name `gq` commands rather than Lombardi's `pnpm` scripts.
+- Hints name `gq` commands rather than a site's `pnpm` scripts.
 
 ## 0.3.0 — 2026-10-01
 
 ### Added
 
-- The Sigillo wrapper (Lombardi's `scripts/sigillo/sigillo-run.mjs` and
+- The Sigillo wrapper (`scripts/sigillo/sigillo-run.mjs` and
   `sigillo-cli.mjs`) as `gq sigillo`: `run <environment> -- <command>`,
   `login`, `setup <environment>` and `secrets <environment> [arguments...]`.
   The project, API URL and environments come from `gq.ops.json` `sigillo`; a
@@ -1278,7 +1279,7 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
 ### Added
 
 - The release and version commands of the vendored `shop-devtools`
-  (Lombardi's copy) under `gq`, still reading the site's
+  under `gq`, still reading the site's
   `shop-devtools.config.mjs`: `gq version check|sync [version]`,
   `gq release prepare [version]`, `gq release tag [version]`, and
   `gq release push <major|minor|fix> [--no-deploy]`. They replace
@@ -1303,7 +1304,7 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
 ### Not carried over
 
 - `docsChangelogPath` (the Starlight docs changelog page) and the legacy
-  `wrangler` deploys, which Lombardi no longer used. A release config that
+  `wrangler` deploys, which sites didn't use. A release config that
   still sets `docsChangelogPath` is an error rather than silently ignored.
 
 ## 0.1.1 — 2026-10-01
