@@ -1,6 +1,6 @@
 import { runBackup, runSync } from "./sync.mjs";
 
-// Database sync and backup (Lombardi's db-sync.mjs): live → local only.
+// Database sync and backup: live → local only.
 // Command → [usage, the options it accepts, runner].
 const DB_COMMANDS = new Map([
   ["db sync", ["gq db sync [--yes]", ["yes"], runSync]],

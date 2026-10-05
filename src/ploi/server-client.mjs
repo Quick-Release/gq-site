@@ -3,7 +3,7 @@ import { ploiErrorDetail } from "./errors.mjs";
 const apiOrigin = "https://ploi.io";
 
 // Minimal Ploi API client scoped to one server, for provisioning and
-// releases (Lombardi's scripts/lib/ploi.mjs). Request bodies may carry secrets
+// releases. Request bodies may carry secrets
 // (database passwords, .env contents), so they never go through argv and
 // errors never echo them back.
 export function createPloiServerClient({ token, serverId, fetch }) {

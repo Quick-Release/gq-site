@@ -393,7 +393,7 @@ test("a backups bucket shared with other Sites keeps everything but the Site's o
 });
 
 test("a backups bucket deleted whole has everything under its backups prefix archived first", async () => {
-  // fixture's releases bucket is its backups bucket too, as Lombardi's is.
+  // fixture's releases bucket is its backups bucket too.
   const exposed = fakeAccount().state;
   const { fixture, account } = await cutSite({
     state: {
@@ -1811,7 +1811,7 @@ test("in a terminal, offboard --archive goes on only once the project's name is 
   const wrong = await fixture.run(["offboard", "--archive"], {
     env: ENV,
     ...account,
-    stdin: answering(["lombardi\r"]),
+    stdin: answering(["other-site\r"]),
     interactive: true,
   });
   assert.equal(wrong.code, 0, wrong.stderr);

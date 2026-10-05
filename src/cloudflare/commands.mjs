@@ -3,8 +3,7 @@ import { runDeployToken } from "./deploy-token.mjs";
 import { runCloudflareMedia } from "./media.mjs";
 import { runReleases } from "./releases.mjs";
 
-// The Cloudflare provisioning commands (Lombardi's cloudflare-*.mjs), beside
-// gq-ops' read-only `gq cloudflare` commands. They run with the account's
+// The Cloudflare provisioning commands, beside gq-ops' read-only `gq cloudflare` commands. They run with the account's
 // token-manager token and store what they mint in Sigillo `staging`.
 // Command → [usage, the options it accepts, runner].
 const CLOUDFLARE_WORKFLOWS = new Map([

@@ -14,7 +14,7 @@ import {
   signalProcessGroup,
 } from "../../src/cms/ddev.mjs";
 
-// Lombardi's ddev.test.mjs: the real gq bin, with a fake `ddev` on PATH, so the
+// The real gq bin, with a fake `ddev` on PATH, so the
 // background worker really detaches, claims its job and reports through it.
 const script = fileURLToPath(new URL("../../bin/gq.mjs", import.meta.url));
 

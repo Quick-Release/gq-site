@@ -1,5 +1,4 @@
-// Connects GitHub to the site's Cloudflare CI Worker (Lombardi's
-// github-setup.mjs). GitHub stays the home of the code, issues and PRs; this
+// Connects GitHub to the site's Cloudflare CI Worker. GitHub stays the home of the code, issues and PRs; this
 // wires its pushes into CI:
 //
 //   1. GITHUB_WEBHOOK_SECRET in Sigillo `staging` (generated once)

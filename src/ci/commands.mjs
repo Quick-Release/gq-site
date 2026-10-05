@@ -3,8 +3,7 @@ import { runArtifactsCredential, runArtifactsSetup } from "./git-artifacts.mjs";
 import { runGithubSetup } from "./github-setup.mjs";
 
 // The site's Cloudflare CI: deploying its Worker, listing its runs, the
-// GitHub → Artifacts mirror's webhook, and git access to Artifacts (Lombardi's
-// ci-deploy.mjs, github-setup.mjs and git-artifacts.mjs).
+// GitHub → Artifacts mirror's webhook, and git access to Artifacts.
 // Command → [usage, the options it accepts, runner].
 const CI_COMMANDS = new Map([
   ["ci deploy", ["gq ci deploy", [], runCiDeploy]],

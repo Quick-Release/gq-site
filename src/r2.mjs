@@ -15,7 +15,7 @@ const FIRST_WAIT_MS = 2000;
 const LONGEST_WAIT_MS = 10_000;
 const PROPAGATION_MS = 90_000;
 
-// Minimal R2 (S3 API) client for one bucket (Lombardi's scripts/lib/r2.mjs):
+// Minimal R2 (S3 API) client for one bucket:
 // release archives are uploaded here and handed to Ploi as short-lived
 // presigned GET URLs, and live database backups are uploaded by Ploi through
 // presigned PUT URLs. Requests are signed here and sent through the injected

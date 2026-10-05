@@ -1,9 +1,9 @@
 // What release, version, verify and doctor read about a site: the
 // blueprint's defaults for its variant with the additions its gq.ops.json
-// declares (`release`, `verify`, `doctor`) appended. The content defaults are
-// Lombardi's release config as of @getquick/site 0.8.0; commerce has none
-// until a commerce site adopts the blueprint (phase 4), so a commerce site
-// declares everything as additions.
+// declares (`release`, `verify`, `doctor`) appended. The content variant
+// has defaults for all three (VARIANT_DEFAULTS.content below); commerce has
+// none until a commerce site adopts the blueprint (phase 4), so a commerce
+// site declares everything as additions.
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 

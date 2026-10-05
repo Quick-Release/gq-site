@@ -1,5 +1,5 @@
 // The Ploi workflows (`gq ploi provision`, `release`, `media` and `events`) at the run()
-// seam: a fixture site with Lombardi-shaped `ploi`, `releases`, `media` and
+// seam: a fixture site with content-site `ploi`, `releases`, `media` and
 // `domains` blocks, an in-memory Ploi and R2 behind a recording fetch, and a
 // recording exec standing in for git. Nothing here reaches the network.
 import assert from "node:assert/strict";

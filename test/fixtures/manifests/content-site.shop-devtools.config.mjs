@@ -5,10 +5,10 @@ export default {
   jsonFiles: ["package.json", "apps/frontend/package.json"],
   // The GETQUICK plugins and theme live in their own repositories and are
   // versioned there; apps/cms installs them from the GETQUICK Composer registry.
-  // The Lombardi child theme follows this release, like the Astro frontend.
+  // The Larkspur child theme follows this release, like the Astro frontend.
   textFiles: [
     {
-      path: "apps/cms/web/app/themes/lombardi-theme/style.css",
+      path: "apps/cms/web/app/themes/larkspur-theme/style.css",
       patterns: [
         {
           regexp: /^Version: .+$/m,
@@ -17,11 +17,11 @@ export default {
       ],
     },
     {
-      path: "apps/cms/web/app/themes/lombardi-theme/functions.php",
+      path: "apps/cms/web/app/themes/larkspur-theme/functions.php",
       patterns: [
         {
-          regexp: /define\( 'LOMBARDI_THEME_VERSION', '[^']+' \);/,
-          replacement: (version) => `define( 'LOMBARDI_THEME_VERSION', '${version}' );`,
+          regexp: /define\( 'LARKSPUR_THEME_VERSION', '[^']+' \);/,
+          replacement: (version) => `define( 'LARKSPUR_THEME_VERSION', '${version}' );`,
         },
       ],
     },
@@ -42,8 +42,8 @@ export default {
     "apps/cms/composer.json",
     "apps/cms/composer.lock",
     "apps/frontend/package.json",
-    "apps/cms/web/app/themes/lombardi-theme/style.css",
-    "apps/cms/web/app/themes/lombardi-theme/functions.php",
+    "apps/cms/web/app/themes/larkspur-theme/style.css",
+    "apps/cms/web/app/themes/larkspur-theme/functions.php",
   ],
   // What `pnpm verify` (gq verify), the pre-push hook, `pnpm push` and
   // Cloudflare CI run, in order. Locally `gq verify` skips a check whose

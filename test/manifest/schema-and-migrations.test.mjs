@@ -1,6 +1,6 @@
 // gq.ops.json schema v1 and its migrations, driven through run(): `gq sync
-// --manifest [--check]` against fixture sites holding Lombardi's and Ekis's
-// real v0 manifests, and the refusals every other command makes when the
+// --manifest [--check]` against fixture sites holding a content site's and
+// Ekis's v0 manifests, and the refusals every other command makes when the
 // manifest is older, newer, or invalid.
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
@@ -19,10 +19,10 @@ import {
   versionedFiles,
 } from "../support/site-settings.mjs";
 
-const LOMBARDI_V0 = await readFixture("lombardi.v0.json");
+const CONTENT_SITE_V0 = await readFixture("content-site.v0.json");
 const EKIS_V0 = await readFixture("ekis.v0.json");
-const LOMBARDI_RELEASE_CONFIG = await readFile(
-  new URL("../fixtures/manifests/lombardi.shop-devtools.config.mjs", import.meta.url),
+const CONTENT_SITE_RELEASE_CONFIG = await readFile(
+  new URL("../fixtures/manifests/content-site.shop-devtools.config.mjs", import.meta.url),
   "utf8",
 );
 const SCHEMA_URL = "./node_modules/@getquick/site/schema/gq.ops.schema.json";
@@ -37,15 +37,15 @@ async function readManifest(fixture) {
   return readFile(fixture.path("gq.ops.json"), "utf8");
 }
 
-test("gq sync --manifest migrates Lombardi's v0 manifest to v1", async () => {
-  const fixture = await createFixtureSite({ ops: LOMBARDI_V0 });
+test("gq sync --manifest migrates the content site's v0 manifest to v1", async () => {
+  const fixture = await createFixtureSite({ ops: CONTENT_SITE_V0 });
 
   const result = await fixture.run(["sync", "--manifest", "--variant", "content"]);
 
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stdout, "gq.ops.json: migrated schema v0 → v1.\n");
   assert.equal(result.stderr, "");
-  const { project, ...rest } = LOMBARDI_V0;
+  const { project, ...rest } = CONTENT_SITE_V0;
   const expected = { $schema: SCHEMA_URL, schemaVersion: 1, project, variant: "content", ...rest };
   assert.equal(await readManifest(fixture), `${JSON.stringify(expected, null, 2)}\n`);
 });
@@ -82,7 +82,7 @@ test("gq sync --manifest migrates Ekis's v0 manifest to v1, naming each key it d
 
 test("migrating a v1 manifest is a no-op", async () => {
   for (const [v0, variant] of [
-    [LOMBARDI_V0, "content"],
+    [CONTENT_SITE_V0, "content"],
     [EKIS_V0, "commerce"],
   ]) {
     const fixture = await createFixtureSite({ ops: v0 });
@@ -119,7 +119,7 @@ test("gq sync --manifest --check reports a pending migration and writes nothing"
 });
 
 test("gq sync --check reports a v0 manifest as pending without a variant", async () => {
-  const fixture = await createFixtureSite({ ops: LOMBARDI_V0 });
+  const fixture = await createFixtureSite({ ops: CONTENT_SITE_V0 });
   const before = await readManifest(fixture);
 
   const result = await fixture.run(["sync", "--check"]);
@@ -149,7 +149,7 @@ test("gq sync refuses a --variant that contradicts a v1 manifest's", async () =>
 });
 
 test("migrating a v0 manifest asks for the variant instead of guessing it", async () => {
-  const fixture = await createFixtureSite({ ops: LOMBARDI_V0 });
+  const fixture = await createFixtureSite({ ops: CONTENT_SITE_V0 });
   const before = await readManifest(fixture);
 
   for (const argv of [
@@ -168,7 +168,7 @@ test("migrating a v0 manifest asks for the variant instead of guessing it", asyn
 });
 
 test("commands refuse a manifest older than v1, pointing at gq sync --manifest", async () => {
-  const fixture = await createFixtureSite({ ops: LOMBARDI_V0 });
+  const fixture = await createFixtureSite({ ops: CONTENT_SITE_V0 });
 
   const result = await fixture.run(["context", "show"]);
 
@@ -254,43 +254,46 @@ test("the published JSON Schema is the one generated from the zod schema", async
 // --- folding the release config ---------------------------------------------
 
 const RELEASE_CONFIG = "shop-devtools.config.mjs";
-const LOMBARDI_THEME = "apps/cms/web/app/themes/lombardi-theme";
+const CONTENT_SITE_THEME = "apps/cms/web/app/themes/larkspur-theme";
 
-// Lombardi's site at `version`: its release config and the files it versions.
-function lombardiFiles(version) {
+// The content site at `version`: its release config and the files it versions.
+function contentSiteFiles(version) {
   return versionedFiles(version, {
-    [RELEASE_CONFIG]: LOMBARDI_RELEASE_CONFIG,
-    [`${LOMBARDI_THEME}/style.css`]: `/*\nTheme Name: Lombardi\nVersion: ${version}\n*/\n`,
-    [`${LOMBARDI_THEME}/functions.php`]: `<?php\ndefine( 'LOMBARDI_THEME_VERSION', '${version}' );\n`,
+    [RELEASE_CONFIG]: CONTENT_SITE_RELEASE_CONFIG,
+    [`${CONTENT_SITE_THEME}/style.css`]: `/*\nTheme Name: Larkspur\nVersion: ${version}\n*/\n`,
+    [`${CONTENT_SITE_THEME}/functions.php`]: `<?php\ndefine( 'LARKSPUR_THEME_VERSION', '${version}' );\n`,
   });
 }
 
-const LOMBARDI_ADDITIONS = {
+const CONTENT_SITE_ADDITIONS = {
   release: {
     textFiles: [
       {
-        path: `${LOMBARDI_THEME}/style.css`,
+        path: `${CONTENT_SITE_THEME}/style.css`,
         patterns: [{ regexp: "^Version: .+$", flags: "m", replacement: "Version: {version}" }],
       },
       {
-        path: `${LOMBARDI_THEME}/functions.php`,
+        path: `${CONTENT_SITE_THEME}/functions.php`,
         patterns: [
           {
-            regexp: "define\\( 'LOMBARDI_THEME_VERSION', '[^']+' \\);",
-            replacement: "define( 'LOMBARDI_THEME_VERSION', '{version}' );",
+            regexp: "define\\( 'LARKSPUR_THEME_VERSION', '[^']+' \\);",
+            replacement: "define( 'LARKSPUR_THEME_VERSION', '{version}' );",
           },
         ],
       },
     ],
-    paths: [`${LOMBARDI_THEME}/style.css`, `${LOMBARDI_THEME}/functions.php`],
+    paths: [`${CONTENT_SITE_THEME}/style.css`, `${CONTENT_SITE_THEME}/functions.php`],
   },
 };
 
 const RELEASE_BRANCH_WARNING =
   "warning: shop-devtools.config.mjs dropped releaseBranch: gq releases the branch that is checked out.\n";
 
-test("gq sync --manifest folds Lombardi's release config into its v1 manifest", async () => {
-  const fixture = await createFixtureSite({ ops: LOMBARDI_V0, files: lombardiFiles("1.2.3") });
+test("gq sync --manifest folds the content site's release config into its v1 manifest", async () => {
+  const fixture = await createFixtureSite({
+    ops: CONTENT_SITE_V0,
+    files: contentSiteFiles("1.2.3"),
+  });
 
   const result = await fixture.run(["sync", "--manifest", "--variant", "content"]);
 
@@ -301,14 +304,14 @@ test("gq sync --manifest folds Lombardi's release config into its v1 manifest", 
       "gq.ops.json: folded in shop-devtools.config.mjs and removed it.\n",
   );
   assert.equal(result.stderr, RELEASE_BRANCH_WARNING);
-  const { project, ...rest } = LOMBARDI_V0;
+  const { project, ...rest } = CONTENT_SITE_V0;
   const expected = {
     $schema: SCHEMA_URL,
     schemaVersion: 1,
     project,
     variant: "content",
     ...rest,
-    ...LOMBARDI_ADDITIONS,
+    ...CONTENT_SITE_ADDITIONS,
   };
   assert.equal(await readManifest(fixture), `${JSON.stringify(expected, null, 2)}\n`);
   assert.equal(existsSync(fixture.path(RELEASE_CONFIG)), false);
@@ -320,8 +323,11 @@ test("gq sync --manifest folds Lombardi's release config into its v1 manifest", 
   assert.equal(await readManifest(fixture), `${JSON.stringify(expected, null, 2)}\n`);
 });
 
-test("Lombardi's folded manifest releases, verifies and doctors as 0.8.0 did", async () => {
-  const fixture = await createFixtureSite({ ops: LOMBARDI_V0, files: lombardiFiles("1.2.3") });
+test("the content site's folded manifest releases, verifies and doctors as 0.8.0 did", async () => {
+  const fixture = await createFixtureSite({
+    ops: CONTENT_SITE_V0,
+    files: contentSiteFiles("1.2.3"),
+  });
   await fixture.run(["sync", "--manifest", "--variant", "content"]);
 
   // shop-devtools.config.mjs is gone, so the release commit no longer stages it.
@@ -344,16 +350,16 @@ test("Lombardi's folded manifest releases, verifies and doctors as 0.8.0 did", a
       "apps/cms/composer.json",
       "apps/cms/composer.lock",
       "apps/frontend/package.json",
-      `${LOMBARDI_THEME}/style.css`,
-      `${LOMBARDI_THEME}/functions.php`,
+      `${CONTENT_SITE_THEME}/style.css`,
+      `${CONTENT_SITE_THEME}/functions.php`,
     ],
   });
-  const released = lombardiFiles("1.3.0");
+  const released = contentSiteFiles("1.3.0");
   for (const path of [
     "package.json",
     "apps/frontend/package.json",
-    `${LOMBARDI_THEME}/style.css`,
-    `${LOMBARDI_THEME}/functions.php`,
+    `${CONTENT_SITE_THEME}/style.css`,
+    `${CONTENT_SITE_THEME}/functions.php`,
   ]) {
     assert.equal(await readFile(fixture.path(path), "utf8"), released[path], path);
   }
@@ -371,7 +377,10 @@ test("Lombardi's folded manifest releases, verifies and doctors as 0.8.0 did", a
 });
 
 test("gq sync --manifest --check reports the fold as pending and writes nothing", async () => {
-  const fixture = await createFixtureSite({ ops: LOMBARDI_V0, files: lombardiFiles("1.2.3") });
+  const fixture = await createFixtureSite({
+    ops: CONTENT_SITE_V0,
+    files: contentSiteFiles("1.2.3"),
+  });
   const before = await readManifest(fixture);
 
   const result = await fixture.run(["sync", "--manifest", "--check"]);
@@ -390,7 +399,10 @@ test("gq sync --manifest --check reports the fold as pending and writes nothing"
 
 test("a v1 manifest beside a release config is folded, and commands refuse it until then", async () => {
   // What gq 0.9.0's migration left: v1, with the release config still there.
-  const fixture = await createFixtureSite({ ops: LOMBARDI_V0, files: lombardiFiles("1.2.3") });
+  const fixture = await createFixtureSite({
+    ops: CONTENT_SITE_V0,
+    files: contentSiteFiles("1.2.3"),
+  });
   const config = await readFile(fixture.path(RELEASE_CONFIG), "utf8");
   await fixture.run(["sync", "--manifest", "--variant", "content"]);
   const folded = await readManifest(fixture);
@@ -446,7 +458,7 @@ test("folding keeps only what differs from the defaults and names defaults it ad
 };
 `;
   const fixture = await createFixtureSite({
-    ops: LOMBARDI_V0,
+    ops: CONTENT_SITE_V0,
     files: { [RELEASE_CONFIG]: config },
   });
 
@@ -538,7 +550,7 @@ test("folding refuses a release config gq.ops.json can't express, and writes not
     ],
   ]) {
     const fixture = await createFixtureSite({
-      ops: LOMBARDI_V0,
+      ops: CONTENT_SITE_V0,
       files: { [RELEASE_CONFIG]: config },
     });
     const before = await readManifest(fixture);

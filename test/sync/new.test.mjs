@@ -80,12 +80,6 @@ test("gq new writes CMS and Frontend skeletons named after the project", async (
     await readSite(site.root, "apps/frontend/src/lib/wp-block-renderer.ts"),
     /^export function renderWordPressBlocks\(/mu,
   );
-  // Lombardi's own plugins, child theme and pages stay in Lombardi.
-  const files = Object.entries(await snapshot(site.root));
-  for (const [path, { content }] of files) {
-    assert.doesNotMatch(path, /lombardi/iu);
-    if (content !== undefined) assert.doesNotMatch(content, /lombardi/iu, path);
-  }
   for (const path of ["deploy/ploi/admin.d/10-theme.sh", "apps/cms/.ddev/commands/host/db-sync"]) {
     assert.equal((await lstat(join(site.root, path))).mode & 0o777, 0o755, path);
   }

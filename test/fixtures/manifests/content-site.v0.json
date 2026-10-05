@@ -1,5 +1,5 @@
 {
-  "project": "lombardi",
+  "project": "larkspur",
   "sigillo": {
     "apiUrl": "https://secrets.getquick.io",
     "projectId": "01M32W12VJR8EDZKGZ4DJP5GK5",
@@ -10,41 +10,41 @@
     }
   },
   "domains": {
-    "admin": "lombardi-admin.bnq.pt",
-    "frontend": "lombardi-fe.bnq.pt"
+    "admin": "larkspur-admin.bnq.pt",
+    "frontend": "larkspur-fe.bnq.pt"
   },
   "ploi": {
     "serverId": "102329",
     "siteId": "410834",
-    "systemUser": "lombardi",
+    "systemUser": "larkspur",
     "projectRoot": "/",
     "webDirectory": "/apps/cms/web",
-    "database": "lombardi_staging",
+    "database": "larkspur_staging",
     "envTemplate": "apps/cms/.env.production.example",
     "deployScript": "deploy/ploi/admin.sh"
   },
   "releases": {
-    "bucket": "lombardi-releases",
+    "bucket": "larkspur-releases",
     "prefix": "admin/"
   },
   "media": {
-    "bucket": "lombardi-media",
-    "domain": "lombardi-media.bnq.pt"
+    "bucket": "larkspur-media",
+    "domain": "larkspur-media.bnq.pt"
   },
   "backups": {
-    "bucket": "lombardi-releases",
+    "bucket": "larkspur-releases",
     "prefix": "db/"
   },
   "local": {
     "adminEmail": "dev@tipme.to"
   },
   "artifacts": {
-    "namespace": "lombardi",
-    "repo": "lombardi"
+    "namespace": "larkspur",
+    "repo": "larkspur"
   },
   "ci": {
-    "worker": "lombardi-ci",
-    "backupBucket": "lombardi-ci-backups"
+    "worker": "larkspur-ci",
+    "backupBucket": "larkspur-ci-backups"
   },
   "cloudflare": {
     "accountId": "8f38791a8c37b182239af2a385ab3c31",
@@ -52,6 +52,6 @@
     "zoneName": "bnq.pt"
   },
   "github": {
-    "repository": "Quick-Release/lombardi"
+    "repository": "Quick-Release/larkspur"
   }
 }

@@ -1,5 +1,4 @@
-// Composer for the site's local CMS (Lombardi's scripts/cms-composer.mjs), on
-// macOS or Linux, with whichever PHP is at hand: the running DDEV project (its
+// Composer for the site's local CMS, on macOS or Linux, with whichever PHP is at hand: the running DDEV project (its
 // PHP matches the server), else the host Composer, else DDEV started for the
 // purpose. Dependency changes are the exception: they always use the host
 // Composer, which has the registry login (see composerDependencyChange).

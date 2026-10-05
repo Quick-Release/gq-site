@@ -1,6 +1,5 @@
-// The token and bucket provisioning the `gq cloudflare` commands share
-// (Lombardi's cloudflare-deploy-token.mjs and cloudflare-releases.mjs, which
-// were both commands and libraries). Tokens are found by name, created when
+// The token and bucket provisioning the `gq cloudflare` commands share.
+// Tokens are found by name, created when
 // missing or inactive, and rolled when the secret store lost their value;
 // Cloudflare never shows a token's value twice.
 

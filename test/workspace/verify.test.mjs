@@ -1,4 +1,4 @@
-// Moved from Lombardi's scripts/verify.test.mjs: which checks run locally and
+// Which checks run locally and
 // in CI. The runner itself is covered at the run() seam in
 // workspace-workflows.test.mjs.
 import assert from "node:assert/strict";

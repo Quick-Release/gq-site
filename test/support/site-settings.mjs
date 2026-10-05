@@ -1,7 +1,7 @@
 // Release, verify and doctor as a test reads them through run(): a site's
 // version-carrying files, a recording exec that answers release push's git
 // queries, and what each command ran or reported. The CONTENT_ lists are
-// Lombardi's shop-devtools.config.mjs at @getquick/site 0.8.0, literally.
+// the content variant's release, verify and doctor defaults, literally.
 import { recordingExec } from "./fixture-site.mjs";
 
 export const CONTENT_CHECKS = [

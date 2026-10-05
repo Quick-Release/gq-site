@@ -222,8 +222,9 @@ REPOSITORY=Quick-Release/gq-smoke
 SIGILLO_API=https://secrets.getquick.io
 SIGILLO_ORG=01M2V5A7MYQ1C4482Z3075JZ7C          # GETQUICK
 SIGILLO_PROJECT_NAME="GQ Smoke"
-LOMBARDI_SIGILLO_PROJECT=01M32W12VJR8EDZKGZ4DJP5GK5
-# Lombardi's Ploi server, Cloudflare account and the bnq.pt staging zone.
+# The shared GETQUICK Sigillo project, which holds the account-level secrets.
+SHARED_SIGILLO_PROJECT=01M32W12VJR8EDZKGZ4DJP5GK5
+# The shared Ploi server, the shared Cloudflare account and the bnq.pt staging zone.
 PLOI_SERVER_ID=102329
 CF_ACCOUNT_ID=8f38791a8c37b182239af2a385ab3c31
 CF_ZONE_ID=60c031fb6f81fae300c625224c39c758
@@ -271,17 +272,17 @@ find_sigillo_project() {
     /^ *name: "/ { name = $0; gsub(/^ *name: "|".*$/, "", name); if (name == want) print id }' | head -n1
 }
 
-# copy_secret NAME LOMBARDI_ENV SITE_ENV pipes NAME from Lombardi's Sigillo
-# into the site's, never printing it; falls back to a hidden paste.
+# copy_secret NAME SHARED_ENV SITE_ENV pipes NAME from the shared GETQUICK
+# Sigillo project into the site's, never printing it; falls back to a hidden paste.
 copy_secret() {
   local name="$1" from="$2" to="$3" value=""
   if has_secret "$to" "$name"; then
     say "$name is already in the site's $to environment; keeping it."
     return
   fi
-  value=$(sig secrets get "$name" -p "$LOMBARDI_SIGILLO_PROJECT" --env "$from" --raw --force 2>/dev/null) || value=""
+  value=$(sig secrets get "$name" -p "$SHARED_SIGILLO_PROJECT" --env "$from" --raw --force 2>/dev/null) || value=""
   if [[ -z "$value" ]]; then
-    warn "Couldn't read $name from Lombardi's Sigillo ($from)."
+    warn "Couldn't read $name from the shared GETQUICK Sigillo project ($from)."
     ask_secret value "Paste $name instead:"
   fi
   [[ -n "$value" ]] || { warn "No value for $name; stopping."; exit 1; }
@@ -507,8 +508,8 @@ pause
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
 stage "Fill in gq.ops.json"
-say "Writes the site's public values: the Sigillo project, the $CF_ZONE_NAME hosts, Lombardi's"
-say "Ploi server and Cloudflare account, and the $PROJECT buckets, Worker and repository."
+say "Writes the site's public values: the Sigillo project, the $CF_ZONE_NAME hosts, the shared"
+say "Ploi server and the shared Cloudflare account, and the $PROJECT buckets, Worker and repository."
 say "Then gq sync renders the deploy wiring from them. No secrets are written."
 # shellcheck disable=SC2016 # JavaScript, not shell
 SIGILLO_PROJECT_ID="$SIGILLO_PROJECT_ID" node --input-type=module -e '
@@ -553,7 +554,7 @@ pause
 
 # ── 6 ─────────────────────────────────────────────────────────────────────
 stage "Shared secrets"
-say "Two account-level secrets come from Lombardi's Sigillo, piped straight into"
+say "Two account-level secrets come from the shared GETQUICK Sigillo project, piped straight into"
 say "$PROJECT's (never printed): the Cloudflare token-manager token and the Ploi API token."
 copy_secret CLOUDFLARE_TOKEN_MANAGER_API_TOKEN ops operations
 copy_secret PLOI_API_TOKEN staging staging
@@ -636,13 +637,13 @@ pause
 # ── 11 ────────────────────────────────────────────────────────────────────
 stage "Ploi site"
 say "Creates the system user, the site $ADMIN_HOST, the database, its .env, the deploy"
-say "script and the certificate on Lombardi's server. It shows the plan and asks first."
+say "script and the certificate on the shared Ploi server. It shows the plan and asks first."
 run pnpm ploi:provision
 if origin_has_certificate; then
   if behind_cloudflare; then
     say "$ADMIN_HOST is already behind Cloudflare's proxy."
   else
-    say "The certificate is issued: put $ADMIN_HOST behind Cloudflare's proxy, as Lombardi's CMS is."
+    say "The certificate is issued: put $ADMIN_HOST behind Cloudflare's proxy."
     open_url "https://dash.cloudflare.com/$CF_ACCOUNT_ID/$CF_ZONE_NAME/dns/records"
     step "Edit the A record $PROJECT-cms → Proxy status: on (orange cloud) → Save."
     note "Ploi renews the certificate over HTTP through the proxy; the first renewal is due in about 60 days."

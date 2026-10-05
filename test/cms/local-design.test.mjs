@@ -547,7 +547,7 @@ test("DDEV autoload refresh holds the same lock as dependency changes", async (t
 });
 
 // db sync's composer.lock install, through the real exec and a fake host
-// Composer (Lombardi's cms-composer CLI test, for the install action).
+// Composer.
 test("composerInstall restores the link and fails with Composer's exit status", async (t) => {
   const f = fixture(t);
   syncLocalDesign(f.cms, local);

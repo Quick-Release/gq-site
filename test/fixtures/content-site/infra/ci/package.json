@@ -1,7 +1,7 @@
 {
-  "name": "@lombardi/ci",
+  "name": "@larkspur/ci",
   "private": true,
-  "description": "Cloudflare CI (Artifacts + CI Workflows) for the Lombardi monorepo.",
+  "description": "Cloudflare CI (Artifacts + CI Workflows) for the Larkspur monorepo.",
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",

@@ -1,5 +1,5 @@
 {
-  "name": "@lombardi/infrastructure",
+  "name": "@larkspur/infrastructure",
   "private": true,
   "type": "module",
   "scripts": {

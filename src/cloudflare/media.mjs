@@ -1,6 +1,5 @@
 // Provisions the site's media uploads bucket on R2 (Human Made S3 Uploads)
-// from gq.ops.json `media` (Lombardi's cloudflare-media.mjs), with the
-// account's token-manager token:
+// from gq.ops.json `media`, with the account's token-manager token:
 //
 //   1. create the bucket and attach its public custom domain, with a 1-hour
 //      token that is deleted right after

@@ -18,7 +18,7 @@ const ownership = JSON.parse(await readFile(join(repo, "blueprint/ownership.json
 // What the site's pre-commit hook formats (templates/vite.config.ts `staged`).
 const FORMATTED = /\.(?:js|cjs|mjs|jsx|ts|tsx|json|jsonc|md|mdx|css|scss|html)$/u;
 
-// A site named `project`, with its other values named after it as Lombardi's are.
+// A site named `project`, with its other values named after it.
 function manifest(project) {
   return {
     schemaVersion: 1,
@@ -32,8 +32,7 @@ function manifest(project) {
   };
 }
 
-// The shortest name, and one well past any real site's (Lombardi's is eight
-// characters).
+// The shortest name, and one well past any real site's.
 for (const project of ["a", "abcdefghij-abcdefghij-abcdefghij-abcdefg"]) {
   test(`fully generated files are formatter-stable for a ${project.length}-character project name`, async () => {
     const fixture = await createFixtureSite({ ops: manifest(project) });

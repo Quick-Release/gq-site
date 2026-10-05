@@ -1,5 +1,4 @@
-// Account-scoped Cloudflare API client for the provisioning commands
-// (Lombardi's cloudflare-deploy-token.mjs `createCloudflareClient`): resolves
+// Account-scoped Cloudflare API client for the provisioning commands: resolves
 // to the response's `result`, and fails with Cloudflare's own error messages.
 // The read-only inspection-client.mjs stays beside it; their scopes and
 // behavior remain distinct.
@@ -80,8 +79,8 @@ export function createCloudflareZoneClient({ token, zoneId, fetch }) {
     (await accountRequest(options, method, path, body, requestOptions))?.result ?? null;
 }
 
-// Cloudflare Artifacts (namespaces, repositories and repo-scoped git tokens),
-// Lombardi's scripts/lib/artifacts.mjs. Git itself only accepts repo-scoped
+// Cloudflare Artifacts (namespaces, repositories and repo-scoped git tokens).
+// Git itself only accepts repo-scoped
 // tokens, never Cloudflare API tokens.
 export function createArtifactsClient({ accountId, token, fetch }) {
   const options = { token, accountId, fetch, label: "Artifacts" };

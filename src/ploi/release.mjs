@@ -1,5 +1,4 @@
-// Deploys a release of the admin to Ploi without any git host (Lombardi's
-// scripts/ploi-release.mjs): packs the release commit with `git archive`
+// Deploys a release of the admin to Ploi without any git host: packs the release commit with `git archive`
 // (plus a RELEASE manifest), uploads it to the private R2 releases bucket, and
 // triggers the Ploi deploy with a short-lived presigned URL (ARCHIVE_URL for
 // the site's deploy script). Ploi runs its stored copy of the deploy script,
@@ -20,7 +19,7 @@ import { deploy, syncDeployScript } from "./provision.mjs";
 import { createPloiServerClient } from "./server-client.mjs";
 
 // Layout: what the archive ships. The site's deploy script must expect the
-// same paths (Lombardi's deploy/ploi/admin.sh SHIPPED_PATHS).
+// same paths (deploy/ploi/admin.sh SHIPPED_PATHS).
 export const shippedPaths = Object.freeze(["apps/cms", "deploy/ploi"]);
 
 // The server's `composer install` fetches the GETQUICK plugins from the

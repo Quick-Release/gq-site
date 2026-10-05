@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/@getquick/site/schema/gq.ops.schema.json",
   "schemaVersion": 1,
-  "project": "lombardi",
+  "project": "larkspur",
   "variant": "content",
   "sigillo": {
     "apiUrl": "https://secrets.getquick.io",
@@ -13,24 +13,24 @@
     }
   },
   "domains": {
-    "admin": "lombardi-admin.bnq.pt",
-    "frontend": "lombardi-fe.bnq.pt"
+    "admin": "larkspur-admin.bnq.pt",
+    "frontend": "larkspur-fe.bnq.pt"
   },
   "ploi": {
     "serverId": "102329",
     "siteId": "410834",
-    "systemUser": "lombardi",
+    "systemUser": "larkspur",
     "projectRoot": "/",
     "webDirectory": "/apps/cms/web",
-    "database": "lombardi_staging",
+    "database": "larkspur_staging",
     "envTemplate": "apps/cms/.env.production.example",
     "deployScript": "deploy/ploi/admin.sh"
   },
   "wordpress": {
     "plugins": [
       "getquick-design",
-      "lombardi-post-types",
-      "lombardi-blocks",
+      "larkspur-post-types",
+      "larkspur-blocks",
       "gq-support",
       "wp-graphql",
       "wpgraphql-blocks",
@@ -41,27 +41,27 @@
     ]
   },
   "releases": {
-    "bucket": "lombardi-releases",
+    "bucket": "larkspur-releases",
     "prefix": "admin/"
   },
   "media": {
-    "bucket": "lombardi-media",
-    "domain": "lombardi-media.bnq.pt"
+    "bucket": "larkspur-media",
+    "domain": "larkspur-media.bnq.pt"
   },
   "backups": {
-    "bucket": "lombardi-releases",
+    "bucket": "larkspur-releases",
     "prefix": "db/"
   },
   "local": {
     "adminEmail": "dev@tipme.to"
   },
   "artifacts": {
-    "namespace": "lombardi",
-    "repo": "lombardi"
+    "namespace": "larkspur",
+    "repo": "larkspur"
   },
   "ci": {
-    "worker": "lombardi-ci",
-    "backupBucket": "lombardi-ci-backups"
+    "worker": "larkspur-ci",
+    "backupBucket": "larkspur-ci-backups"
   },
   "cloudflare": {
     "accountId": "8f38791a8c37b182239af2a385ab3c31",
@@ -69,12 +69,12 @@
     "zoneName": "bnq.pt"
   },
   "github": {
-    "repository": "Quick-Release/lombardi"
+    "repository": "Quick-Release/larkspur"
   },
   "release": {
     "textFiles": [
       {
-        "path": "apps/cms/web/app/themes/lombardi-theme/style.css",
+        "path": "apps/cms/web/app/themes/larkspur-theme/style.css",
         "patterns": [
           {
             "regexp": "^Version: .+$",
@@ -84,18 +84,18 @@
         ]
       },
       {
-        "path": "apps/cms/web/app/themes/lombardi-theme/functions.php",
+        "path": "apps/cms/web/app/themes/larkspur-theme/functions.php",
         "patterns": [
           {
-            "regexp": "define\\( 'LOMBARDI_THEME_VERSION', '[^']+' \\);",
-            "replacement": "define( 'LOMBARDI_THEME_VERSION', '{version}' );"
+            "regexp": "define\\( 'LARKSPUR_THEME_VERSION', '[^']+' \\);",
+            "replacement": "define( 'LARKSPUR_THEME_VERSION', '{version}' );"
           }
         ]
       }
     ],
     "paths": [
-      "apps/cms/web/app/themes/lombardi-theme/style.css",
-      "apps/cms/web/app/themes/lombardi-theme/functions.php"
+      "apps/cms/web/app/themes/larkspur-theme/style.css",
+      "apps/cms/web/app/themes/larkspur-theme/functions.php"
     ]
   }
 }

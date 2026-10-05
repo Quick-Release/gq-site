@@ -1,5 +1,5 @@
-// Deploys the site's Cloudflare CI Worker and its secrets (Lombardi's
-// ci-deploy.mjs) with the Worker directory's own Wrangler. Runs through
+// Deploys the site's Cloudflare CI Worker and its secrets with the Worker
+// directory's own Wrangler. Runs through
 // `gq sigillo run`, so every secret comes from the secret store; they reach
 // Wrangler as JSON over stdin, never a file or argv.
 //

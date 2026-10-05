@@ -3,11 +3,9 @@
 // command only through `sigillo run`'s per-command injection; nothing here may
 // mount, download, or write an environment.
 //
-// These replace Lombardi's scripts/sigillo/sigillo-run.test.mjs case for case
-// (argv-safe form, separator, environment mapping, unmapped environment,
+// Covered cases: argv-safe form, separator, environment mapping, unmapped environment,
 // bootstrap scrubbing, CLI helper routing, download refusal, installed CLI,
-// npx fallback, per-checkout login), asserted at the seam rather than on the
-// vendored script's helpers.
+// npx fallback and per-checkout login.
 import assert from "node:assert/strict";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -211,7 +209,7 @@ test("the inner step refuses to run outside a wrapped sigillo run", async () => 
     {},
     { SIGILLO: "1" },
     { GQ_SIGILLO_REENTRY: "1" },
-    { LOMBARDI_SIGILLO_REENTRY: "1", SIGILLO: "1" },
+    { LARKSPUR_SIGILLO_REENTRY: "1", SIGILLO: "1" },
   ]) {
     const result = await site.run(["sigillo", "run", "--inside", "--", "pnpm", "start"], { env });
     assert.equal(result.code, 1);

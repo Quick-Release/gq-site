@@ -1,5 +1,5 @@
 // Copies the live WordPress database into the local DDEV project, one way
-// only (live → local) (Lombardi's scripts/db-sync.mjs and db-sync-run.mjs):
+// only (live → local):
 //
 //   1. back up the live database to R2: a Ploi one-off script runs
 //      `wp db export` on the server and uploads it through a short-lived
@@ -81,7 +81,7 @@ export function sitePath({ systemUser, domain, projectRoot = "/" }) {
 }
 
 // `<PROJECT>_DB_EXPORT`, named after gq.ops.json `project` like the deploy
-// status line, so Lombardi's LOMBARDI_DB_EXPORT is unchanged.
+// status line.
 export function exportMarker(project) {
   return `${String(project)
     .toUpperCase()
@@ -216,7 +216,7 @@ export async function runSync(dependencies) {
 
 // Node reads NODE_EXTRA_CA_CERTS only at startup, and the sync ends by asking
 // the local site (https on *.ddev.site, signed by mkcert's CA) for GraphQL.
-// So, as Lombardi's db-sync-run.mjs did, gq relaunches itself with mkcert's
+// So gq relaunches itself with mkcert's
 // public CA (never its private key) rather than disabling TLS checks.
 // Resolves to the relaunched command's exit code, or null to go on here.
 export async function relaunchWithLocalCa({ argv, context, env, exec }) {

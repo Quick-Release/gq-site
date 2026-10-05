@@ -1,4 +1,4 @@
-// Lombardi CI Worker. CI pipelines start from the `cf.artifacts.repo.pushed`
+// Larkspur CI Worker. CI pipelines start from the `cf.artifacts.repo.pushed`
 // trigger in wrangler.jsonc; this Worker exports the Workflows and the sandbox
 // Durable Object, and serves:
 //

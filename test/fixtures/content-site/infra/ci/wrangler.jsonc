@@ -1,12 +1,12 @@
 {
-  // Lombardi CI on Cloudflare: pushes to the Artifacts repository (gq.ops.json
+  // Larkspur CI on Cloudflare: pushes to the Artifacts repository (gq.ops.json
   // artifacts) start the CI Workflow (cloudflare.ci.ts), whose steps run in
   // sandbox containers built from ./Dockerfile. A site on GitHub has its pushes
   // reach Artifacts through the GitHub webhook (workers.dev URL, HMAC-verified)
   // and the Mirror Workflow (mirror.ts); an Artifacts-only site, with an empty
   // GITHUB_REPOSITORY, pushes to Artifacts itself. Deployed with `pnpm ci:deploy`.
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "lombardi-ci",
+  "name": "larkspur-ci",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-16",
   "compatibility_flags": ["nodejs_compat"],
@@ -14,7 +14,7 @@
   "artifacts": [
     {
       "binding": "ARTIFACTS",
-      "namespace": "lombardi",
+      "namespace": "larkspur",
     },
   ],
   "containers": [
@@ -35,12 +35,12 @@
   "exports": { "CiSandbox": { "type": "durable-object", "storage": "sqlite" } },
   "workflows": [
     {
-      "name": "lombardi-ci",
+      "name": "larkspur-ci",
       "binding": "CI_WORKFLOW",
       "class_name": "CI",
     },
     {
-      "name": "lombardi-mirror",
+      "name": "larkspur-mirror",
       "binding": "MIRROR_WORKFLOW",
       "class_name": "Mirror",
     },
@@ -50,13 +50,13 @@
       {
         "type": "cf.artifacts.repo.pushed",
         "filter": {
-          "namespace": "lombardi",
-          "repo_name": "lombardi",
+          "namespace": "larkspur",
+          "repo_name": "larkspur",
         },
         "targets": [
           {
             "type": "workflow",
-            "workflow_name": "lombardi-ci",
+            "workflow_name": "larkspur-ci",
           },
         ],
       },
@@ -65,16 +65,16 @@
   "r2_buckets": [
     {
       "binding": "BACKUP_BUCKET",
-      "bucket_name": "lombardi-ci-backups",
+      "bucket_name": "larkspur-ci-backups",
     },
   ],
   "vars": {
-    "BACKUP_BUCKET_NAME": "lombardi-ci-backups",
+    "BACKUP_BUCKET_NAME": "larkspur-ci-backups",
     "CLOUDFLARE_ACCOUNT_ID": "8f38791a8c37b182239af2a385ab3c31",
     "CLOUDFLARE_DEPLOY_ACCOUNT_ID": "8f38791a8c37b182239af2a385ab3c31",
-    "ARTIFACTS_NAMESPACE": "lombardi",
-    "ARTIFACTS_REPO": "lombardi",
-    "GITHUB_REPOSITORY": "Quick-Release/lombardi",
+    "ARTIFACTS_NAMESPACE": "larkspur",
+    "ARTIFACTS_REPO": "larkspur",
+    "GITHUB_REPOSITORY": "Quick-Release/larkspur",
   },
   "observability": { "enabled": true, "logs": { "enabled": true } },
 }

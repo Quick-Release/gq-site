@@ -1,6 +1,4 @@
-// DDEV for the site's local CMS (Lombardi's scripts/ddev.mjs,
-// scripts/lib/ddev-background.mjs and scripts/lib/cms-dev-links.mjs): start,
-// stop and describe, with `start` running in the background by default. A
+// DDEV for the site's local CMS: start, stop and describe, with `start` running in the background by default. A
 // detached gq worker (`gq cms start --background-job <id>`) starts DDEV and
 // wires apps/cms/.env, recording its phase in .local-plugins/ddev-start.json
 // and its output in ddev-start.log, so `gq cms status` can report ready or
