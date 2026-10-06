@@ -5,7 +5,20 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.17.6 — 2026-10-06
+
 ### Added
+
+- **Optional, scoped Cloudflare Access credentials for CMS callers.**
+  GraphQL publication/readiness requests use the dedicated GraphQL identity;
+  media REST probes use a separate automation identity alongside the existing
+  WordPress application password. Partial pairs, unexpected origins/paths and
+  credentialed redirects fail closed without exposing credentials.
+  - **Existing sites:** update the package pin and run `gq sync` for managed
+    deployment wiring, then deliberately adopt the site-owned Frontend
+    `runtime.ts` / `wordpress.ts` transport changes. Bind only the GraphQL pair
+    on the server. This release does not install GQ Auth, change Access policies
+    or enable a CMS gate; see [CMS Access](docs/guides/cms-access.md).
 
 - **The generated `AGENTS.md` section starts with a Scope rule** for every
   harness that reads `AGENTS.md` (Claude Code through `CLAUDE.md`, Codex, pi).

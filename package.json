@@ -1,6 +1,6 @@
 {
   "name": "@getquick/site",
-  "version": "0.17.5",
+  "version": "0.17.6",
   "description": "Shared tooling for GETQUICK sites: the gq CLI",
   "license": "MIT",
   "type": "module",
