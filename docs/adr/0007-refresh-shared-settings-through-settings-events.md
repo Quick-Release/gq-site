@@ -118,10 +118,9 @@ with (ADR 0004).
 - **Listening to `getquick_design_cache_invalidated`.** It doesn't fire for
   global styles, the logo, the icon or the title, and it fires for layout
   changes the Frontend doesn't render.
-- **Putting the plugin in `getquick-design`.** The content runtime's shared
-  home is `gq-content`
-  ([ADR 0015](0015-hold-only-the-blueprint-in-this-repository.md)), not
-  getquick-design.
+- **Putting the plugin in `getquick-design`.** Choosing a shared package home
+  was [#32](https://github.com/Quick-Release/gq-site/issues/32)'s decision;
+  ADR 0015 gives the content runtime its own home in `gq-content`.
 - **The site title on entry pages.** Entries are titled with the project's
   name, not WordPress's title. The issue asks to refresh the existing
   representation, so an identity change shows on the homepage (title,

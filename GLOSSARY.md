@@ -42,6 +42,11 @@ _Avoid_: deploy hook (hooks are the Git hooks)
 The kind of site the blueprint supports: content or commerce. Ekis is a
 commerce site.
 
+**Reference Site**:
+The live content Site the blueprint is tested against: Cooldown Gaming. A
+playground, where downtime and resets are expected
+([reference](docs/reference/reference-site.md)).
+
 ### Published content
 
 **Missing content**:

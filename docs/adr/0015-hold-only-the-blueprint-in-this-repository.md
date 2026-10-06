@@ -33,7 +33,8 @@ holds the blueprint only:
   guarantee and auth contract belong to `gq-ecommerce`. The commerce variant
   only wires them up (#28).
 - **Issues, proofs and research whose owner is known move to that
-  owner.** A one-line stub stays at each moved document's old path.
+  owner.** A one-line stub stays at each moved document's old path; moved code,
+  such as `proofs/cart-identity/`, is named in its research stub.
 
 ## Consequences
 

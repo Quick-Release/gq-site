@@ -6,9 +6,9 @@
 ## Context
 
 GETQUICK runs more sites than it can keep up to date one repository at a
-time. Its sites share a monorepo layout, Sigillo secrets through
-`gq.ops.json`, and tooling vendored into each site under `packages/tools/`,
-but every copy drifts and a fix reaches only the site it was made in.
+time. Its sites share a monorepo layout and Sigillo secrets through
+`gq.ops.json`. Tooling copied into each site drifts, and a fix reaches only
+the site it was made in.
 
 ## Decision
 
@@ -31,9 +31,10 @@ layers:
   differences are validated `gq.ops.json` options (such as the variant);
   site-specific behavior stays in site-owned extension points.
 - **Blueprint changes originate here.** Conventions and managed files are
-  changed and released in this repository, and reach sites as update PRs. A
-  convention a site develops becomes a blueprint rule only by being made
-  here.
+  changed and released in this repository. A site takes a release by bumping
+  its `@getquick/site` pin and running `gq sync`; the fleet layer that opens
+  update PRs for every site is gated work in the rollout plan. A convention a
+  site develops becomes a blueprint rule only by being made here.
 - **Sites record their adoption with a link, not a copy.** The design and the
   [rollout plan](../plans/getquick-blueprint-rollout.md) live here; a site's
   own ADR records only that it follows the blueprint and any site-specific

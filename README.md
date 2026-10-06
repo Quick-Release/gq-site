@@ -70,8 +70,8 @@ not the current command reference.
 ## Current status
 
 Phases 1–3 of the rollout (extraction, content-site generation, and adoption
-by an existing content site) have passed. Managed-file changes originate here
-and reach sites as update PRs. Commerce-site generation is not supported;
+by an existing content site) have passed. Managed-file changes originate here;
+a site takes them by bumping its pin and running `gq sync`. Commerce-site generation is not supported;
 commerce adoption and fleet rollout are gated work.
 See the [rollout record](https://github.com/Quick-Release/gq-site/blob/main/docs/plans/getquick-blueprint-rollout.md#phases-and-gates)
 for evidence and remaining gates, and

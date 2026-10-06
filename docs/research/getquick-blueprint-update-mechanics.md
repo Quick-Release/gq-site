@@ -117,7 +117,7 @@ scoped credentials remain necessary.
 
 ### Close the PR-to-production gap
 
-Update PRs are opened and checked, but a site's CI release step
+Merging an update isn't enough: a site's CI release step
 ([`infra/ci/release.ts`](../../blueprint/templates/infra/ci/release.ts))
 deploys only `v*` tags. Merging an update does not deploy it. Define which
 trusted automation merges, creates the site release through the existing

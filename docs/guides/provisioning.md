@@ -64,8 +64,8 @@ disk. It says nothing about production.
 
 The checks read only, except the media upload probe, which deletes what it
 uploads. None of them resets a CMS, runs a production migration extension
-locally, or touches site-owned files; existing Sites aren't migrated (a
-Frontend from before this check is reported as predating it).
+locally, or touches site-owned files. A Frontend without this check is reported as
+predating it.
 
 ### Acceptance gates
 

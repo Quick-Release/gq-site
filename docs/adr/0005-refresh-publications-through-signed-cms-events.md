@@ -44,8 +44,8 @@ extracted yet.
   `web/app/mu-plugins/publication-events.php`, is created once with the CMS,
   so it is site-owned like `content-api.php`. It handles WordPress's
   `wp_after_insert_post` for a published `page` or `post`, ignoring revisions
-  and autosaves. A draft or a private entry sends nothing. The plugin moves
-  to `gq-content` with the rest of the content runtime (ADR 0015).
+  and autosaves. A draft or a private entry sends nothing. The plugin is to
+  move to `gq-content` with the rest of the content runtime (ADR 0015).
 - **An event is a reason to refresh, not content.** It carries:
   - `site`: the project;
   - `id`: a UUID;
@@ -96,7 +96,7 @@ extracted yet.
   - 503: the refresh kept the stored version. The event stays recorded as
     `failed`, for a retry.
   - 4xx: refused, and nothing changed.
-  - Each action has a handler with its own schema: `withdraw` (ADR 0006),
+  - Each action has a handler with its own schema: `check`, `withdraw` (ADR 0006),
     `settings` ([ADR 0007](0007-refresh-shared-settings-through-settings-events.md))
     and `reconcile` (ADR 0009) sit beside `publish`.
 - **Publishing never waits on delivery.**
@@ -148,8 +148,8 @@ extracted yet.
   Production disables WP-Cron, so a scheduled retry needs a real scheduler
   anyway.
 - **Extending an existing private package** (`getquick-design`, `gq-config`).
-  The content runtime's shared home is `gq-content` (ADR 0015), not those
-  packages.
+  It would have meant choosing the shared package home, which was #32's to
+  decide; ADR 0015 gives the content runtime its own home in `gq-content`.
 
 ## Consequences
 

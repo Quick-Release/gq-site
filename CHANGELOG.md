@@ -1357,7 +1357,7 @@ delays` shows it, and Site Health turns "recommended" after ten minutes
 ### Not carried over
 
 - `docsChangelogPath` (the Starlight docs changelog page) and the legacy
-  `wrangler` deploys, which sites didn't use. A release config that
+  `wrangler` deploys, which the content site didn't use. A release config that
   still sets `docsChangelogPath` is an error rather than silently ignored.
 
 ## 0.1.1 — 2026-10-01
