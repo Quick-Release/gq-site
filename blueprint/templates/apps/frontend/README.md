@@ -186,5 +186,9 @@ on SQLite (`src/test/sqlite-d1.ts`, the same migrations and SQL).
 
 Releases deploy the Frontend from the `v*` tag in Cloudflare CI
 (`infra/ci`). Deploys build with `PUBLIC_WORDPRESS_GRAPHQL_URL` set to
-`https://<domains.admin>/wp/graphql` from `gq.ops.json`; `pnpm deploy:frontend`
-redeploys by hand with the token in Sigillo `staging`.
+`https://<domains.admin><wordpress.graphqlPath>` from `gq.ops.json` (the path
+defaults to `/wp/graphql`; `/graphql` is also supported). An explicit process
+`PUBLIC_WORDPRESS_GRAPHQL_URL` still overrides that default. Production Alchemy
+wiring passes the public URL into Astro's build environment; local DDEV keeps
+its `/wp/graphql` env template. `pnpm deploy:frontend` redeploys by hand with
+the token in Sigillo `staging`.

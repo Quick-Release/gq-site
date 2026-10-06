@@ -11,6 +11,7 @@ import { z } from "zod";
 export const MANIFEST_FILENAME = "gq.ops.json";
 export const SCHEMA_VERSION = 1;
 export const VARIANTS = ["content", "commerce"];
+export const WORDPRESS_GRAPHQL_PATHS = ["/graphql", "/wp/graphql"];
 // An offboarded Site's phases (ADR 0011): its access cut (`gq offboard`,
 // reversible), then its content archived and its infrastructure deleted.
 export const OFFBOARDING_PHASES = ["cut", "archived"];
@@ -55,6 +56,14 @@ const POLYLANG_GRAPHQL_PLUGIN = "gq-polylang-graphql";
 // gq.ops.json `artifacts.jurisdiction`, or the default when it's left out.
 export function artifactsJurisdiction(ops) {
   return ops.artifacts?.jurisdiction ?? DEFAULT_ARTIFACTS_JURISDICTION;
+}
+
+// The public CMS endpoint. Local DDEV deliberately keeps its Bedrock path,
+// independent of a Site's production path and credentials.
+export function wordpressGraphqlUrl(ops, { localOrigin } = {}) {
+  const origin = localOrigin ?? `https://${ops.domains.admin}`;
+  const path = localOrigin ? "/wp/graphql" : (ops.wordpress?.graphqlPath ?? "/wp/graphql");
+  return `${origin.replace(/\/+$/u, "")}${path}`;
 }
 
 // The default language's slug: its locale's language code (pt for
@@ -136,6 +145,13 @@ export const manifestSchema = z
         plugins: z
           .array(pluginSlug)
           .describe("The plugins the CMS deploy script activates, in order."),
+        graphqlPath: z
+          .enum(WORDPRESS_GRAPHQL_PATHS)
+          .optional()
+          .describe(
+            "The production CMS GraphQL path for readiness and Frontend deploys: " +
+              "/graphql or /wp/graphql. Left out, /wp/graphql. Local DDEV stays on /wp/graphql.",
+          ),
         locale: locale
           .optional()
           .describe(

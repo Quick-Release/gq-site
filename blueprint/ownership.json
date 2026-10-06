@@ -383,6 +383,11 @@
       "app": "apps/frontend"
     },
     {
+      "path": "apps/frontend/src/lib/wordpress-access.test.ts",
+      "template": "templates/apps/frontend/src/lib/wordpress-access.test.ts",
+      "app": "apps/frontend"
+    },
+    {
       "path": "apps/frontend/src/lib/wordpress.test.ts",
       "template": "templates/apps/frontend/src/lib/wordpress.test.ts",
       "app": "apps/frontend"

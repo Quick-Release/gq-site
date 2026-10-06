@@ -104,6 +104,14 @@
           },
           "description": "The plugins the CMS deploy script activates, in order."
         },
+        "graphqlPath": {
+          "description": "The production CMS GraphQL path for readiness and Frontend deploys: /graphql or /wp/graphql. Left out, /wp/graphql. Local DDEV stays on /wp/graphql.",
+          "type": "string",
+          "enum": [
+            "/graphql",
+            "/wp/graphql"
+          ]
+        },
         "locale": {
           "description": "The site's main language, as a WordPress locale (pt_PT_ao90): the CMS deploy script installs and activates it, and the Frontend's <html lang> follows it. Left out, the deploy leaves the CMS's language as it is.",
           "type": "string",

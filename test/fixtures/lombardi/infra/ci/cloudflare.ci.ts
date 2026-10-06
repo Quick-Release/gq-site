@@ -20,7 +20,12 @@ const pnpmEnv = {
 const deployConfig = { retries: { limit: 0, delay: 1_000 }, timeout: 15 * 60 * 1000 };
 
 // Bound to the Frontend by its deploy (infra/frontend.run.ts) when present.
-const frontendSecrets = ["FRONTEND_REFRESH_TOKEN", "PUBLICATION_EVENT_SECRET"] as const;
+const frontendSecrets = [
+  "FRONTEND_REFRESH_TOKEN",
+  "PUBLICATION_EVENT_SECRET",
+  "GQ_AUTH_GRAPHQL_CLIENT_ID",
+  "GQ_AUTH_GRAPHQL_CLIENT_SECRET",
+] as const;
 
 // Cost: containers bill memory for every second they run, and each step
 // starts a container and restores the workspace snapshot. So the pipeline is

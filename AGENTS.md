@@ -6,6 +6,10 @@ This repository is the blueprint: the `gq` CLI, managed files, the manifest and 
 
 Before acting on a request, ask "whose release would ship this?". Read any repository for evidence, but change only this one: its code, proofs, research, issues and PRs. When a request belongs to another repository, change nothing anywhere. Reply with that repository (`Quick-Release/<name>` and its local clone) and tell the user to start a new session there, in a worktree of that repository. When the owner is unclear, point to Quick-Release/gq-platform the same way. This applies even when the change looks small, or when this session already has the other repository's context.
 
+## Reference Site
+
+Tests that need a live content Site use Cooldown Gaming (cooldowngaming.com), a playground where downtime is expected. See `docs/reference/reference-site.md`.
+
 ## Agent skills
 
 ### Issue tracker

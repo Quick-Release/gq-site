@@ -82,6 +82,54 @@ fails the deploy with its exit code (maintenance mode is still turned off).
 Extensions run only once WordPress is installed, and not on a Composer-only
 deploy. `deploy/ploi/admin.d` is the site's, created once with a README.
 
+### The CMS GraphQL endpoint
+
+Production defaults to `https://<domains.admin>/wp/graphql`. A Site whose CMS
+serves the canonical `/graphql` endpoint sets this public manifest value
+(alongside its existing plugins and locale):
+
+```json
+"wordpress": {
+  "plugins": ["wp-graphql"],
+  "graphqlPath": "/graphql"
+}
+```
+
+Only `/graphql` and `/wp/graphql` are accepted, with no whitespace, query,
+trailing slash or full URL. `gq site check` uses that exact production endpoint;
+there is no fallback or redirect following. This does not configure WordPress,
+origin-plugin routes, DNS or Access policies: they must already match.
+
+The generated deploy script and `infra/frontend.run.ts` derive
+`PUBLIC_WORDPRESS_GRAPHQL_URL` from `domains.admin` and `wordpress.graphqlPath`.
+An explicit process `PUBLIC_WORDPRESS_GRAPHQL_URL` still takes precedence:
+remove or align an old `/wp/graphql` override when adopting `/graphql`.
+On the pinned Alchemy / frontend-frameworks `2.0.0-beta.79`, a string in
+`Website.env` is passed into Astro's build child's `process.env`, overriding
+its local `.env`; the production public URL is declared there, with or without
+a publication store. This is not a secret binding. Direct production Alchemy
+plans/deploys use the same manifest default as the deploy script.
+
+Local development is separate: the Frontend's DDEV env template, local CMS
+readiness and the database post-import check keep `/wp/graphql`, regardless of
+this production setting. Production Access credentials are not sent to a
+different local origin. Do not copy production secrets into local `.env` files.
+
+**Existing Site adoption:** update to a Blueprint release containing this
+setting, edit `gq.ops.json`, inspect `gq sync --check`, then run `gq sync` to
+regenerate managed infra and its lock. Resolve managed-file conflicts through
+sync; do not hand-edit the Site's managed outputs. The Frontend source is
+Site-owned: separately adopt the server-only Access reads described in
+[CMS Access](cms-access.md), if needed. Review any explicit public URL override
+before the next authorized deploy and readiness gate.
+
+For Cooldown Gaming, the required manifest addition is
+`wordpress.graphqlPath: "/graphql"` on `cms.cooldowngaming.com`, matching its
+existing Access child and origin plugin. Its current manifest omits the key;
+without this adoption the default remains `/wp/graphql`. This guide does not
+perform adoption, deployment or live checks; leave DNS, origin and Access
+unchanged for the operator's live gate.
+
 ### The site's language
 
 `wordpress.locale` in `gq.ops.json` is the site's main language, as the

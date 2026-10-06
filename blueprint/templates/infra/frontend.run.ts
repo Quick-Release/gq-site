@@ -8,10 +8,16 @@ import { fileURLToPath } from "node:url";
 
 // Hostnames live in gq.ops.json (domains), shared with the Ploi and deploy scripts.
 const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), "utf8")) as {
-  domains: { frontend: string };
+  domains: { admin: string; frontend: string };
+  wordpress?: { graphqlPath?: "/graphql" | "/wp/graphql" };
   offboarded?: { phase: string };
 };
 const productionHostname = ops.domains.frontend;
+// Alchemy beta.79 passes string Website.env values to Astro's build child,
+// overriding the app's local .env. This is public configuration, not a secret.
+const graphqlUrl =
+  process.env.PUBLIC_WORDPRESS_GRAPHQL_URL ||
+  `https://${ops.domains.admin}${ops.wordpress?.graphqlPath ?? "/wp/graphql"}`;
 // An offboarded Site (gq offboard) keeps no public URL: no custom domain, no
 // workers.dev and no preview URLs. Its deploy scripts refuse to run anyway.
 const offboarded = Boolean(ops.offboarded);
@@ -30,6 +36,22 @@ const durableDelivery = existsSync(publicationMigrations);
 // keeps being served.
 const refreshToken = process.env.FRONTEND_REFRESH_TOKEN?.trim();
 const eventSecret = process.env.PUBLICATION_EVENT_SECRET?.trim();
+
+// Only the read-only edge identity belongs in the public Frontend's server.
+// Automation credentials must never be bound to this Worker.
+const graphqlClientId = process.env.GQ_AUTH_GRAPHQL_CLIENT_ID?.trim();
+const graphqlClientSecret = process.env.GQ_AUTH_GRAPHQL_CLIENT_SECRET?.trim();
+if (Boolean(graphqlClientId) !== Boolean(graphqlClientSecret)) {
+  throw new Error(
+    "GQ_AUTH_GRAPHQL_CLIENT_ID and GQ_AUTH_GRAPHQL_CLIENT_SECRET must be set together.",
+  );
+}
+const cmsSecrets: Record<string, Redacted.Redacted<string>> = graphqlClientId && graphqlClientSecret
+  ? {
+      GQ_AUTH_GRAPHQL_CLIENT_ID: Redacted.make(graphqlClientId),
+      GQ_AUTH_GRAPHQL_CLIENT_SECRET: Redacted.make(graphqlClientSecret),
+    }
+  : {};
 
 // The Site's last-known-good published content. One database per Site and
 // stage, separate from the Worker, so a redeploy or restart keeps it; Alchemy
@@ -55,6 +77,9 @@ export const Website = Cloudflare.Website.Astro(
     // longer one would make the site's formatter rewrap them, editing this file.
     const worker = "{{project}}-fe";
     const name = production ? worker : `${worker}-${stage}`;
+    const publicEnv: Record<string, string> = production
+      ? { PUBLIC_WORDPRESS_GRAPHQL_URL: graphqlUrl }
+      : {};
 
     return {
       name,
@@ -70,13 +95,17 @@ export const Website = Cloudflare.Website.Astro(
           ? { enabled: false, previewsEnabled: true }
           : true,
       sessionKVBindingName: false,
-      env: durableDelivery
-        ? {
-            PUBLICATION_DB: yield* Publications,
-            ...(refreshToken ? { FRONTEND_REFRESH_TOKEN: Redacted.make(refreshToken) } : {}),
-            ...(eventSecret ? { PUBLICATION_EVENT_SECRET: Redacted.make(eventSecret) } : {}),
-          }
-        : {},
+      env: {
+        ...publicEnv,
+        ...(durableDelivery
+          ? {
+              ...cmsSecrets,
+              PUBLICATION_DB: yield* Publications,
+              ...(refreshToken ? { FRONTEND_REFRESH_TOKEN: Redacted.make(refreshToken) } : {}),
+              ...(eventSecret ? { PUBLICATION_EVENT_SECRET: Redacted.make(eventSecret) } : {}),
+            }
+          : cmsSecrets),
+      },
     };
   }),
 );

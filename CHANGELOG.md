@@ -3,6 +3,59 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+## 0.17.7 — 2026-10-06
+
+### Fixed
+
+- **Explicit canonical CMS GraphQL paths.** Set `wordpress.graphqlPath` to
+  `/graphql` for a matching Access application and origin gate, or retain the
+  existing `/wp/graphql` default. Production readiness and generated Frontend
+  build configuration use the setting; local DDEV and post-import checks keep
+  their local endpoint without receiving production Access credentials.
+- **Generated Frontend deployment types** now accept absent optional Access
+  bindings under the installed Alchemy API without inferred `undefined` values.
+  String public URL bindings are supplied to Astro's build environment; no
+  credentials become public variables.
+  - **Existing sites:** bump the package pin, set the production path if needed,
+    then run `gq sync`. Remove or align stale public URL overrides. No gate,
+    Access policy, DNS or origin changes are performed by synchronization.
+
+## 0.17.6 — 2026-10-06
+
+### Added
+
+- **Optional, scoped Cloudflare Access credentials for CMS callers.**
+  GraphQL publication/readiness requests use the dedicated GraphQL identity;
+  media REST probes use a separate automation identity alongside the existing
+  WordPress application password. Partial pairs, unexpected origins/paths and
+  credentialed redirects fail closed without exposing credentials.
+  - **Existing sites:** update the package pin and run `gq sync` for managed
+    deployment wiring, then deliberately adopt the site-owned Frontend
+    `runtime.ts` / `wordpress.ts` transport changes. Bind only the GraphQL pair
+    on the server. This release does not install GQ Auth, change Access policies
+    or enable a CMS gate; see [CMS Access](docs/guides/cms-access.md).
+
+- **The generated `AGENTS.md` section starts with a Scope rule** for every
+  harness that reads `AGENTS.md` (Claude Code through `CLAUDE.md`, Codex, pi).
+  An agent in a Site changes only that Site. A request owned by another
+  repository (the blueprint, a GETQUICK plugin or package, or gq-platform)
+  gets that repository named and a new session there suggested, with nothing
+  changed.
+  - **Existing sites:** `gq sync` rewrites the section; commit the result.
+- **`gq scope route` and `gq scope fence` keep an agent session in its own
+  repository**, as Claude Code hooks (`--hook`) or by hand.
+  - `route` tells the agent which other repositories a request names, who
+    owns each and where its clone is.
+  - `fence` denies edits, git and gh writes, and file commands aimed outside
+    the repository; another checkout of the same repository counts as
+    inside.
+  - `GQ_SCOPE=off` turns both off for deliberate orchestration.
+  - This repository's `.claude/settings.json` runs both; the
+    [agent scope guide](docs/guides/agent-scope.md) shows the user-level
+    wiring that covers every repository on a machine.
+
 ## 0.17.5 — 2026-10-04
 
 ### Changed
