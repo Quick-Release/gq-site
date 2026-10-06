@@ -1,12 +1,9 @@
 // The Cloudflare provisioning commands (`gq cloudflare deploy-token`,
 // `releases`, `media` and `ci`) at the run() seam: a fixture site with
-// Lombardi-shaped `cloudflare`, `releases`, `media`, `artifacts` and `ci`
+// content-site `cloudflare`, `releases`, `media`, `artifacts` and `ci`
 // blocks, an in-memory Cloudflare account behind a recording fetch, and an
 // in-memory Sigillo behind a recording exec. Nothing here reaches the network
 // or a real secret store.
-//
-// The policy and naming cases replace Lombardi's
-// cloudflare-deploy-token.test.mjs and cloudflare-media.test.mjs.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
@@ -214,12 +211,12 @@ function fakeSigillo(stored = {}) {
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const bearer = (request) => request.headers.Authorization;
 
-// --- naming and policies (Lombardi's cloudflare-deploy-token.test.mjs) ------
+// --- naming and policies ----------------------------------------------------
 
 test("names every token after the project", () => {
-  assert.equal(tokenName("lombardi", "Staging Alchemy"), "GETQUICK LOMBARDI Staging Alchemy");
-  assert.equal(tokenName("lombardi", "Media R2"), "GETQUICK LOMBARDI Media R2");
-  assert.equal(tokenName("lombardi", "Releases R2"), "GETQUICK LOMBARDI Releases R2");
+  assert.equal(tokenName("larkspur", "Staging Alchemy"), "GETQUICK LARKSPUR Staging Alchemy");
+  assert.equal(tokenName("larkspur", "Media R2"), "GETQUICK LARKSPUR Media R2");
+  assert.equal(tokenName("larkspur", "Releases R2"), "GETQUICK LARKSPUR Releases R2");
 });
 
 test("scopes the deploy token's zone permissions to the configured zone only", () => {
@@ -248,9 +245,9 @@ test("scopes a bucket token to object access on one bucket", () => {
     { id: "r", name: "Workers R2 Storage Bucket Item Read" },
     { id: "w", name: "Workers R2 Storage Bucket Item Write" },
   ];
-  const [policy] = bucketPolicies({ accountId: "acct", bucket: "lombardi-releases" }, groups);
+  const [policy] = bucketPolicies({ accountId: "acct", bucket: "larkspur-releases" }, groups);
   assert.deepEqual(policy.resources, {
-    "com.cloudflare.edge.r2.bucket.acct_default_lombardi-releases": "*",
+    "com.cloudflare.edge.r2.bucket.acct_default_larkspur-releases": "*",
   });
   assert.deepEqual(policy.permission_groups, [{ id: "r" }, { id: "w" }]);
 });

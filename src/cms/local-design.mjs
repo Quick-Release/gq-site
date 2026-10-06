@@ -1,4 +1,4 @@
-// The local Design source override (Lombardi's scripts/lib/cms-local-design.mjs):
+// The local Design source override:
 // a developer opts in with an ignored apps/cms/.local-plugins/config.json
 // naming a Design checkout (gq-design or legacy getquick-design), symlinked over the
 // registry copy and bind-mounted into DDEV. Composer only ever sees the

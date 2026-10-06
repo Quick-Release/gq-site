@@ -3,8 +3,7 @@ import { runMedia } from "./media.mjs";
 import { runProvision } from "./provision.mjs";
 import { runRelease } from "./release.mjs";
 
-// The Ploi workflows (Lombardi's ploi-provision, ploi-release and
-// `cloudflare-media --ploi-env`), beside gq-ops' read-only `gq ploi` commands.
+// The Ploi workflows (provision, release, media and events), beside gq-ops' read-only `gq ploi` commands.
 // Command → [usage, the options it accepts, runner].
 const PLOI_WORKFLOWS = new Map([
   ["ploi provision", ["gq ploi provision [--dry-run | --yes]", ["dryRun", "yes"], runProvision]],

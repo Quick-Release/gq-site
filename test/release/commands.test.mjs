@@ -1,5 +1,5 @@
 // Release and version commands (formerly shop-devtools) at the run() seam: a
-// content site shaped like Lombardi — the default JSON files, plus a theme
+// content site — the default JSON files, plus a theme
 // stylesheet header and a PHP define as text-file patterns in gq.ops.json —
 // driven in-process with a recording exec.
 import assert from "node:assert/strict";

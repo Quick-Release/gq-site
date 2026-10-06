@@ -1,6 +1,6 @@
 // Provisions the private R2 bucket that holds admin release archives and the
-// S3 credentials `gq ploi release` uses (Lombardi's cloudflare-releases.mjs),
-// with the account's token-manager token:
+// S3 credentials `gq ploi release` uses, with the account's token-manager
+// token:
 //
 //   1. create the gq.ops.json releases.bucket (with a 1-hour token that can
 //      only manage buckets, deleted right after)

@@ -92,7 +92,7 @@ export async function postCommitStatus(
     headers: {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${token}`,
-      "User-Agent": "lombardi-ci",
+      "User-Agent": "larkspur-ci",
       "X-GitHub-Api-Version": "2022-11-28",
     },
     body: JSON.stringify({ state, context: statusContext, description: description.slice(0, 140) }),

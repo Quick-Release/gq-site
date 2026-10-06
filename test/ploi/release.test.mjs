@@ -1,5 +1,4 @@
-// Lombardi's scripts/ploi-release.test.mjs and cloudflare-media.test.mjs,
-// moved with their modules. The site-side contract (admin.sh SHIPPED_PATHS
+// Unit tests of the Ploi release and media modules. The site-side contract (admin.sh SHIPPED_PATHS
 // matching shippedPaths) stays a site test, against this package's export.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -51,7 +50,7 @@ test("derives R2 S3 credentials from a Cloudflare API token", async () => {
 
 test("sets only the S3 Uploads lines of a Ploi .env", () => {
   const values = mediaEnv(
-    { accountId: "acc", bucket: "lombardi-media", domain: "media.example.test" },
+    { accountId: "acc", bucket: "larkspur-media", domain: "media.example.test" },
     { key: "key-id", secret: "secret" },
   );
   assert.equal(values.S3_UPLOADS_ENDPOINT, "https://acc.r2.cloudflarestorage.com");
@@ -62,6 +61,6 @@ test("sets only the S3 Uploads lines of a Ploi .env", () => {
   assert.deepEqual(changed, Object.keys(values));
   assert.match(output, /^DB_PASSWORD='keep'$/mu);
   assert.match(output, /^AUTH_KEY='keep-too'$/mu);
-  assert.match(output, /^S3_UPLOADS_BUCKET='lombardi-media'$/mu);
+  assert.match(output, /^S3_UPLOADS_BUCKET='larkspur-media'$/mu);
   assert.deepEqual(applyEnv(output, values).changed, []);
 });

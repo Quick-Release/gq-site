@@ -1,7 +1,6 @@
 // The blueprint's release, verify and doctor defaults for a site's variant,
 // plus the additions its gq.ops.json declares, as release push, verify and
-// doctor see them through run(). The content defaults are Lombardi's
-// shop-devtools.config.mjs at @getquick/site 0.8.0.
+// doctor see them through run().
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";

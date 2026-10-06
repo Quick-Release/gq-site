@@ -10,7 +10,7 @@ import { createFixtureSite } from "../support/fixture-site.mjs";
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
 // The root scripts that wrap gq or run the generated deploy files (the
-// release step and the checks gq verify runs), as Lombardi has them.
+// release step and the checks gq verify runs).
 const GQ_SCRIPTS = {
   setup: "gq setup",
   doctor: "gq doctor",

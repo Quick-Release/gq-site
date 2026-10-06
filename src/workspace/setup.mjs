@@ -1,4 +1,4 @@
-// gq setup (Lombardi's scripts/setup.mjs): bootstraps a clone of a GETQUICK
+// gq setup: bootstraps a clone of a GETQUICK
 // site. Installs the workspace, creates each app's ignored .env from its
 // .env.example, then starts DDEV and installs Composer through the site's own
 // `cms:dev:raw` and `cms:composer` scripts (the latter under its Sigillo

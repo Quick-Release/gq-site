@@ -18,7 +18,7 @@ import { chooseRunner, installHint } from "../../src/cms/composer.mjs";
 import { installProblem } from "../../src/cms/local.mjs";
 import { syncLocalDesign } from "../../src/cms/local-design.mjs";
 
-// Lombardi's cms-composer.test.mjs.
+// Choosing the Composer runner.
 test("prefers a running DDEV project, whose PHP matches the server", () => {
   assert.equal(chooseRunner({ ddevRunning: true, hasComposer: true, hasDdev: true }), "ddev");
 });
@@ -50,7 +50,7 @@ test("installs only with the registry login and the host Composer", () => {
   );
 });
 
-// Lombardi's cms-local-design.test.mjs CLI cases: the real gq bin and a fake
+// The local Design CLI cases: the real gq bin and a fake
 // host Composer that fails mid-change.
 const gq = fileURLToPath(new URL("../../bin/gq.mjs", import.meta.url));
 

@@ -1,5 +1,4 @@
-// .env editing shared by commands that patch a site's environment file
-// (Lombardi's scripts/lib/cms-env.mjs).
+// .env editing shared by commands that patch a site's environment file.
 
 export function parseDotenv(source) {
   const env = {};

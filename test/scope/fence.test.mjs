@@ -72,7 +72,7 @@ test("reading other repositories with git or the shell passes", () => {
 test("git writes in another repository are denied, by -C or by cd", () => {
   for (const command of [
     "git -C /data/code/getquick/clients/ekis commit -am x",
-    "git -C /data/code/getquick/clients/lombardi worktree add -b claude/x /data/agents/workspaces/claude/lombardi/x",
+    "git -C /data/code/getquick/clients/ekis worktree add -b claude/x /data/agents/workspaces/claude/ekis/x",
     "cd /data/agents/workspaces/claude/gq-ecommerce/task && git add -A && git commit -m x",
     "cd /data/code/getquick/gq-platform; git push",
     "git -C /data/code/getquick/clients/ekis branch -D old",

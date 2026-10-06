@@ -1,4 +1,4 @@
-// gq verify (Lombardi's scripts/verify.mjs): runs the site's checks (its
+// gq verify: runs the site's checks (its
 // variant's defaults, then gq.ops.json `verify.checks`: the list
 // `gq release push` runs before a release) in order, stopping at the first
 // failure. One list for the pre-push hook, releases and

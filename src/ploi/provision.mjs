@@ -1,5 +1,4 @@
-// Provisions a site's admin on Ploi from gq.ops.json, idempotently (Lombardi's
-// scripts/ploi-provision.mjs): system user → site → custom deployments (no
+// Provisions a site's admin on Ploi from gq.ops.json, idempotently: system user → site → custom deployments (no
 // git) → database + .env → deploy script → SSL. Every resource is looked up
 // first and only created when missing; nothing that already exists is
 // recreated or overwritten. Deploys are `gq ploi release` (release archive on

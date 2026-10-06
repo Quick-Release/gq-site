@@ -1,5 +1,5 @@
 // Git access to the site's Cloudflare Artifacts repository (gq.ops.json
-// `artifacts`), Lombardi's git-artifacts.mjs. A site on GitHub (gq.ops.json
+// `artifacts`). A site on GitHub (gq.ops.json
 // `github.repository`) pushes to GitHub only: the CI Worker mirrors GitHub
 // pushes into Artifacts, and that starts CI. Artifacts stays readable from a
 // clone, e.g. to check what CI sees:

@@ -1,7 +1,7 @@
 // gq new and gq sync on a site's deploy wiring, driven through run(): the
 // Cloudflare CI Worker, the Frontend deploy config and script, and the CI
-// release step, fully generated from gq.ops.json. Lombardi's manifest renders
-// Lombardi's own files (test/fixtures/lombardi, as of Lombardi b2061a9).
+// release step, fully generated from gq.ops.json. The content site's manifest
+// renders the content site's own files (test/fixtures/content-site).
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
@@ -30,11 +30,11 @@ const DEPLOY_PATHS = [
   "scripts/ci.test.mjs",
 ];
 
-const LOMBARDI = JSON.parse(
-  await readFile(new URL("../fixtures/manifests/lombardi.v1.json", import.meta.url), "utf8"),
+const CONTENT_SITE = JSON.parse(
+  await readFile(new URL("../fixtures/manifests/content-site.v1.json", import.meta.url), "utf8"),
 );
 
-// A site whose every value differs from Lombardi's.
+// A site whose every value differs from the content site's.
 const ACME = {
   schemaVersion: 1,
   project: "acme-shop",
@@ -46,8 +46,8 @@ const ACME = {
   github: { repository: "Example/acme-site" },
 };
 
-function lombardiFile(path) {
-  return readFile(new URL(`../fixtures/lombardi/${path}`, import.meta.url), "utf8");
+function contentSiteFile(path) {
+  return readFile(new URL(`../fixtures/content-site/${path}`, import.meta.url), "utf8");
 }
 
 async function writeManifest(root, manifest) {
@@ -60,15 +60,15 @@ async function fillManifest(root) {
   await writeManifest(root, { ...current, ...ACME, project: current.project });
 }
 
-test("Lombardi's manifest renders Lombardi's CI Worker, Frontend deploy and release step", async () => {
-  const fixture = await createFixtureSite({ ops: LOMBARDI });
+test("the content site's manifest renders its CI Worker, Frontend deploy and release step", async () => {
+  const fixture = await createFixtureSite({ ops: CONTENT_SITE });
 
   const result = await fixture.run(["sync"]);
 
   assert.equal(result.code, 0, result.stderr);
   const lock = JSON.parse(await readSite(fixture.root, "gq.lock.json"));
   for (const path of DEPLOY_PATHS) {
-    const expected = await lombardiFile(path);
+    const expected = await contentSiteFile(path);
     assert.equal(await readSite(fixture.root, path), expected, path);
     assert.equal(lock.files[path], hash(expected), path);
   }
@@ -112,10 +112,10 @@ test("every site value in the deploy files comes from gq.ops.json", async () => 
     /"User-Agent": "acme-shop-ci",/u,
   );
 
-  // Nothing of Lombardi's is left in any deploy file.
+  // Nothing of the content site's is left in any deploy file.
   for (const path of DEPLOY_PATHS) {
     const content = await readSite(fixture.root, path);
-    for (const pattern of [/lombardi/iu, /8f38791a8c37b182239af2a385ab3c31/u, /bnq\.pt/u]) {
+    for (const pattern of [/larkspur/iu, /8f38791a8c37b182239af2a385ab3c31/u, /bnq\.pt/u]) {
       assert.doesNotMatch(content, pattern, path);
     }
   }
@@ -196,7 +196,7 @@ test("no secret reaches a generated file, and generation calls no provider", asy
     GQ_AUTH_AUTOMATION_CLIENT_ID: "secret-automation-client-id",
     GQ_AUTH_AUTOMATION_CLIENT_SECRET: "secret-automation-client-secret",
   };
-  const fixture = await createFixtureSite({ ops: LOMBARDI });
+  const fixture = await createFixtureSite({ ops: CONTENT_SITE });
 
   const result = await fixture.run(["sync"], { env: secrets });
 

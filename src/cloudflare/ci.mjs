@@ -1,5 +1,5 @@
-// Provisions what the site's Cloudflare CI Worker needs (Lombardi's
-// cloudflare-ci.mjs), with the account's token-manager token. Idempotent;
+// Provisions what the site's Cloudflare CI Worker needs, with the account's
+// token-manager token. Idempotent;
 // secrets go to Sigillo `staging`, never printed:
 //
 //   • "GETQUICK <PROJECT> Artifacts" token (Artifacts read/write)

@@ -1,6 +1,5 @@
 // Points the Ploi site's .env at the media bucket on R2 (Human Made S3
-// Uploads), from gq.ops.json `media` (Lombardi's `cloudflare-media.mjs
-// --ploi-env`): sets the S3_UPLOADS_* lines and leaves every other line as it
+// Uploads), from gq.ops.json `media`: sets the S3_UPLOADS_* lines and leaves every other line as it
 // is. The bucket's credentials (S3_UPLOADS_KEY / S3_UPLOADS_SECRET) come from
 // the secret store. Idempotent.
 //

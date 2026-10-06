@@ -1,4 +1,4 @@
-// gq doctor (Lombardi's scripts/doctor.mjs): a GETQUICK site's workspace
+// gq doctor: a GETQUICK site's workspace
 // health check. The checks are shared; the site supplies their inputs: the
 // Node minimum (package.json `engines.node`), the toolchain pins
 // (`packageManager`, .mise.toml or .nvmrc), the files each app must have

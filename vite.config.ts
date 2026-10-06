@@ -4,7 +4,7 @@ import { defineConfig } from "vite-plus";
 const ignorePatterns = [
   ".agents/**",
   "blueprint/templates/**",
-  "test/fixtures/lombardi/**",
+  "test/fixtures/content-site/**",
   "node_modules/**",
   "coverage/**",
 ];

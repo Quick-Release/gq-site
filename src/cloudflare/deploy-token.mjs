@@ -1,5 +1,5 @@
-// Provisions the scoped Cloudflare token the frontend deploys with (Lombardi's
-// cloudflare-deploy-token.mjs), using the account's token-manager token:
+// Provisions the scoped Cloudflare token the frontend deploys with, using the
+// account's token-manager token:
 //
 //   1. find or create "GETQUICK <PROJECT> Staging Alchemy" (account Workers
 //      permissions, D1 for the Frontend's publication store, + Zone Read /

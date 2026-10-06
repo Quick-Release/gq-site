@@ -1,6 +1,5 @@
-// The local CMS of a GETQUICK site: the Bedrock app in apps/cms, run by DDEV
-// (Lombardi's scripts/lib/ddev.mjs, scripts/lib/cms-env.mjs and the install
-// half of scripts/cms-composer.mjs). Every child process goes through run()'s
+// The local CMS of a GETQUICK site: the Bedrock app in apps/cms, run by DDEV.
+// Every child process goes through run()'s
 // `exec`, with run()'s `env`.
 
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";

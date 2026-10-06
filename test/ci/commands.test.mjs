@@ -1,10 +1,8 @@
 // The site's Cloudflare CI commands (`gq ci deploy|runs`, `gq github setup`,
-// `gq git artifacts …`) at the run() seam: a fixture site with Lombardi-shaped
+// `gq git artifacts …`) at the run() seam: a fixture content site's
 // `cloudflare`, `ci`, `artifacts` and `github` blocks, a recording exec
 // standing in for Wrangler, gh, git and Sigillo, and a recording fetch for
 // Cloudflare and GitHub. Nothing here reaches the network.
-//
-// The payload and webhook cases replace Lombardi's ci.test.mjs ones.
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import test from "node:test";
@@ -58,7 +56,7 @@ const ARTIFACTS_ONLY_STORE = Object.freeze(
 );
 const DEPLOY_ENV = Object.freeze({ ...STORE, CI_DEPLOY_API_TOKEN: "ci-deploy", PATH: "/usr/bin" });
 
-// --- the Worker's secrets (Lombardi's ci.test.mjs) ---------------------------
+// --- the Worker's secrets ----------------------------------------------------
 
 test("maps secret-store secrets to the CI Worker's names", () => {
   const payload = JSON.parse(secretsPayload(STORE));
@@ -211,8 +209,8 @@ test("ci runs lists the configured Worker's CI Workflow runs", async () => {
 // --- gq github setup ---------------------------------------------------------
 
 test("the GitHub webhook targets the CI Worker and only sends pushes", () => {
-  const url = webhookUrl("lombardi-ci", "tipme");
-  assert.equal(url, "https://lombardi-ci.tipme.workers.dev/github/webhook");
+  const url = webhookUrl("larkspur-ci", "tipme");
+  assert.equal(url, "https://larkspur-ci.tipme.workers.dev/github/webhook");
   assert.deepEqual(webhookConfig(url, "s"), {
     active: true,
     events: ["push"],

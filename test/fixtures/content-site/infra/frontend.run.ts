@@ -61,21 +61,21 @@ const Publications = Effect.gen(function* () {
   const { stage } = yield* Stack;
   const production = stage === "prod";
   // The project's name stays in a constant, as in Website below.
-  const database = "lombardi-fe-publications";
-  return yield* Cloudflare.D1.Database("LombardiPublications", {
+  const database = "larkspur-fe-publications";
+  return yield* Cloudflare.D1.Database("LarkspurPublications", {
     name: production ? database : `${database}-${stage}`,
     migrations: publicationMigrations,
   }).pipe(Alchemy.RemovalPolicy.retain(production));
 });
 
 export const Website = Cloudflare.Website.Astro(
-  "LombardiFrontend",
+  "LarkspurFrontend",
   Effect.gen(function* () {
     const { stage } = yield* Stack;
     const production = stage === "prod";
     // The project's name stays in constants: in the lines below, a shorter or
     // longer one would make the site's formatter rewrap them, editing this file.
-    const worker = "lombardi-fe";
+    const worker = "larkspur-fe";
     const name = production ? worker : `${worker}-${stage}`;
     const publicEnv: Record<string, string> = production
       ? { PUBLIC_WORDPRESS_GRAPHQL_URL: graphqlUrl }
@@ -111,7 +111,7 @@ export const Website = Cloudflare.Website.Astro(
 );
 
 export default Alchemy.Stack(
-  "LombardiFrontend",
+  "LarkspurFrontend",
   {
     providers: Cloudflare.providers(),
     state: Cloudflare.state(),
