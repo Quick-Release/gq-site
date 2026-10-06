@@ -17,16 +17,16 @@ The `v0` and `v1` suffixes identify manifest schema versions, not package
 versions. The content site (`larkspur`) is fictional; the package tests need no
 network, credentials or provider accounts.
 
-The optional CMS Access integration explicitly updates the Lombardi
+The optional CMS Access integration updates the content site's
 `infra/frontend.run.ts`, `infra/ci/cloudflare.ci.ts` and `infra/ci/env.ts`
 baselines alongside their sources: only the GraphQL service pair is forwarded
 by CI and bound privately to the Frontend. Automation credentials are excluded.
 These are reviewed behavioral additions, not regenerated snapshots.
 
-The production GraphQL-path follow-up explicitly updates the Lombardi
+The production GraphQL path updates the content site's
 `infra/frontend.run.ts` and `infra/scripts/deploy-frontend.mjs` baselines:
-`wordpress.graphqlPath` selects `/graphql` or the unchanged `/wp/graphql`
-default, and a public production URL binding reaches Astro's build child on
+`wordpress.graphqlPath` selects `/graphql` or the default
+`/wp/graphql`, and a public production URL binding reaches Astro's build child on
 Alchemy beta.79. No secret binding changes. `sync/graphql-path.test.mjs`
 independently exercises both paths, explicit overrides and local isolation.
 
