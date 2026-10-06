@@ -11,7 +11,7 @@ bilingual: Portuguese by default at `/`, English under `/en/`, with Polylang
 for GraphQL. `gq.ops.json` declares the languages beside the default
 (`wordpress.languages`), and a Site without them is monolingual.
 
-ADRs 0003 to 0010 assume one language:
+On their own, ADRs 0003 to 0010 describe one language:
 
 - [ADR 0003](0003-serve-published-content-from-a-durable-store.md) and
   [ADR 0004](0004-serve-entries-from-the-store-with-a-cold-lookup.md) store one
@@ -136,8 +136,9 @@ description }` and menu, and the entries' `language` and
   shared settings event.
 - Every string translation of a language (not only the title and tagline)
   sends that language's `identity` event: one extra read of its home.
-- Polylang before 3.4 kept string translations in `polylang_mo` posts, which
-  aren't watched. GQ Polylang for WPGraphQL requires Polylang 3.7.
+- Polylang versions before 3.4 keep string translations in `polylang_mo`
+  posts, which aren't watched. GQ Polylang for WPGraphQL requires Polylang
+  3.7.
 - This amends ADRs 0003, 0004, 0005, 0007, 0009 and 0010 wherever they say
   "the" front page, chrome, title or homepage: on a multilingual Site, each
   language has its own.

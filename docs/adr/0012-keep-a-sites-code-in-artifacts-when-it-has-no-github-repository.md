@@ -6,28 +6,28 @@
 ## Context
 
 A Site's CI runs on Cloudflare: pushes to its Artifacts repository start the
-CI Workflow (`cf.artifacts.repo.pushed`). Until now every Site's code lived on
-GitHub too. Clones pushed to GitHub only, and the CI Worker's webhook and
-Mirror Workflow copied each push into Artifacts. CI then reported a commit
-status back to GitHub. `gq ci deploy` refused without `GITHUB_CI_TOKEN` and
-`GITHUB_WEBHOOK_SECRET`, and `gq git artifacts` handed out read-only tokens,
-so a Site could not run without a GitHub repository.
+CI Workflow (`cf.artifacts.repo.pushed`). A Site on GitHub pushes to GitHub
+only: the CI Worker's webhook and Mirror Workflow copy each push into
+Artifacts, and CI reports a commit status back to GitHub. On that path
+`gq ci deploy` needs `GITHUB_CI_TOKEN` and `GITHUB_WEBHOOK_SECRET`, and
+`gq git artifacts` hands out read-only tokens, so it gives a Site no way to
+run without a GitHub repository.
 
 Some Sites don't need GitHub: no pull requests, no issues, one operator. For
 those, a GitHub repository is only one more account, token and webhook to
-provision, and later to offboard. CESAM is the first.
+provision, and later to offboard. CESAM is one.
 
 ## Decision
 
 - **`github.repository` decides.** A Site whose `gq.ops.json` names
-  `github.repository` is on GitHub and works as before. A Site without it is
+  `github.repository` is on GitHub and works as the Context describes. A Site without it is
   **Artifacts-only**: its code lives in its Artifacts repository, and that is
   its `origin`.
 - **Pushes go straight to Artifacts.** `gq git artifacts setup` makes the
   Artifacts repository `origin` when there is none. It leaves another origin
   alone and exits 1, saying so, because pushes there would start no CI. As
   the credential helper, `gq git artifacts get` mints an Artifacts-only Site
-  one-hour **write** tokens (read-only ones for a Site on GitHub, as before).
+  one-hour **write** tokens (read-only ones for a Site on GitHub).
 - **The CI Worker works without GitHub.** `gq sync` renders an empty
   `GITHUB_REPOSITORY` rather than a placeholder. The Worker then answers the
   GitHub webhook with a 404 and skips commit statuses. `gq ci deploy` needs

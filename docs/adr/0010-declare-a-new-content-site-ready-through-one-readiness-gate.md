@@ -26,21 +26,19 @@ weaker. Several weaker signals were within reach and each is wrong:
 - **DDEV or the CMS running.** A started CMS can be uninstalled, have
   WPGraphQL inactive, or lack the fields the GETQUICK plugins and theme add.
   `gq cms status` only reports DDEV's startup.
-- **A matching title.** The phase 2 smoke gate compared the CMS's title with
-  the Frontend's. Since ADR 0003 the Frontend can serve last-known-good
-  content whatever the CMS says, so a match no longer proves the parts are
-  wired, and a mismatch isn't a fault.
+- **A matching title.** The Frontend serves last-known-good content whatever
+  the CMS says (ADR 0003), so the CMS's title matching the Frontend's doesn't
+  prove the parts are wired, and a mismatch isn't a fault.
 - **Configuration present.** A key in Sigillo isn't a key bound to the
   Worker; a crontab line isn't a cron that runs; a media bucket isn't an
   upload path (`gq media check` already separates "configured" from "ready").
 
-Two provisioning gaps also blocked the flow:
+The flow also depends on two things provisioning must supply:
 
-- The Frontend's deploy token ("Staging Alchemy") had no D1 permission, so a
-  deploy couldn't create the publication store or apply its migrations.
-- `FRONTEND_REFRESH_TOKEN` and `PUBLICATION_EVENT_SECRET` had to be made by
-  hand (`openssl rand`), and `gq new`'s sequence ran `ci:deploy` before them,
-  so CI releases deployed the Frontend without them.
+- The Frontend's deploy token ("Staging Alchemy") needs D1 permission, or a
+  deploy can't create the publication store or apply its migrations.
+- `FRONTEND_REFRESH_TOKEN` and `PUBLICATION_EVENT_SECRET` must be in Sigillo
+  before `ci:deploy`, or CI releases deploy the Frontend without them.
 
 ## Decision
 
@@ -58,7 +56,7 @@ Two provisioning gaps also blocked the flow:
     getquick-theme. A package test keeps the query in step with the
     skeleton's queries.
   - **Frontend:** the signed `check` event (ADR 0005) proves the event key and
-    the store are bound. Its answer now also reports the store: the front
+    the store are bound. Its answer also reports the store: the front
     page's, the chrome's and the design presets' states, entries by state,
     withdrawals in force and failed events; states and counts only, never
     content. The front page and the chrome must be stored in a servable
@@ -82,7 +80,7 @@ Two provisioning gaps also blocked the flow:
   checks against this machine's DDEV CMS (after DDEV is running and
   `apps/cms/.env` names it) and the local media check. It says nothing about
   production.
-- **Provisioning closes its gaps.** The deploy token gains `D1 Read` and
+- **Provisioning supplies both.** The deploy token has `D1 Read` and
   `D1 Write`; `gq cloudflare deploy-token` adds missing permissions to an
   existing token in place, keeping its value. `gq frontend secrets` generates
   the two Frontend secrets into Sigillo staging when missing or too short.
@@ -91,7 +89,7 @@ Two provisioning gaps also blocked the flow:
   `frontend:refresh`, `media:check:upload` and `site:check`.
 - **Two acceptance gates.** The deterministic one runs without accounts or
   secrets: the package's tests, the generated Frontend's tests and checks,
-  the workerd runtime proof, and the real-WordPress proof, which now also
+  the workerd runtime proof, and the real-WordPress proof, which also
   walks the readiness transitions with the public WPGraphQL plugin
   (`scripts/smoke/acceptance.sh`). CI runs the generated Frontend's checks and
   the workerd runtime proof on every push. The live one is the gq-smoke
@@ -126,10 +124,10 @@ Two provisioning gaps also blocked the flow:
   Sigillo, since the media upload is part of the gate.
 - The first `site:check` after a release can fail for a minute: the first
   reconciliation comes with the cron's next run.
-- A Frontend from before this slice answers the check without `store` and is
-  reported as not ready ("predates gq site check"). Existing Sites aren't
-  migrated; they adopt by copying `src/lib/events.ts` and
-  `src/lib/publications.ts`.
+- A Frontend whose check answer has no `store` is reported as not ready
+  ("predates gq site check"). The Frontend is site-owned, so `gq sync`
+  doesn't update it; a Site adopts the gate by copying `src/lib/events.ts`
+  and `src/lib/publications.ts` from a new Site's skeleton.
 - The ten-minute freshness window is the same as ADR 0009's Site Health
   warning, wider than the five-minute target: the gate is about the
   mechanism running, not a timing measurement.

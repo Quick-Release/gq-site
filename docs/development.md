@@ -5,7 +5,7 @@
 ## Development
 
 Use Node 24.21.0 (the CI version) and the pnpm version pinned in `package.json`.
-The published CLI still supports Node 22.12.0+; Vite+ 1.0's development tooling
+The published CLI supports Node 22.12.0+; Vite+ 1.0's development tooling
 requires Node `^22.18.0 || ^24.11.0 || >=26.0.0`.
 
 ```sh
@@ -16,11 +16,11 @@ pnpm exec vp run lint    # lint with Vite+ (Oxlint)
 pnpm schema             # regenerate schema/gq.ops.schema.json after changing src/manifest/schema.mjs
 ```
 
-The existing `pnpm check`, `pnpm format`, `pnpm format:check`, `pnpm lint`
-and `pnpm test` scripts remain available. Formatting and linting are configured
-in `vite.config.ts`; generated schema, upstream skills, and extracted blueprint
-and Lombardi fixtures are excluded from formatting. The extracted templates keep
-their own toolchain pins. See [the migration research](https://github.com/Quick-Release/gq-site/blob/main/docs/research/vite-plus-tooling-migration.md).
+The `pnpm check`, `pnpm format`, `pnpm format:check`, `pnpm lint` and
+`pnpm test` scripts run the same tools. Formatting and linting are configured
+in `vite.config.ts`; generated schema, upstream skills, the blueprint's
+templates and the content-site fixture (`test/fixtures/content-site/`) are
+excluded from formatting. The templates keep their own toolchain pins.
 
 `vp check` runs static checks only; `vp run check` also runs the tests.
 `vp run test` uses the existing `node:test` suite, not `vp test` (Vitest).
@@ -31,7 +31,7 @@ For this package's CLI source in `src/`:
 
 - Use lowercase kebab-case filenames.
 - Use `commands.mjs` for a module's command entry file.
-- Use `legacy-*` for compatibility-only modules, such as
+- Use a `legacy-*` filename for a module that only reads an older shape, such as
   `manifest/legacy-release-config.mjs`; current manifest settings stay in
   `manifest/site-settings.mjs`.
 - Add a qualifier only when it disambiguates the role: `dotenv-text.mjs` parses

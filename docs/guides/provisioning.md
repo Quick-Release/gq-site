@@ -64,8 +64,8 @@ disk. It says nothing about production.
 
 The checks read only, except the media upload probe, which deletes what it
 uploads. None of them resets a CMS, runs a production migration extension
-locally, or touches site-owned files; existing Sites aren't migrated (a
-Frontend from before this check is reported as predating it).
+locally, or touches site-owned files. A Frontend without this check is reported as
+predating it.
 
 ### Acceptance gates
 
@@ -232,7 +232,8 @@ these commands deploy and connect it:
   `/github/webhook` through your `gh` login.
 - `git artifacts setup` registers `gq git artifacts`, under
   `gq sigillo run staging`, as git's only credential helper for the Artifacts
-  host, and drops the Artifacts push URL older setups added to `origin`. As
+  host, and removes any Artifacts push URL from `origin`, since a second push
+  URL would run the pre-push hook twice. As
   the helper, `get` answers that host only with a read-only git token that
   expires in an hour; nothing is stored.
 
@@ -251,8 +252,8 @@ Pushes to it start CI directly; there is no webhook, mirror or commit status.
   the checkout has none, and exits 1 when `origin` points elsewhere. Its
   credential helper hands out one-hour **write** tokens, so `git push` and
   `pnpm push` work. `gq doctor` checks both.
-- `gq offboard` doesn't support an Artifacts-only Site yet: it needs
-  `github.repository`.
+- `gq offboard` archives an Artifacts-only Site's code with its content
+  ([Offboarding](offboarding.md#an-artifacts-only-site)).
 
 ## Independent media
 
@@ -343,9 +344,9 @@ pnpm frontend:refresh --uri /about-us/       # only these entries
 - A whole-Site refresh makes at least one CMS request per entry in one Worker
   invocation; on Workers' Free plan (50 subrequests) a larger site needs
   `--uri` refreshes.
-- Existing sites: `infra/frontend.run.ts` only creates the store when
-  `apps/frontend/migrations` exists, so a site-owned Frontend that hasn't
-  adopted the files deploys as before.
+- `infra/frontend.run.ts` creates the store only when
+  `apps/frontend/migrations` exists, so a site-owned Frontend without those
+  files deploys without a store.
 
 ### Publication events
 
@@ -490,7 +491,8 @@ A failed read keeps what is stored. Only WordPress confirming an entry missing
 makes it a 404. A withdrawal in force is lifted only by a modification made
 after it.
 
-- No new crontab or secret: the existing crontab and the event key do it.
+- Reconciliation needs no crontab or secret of its own: the delivery crontab
+  and the event key do it.
   `wp gq-events reconcile` runs one at once.
 - A run makes at most 40 CMS requests (Workers' Free plan allows 50
   subrequests). With more changes than that, the run reports `behind` and the

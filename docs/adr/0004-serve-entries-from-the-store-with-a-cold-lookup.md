@@ -25,8 +25,8 @@ absence), and for the healthy cold path to be explicit.
   percent-decoded and between slashes, in the same `publications` table, with
   the same ordering rule (`read_started_at`) and body `format`. Migration
   `0002_entries.sql` adds `node_id`, the WordPress entry a row holds
-  (WPGraphQL's global id), so later slices can find every route that served an
-  entry. An entry's body keeps the design presets it was read with; menu, logo
+  (WPGraphQL's global id), so a withdrawal can find every route that served an
+  entry ([ADR 0006](0006-withdraw-publications-through-signed-cms-events.md)). An entry's body keeps the design presets it was read with; menu, logo
   and icon come from the shared `chrome` row, which an entry needs to be
   served (without it, the Site is not ready: 503).
 - **Preparation is a whole-Site refresh.** `POST /gq/refresh` with `{}` (`gq
@@ -36,8 +36,9 @@ frontend refresh`) reads the front page, the chrome, WordPress's list of
   entry is reconciled and a changed shared setting reaches every entry. A
   failed list still refreshes the stored routes and removes none.
 - **Targeted refresh.** `{"uris": ["/about/"]}` (`gq frontend refresh --uri
-/about/`, up to 100) refreshes only those routes: the path #43's WordPress
-  events will take for a new or changed publication.
+/about/`, up to 100) refreshes only those routes: the path a publication
+  event takes for a new or changed publication
+  ([ADR 0005](0005-refresh-publications-through-signed-cms-events.md)).
 - **Cold lookup.** A visit to a route with no row, on a Site whose chrome is
   stored and whose store is readable, reads that one entry from the CMS,
   anonymously: published and complete, it is promoted and served; confirmed
@@ -48,7 +49,7 @@ frontend refresh`) reads the front page, the chrome, WordPress's list of
 - **Moves redirect.** When a refresh or lookup finds an entry at a route other
   than the ones that served it, those older rows become `moved` and their
   routes answer `301` to the new one (`Cache-Control: no-store`, since a later
-  refresh can change it), including a route WordPress now confirms empty. A
+  refresh can change it), including a route WordPress confirms empty. A
   route that resolves to the front page moves to `/`. A row read since the
   refresh started is never rewritten as moved.
 - **Only public content.** An entry WordPress returns as restricted
@@ -73,12 +74,15 @@ frontend refresh`) reads the front page, the chrome, WordPress's list of
 
 ## Consequences
 
-- A request for a made-up URL reads the CMS once, as every request did before
-  ADR 0003. A flood of them is load on the CMS, not on the store.
+- A request for a made-up URL reads the CMS once. A flood of them is load on
+  the CMS, not on the store.
 - A whole-Site refresh makes at least one CMS request per entry from one Worker
   invocation, so a site with many entries can reach Workers' per-invocation
   subrequest limit (50 on the Free plan); refresh such sites by `--uri`.
-- Until #43, a new publication is available through the cold lookup or an
-  explicit refresh; an update to a stored entry, a removal or a move is
-  visible only after a refresh. Withdrawal events (#44) can use `node_id` to
-  find every route that served an entry.
+- Without an event, a new publication is available through the cold lookup;
+  an update to a stored entry, a removal or a move is visible after a refresh.
+  Publication and withdrawal events
+  ([ADR 0005](0005-refresh-publications-through-signed-cms-events.md),
+  [ADR 0006](0006-withdraw-publications-through-signed-cms-events.md)) and
+  reconciliation ([ADR 0009](0009-reconcile-missed-changes-on-the-cms-scheduler.md))
+  are those refreshes.

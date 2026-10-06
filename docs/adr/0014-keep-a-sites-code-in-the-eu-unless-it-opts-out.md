@@ -5,13 +5,13 @@
 
 ## Context
 
-`gq cloudflare ci` created each Site's Artifacts namespace without a
-jurisdiction, so every namespace was unrestricted. Cloudflare can't change a
-namespace's jurisdiction once it exists
+An Artifacts namespace created without a jurisdiction is unrestricted, so a
+Site's code can be stored anywhere. Cloudflare can't change a namespace's
+jurisdiction once it exists
 ([data localization](https://developers.cloudflare.com/artifacts/guides/data-localization/)).
 The only way to move one is to delete it, create it again under the same name
-and push the code again. CESAM's namespace was created unrestricted on
-2026-10-03 and recreated in the EU on 2026-10-04.
+and push the code again, so the jurisdiction has to be right when
+`gq cloudflare ci` creates the namespace.
 
 ## Decision
 
@@ -25,11 +25,11 @@ and push the code again. CESAM's namespace was created unrestricted on
   missing namespace in the configured jurisdiction. It stops at an existing
   namespace in another one, naming both jurisdictions and the ways out, and
   `gq doctor` fails on it.
-- **No migration for existing Sites.** The new key's default changes what an
-  existing v1 manifest means: a Site whose namespace predates this and has no
-  `artifacts.jurisdiction` now fails both checks. ADR 0002 would put such a
-  change through a `gq sync` migration, but none is added and the schema
-  stays v1. Each such Site must decide on purpose: set
+- **No migration.** A v1 manifest without `artifacts.jurisdiction` means
+  `eu`, so a Site whose namespace is unrestricted and whose manifest leaves
+  the key out fails both checks. ADR 0002 would put such a change through a
+  `gq sync` migration, but there is none and the schema stays v1. Each such
+  Site must decide on purpose: set
   `"jurisdiction": "unrestricted"` to keep its namespace where it is, or
   delete the namespace, recreate it in the EU and push the code again.
 
@@ -45,11 +45,11 @@ and push the code again. CESAM's namespace was created unrestricted on
 
 ## Consequences
 
-- Upgrading `@getquick/site` can turn `gq cloudflare ci` and `gq doctor` red
-  for a Site with an unrestricted namespace until someone decides. The
-  CHANGELOG says so.
+- `gq cloudflare ci` and `gq doctor` fail for a Site with an unrestricted
+  namespace and no `artifacts.jurisdiction` until someone decides.
 - Recreating a namespace keeps CI working without a redeploy: the CI
   Worker's `cf.artifacts.repo.pushed` filter matches the namespace and
   repository by name. The repository's history has to be pushed again.
 - Deleting a namespace (`DELETE /accounts/<account>/artifacts/namespaces/<namespace>`)
-  is undocumented. It returned 204 and freed the name on 2026-10-04.
+  is undocumented. It returned 204 and freed the name on 2026-10-04, when
+  CESAM's namespace was recreated in the EU.

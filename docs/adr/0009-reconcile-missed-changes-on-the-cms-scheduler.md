@@ -49,7 +49,7 @@ What the stack allows (checked on the pinned build):
 ## Decision
 
 - **The CMS's scheduler triggers it; the Frontend reconciles.**
-  - Each `wp gq-events retry-due` run (the existing crontab, unchanged) sends
+  - Each `wp gq-events retry-due` run (ADR 0008's crontab) sends
     the Frontend a signed `reconcile` event after its retries. It uses the
     same envelope, key and endpoint as every event, with a 60-second timeout.
   - The event names nothing. It can only make the Frontend read published
@@ -64,7 +64,7 @@ What the stack allows (checked on the pinned build):
     what visitors would see, so a shared-setting change is caught however it
     was saved.
   - **Entries.** WordPress's list of published pages and posts (`id`, `uri`,
-    `modifiedGmt`) is compared with the stored entries. Each row now also
+    `modifiedGmt`) is compared with the stored entries. Each row also
     keeps the `modified_at` its read saw (migration `0005_reconciliation.sql`).
     The run refreshes:
     - an entry listed but not stored (**new**);

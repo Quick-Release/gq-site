@@ -14,8 +14,8 @@
 
 [ADR 0003](0003-serve-published-content-from-a-durable-store.md) and
 [ADR 0004](0004-serve-entries-from-the-store-with-a-cold-lookup.md) serve a
-content site's published content from its publication store. Until now only an
-operator's `gq frontend refresh` updated it.
+content site's published content from its publication store. Without events,
+only an operator's `gq frontend refresh` updates it.
 [#43](https://github.com/Quick-Release/gq-site/issues/43) asks for an editor's
 publication of a page or post to refresh the Frontend without a deploy. The
 event path has to be authenticated and Site-scoped. It has to establish event
@@ -27,15 +27,16 @@ Publishing must succeed even when the event or the refresh fails.
 
 The owned CMS packages were inspected first:
 
-- `getquick-config` purges Cloudflare's cache on demand.
+- `gq-config` purges Cloudflare's cache on demand.
 - `getquick-design` fires `getquick_design_cache_invalidated` (layout tags)
   and `getquick_design_published` (templates only). Nothing listens to either.
 - `gq-support` signs requests to its own support service (Ed25519).
 - `getquick-theme` has no relevant hooks.
 
 None of them sends a publication of a page or post anywhere, and none has an
-outbox or a retry. Where shared CMS code lives is still undecided
-([#32](https://github.com/Quick-Release/gq-site/issues/32)).
+outbox or a retry. The content runtime's shared home is `gq-content`
+([ADR 0015](0015-hold-only-the-blueprint-in-this-repository.md)), which isn't
+extracted yet.
 
 ## Decision
 
@@ -43,9 +44,8 @@ outbox or a retry. Where shared CMS code lives is still undecided
   `web/app/mu-plugins/publication-events.php`, is created once with the CMS,
   so it is site-owned like `content-api.php`. It handles WordPress's
   `wp_after_insert_post` for a published `page` or `post`, ignoring revisions
-  and autosaves. A draft or a private entry sends nothing. The plugin can move
-  into a shared package once #32 decides where one lives. #45 can listen to
-  `getquick_design_cache_invalidated` for shared settings.
+  and autosaves. A draft or a private entry sends nothing. The plugin is to
+  move to `gq-content` with the rest of the content runtime (ADR 0015).
 - **An event is a reason to refresh, not content.** It carries:
   - `site`: the project;
   - `id`: a UUID;
@@ -87,16 +87,18 @@ outbox or a retry. Where shared CMS code lives is still undecided
   - An event older than one already refreshed for the same entry is
     superseded and never processed.
   - A refreshed event supersedes the entry's older received or failed ones.
-  - The store's own `read_started_at` rule still orders the promotions. So a
+  - The store's own `read_started_at` rule also orders the promotions. So a
     delayed or duplicate publication can't overwrite a newer accepted one, and
-    #44's withdrawals can take precedence through the same record.
+    withdrawals take precedence through the same record
+    ([ADR 0006](0006-withdraw-publications-through-signed-cms-events.md)).
 - **The answer states the outcome.**
   - 200: refreshed, superseded or duplicate.
   - 503: the refresh kept the stored version. The event stays recorded as
     `failed`, for a retry.
   - 4xx: refused, and nothing changed.
-  - Each action has a handler with its own schema, so #44 and #45 add
-    `withdraw` and settings beside `publish`.
+  - Each action has a handler with its own schema: `check`, `withdraw` (ADR 0006),
+    `settings` ([ADR 0007](0007-refresh-shared-settings-through-settings-events.md))
+    and `reconcile` (ADR 0009) sit beside `publish`.
 - **Publishing never waits on delivery.**
   - Each entry's latest event and its delivery state are recorded in post
     meta (`_gq_publication_event`) as `pending` before sending.
@@ -109,7 +111,8 @@ outbox or a retry. Where shared CMS code lives is still undecided
     nothing. In production that is a `not-configured` failure.
   - `wp gq-events status` lists pending and failed entries, and
     `wp gq-events retry <post>` sends the same event again. Automated retry
-    and editor-facing reporting are #46's.
+    and editor-facing reporting are
+    [ADR 0008](0008-retry-event-delivery-from-the-cms-on-a-server-cron.md)'s.
 - **The credentials follow explicit paths, and their values are never
   printed.**
   - **Frontend:** `infra/frontend.run.ts` binds `PUBLICATION_EVENT_SECRET`
@@ -119,7 +122,7 @@ outbox or a retry. Where shared CMS code lives is still undecided
   - **CI releases:** `gq ci deploy` adds both to the CI Worker when Sigillo
     has them. The release step passes them to the Frontend deploy only when
     the Worker has them, because a step naming a secret the Worker lacks fails.
-    This wires the CI gap ADR 0003 left.
+    So a CI release binds the refresh token too.
   - **CMS:** `gq ploi events` writes the key into the Ploi site's `.env`, and
     `config/application.php` defines it.
 
@@ -138,28 +141,30 @@ outbox or a retry. Where shared CMS code lives is still undecided
   shorten the CMS's wait, but it needs runtime support not verified on the
   pinned Alchemy Astro build, or a new Queue resource. Processing within the
   request reads at most two routes (8 seconds each) and reports the real
-  outcome. #46 can move execution behind the same record.
+  outcome. Retries (ADR 0008) build on the same record.
 - **An outbox table or Action Scheduler in the CMS.** Post meta holds the one
   event per entry that matters, because a newer one supersedes it. It needs no
-  schema and is visible per post for #46's report. Production disables
-  WP-Cron, so a scheduled retry needs #46's real scheduler anyway.
-- **Extending a private package now.** It would mean choosing the shared
-  package home that #32 owns.
+  schema and is visible per post for the delivery report (ADR 0008).
+  Production disables WP-Cron, so a scheduled retry needs a real scheduler
+  anyway.
+- **Extending an existing private package** (`getquick-design`, `gq-config`).
+  It would have meant choosing the shared package home, which was #32's to
+  decide; ADR 0015 gives the content runtime its own home in `gq-content`.
 
 ## Consequences
 
 - An editor's publication reaches visitors within the event's round trip. If
   that trip fails, the publication waits for a retry: by `wp gq-events retry`,
-  an operator's refresh, or #46's automated retry. The previous good version
+  an operator's refresh, or the automated retry (ADR 0008). The previous good version
   stays served throughout.
 - The CMS and the Frontend's clocks must agree within five minutes, or every
   event is refused as stale.
 - With PHP-FPM, the CMS worker stays busy for up to the timeout after the
   editor's response. Without FPM, the request's end waits for it.
-- `publication_events` grows by one row per publication. Nothing prunes it
-  yet.
-- A shared setting, a withdrawal or a front-page change made through Settings
-  sends no event yet (#44, #45). WordPress's permalink must be a pretty path,
-  as WPGraphQL's URIs are.
+- `publication_events` grows by one row per publication. Nothing prunes it.
+- Withdrawals and shared settings send their own events (ADR 0006, ADR 0007).
+  A front-page change made through Settings sends none; reconciliation catches
+  it ([ADR 0009](0009-reconcile-missed-changes-on-the-cms-scheduler.md)).
+  WordPress's permalink must be a pretty path, as WPGraphQL's URIs are.
 - Existing sites adopt the plugin and the endpoint by copying them. Syncing
   doesn't add them.

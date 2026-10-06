@@ -8,8 +8,6 @@ The blueprint generates and synchronizes managed files, provisions Ploi and
 Cloudflare, runs local CMS and workspace checks, and handles releases,
 database backups and live-to-local sync. Secrets are injected per command
 through Sigillo; generation and sync need no network access or secrets.
-It replaces [`gq-ops`](https://github.com/Quick-Release/gq-ops) and the
-vendored `shop-devtools`.
 
 ## Quick start
 
@@ -45,9 +43,10 @@ pnpm exec gq --help
 ```
 
 [Configure `gq.ops.json`](docs/reference/manifest.md) before running site
-commands. For an older manifest or vendored `shop-devtools`, follow the
-[manifest migration reference](docs/reference/manifest.md) and
-[release-settings migration](docs/reference/release.md).
+commands. A manifest without `schemaVersion`, or release settings in a
+`shop-devtools.config.mjs`, is migrated by `gq sync --manifest`: see the
+[manifest reference](docs/reference/manifest.md) and the
+[release reference](docs/reference/release.md).
 
 ## Documentation
 
@@ -70,9 +69,10 @@ not the current command reference.
 
 ## Current status
 
-Phases 1–3 (extraction, content-site generation and Lombardi adoption) have
-passed. Managed-file changes now originate here. Commerce-site generation
-is not supported yet; commerce adoption and fleet rollout remain gated work.
+Phases 1–3 of the rollout (extraction, content-site generation, and adoption
+by an existing content site) have passed. Managed-file changes originate here;
+a site takes them by bumping its pin and running `gq sync`. Commerce-site generation is not supported;
+commerce adoption and fleet rollout are gated work.
 See the [rollout record](https://github.com/Quick-Release/gq-site/blob/main/docs/plans/getquick-blueprint-rollout.md#phases-and-gates)
 for evidence and remaining gates, and
 [ADR 0001](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0001-the-getquick-site-blueprint.md)

@@ -22,8 +22,8 @@ elsewhere it names them and stops. It asks for the site's main language too
 (`--locale`, a WordPress locale), and writes `en_US` without one outside a
 terminal. The project must be lowercase letters,
 digits and hyphens starting with a letter, since it names the site's
-packages, Workers and DDEV project. `--variant commerce` is refused until
-phase 4, and so is a target directory that isn't empty. It then prints the
+packages, Workers and DDEV project. `--variant commerce` is refused, and so
+is a target directory that isn't empty. It then prints the
 provisioning sequence (fill in `gq.ops.json`, `gq sync`, `ploi provision`,
 `cloudflare deploy-token`/`releases`/`media`/`ci`, `ploi media`,
 `github setup`, `frontend secrets`, `ci deploy`, `ploi events`, the releases,
@@ -37,10 +37,9 @@ provisioning sequence (fill in `gq.ops.json`, `gq sync`, `ploi provision`,
 package, lists every path the blueprint touches by category: fully
 generated, generated section, managed keys, and create-once. Anything it
 doesn't list is site-owned, and `gq sync` never reads or writes it. Only
-`--variant content` is generated until phase 4.
+`--variant content` is generated.
 
-The fully generated files are extracted from Lombardi. They are the
-toolchain pins (`.mise.toml`, `.nvmrc`), the Git hooks
+The fully generated files are the toolchain pins (`.mise.toml`, `.nvmrc`), the Git hooks
 (`.vite-hooks/pre-commit` formats and lints staged files, `pre-push` runs
 `pnpm verify`), the staged lint/format config (`vite.config.ts`), the
 READMEs of `docs/adr`, `docs/plans`, `docs/research` and `docs/agents`, the
@@ -69,8 +68,8 @@ be generated before it is provisioned; fill the value in and `gq sync`
 rewrites the files. The Frontend deploy reads `domains` and
 `cloudflare.accountId` from `gq.ops.json` when it runs. When the Frontend
 skeleton includes `apps/frontend/migrations`, the deploy also declares and
-migrates the retained D1 publication store bound as `PUBLICATION_DB`; existing
-site-owned Frontends without migrations deploy as before.
+migrates the retained D1 publication store bound as `PUBLICATION_DB`; a
+site-owned Frontend without migrations deploys without a store.
 
 The CMS deploy script activates the plugins `wordpress.plugins` lists, in
 order (each must be installed by Composer; a name must be a plugin slug),
@@ -203,11 +202,11 @@ run `gq sync` (it updates `deploy/ploi/admin.sh`), and release.
   default first, and updates one whose locale or order changed. It makes
   `wordpress.locale` Polylang's default language, and sets the URL mode:
   the language as a directory, the default language's hidden. Then it gives
-  every post and term without a language the default one, which is how an
-  existing site's content becomes Portuguese. Running it again changes
-  nothing.
+  every post and term without a language the default one, so content
+  written before the site had languages is in the default language. Running
+  it again changes nothing.
 - **Removing a language.** The deploy never deletes a language. One
-  Polylang has that `gq.ops.json` no longer lists stops the deploy, named,
+  Polylang has that `gq.ops.json` doesn't list stops the deploy, named,
   before anything changes: move or delete its content and delete the
   language in WordPress (Languages), then deploy again. That includes a
   default language set up by hand under another slug than its language
@@ -273,21 +272,20 @@ A site shares four more kinds of file with the blueprint:
 - **App skeletons.** The CMS (`apps/cms`: Bedrock with the GETQUICK
   plugins and `getquick-theme` from the registry, the content API
   mu-plugin, DDEV config, Pint and Pest, and its env templates) and the
-  Frontend (`apps/frontend`: Astro on WPGraphQL with its own copy of
-  Lombardi's block renderer, rendered-route tests, a durable homepage backed
-  by a D1 publication store, and its env template) are extracted from Lombardi
-  without Lombardi's plugins, child theme and pages. The env templates hold
-  public configuration and placeholders only
-  (`gq ploi provision` renders the server's `.env` from
+  Frontend (`apps/frontend`: Astro on WPGraphQL with its own copy of the
+  block renderer, rendered-route tests, a durable homepage backed by a D1
+  publication store, and its env template). Neither carries a site's own
+  plugins, child theme or pages. The env templates hold public configuration
+  and placeholders only (`gq ploi provision` renders the server's `.env` from
   `.env.production.example`).
-  New CMS skeletons require `getquick/gq-config ^0.4.0` and
-  `getquick/getquick-theme ^0.5.1`. Existing CMS apps are site-owned:
-  `gq sync` does not rename their Composer dependency. Replace
-  `getquick/getquick-config` with `getquick/gq-config ^0.4.0`, raise the
-  theme requirement to `^0.5.1`, and update and commit `composer.lock`
-  alongside `composer.json`. The config package remains a must-use plugin,
-  not an entry in `wordpress.plugins`; its load check still uses
-  `GETQUICK_CONFIG_VERSION`, and its existing API identifiers are unchanged.
+  The CMS skeleton requires `getquick/gq-config ^0.4.0` and
+  `getquick/getquick-theme ^0.5.1`. The config package is a must-use plugin,
+  not an entry in `wordpress.plugins`; its load check uses
+  `GETQUICK_CONFIG_VERSION`. A CMS app is site-owned, so `gq sync` doesn't
+  change its Composer requirements: a site whose CMS requires
+  `getquick/getquick-config` replaces it with `getquick/gq-config ^0.4.0`,
+  raises the theme requirement to `^0.5.1`, and updates and commits
+  `composer.lock` alongside `composer.json`.
   `deploy/ploi/admin.d/10-theme.sh`, which activates `getquick-theme`,
   belongs to the CMS skeleton. A skeleton's files are written only with
   their app: while its directory is missing, so `gq sync` never adds files

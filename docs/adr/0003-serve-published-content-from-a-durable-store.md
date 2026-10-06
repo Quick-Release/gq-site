@@ -52,8 +52,8 @@ Facts checked against the pinned stack (Alchemy 2.0.0-beta.79,
   its blocks keeps the stored row. Each row records when its CMS read started
   (`read_started_at`); an upsert replaces a row only if its read started
   later, so a slow or delayed refresh can't overwrite a newer one. A
-  withdrawal (#44) is a row state promoted with the same rule, so it can't be
-  undone by an older read. Rows are per key (`home`, `chrome`, later entries),
+  withdrawal ([ADR 0006](0006-withdraw-publications-through-signed-cms-events.md)) is a row state promoted with the same rule, so it can't be
+  undone by an older read. Rows are per key (`home`, `chrome`, and each entry),
   so a failed chrome read leaves the stored front page alone and the reverse.
 - **No age limit, honest cold state.** A stored row is served until a refresh
   replaces it. With no row, or one this Worker can't read, the homepage is a
@@ -88,8 +88,7 @@ Facts checked against the pinned stack (Alchemy 2.0.0-beta.79,
   and precedence across keys, and diagnostics, are queries D1 already offers.
 - **Cache API or HTTP caching in front of the Worker**: per-location,
   evictable and best-effort, so it can't be the last-known-good copy, and edge
-  invalidation can't guarantee an immediate withdrawal. Not layered on top
-  for now.
+  invalidation can't guarantee an immediate withdrawal. Not layered on top.
 - **A refresh run by `gq` writing D1 over Cloudflare's API**: it would need
   the Site's renderer in the CLI and a Cloudflare token as refresh authority.
 
@@ -98,8 +97,9 @@ Facts checked against the pinned stack (Alchemy 2.0.0-beta.79,
 - D1 has one primary location: a visitor far from it pays a round trip per
   request. Read replication or a cache in front stays possible, provided it
   never outlives a withdrawal.
-- Until #43 adds WordPress events, the homepage changes only when an operator
-  runs `pnpm frontend:refresh`; until #42, entries still read the CMS live.
-- Cloudflare CI releases don't pass `FRONTEND_REFRESH_TOKEN` yet (#43 wires
-  runtime credentials), so a CI release deploys without it: refresh is then
-  refused until a deploy with it, while stored content keeps being served.
+- The stored front page and chrome change only through a trusted refresh
+  (entries also arrive through ADR 0004's cold lookup): an operator's
+  `pnpm frontend:refresh`, or the CMS's signed events
+  ([ADR 0005](0005-refresh-publications-through-signed-cms-events.md)).
+- A deploy without `FRONTEND_REFRESH_TOKEN` bound leaves refresh refused
+  until a deploy with it, while stored content keeps being served.

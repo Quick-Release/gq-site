@@ -7,16 +7,20 @@
 
 Phase 2 of the [rollout plan](../plans/getquick-blueprint-rollout.md) builds
 `gq new` and `gq sync` ([spec #1](https://github.com/Quick-Release/gq-site/issues/1)).
-Before it, everything around `@getquick/site` was copied per site: the hooks,
-toolchain pins, docs skeleton, `AGENTS.md` base, CI Worker config, frontend
-deploy scripts and CMS deploy script existed only as Lombardi's files.
-`gq.ops.json` had no schema or version: `gq` only checked that it was an
-object with a `project`, every command read its own keys ad hoc, and
-Lombardi's and Ekis's files had different shapes (Ekis still carried the
-removed `credentials` and GitHub Actions `secrets`/`variables` flows). The
-release and verify settings lived in a second, unvalidated JS module
-(`shop-devtools.config.mjs`). Nothing could tell a hand edit of a generated
-file from a template update.
+Generating a site needs a manifest `gq` can trust and a way to tell the
+blueprint's files from the site's:
+
+- The hooks, toolchain pins, docs skeleton, `AGENTS.md` base, CI Worker
+  config, frontend deploy scripts and CMS deploy script are files a site
+  copies, with nothing to bring a copy up to date.
+- An unversioned `gq.ops.json` is only an object with a `project`: each
+  command reads its own keys ad hoc, and sites' files differ in shape (Ekis's
+  carries `credentials` and GitHub Actions `secrets`/`variables` flows `gq`
+  doesn't have).
+- Release and verify settings in a second JS module
+  (`shop-devtools.config.mjs`) are unvalidated.
+- Without a record of what was generated, nothing can tell a hand edit of a
+  generated file from a template update.
 
 ## Decision
 
@@ -26,8 +30,8 @@ file from a template update.
   the manifest holds only site values and additions (extra version files and
   text patterns, extra checks, extra release paths).
 - **Versioned schema with migrations.** `gq.ops.json` has an integer
-  top-level `schemaVersion`; a file without one is v0, the unvalidated shape
-  sites had before phase 2. zod is the single source of the schema, and a JSON
+  top-level `schemaVersion`; a file without one is v0, the unvalidated
+  shape. zod is the single source of the schema, and a JSON
   Schema for editors (`$schema`) is generated from it. Every command reads the
   parsed, validated manifest, and writes (such as `ploi provision` recording
   the site ID) go through a validated writer. Migrations are pure functions
@@ -35,17 +39,18 @@ file from a template update.
   `gq sync --check` reports them as pending. Commands refuse a manifest older
   than they support (pointing at `gq sync --manifest`) or newer than the
   installed `gq`, so no command guesses at an unknown shape.
-- **v1.** v1 is Lombardi's v0 keys plus `schemaVersion`, `variant`
+- **v1.** v1 is a content site's v0 keys (the fixture
+  `test/fixtures/manifests/content-site.v0.json`) plus `schemaVersion`, `variant`
   (`content` or `commerce`), a `wordpress.plugins` list, and the folded
   release/verify additions. `domains` has the fixed roles `admin` and
   `frontend` and an optional `docs`, not an open map. The v0 to v1 migration
   drops Ekis's `credentials` and `github.secrets`/`github.variables` blocks
-  and names each dropped key. v1 still describes one deployment per site; an
+  and names each dropped key. v1 describes one deployment per site; an
   environment axis is later fleet work.
 - **Ownership categories.** A file-ownership manifest published with the
   package classifies every path the blueprint touches:
   - **fully generated**: the whole file is rewritten from the templates
-    (in phase 2: the Git hook layout, the toolchain pins, the staged
+    (the Git hook layout, the toolchain pins, the staged
     lint/format config, the docs skeleton's READMEs and agent reference
     docs, the agent-skills symlink, the Cloudflare CI Worker config, the
     frontend deploy configuration and script, the CI release step, and the
@@ -70,7 +75,7 @@ file from a template update.
   stops, prints a diff against what it would write, and writes nothing.
 - **Declarative plugins, site-owned deploy extensions.** The CMS deploy
   script is fully generated. Its activation step comes from
-  `wordpress.plugins`, so adding a plugin can no longer miss a hand-written
+  `wordpress.plugins`, so adding a plugin can't miss a hand-written
   activation loop. After activation it runs the site's deploy extensions (a
   create-once directory of site-owned scripts) in lexical order, and a
   non-zero exit from any of them fails the deploy. Site-specific steps, such
@@ -87,8 +92,8 @@ file from a template update.
 - **Keep the release config as a second module.** Each site would keep a
   drifting copy of the blueprint's default checks and release paths, and the
   module can't be validated or migrated like the manifest.
-- **Infer a manifest's shape from its keys.** Lombardi's and Ekis's files
-  already overlap in ways that make inference a guess; an explicit version
+- **Infer a manifest's shape from its keys.** Sites' v0 files overlap in
+  ways that make inference a guess; an explicit version
   makes each migration a tested, deterministic step.
 - **Overwrite managed files unconditionally, or three-way merge them.**
   Overwriting silently discards a hand edit; merging turns every site back
@@ -100,4 +105,4 @@ file from a template update.
 - **Ekis's `overrides` and `gq link`** (its ADR 0008). Not adopted: they
   reopen the open-ended per-site switches the blueprint avoids. That ADR's
   "setup writes env files from Sigillo" is ruled out by the rollout plan, and
-  the ADR is superseded when Ekis adopts the blueprint in phase 4.
+  Ekis's adoption of the blueprint in phase 4 supersedes it.
