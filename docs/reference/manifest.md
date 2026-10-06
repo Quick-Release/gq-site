@@ -31,7 +31,7 @@ required, `domains` has the roles `admin` and `frontend` and an optional
 `docs`, and an unknown or misspelt key fails by its path. The blocks each
 command reads (`ploi`, `cloudflare`, `releases`, `media`, `backups`, `local`,
 `artifacts`, `ci`, `github`, `sigillo`, `wordpress.plugins`,
-`wordpress.locale`, `wordpress.languages`) are optional; a command names
+`wordpress.graphqlPath`, `wordpress.locale`, `wordpress.languages`) are optional; a command names
 the keys it needs. `artifacts.jurisdiction` is where `gq cloudflare ci`
 creates the Artifacts namespace: `eu` (the default when it's left out),
 `us`, or `unrestricted` to opt out; see
@@ -40,7 +40,12 @@ WordPress locale (`en_US`, `pt_PT`, `pt_PT_ao90`); see
 [The site's language](../guides/sites.md#the-sites-language).
 `wordpress.languages` lists a bilingual site's other languages, each a
 `locale` and the `slug` of its URL directory; see
-[More languages](../guides/sites.md#more-languages). `offboarded` (`at`, `phase`, and `cut`,
+[More languages](../guides/sites.md#more-languages).
+`wordpress.graphqlPath` is an optional exact enum: `/graphql` or `/wp/graphql`
+(the default when omitted). It selects production CMS readiness and the
+Frontend deploy's default public URL, not local DDEV's endpoint; see
+[The CMS GraphQL endpoint](../guides/sites.md#the-cms-graphql-endpoint).
+`offboarded` (`at`, `phase`, and `cut`,
 what the cut changed, which `--restore` brings back) is written by
 `gq offboard` and turns on the guards of an
 [offboarded Site](../guides/offboarding.md); `gq offboard --archive` adds

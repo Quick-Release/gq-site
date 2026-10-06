@@ -5,6 +5,23 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.17.7 — 2026-10-06
+
+### Fixed
+
+- **Explicit canonical CMS GraphQL paths.** Set `wordpress.graphqlPath` to
+  `/graphql` for a matching Access application and origin gate, or retain the
+  existing `/wp/graphql` default. Production readiness and generated Frontend
+  build configuration use the setting; local DDEV and post-import checks keep
+  their local endpoint without receiving production Access credentials.
+- **Generated Frontend deployment types** now accept absent optional Access
+  bindings under the installed Alchemy API without inferred `undefined` values.
+  String public URL bindings are supplied to Astro's build environment; no
+  credentials become public variables.
+  - **Existing sites:** bump the package pin, set the production path if needed,
+    then run `gq sync`. Remove or align stale public URL overrides. No gate,
+    Access policy, DNS or origin changes are performed by synchronization.
+
 ## 0.17.6 — 2026-10-06
 
 ### Added

@@ -39,6 +39,13 @@ bindings (`src/lib/runtime.ts`), only on the server, and sends it only to the
 configured `PUBLIC_WORDPRESS_GRAPHQL_URL`, restricted to `/graphql` or
 `/wp/graphql` on the exact HTTPS origin named by `domains.admin` when credentials
 are present. An override to another host, port or path fails before sending.
+Set `wordpress.graphqlPath: "/graphql"` in `gq.ops.json` when that is the
+CMS's canonical endpoint; omitted, production readiness and deploys keep
+`/wp/graphql`. Sync managed infra and remove or align any old explicit
+`PUBLIC_WORDPRESS_GRAPHQL_URL` override before deploying; see
+[endpoint configuration and adoption](sites.md#the-cms-graphql-endpoint).
+This setting changes no Access policy or origin-plugin route, and local DDEV
+checks keep `/wp/graphql`.
 That public variable is a URL, **not a place for credentials**. Never use
 `PUBLIC_*` / `VITE_*` credential variables or spread the secret environment into
 bindings. `infra/frontend.run.ts` declares

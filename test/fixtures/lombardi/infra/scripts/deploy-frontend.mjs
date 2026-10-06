@@ -61,7 +61,8 @@ const result = spawnSync(
       ...process.env,
       CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || ops.cloudflare.accountId,
       PUBLIC_WORDPRESS_GRAPHQL_URL:
-        process.env.PUBLIC_WORDPRESS_GRAPHQL_URL || `https://${ops.domains.admin}/wp/graphql`,
+        process.env.PUBLIC_WORDPRESS_GRAPHQL_URL ||
+        `https://${ops.domains.admin}${ops.wordpress?.graphqlPath ?? "/wp/graphql"}`,
     },
   },
 );

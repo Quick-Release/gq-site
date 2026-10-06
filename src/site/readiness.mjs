@@ -30,7 +30,7 @@
 // not-ready.
 
 import { RECONCILIATION_STALE_MS, sendCheckEvent } from "../frontend/commands.mjs";
-import { siteLanguages } from "../manifest/schema.mjs";
+import { siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
 import { productionMediaReadiness } from "../media/readiness.mjs";
 import { cmsFetch } from "../cms/access.mjs";
 import { EVENT_SECRET, inspectCmsEvents } from "../ploi/events.mjs";
@@ -783,7 +783,7 @@ export async function siteReadiness({ ops, env, fetch, origin, upload = true, no
   const languages = siteLanguages(ops);
   const checks = [
     ...(await cmsReadiness({
-      graphqlUrl: `https://${ops.domains.admin}/wp/graphql`,
+      graphqlUrl: wordpressGraphqlUrl(ops),
       env,
       fetch,
       languages,

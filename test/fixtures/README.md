@@ -60,6 +60,13 @@ baselines alongside their sources: only the GraphQL service pair is forwarded
 by CI and bound privately to the Frontend. Automation credentials are excluded.
 These are reviewed behavioral additions, not regenerated snapshots.
 
+The production GraphQL-path follow-up explicitly updates the Lombardi
+`infra/frontend.run.ts` and `infra/scripts/deploy-frontend.mjs` baselines:
+`wordpress.graphqlPath` selects `/graphql` or the unchanged `/wp/graphql`
+default, and a public production URL binding reaches Astro's build child on
+Alchemy beta.79. No secret binding changes. `sync/graphql-path.test.mjs`
+independently exercises both paths, explicit overrides and local isolation.
+
 ## Preservation
 
 - Preserve fixture paths, contents and version identifiers during organization,
