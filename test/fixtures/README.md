@@ -54,6 +54,12 @@ only in constants, and the CI Worker config writes each object holding a site
 value expanded, so a site's pre-commit formatter leaves them as they are for a
 project name of any length. The configured names and URLs are unchanged.
 
+The optional CMS Access integration explicitly updates the Lombardi
+`infra/frontend.run.ts`, `infra/ci/cloudflare.ci.ts` and `infra/ci/env.ts`
+baselines alongside their sources: only the GraphQL service pair is forwarded
+by CI and bound privately to the Frontend. Automation credentials are excluded.
+These are reviewed behavioral additions, not regenerated snapshots.
+
 ## Preservation
 
 - Preserve fixture paths, contents and version identifiers during organization,

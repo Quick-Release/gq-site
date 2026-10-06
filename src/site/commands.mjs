@@ -120,6 +120,8 @@ async function localReadiness({ context, env, fetch, exec }) {
     checks.push(
       ...(await cmsReadiness({
         graphqlUrl: `${home.replace(/\/+$/u, "")}/wp/graphql`,
+        env: context.env,
+        cmsOrigin: context.config.domains?.admin ? `https://${context.config.domains.admin}` : home,
         fetch,
         languages: siteLanguages(context.config),
       })),
