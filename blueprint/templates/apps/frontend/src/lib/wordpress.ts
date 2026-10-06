@@ -1,4 +1,6 @@
 import { z } from "astro/zod";
+import ops from "../../../../gq.ops.json";
+import { frontendBindings } from "./runtime";
 import { defaultLanguage, languageSubject, multilingual, type SiteLanguage } from "./site-language";
 import { hasVideoHero, parseWordPressBlocks, renderWordPressBlocks } from "./wp-block-renderer";
 
@@ -500,21 +502,56 @@ async function query<S extends z.ZodType>(
 ): Promise<z.infer<S>> {
   let response: Response;
   try {
-    response = await fetch(endpoint(), {
+    if (!import.meta.env.SSR) throw new Error("CMS reads are server-only");
+    const url = new URL(endpoint());
+    const bindings = await frontendBindings();
+    const id = bindings.GQ_AUTH_GRAPHQL_CLIENT_ID?.trim();
+    const secret = bindings.GQ_AUTH_GRAPHQL_CLIENT_SECRET?.trim();
+    if (Boolean(id) !== Boolean(secret)) {
+      throw new CmsFailureError({
+        reason: "network",
+        message: "GQ_AUTH_GRAPHQL_CLIENT_ID and GQ_AUTH_GRAPHQL_CLIENT_SECRET must be set together",
+      });
+    }
+    const admin =
+      id && secret
+        ? z.object({ domains: z.object({ admin: z.string() }) }).parse(ops).domains.admin
+        : null;
+    if (
+      id &&
+      secret &&
+      (url.origin !== new URL(`https://${admin}`).origin ||
+        !["/graphql", "/wp/graphql"].includes(url.pathname) ||
+        url.protocol !== "https:" ||
+        url.username ||
+        url.password)
+    ) {
+      throw new CmsFailureError({
+        reason: "network",
+        message: "Cloudflare Access credentials require the configured CMS HTTPS GraphQL endpoint",
+      });
+    }
+    // This is the only destination: the configured CMS endpoint, never an
+    // asset or a link returned by WordPress. Redirects must not forward it.
+    response = await fetch(url.href, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(id && secret ? { "CF-Access-Client-Id": id, "CF-Access-Client-Secret": secret } : {}),
       },
+      redirect: "manual",
       body: JSON.stringify({ query: queryText, variables }),
       signal: AbortSignal.timeout(8_000),
     });
   } catch (error) {
+    if (error instanceof CmsFailureError) throw error;
     const timedOut = error instanceof DOMException && error.name === "TimeoutError";
+    // A transport/invalid-header error may contain credential values. Neither
+    // the public Unavailable delivery nor its log retains that raw error.
     throw new CmsFailureError(
       timedOut
         ? { reason: "timeout", message: "WordPress didn't answer within 8 seconds" }
-        : { reason: "network", message: `WordPress couldn't be reached: ${String(error)}` },
-      { cause: error },
+        : { reason: "network", message: "WordPress couldn't be reached" },
     );
   }
 

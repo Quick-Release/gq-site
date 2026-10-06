@@ -31,6 +31,23 @@ const durableDelivery = existsSync(publicationMigrations);
 const refreshToken = process.env.FRONTEND_REFRESH_TOKEN?.trim();
 const eventSecret = process.env.PUBLICATION_EVENT_SECRET?.trim();
 
+// Only the read-only edge identity belongs in the public Frontend's server.
+// Automation credentials must never be bound to this Worker.
+const graphqlClientId = process.env.GQ_AUTH_GRAPHQL_CLIENT_ID?.trim();
+const graphqlClientSecret = process.env.GQ_AUTH_GRAPHQL_CLIENT_SECRET?.trim();
+if (Boolean(graphqlClientId) !== Boolean(graphqlClientSecret)) {
+  throw new Error(
+    "GQ_AUTH_GRAPHQL_CLIENT_ID and GQ_AUTH_GRAPHQL_CLIENT_SECRET must be set together.",
+  );
+}
+const cmsSecrets =
+  graphqlClientId && graphqlClientSecret
+    ? {
+        GQ_AUTH_GRAPHQL_CLIENT_ID: Redacted.make(graphqlClientId),
+        GQ_AUTH_GRAPHQL_CLIENT_SECRET: Redacted.make(graphqlClientSecret),
+      }
+    : {};
+
 // The Site's last-known-good published content. One database per Site and
 // stage, separate from the Worker, so a redeploy or restart keeps it; Alchemy
 // applies the Frontend's migrations, in order, before the Worker is updated.
@@ -72,11 +89,12 @@ export const Website = Cloudflare.Website.Astro(
       sessionKVBindingName: false,
       env: durableDelivery
         ? {
+            ...cmsSecrets,
             PUBLICATION_DB: yield* Publications,
             ...(refreshToken ? { FRONTEND_REFRESH_TOKEN: Redacted.make(refreshToken) } : {}),
             ...(eventSecret ? { PUBLICATION_EVENT_SECRET: Redacted.make(eventSecret) } : {}),
           }
-        : {},
+        : cmsSecrets,
     };
   }),
 );

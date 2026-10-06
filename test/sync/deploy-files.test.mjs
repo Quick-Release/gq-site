@@ -191,6 +191,10 @@ test("no secret reaches a generated file, and generation calls no provider", asy
     SIGILLO_TOKEN: "secret-sigillo-token",
     FRONTEND_REFRESH_TOKEN: "secret-frontend-refresh-token-0123456789",
     PUBLICATION_EVENT_SECRET: "secret-publication-event-key-0123456789",
+    GQ_AUTH_GRAPHQL_CLIENT_ID: "secret-graphql-client-id",
+    GQ_AUTH_GRAPHQL_CLIENT_SECRET: "secret-graphql-client-secret",
+    GQ_AUTH_AUTOMATION_CLIENT_ID: "secret-automation-client-id",
+    GQ_AUTH_AUTOMATION_CLIENT_SECRET: "secret-automation-client-secret",
   };
   const fixture = await createFixtureSite({ ops: LOMBARDI });
 
