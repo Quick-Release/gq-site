@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## Reference Site
+
+Tests that need a live content Site use Cooldown Gaming (cooldowngaming.com), a playground where downtime is expected. See `docs/reference/reference-site.md`.
+
 ## Agent skills
 
 ### Issue tracker

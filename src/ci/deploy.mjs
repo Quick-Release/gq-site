@@ -11,6 +11,8 @@
 
 import { join } from "node:path";
 
+import { cmsAccessHeaders } from "../cms/access.mjs";
+
 export const DEFAULT_CI_DIRECTORY = "infra/ci";
 
 // Worker secret ← secret-store secret. R2_* are the CI SDK's snapshot
@@ -41,9 +43,17 @@ export const githubWorkerSecrets = Object.freeze({
 export const optionalWorkerSecrets = Object.freeze({
   FRONTEND_REFRESH_TOKEN: "FRONTEND_REFRESH_TOKEN",
   PUBLICATION_EVENT_SECRET: "PUBLICATION_EVENT_SECRET",
+  GQ_AUTH_GRAPHQL_CLIENT_ID: "GQ_AUTH_GRAPHQL_CLIENT_ID",
+  GQ_AUTH_GRAPHQL_CLIENT_SECRET: "GQ_AUTH_GRAPHQL_CLIENT_SECRET",
 });
 
 export function secretsPayload(environment, { github = true } = {}) {
+  // Validate the optional pair without sending it anywhere or printing values.
+  cmsAccessHeaders({
+    env: environment,
+    origin: "https://cms.invalid",
+    url: "https://cms.invalid/graphql",
+  });
   const required = { ...workerSecrets, ...(github ? githubWorkerSecrets : {}) };
   const missing = Object.values(required).filter((name) => !environment[name]);
   if (missing.length > 0) {

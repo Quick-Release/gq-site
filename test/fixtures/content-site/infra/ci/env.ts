@@ -25,5 +25,8 @@ export type Bindings = CiBindings & {
   // has a publication store; the release step passes them to its deploy.
   FRONTEND_REFRESH_TOKEN?: string;
   PUBLICATION_EVENT_SECRET?: string;
+  // Optional read-only CMS edge identity; never the automation service.
+  GQ_AUTH_GRAPHQL_CLIENT_ID?: string;
+  GQ_AUTH_GRAPHQL_CLIENT_SECRET?: string;
   MIRROR_WORKFLOW: Workflow<MirrorParams>;
 };

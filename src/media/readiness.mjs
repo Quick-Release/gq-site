@@ -14,6 +14,7 @@
 // probe among them), "configured" (everything but the probe passed) or
 // "not-ready"; only "ready" sets `ready`.
 
+import { cmsFetch } from "../cms/access.mjs";
 import { parseDotenv } from "../dotenv-text.mjs";
 import { mediaEnv } from "../ploi/media.mjs";
 import { createPloiServerClient } from "../ploi/server-client.mjs";
@@ -275,13 +276,14 @@ async function probeUpload({ admin, media, bucket, env, fetch, now }) {
     return [notReady(name, "the probe needs S3_UPLOADS_KEY / S3_UPLOADS_SECRET", MEDIA_SETUP)];
   }
   const api = `https://${admin}/wp-json/wp/v2/media`;
+  const cms = cmsFetch({ env, origin: `https://${admin}`, fetch });
   const authorization = `Basic ${btoa(`${user}:${password}`)}`;
   const filename = `gq-media-check-${now()}.png`;
 
   let response;
   let payload;
   try {
-    response = await fetch(api, {
+    response = await cms(api, {
       method: "POST",
       signal: AbortSignal.timeout(TIMEOUT),
       headers: {
@@ -321,7 +323,7 @@ async function probeUpload({ admin, media, bucket, env, fetch, now }) {
     // Whatever WordPress created is removed, even from an unusable answer.
     if (Number.isInteger(payload?.id)) {
       const probe = { api, id: payload.id, authorization, url: payload.source_url };
-      checks.push(await deleteProbe(probe, { bucket, media, fetch }));
+      checks.push(await deleteProbe(probe, { bucket, media, fetch: cms }));
     }
   }
   return checks;

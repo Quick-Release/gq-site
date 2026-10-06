@@ -67,6 +67,7 @@ function world(overrides = {}) {
   const state = {
     cms: "ready", // "down", "not-installed", "no-graphql", "ready"
     schemaQuery: SCHEMA_QUERY,
+    graphqlPath: "/wp/graphql",
     schemaErrors: [],
     // A bilingual Site's: Polylang's languages, as GQ Polylang for WPGraphQL
     // lists them (null: it isn't active), and each other language's homepage.
@@ -107,7 +108,7 @@ function world(overrides = {}) {
           headers: { location: "https://admin.example.test/wp/wp-admin/install.php" },
         });
       }
-      if (pathname === "/wp/graphql") {
+      if (pathname === state.graphqlPath) {
         if (state.cms === "no-graphql") {
           return new Response("<html>Page not found</html>", { status: 404 });
         }
@@ -282,6 +283,54 @@ test("the report never shows a secret, and the text report groups the checks", a
     assert.ok(!result.stdout.includes(value), "a secret value is never printed");
   }
 });
+
+for (const graphqlPath of [undefined, "/wp/graphql", "/graphql"]) {
+  test(`Access GraphQL credentials reach only CMS queries at ${graphqlPath ?? "the default /wp/graphql"}`, async () => {
+    const access = {
+      GQ_AUTH_GRAPHQL_CLIENT_ID: "access-read-id",
+      GQ_AUTH_GRAPHQL_CLIENT_SECRET: "access-read-secret",
+      GQ_AUTH_AUTOMATION_CLIENT_ID: "access-automation-id",
+      GQ_AUTH_AUTOMATION_CLIENT_SECRET: "access-automation-secret",
+    };
+    const path = graphqlPath ?? "/wp/graphql";
+    const { fetch } = world({ graphqlPath: path });
+    const fixture = await createFixtureSite({
+      ops: { ...OPS, wordpress: { ...OPS.wordpress, ...(graphqlPath ? { graphqlPath } : {}) } },
+    });
+    const checked = await fixture.run(["site", "check", "--json"], {
+      env: { ...SECRETS, ...access },
+      fetch,
+    });
+    assert.equal(checked.code, 0, checked.stderr);
+    const queries = fetch.requests.filter(({ body }) => body?.includes('"query"'));
+    assert.equal(queries.length, 2);
+    assert.deepEqual(
+      [...new Set(queries.map(({ url }) => url))],
+      [`https://admin.example.test${path}`],
+    );
+    for (const request of fetch.requests) {
+      const location = new URL(request.url);
+      const service =
+        location.origin === "https://admin.example.test"
+          ? location.pathname === path
+            ? "GRAPHQL"
+            : "AUTOMATION"
+          : null;
+      assert.equal(
+        request.headers["CF-Access-Client-Id"],
+        service ? access[`GQ_AUTH_${service}_CLIENT_ID`] : undefined,
+        request.url,
+      );
+      assert.equal(
+        request.headers["CF-Access-Client-Secret"],
+        service ? access[`GQ_AUTH_${service}_CLIENT_SECRET`] : undefined,
+        request.url,
+      );
+    }
+    for (const value of Object.values(access))
+      assert.ok(!`${checked.stdout}${checked.stderr}`.includes(value));
+  });
+}
 
 test("a CMS that is running without WordPress installed is not ready", async () => {
   const { code, byName } = await check({ cms: "not-installed" });
@@ -613,9 +662,16 @@ function ddev(status) {
   });
 }
 
-async function checkLocal({ status, cmsEnv, cms = "ready", schemaErrors = [] }) {
+async function checkLocal({
+  status,
+  cmsEnv,
+  cms = "ready",
+  schemaErrors = [],
+  env = {},
+  ops = OPS,
+}) {
   const fixture = await createFixtureSite({
-    ops: OPS,
+    ops,
     files: cmsEnv === undefined ? {} : { "apps/cms/.env": cmsEnv },
   });
   const local = recordingFetch(({ url, body }) => {
@@ -634,6 +690,7 @@ async function checkLocal({ status, cmsEnv, cms = "ready", schemaErrors = [] }) 
   });
   const result = await fixture.run(["site", "check", "--local", "--json"], {
     exec: ddev(status),
+    env,
     fetch: local,
   });
   const report = JSON.parse(result.stdout);
@@ -675,6 +732,25 @@ test("--local: DDEV running isn't a ready CMS until WordPress is installed with 
   const ready = await checkLocal({ status: "running", cmsEnv: LOCAL_ENV });
   assert.equal(ready.code, 0, JSON.stringify(ready.report));
   assert.equal(ready.report.scope, "local");
+});
+
+test("--local keeps /wp/graphql despite a canonical production path and never sends production Access credentials", async () => {
+  const checked = await checkLocal({
+    ops: { ...OPS, wordpress: { ...OPS.wordpress, graphqlPath: "/graphql" } },
+    status: "running",
+    cmsEnv: LOCAL_ENV,
+    env: {
+      GQ_AUTH_GRAPHQL_CLIENT_ID: "production-read-id",
+      GQ_AUTH_GRAPHQL_CLIENT_SECRET: "production-read-secret",
+      GQ_AUTH_AUTOMATION_CLIENT_ID: "production-automation-id",
+      GQ_AUTH_AUTOMATION_CLIENT_SECRET: "production-automation-secret",
+    },
+  });
+  assert.equal(checked.code, 0);
+  for (const request of checked.fetch.requests) {
+    assert.equal(request.headers["CF-Access-Client-Id"], undefined);
+    assert.equal(request.headers["CF-Access-Client-Secret"], undefined);
+  }
 });
 
 test("--local and --url can't be combined", async () => {

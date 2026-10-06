@@ -201,6 +201,30 @@ test("db sync backs up live, imports it into DDEV and resets the local admin fro
   assert.match(result.stdout, /Live backup: r2:\/\/fixture-backups\/db\/fx_db\//u);
 });
 
+test("db sync's post-import check keeps the local path without production Access credentials", async () => {
+  const fixture = await site({
+    ops: { ...OPS, wordpress: { plugins: [], graphqlPath: "/graphql" } },
+  });
+  const { fetch } = fakeProviders();
+  const result = await fixture.run(["db", "sync", "--yes"], {
+    env: {
+      ...ENV,
+      GQ_AUTH_GRAPHQL_CLIENT_ID: "production-read-id",
+      GQ_AUTH_GRAPHQL_CLIENT_SECRET: "production-read-secret",
+      GQ_AUTH_AUTOMATION_CLIENT_ID: "production-automation-id",
+      GQ_AUTH_AUTOMATION_CLIENT_SECRET: "production-automation-secret",
+    },
+    fetch,
+    exec: fakeLocal(),
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const local = fetch.requests.filter(({ url }) => new URL(url).origin === HOME);
+  assert.equal(local.length, 1);
+  assert.equal(new URL(local[0].url).pathname, "/wp/graphql");
+  assert.equal(local[0].headers["CF-Access-Client-Id"], undefined);
+  assert.equal(local[0].headers["CF-Access-Client-Secret"], undefined);
+});
+
 test("db sync installs the language packs of gq.ops.json's wordpress.locale", async () => {
   const fixture = await site({ ops: { ...OPS, wordpress: { plugins: [], locale: "pt_PT_ao90" } } });
   const { fetch } = fakeProviders();

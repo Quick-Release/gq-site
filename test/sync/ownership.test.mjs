@@ -130,6 +130,7 @@ const CREATED_PATHS = [
   "apps/frontend/src/lib/runtime.ts",
   "apps/frontend/src/lib/site-language.test.ts",
   "apps/frontend/src/lib/site-language.ts",
+  "apps/frontend/src/lib/wordpress-access.test.ts",
   "apps/frontend/src/lib/wordpress.test.ts",
   "apps/frontend/src/lib/wordpress.ts",
   "apps/frontend/src/lib/wp-block-renderer.test.ts",

@@ -30,8 +30,9 @@
 // not-ready.
 
 import { RECONCILIATION_STALE_MS, sendCheckEvent } from "../frontend/commands.mjs";
-import { siteLanguages } from "../manifest/schema.mjs";
+import { siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
 import { productionMediaReadiness } from "../media/readiness.mjs";
+import { cmsFetch } from "../cms/access.mjs";
 import { EVENT_SECRET, inspectCmsEvents } from "../ploi/events.mjs";
 
 const TIMEOUT = 30_000;
@@ -217,7 +218,14 @@ const SCHEMA_PROVIDERS = [
  * Frontend reads. A CMS that is merely running, or answers only some of them,
  * is not ready.
  */
-export async function cmsReadiness({ graphqlUrl, fetch, languages = [] }) {
+export async function cmsReadiness({
+  graphqlUrl,
+  fetch,
+  languages = [],
+  env = {},
+  cmsOrigin = new URL(graphqlUrl).origin,
+}) {
+  fetch = cmsFetch({ env, origin: cmsOrigin, fetch });
   const checks = [];
   const add = (check) => checks.push({ area: "cms", ...check });
   const location = new URL(graphqlUrl);
@@ -775,7 +783,8 @@ export async function siteReadiness({ ops, env, fetch, origin, upload = true, no
   const languages = siteLanguages(ops);
   const checks = [
     ...(await cmsReadiness({
-      graphqlUrl: `https://${ops.domains.admin}/wp/graphql`,
+      graphqlUrl: wordpressGraphqlUrl(ops),
+      env,
       fetch,
       languages,
     })),

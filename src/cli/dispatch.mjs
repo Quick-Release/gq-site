@@ -58,6 +58,7 @@ import {
 import { isSyncCommand, runSyncCommand, SYNC_USAGE } from "../sync/commands.mjs";
 import { isNewCommand, NEW_USAGE, runNewCommand } from "../sync/new.mjs";
 import { isSkillsCommand, runSkillsCommand, SKILLS_USAGE } from "../skills/commands.mjs";
+import { isScopeCommand, runScopeCommand, SCOPE_USAGE } from "../scope/commands.mjs";
 import {
   isOffboardCommand,
   OFFBOARD_USAGE,
@@ -100,6 +101,8 @@ export async function runCli(
   }
   // And gq skills update, which works from any Git repository (no manifest).
   if (isSkillsCommand(argv)) return runSkillsCommand(argv, { cwd, env, fetch, io });
+  // And the agent hooks, which read a hook call on stdin (no manifest).
+  if (isScopeCommand(argv)) return runScopeCommand(argv, { cwd, env, exec, stdin, io });
 
   let effectiveArguments = argv;
   if (effectiveArguments.length === 0 && interactive) {
@@ -491,6 +494,7 @@ ${WORKSPACE_USAGE.map((usage) => `  ${usage}`).join("\n")}
 ${NEW_USAGE.map((usage) => `  ${usage}`).join("\n")}
 ${SYNC_USAGE.map((usage) => `  ${usage}`).join("\n")}
 ${SKILLS_USAGE.map((usage) => `  ${usage}`).join("\n")}
+${SCOPE_USAGE.map((usage) => `  ${usage}`).join("\n")}
 
 Ploi:
   gq ploi servers list

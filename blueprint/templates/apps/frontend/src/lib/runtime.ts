@@ -8,6 +8,9 @@ export interface FrontendBindings {
   FRONTEND_REFRESH_TOKEN?: string;
   /** The key the CMS signs its publication events with (a Worker secret). */
   PUBLICATION_EVENT_SECRET?: string;
+  /** Read-only CMS edge identity; never the automation service or public env. */
+  GQ_AUTH_GRAPHQL_CLIENT_ID?: string;
+  GQ_AUTH_GRAPHQL_CLIENT_SECRET?: string;
 }
 
 // Imported once, so concurrent requests share one import of the module.
@@ -18,6 +21,7 @@ let workers: Promise<{ env: Record<string, unknown> } | null> | undefined;
  * where `cloudflare:workers` doesn't exist: there are none.
  */
 export async function frontendBindings(): Promise<FrontendBindings> {
+  if (!import.meta.env.SSR) return {};
   workers ??= import("cloudflare:workers").catch(() => null);
   return ((await workers)?.env ?? {}) as FrontendBindings;
 }
