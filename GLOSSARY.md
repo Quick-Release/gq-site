@@ -162,6 +162,43 @@ read a visit makes: a published entry is stored and served, a confirmed
 missing one is a 404, and a failed read is a 503.
 _Avoid_: cache miss (it isn't a fallback for stored entries)
 
+### Releases
+
+**Release**:
+A tagged version of a Site, deployed CMS first, then Frontend
+([ADR 0016](docs/adr/0016-activate-cms-releases-from-kept-builds-and-roll-back-code-only.md)). Each release
+must work beside the one before it: its CMS with the previous Frontend, and
+the previous CMS code with its database. A release that can't says so, and
+is not rollback-safe.
+
+**Kept release**:
+A complete, built CMS release held on the CMS server beside the live one,
+ready to be made live again without building or downloading anything. The
+live release and the two before it are kept; older ones are reached by
+deploying their tag again.
+_Avoid_: backup (for a kept release)
+
+**Partial release**:
+A release whose CMS went live and whose Frontend didn't. It is recorded as
+such, never as success, and is ended by deploying that release's Frontend
+again or by a rollback.
+_Avoid_: failed release (the CMS part is live)
+
+**Rollback**:
+Making an earlier release of a Site live again, run by an operator through
+`gq`: the Frontend first, then the CMS by a code rollback, skipping an app
+already at that release. A deploy whose CMS fails after its switch rolls the
+CMS back by itself.
+_Avoid_: revert, undo
+
+**Code rollback**:
+Making a kept release the live CMS code again, activated exactly as a deploy
+activates it. It switches code only: the database keeps every change made
+since, which is why every release must run beside the one before it.
+Restoring a database is a separate, deliberate act that loses editors' work
+since its snapshot.
+_Avoid_: restore (for a code switch)
+
 ### Hosting
 
 **Staging domain**:
