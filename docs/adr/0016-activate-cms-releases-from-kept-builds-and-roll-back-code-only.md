@@ -14,8 +14,9 @@ first, then Frontend. When the Frontend fails, only a CI exit code says the
 Site is mixed.
 
 Ploi offers zero-downtime deployments and a rollback button, but its
-zero-downtime mode needs a git repository attached to the site. GETQUICK
-Sites use custom deployments with no repository. The rollback has no API
+zero-downtime mode needs a git repository attached to the site. Sites that
+`gq ploi provision` sets up use custom deployments with no repository; Ekis's
+Ploi site is still attached to its GitHub repository. The rollback has no API
 endpoint, its script can't use the deploy variables, and what it reruns is
 not documented.
 
@@ -59,7 +60,9 @@ not documented.
   a **partial release**, and CI fails with that status. `gq release status`
   reads the record; deploys and rollbacks write it.
 - **Existing sites convert on their first deploy** with this script. A
-  release whose script predates this layout can't be deployed.
+  release whose script predates this layout can't be deployed. A site still
+  attached to a git repository in Ploi, such as Ekis, moves to custom
+  deployments first.
 
 ## Considered options
 
@@ -84,6 +87,7 @@ not documented.
 - Deploy extensions already had to be idempotent, since they run on every
   deploy. They now also run on a rollback.
 - The server needs room for three complete releases.
-- Ploi's file backups of a zero-downtime site back up only its symlink.
-  Whether they follow gq's `current` is unverified, and is checked once the
-  layout lands.
+- Ploi's site file backup copies the whole site directory, so each backup
+  holds every kept release, about three times today's size (Ekis keeps 14
+  daily). How backups skip the releases that aren't live is settled before
+  Ekis converts.
