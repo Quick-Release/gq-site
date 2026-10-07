@@ -244,14 +244,16 @@ function expandHome(path) {
 
 // Splits a shell command into simple commands' words: quotes and escapes
 // are honoured, `;`, `&&`, `||`, `|`, `&` and newlines separate commands, and
-// redirections become their own words. Enough to read what a command
-// touches; it doesn't expand variables or substitutions.
+// redirections become their own words. A heredoc stays one word (`<<EOF`) and
+// its body is skipped: it is input, not commands. Enough to read what a
+// command touches; it doesn't expand variables or substitutions.
 export function segments(command) {
   const result = [];
   let words = [];
   let word = "";
   let inWord = false;
   let quote = null;
+  let heredocs = [];
   const endWord = () => {
     if (inWord) words.push(word);
     word = "";
@@ -280,6 +282,34 @@ export function segments(command) {
     } else if (char === "\\" && index + 1 < command.length) {
       word += command[++index];
       inWord = true;
+    } else if (char === "<" && command[index + 1] === "<" && command[index + 2] !== "<") {
+      endWord();
+      index += 2;
+      const strip = command[index] === "-";
+      if (strip) index += 1;
+      while (command[index] === " " || command[index] === "\t") index += 1;
+      let delimiter = "";
+      while (index < command.length && !/[\s;|&<>]/u.test(command[index])) {
+        if (command[index] === "\\") index += 1;
+        else if (command[index] !== "'" && command[index] !== '"') delimiter += command[index];
+        index += 1;
+      }
+      index -= 1;
+      words.push(`<<${delimiter}`);
+      heredocs.push({ delimiter, strip });
+    } else if (char === "\n" && heredocs.length > 0) {
+      endSegment();
+      let start = index + 1;
+      for (const { delimiter, strip } of heredocs) {
+        while (start < command.length) {
+          const end = command.indexOf("\n", start);
+          const line = command.slice(start, end === -1 ? command.length : end);
+          start = end === -1 ? command.length : end + 1;
+          if ((strip ? line.replace(/^\t+/u, "") : line) === delimiter) break;
+        }
+      }
+      heredocs = [];
+      index = start - 1;
     } else if (
       char === "\n" ||
       char === ";" ||

@@ -158,3 +158,15 @@ test("segments splits simple commands and keeps quoted words whole", () => {
     ["tee", "c", "2>", "&1"],
   ]);
 });
+
+test("a heredoc's body is input, not commands", () => {
+  const body =
+    "into releases/<version>-<sha>/, link shared/\nrm -rf /data/code/getquick/clients/ekis";
+  assert.equal(bash(`gh pr create --body-file - <<'EOF'\n${body}\nEOF`), null);
+  assert.equal(bash(`cat <<-EOF > notes.md\n\t${body}\n\tEOF\ngit status`), null);
+  assert.deepEqual(segments(`cat <<"A" <<B\n> x\nA\n> y\nB\necho done`), [
+    ["cat", "<<A", "<<B"],
+    ["echo", "done"],
+  ]);
+  assert.match(bash(`cat <<EOF\nx\nEOF\ntouch /etc/x`), /outside this repository/u);
+});
