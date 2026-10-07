@@ -23,7 +23,8 @@
       "Bash(git worktree remove:*)",
       "Bash(git merge:*)",
       "Bash(pnpm install:*)",
-      "Bash(git push origin main)"
+      "Bash(git push origin main)",
+      "Bash(git pull:*)"
     ]
   },
   "hooks": {
