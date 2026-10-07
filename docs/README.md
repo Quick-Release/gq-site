@@ -52,6 +52,7 @@ guides.
 - [ADR 0013: Serve each language from its own shared rows](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0013-serve-each-language-from-its-own-shared-rows.md): bilingual Sites' rows, events, reconciliation and readiness.
 - [ADR 0014: Keep a Site's code in the EU unless it opts out](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0014-keep-a-sites-code-in-the-eu-unless-it-opts-out.md): Artifacts namespace jurisdictions.
 - [ADR 0015: Hold only the blueprint in this repository](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0015-hold-only-the-blueprint-in-this-repository.md): what belongs in gq-site and what moved out.
+- [ADR 0016: Activate CMS releases from kept builds, and roll back code only](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0016-activate-cms-releases-from-kept-builds-and-roll-back-code-only.md): the CMS release layout, rollback and partial releases.
 - [Rollout plan and evidence](https://github.com/Quick-Release/gq-site/blob/main/docs/plans/getquick-blueprint-rollout.md): accepted gates, passed phases and adoption checklist.
 - [Research](https://github.com/Quick-Release/gq-site/tree/main/docs/research): dated inventories and implementation research.
 - [Agent guidance](https://github.com/Quick-Release/gq-site/tree/main/docs/agents): issue tracking, triage and domain-document use.
