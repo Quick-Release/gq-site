@@ -5,6 +5,23 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.18.0 — 2026-10-08
+
+### Added
+
+- **Blueprint package discovery and upgrade proposals.** A declarative
+  catalogue, `blueprint/packages.json`, lists the GETQUICK Composer plugins
+  and themes with their upstream repository, discovery mechanism, canonical
+  registry, variants and policy. It holds no constraints: the pins stay in
+  the CMS `composer.json` template. `gq packages check` reports each
+  package's constraint, its newest stable upstream and installable registry
+  versions with provenance, a target and blockers.
+  `gq packages propose --latest` proposes caret-compatible upgrades.
+  `--write` applies them to the template in a gq-site checkout and changes
+  nothing else. `getquick/gq-theme` is catalogued but never proposed in
+  place of `getquick/getquick-theme`. Fleet updates and lockfiles are
+  deferred ([Blueprint packages](docs/reference/packages.md)).
+
 ## 0.17.7 — 2026-10-06
 
 ### Fixed
