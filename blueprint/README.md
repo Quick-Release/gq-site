@@ -9,6 +9,12 @@ contributor documentation, not a generated site file.
 target. Source names are navigation aids, not ownership rules. Paths not listed
 are site-owned and never touched.
 
+[`packages.json`](packages.json) is the package catalogue for
+`gq packages`: the GETQUICK Composer packages the blueprint knows, where each
+is discovered and installed from, and its upgrade policy. It holds no version
+constraints; those stay in `templates/apps/cms/composer.json`. See
+[Blueprint packages](../docs/reference/packages.md).
+
 ## Whole-file sources and fragments
 
 Most of `templates/` follows the site's directory layout. Keep `apps/`, `infra/`,

@@ -1,0 +1,70 @@
+{
+  "$comment": "GETQUICK Composer packages the blueprint knows, for gq packages check|propose. It holds no version constraints: the blueprint's pins are the require keys of composerFile. See docs/reference/packages.md.",
+  "schemaVersion": 1,
+  "composerFile": "templates/apps/cms/composer.json",
+  "packages": [
+    {
+      "name": "getquick/gq-config",
+      "upstream": { "repository": "Quick-Release/gq-config", "discovery": "tags" },
+      "install": { "registry": "getquick" },
+      "variants": ["content"],
+      "requirement": "blueprint",
+      "policy": "caret",
+      "formerNames": ["getquick/getquick-config"]
+    },
+    {
+      "name": "getquick/getquick-theme",
+      "upstream": { "repository": "Quick-Release/getquick-theme", "discovery": "tags" },
+      "install": { "registry": "getquick" },
+      "variants": ["content"],
+      "requirement": "blueprint",
+      "policy": "caret"
+    },
+    {
+      "name": "getquick/gq-design",
+      "upstream": { "repository": "Quick-Release/getquick-design", "discovery": "tags" },
+      "install": { "registry": "getquick" },
+      "variants": ["content"],
+      "requirement": "blueprint",
+      "policy": "caret",
+      "formerNames": ["getquick/getquick-design"]
+    },
+    {
+      "name": "getquick/gq-support",
+      "upstream": { "repository": "Quick-Release/gq-support", "discovery": "tags" },
+      "install": { "registry": "getquick" },
+      "variants": ["content"],
+      "requirement": "blueprint",
+      "policy": "caret"
+    },
+    {
+      "name": "getquick/gq-polylang-graphql",
+      "upstream": { "repository": "Quick-Release/gq-polylang-graphql", "discovery": "tags" },
+      "install": { "registry": "getquick" },
+      "variants": ["content"],
+      "requirement": "site",
+      "policy": "caret",
+      "note": "A multilingual Site requires it itself (docs/guides/sites.md); the blueprint doesn't pin it."
+    },
+    {
+      "name": "getquick/gq-theme",
+      "upstream": {
+        "repository": "Quick-Release/gq-theme",
+        "discovery": "releases",
+        "asset": "gq-theme-{version}.zip"
+      },
+      "install": { "registry": "getquick" },
+      "variants": [],
+      "requirement": "none",
+      "policy": "manual",
+      "migrations": [
+        {
+          "kind": "replace",
+          "from": "getquick/getquick-theme",
+          "status": "unplanned",
+          "reason": "getquick/getquick-theme registers the primary menu location and supplies design defaults; deploy/ploi/admin.sh requires it installed, admin.d/10-theme.sh activates it and gq site readiness checks its menu. Adopting gq-theme needs an explicit migration, not a version bump."
+        }
+      ]
+    }
+  ]
+}
