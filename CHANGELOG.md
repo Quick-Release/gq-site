@@ -5,6 +5,21 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.18.1 — 2026-10-14
+
+### Fixed
+
+- **CMS blueprint dependency versions.** Pin WordPress to 7.1.3 and the
+  bundled plugins and themes to their latest stable registry releases. GQ
+  Design uses `*@stable` so Composer updates can select the latest compatible
+  stable release, including new major versions. Exact GETQUICK pins use
+  `manual` catalogue policy. Raise the CMS's PHP minimum to 8.4.1 to match
+  its GETQUICK dependencies and existing DDEV and CI runtimes.
+- **Bilingual CMS proof** now uses GQ Polylang for WPGraphQL 0.1.3.
+
+Existing Sites must deliberately update their CMS `composer.json` and commit
+the resulting `composer.lock`; `gq sync` preserves this create-once file.
+
 ## 0.18.0 — 2026-10-08
 
 ### Added
