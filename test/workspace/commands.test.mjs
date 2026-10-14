@@ -271,6 +271,198 @@ test("gq doctor fails when Node is below the site's engines minimum", async () =
   assert.match(result.stdout, /Some required checks need attention\./u);
 });
 
+test("gq doctor rejects assignments from every Sigillo environment across apps without exposing values", async () => {
+  const ops = {
+    ...OPS,
+    artifacts: undefined,
+    sigillo: {
+      ...OPS.sigillo,
+      environments: { local: "dev", staging: "stage", operations: "ops", release: "stage" },
+    },
+    doctor: { requiredFiles: { "tools/worker": [] } },
+  };
+  const files = {
+    "apps/cms/.env": "export LOCAL_TOKEN='local-value-must-stay-private'\n",
+    "apps/frontend/.env.local": "STAGE_TOKEN=\n",
+    "apps/worker/.dev.vars": "OperationsToken=ops-value-must-stay-private\n",
+    "tools/worker/.env": "STAGE_TOKEN=another-private-value\n",
+    "apps/worker/node_modules/dependency/.env": "LOCAL_TOKEN=ignored\n",
+    "apps/node_modules/.env": "LOCAL_TOKEN=ignored\n",
+  };
+  const fixture = await healthySite(files, ops);
+  const stdout = Object.fromEntries(
+    Object.entries({ dev: "LOCAL_TOKEN", stage: "STAGE_TOKEN", ops: "OperationsToken" }).map(
+      ([environment, name]) => [
+        `sigillo secrets --api-url https://secrets.example.test --project PROJECT1 --env ${environment}`,
+        `${name}\n`,
+      ],
+    ),
+  );
+  const exec = machine({ stdout });
+  const result = await fixture.run(["doctor"], { exec });
+  assert.equal(result.code, 1, result.stdout);
+  for (const [path, name] of [
+    ["apps/cms/.env", "LOCAL_TOKEN"],
+    ["apps/frontend/.env.local", "STAGE_TOKEN"],
+    ["apps/worker/.dev.vars", "OperationsToken"],
+    ["tools/worker/.env", "STAGE_TOKEN"],
+  ]) {
+    assert.ok(result.stdout.includes(`${path} sets ${name}`), result.stdout);
+    assert.equal(await readFile(fixture.path(path), "utf8"), files[path]);
+  }
+  assert.doesNotMatch(
+    result.stdout + result.stderr,
+    /must-stay-private|another-private-value|node_modules.*sets/u,
+  );
+  const calls = actions(exec).filter((line) => line.startsWith("sigillo secrets"));
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every((line) => !line.includes(" get ")));
+});
+
+test("gq doctor allows only the blueprint's exact CMS local stand-ins, even when examples are edited", async () => {
+  const standIns = {
+    DB_PASSWORD: "db",
+    AUTH_KEY: "fixture-local-auth-key",
+    SECURE_AUTH_KEY: "fixture-local-secure-auth-key",
+    LOGGED_IN_KEY: "fixture-local-logged-in-key",
+    NONCE_KEY: "fixture-local-nonce-key",
+    AUTH_SALT: "fixture-local-auth-salt",
+    SECURE_AUTH_SALT: "fixture-local-secure-auth-salt",
+    LOGGED_IN_SALT: "fixture-local-logged-in-salt",
+    NONCE_SALT: "fixture-local-nonce-salt",
+  };
+  const source = Object.entries(standIns)
+    .map(([name, value]) => `export ${name}='${value}' # public local value`)
+    .join("\n");
+  const exec = () =>
+    machine({
+      stdout: {
+        "sigillo secrets --api-url https://secrets.example.test --project PROJECT1 --env dev":
+          Object.keys(standIns).join("\n"),
+      },
+    });
+  const healthy = await healthySite({ "apps/cms/.env": source });
+  const clean = await healthy.run(["doctor"], { exec: exec() });
+  assert.equal(clean.code, 0, clean.stdout);
+
+  for (const [path, content] of [
+    ["apps/cms/.env", "AUTH_KEY=private-key\n"],
+    ["apps/cms/.env", "AUTH_KEY=private-key\nAUTH_KEY=fixture-local-auth-key\n"],
+    ["apps/cms/.env", "DB_PASSWORD=\n"],
+    ["apps/cms/.env.local", source],
+    ["apps/frontend/.env", source],
+  ]) {
+    const fixture = await healthySite({ [path]: content, "apps/cms/.env.example": content });
+    const result = await fixture.run(["doctor"], { exec: exec() });
+    assert.equal(result.code, 1, `${path}: ${result.stdout}`);
+    assert.ok(result.stdout.includes(`${path} sets `));
+    assert.doesNotMatch(result.stdout + result.stderr, /private-key/u);
+  }
+});
+
+test("gq doctor fails if any configured Sigillo environment cannot be listed without echoing process errors", async () => {
+  const ops = {
+    ...OPS,
+    artifacts: undefined,
+    sigillo: { ...OPS.sigillo, environments: { local: "dev", staging: "stage" } },
+  };
+  const fixture = await healthySite({}, ops);
+  const exec = recordingExec(async (call) => {
+    if (
+      basename(call.command) === "sigillo" &&
+      call.args[0] === "secrets" &&
+      call.args.at(-1) === "stage"
+    ) {
+      return { code: 1, stderr: "network diagnostic containing private-token-value" };
+    }
+    return machine()(call.command, call.args, { cwd: call.cwd, env: call.env });
+  });
+  const result = await fixture.run(["doctor"], { exec });
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(
+    result.stdout,
+    /✗ could not list Sigillo stage variable names.*gq sigillo secrets staging/u,
+  );
+  assert.doesNotMatch(
+    result.stdout + result.stderr,
+    /private-token-value|no disallowed assignments/u,
+  );
+});
+
+test("gq doctor requires configured Sigillo to be installed, provisioned, and mapped", async () => {
+  for (const [files, sigillo, message] of [
+    [{ "node_modules/.bin/sigillo": null }, OPS.sigillo, /Sigillo CLI is missing/u],
+    [
+      {},
+      { ...OPS.sigillo, projectId: "REPLACE_WITH_PROJECT_ID" },
+      /projectId is still a placeholder/u,
+    ],
+    [{}, { ...OPS.sigillo, environments: {} }, /configure gq\.ops\.json sigillo\.environments/u],
+    [
+      {},
+      { ...OPS.sigillo, environments: undefined },
+      /configure gq\.ops\.json sigillo\.environments/u,
+    ],
+  ]) {
+    const fixture = await healthySite(files, { ...OPS, sigillo });
+    const result = await fixture.run(["doctor"], { exec: machine() });
+    assert.equal(result.code, 1, result.stdout);
+    assert.match(result.stdout, message);
+    assert.doesNotMatch(result.stdout, /no disallowed assignments/u);
+  }
+});
+
+test("gq doctor retains the R2 check without Sigillo and leaves local configuration alone", async () => {
+  const ops = { ...OPS, sigillo: undefined };
+  const clean = await healthySite(
+    {
+      "apps/cms/.env": "DB_PASSWORD=db\n",
+      "apps/frontend/.env": "PUBLIC_WORDPRESS_GRAPHQL_URL=http://cms.test/graphql\n",
+    },
+    ops,
+  );
+  const ready = await clean.run(["doctor"], { exec: machine() });
+  assert.equal(ready.code, 0, ready.stdout);
+  assert.doesNotMatch(ready.stdout, /Secrets \(Sigillo\)/u);
+  const unsafe = await healthySite({ "apps/cms/.env": "S3_UPLOADS_KEY=private-r2-key\n" }, ops);
+  const failed = await unsafe.run(["doctor"], { exec: machine() });
+  assert.equal(failed.code, 1, failed.stdout);
+  assert.match(failed.stdout, /apps\/cms\/\.env sets S3_UPLOADS_KEY/u);
+  assert.doesNotMatch(failed.stdout + failed.stderr, /private-r2-key/u);
+});
+
+test("gq doctor does not print a rejected value through its local media diagnostics", async () => {
+  const fixture = await healthySite({
+    "apps/cms/.env": "S3_UPLOADS_BUCKET_URL=private-bucket-value\n",
+  });
+  const exec = machine({
+    stdout: {
+      "sigillo secrets --api-url https://secrets.example.test --project PROJECT1 --env dev":
+        "S3_UPLOADS_BUCKET_URL\n",
+    },
+  });
+  const result = await fixture.run(["doctor"], { exec });
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(result.stdout, /apps\/cms\/\.env sets S3_UPLOADS_BUCKET_URL/u);
+  assert.doesNotMatch(result.stdout + result.stderr, /private-bucket-value/u);
+});
+
+test("gq doctor detects secret names that collide with JavaScript object properties", async () => {
+  const fixture = await healthySite({
+    "apps/frontend/.env": "export __proto__=private-prototype-value\n",
+  });
+  const exec = machine({
+    stdout: {
+      "sigillo secrets --api-url https://secrets.example.test --project PROJECT1 --env dev":
+        "__proto__\n",
+    },
+  });
+  const result = await fixture.run(["doctor"], { exec });
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(result.stdout, /apps\/frontend\/\.env sets __proto__/u);
+  assert.doesNotMatch(result.stdout + result.stderr, /private-prototype-value/u);
+});
+
 test("gq doctor fails when a file the site requires is missing", async () => {
   const fixture = await healthySite({ "apps/frontend/astro.config.mjs": null });
   const result = await fixture.run(["doctor"], { exec: machine() });
@@ -331,7 +523,7 @@ test("gq doctor reads the Node pin from .nvmrc when there is no .mise.toml", asy
   assert.match(result.stdout, /✓ Node\.js 24\.21\.0 \(matches the \.nvmrc pin\)/u);
 });
 
-test("gq doctor reports stopped DDEV, missing env files and a logged-out Sigillo", async () => {
+test("gq doctor fails for logged-out Sigillo and names commands to generate missing env files", async () => {
   const fixture = await site({
     files: { "apps/cms/vendor/autoload.php": "", "node_modules/.bin/sigillo": "" },
   });
@@ -340,10 +532,11 @@ test("gq doctor reports stopped DDEV, missing env files and a logged-out Sigillo
     codes: { "sigillo me --api-url https://secrets.example.test": 1 },
   });
   const result = await fixture.run(["doctor"], { exec });
-  assert.equal(result.code, 0, result.stdout);
-  assert.match(result.stdout, /⚠ apps\/frontend\/\.env is missing/u);
-  assert.match(result.stdout, /⚠ apps\/cms\/\.env is missing/u);
-  assert.match(result.stdout, /⚠ Sigillo is not logged in — run: pnpm sigillo:login/u);
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(result.stdout, /apps\/frontend\/\.env is missing — run: gq setup --no-ddev/u);
+  assert.match(result.stdout, /apps\/cms\/\.env is missing — run: gq cms start/u);
+  assert.match(result.stdout, /✗ Sigillo is not logged in — run: pnpm sigillo:login/u);
+  assert.doesNotMatch(result.stdout, /copy \.env\.example/u);
   assert.match(
     result.stdout,
     /⚠ DDEV is installed but fixture-admin is not running — run: pnpm cms:dev/u,
@@ -440,7 +633,7 @@ test("gq doctor confirms the namespace's jurisdiction with ARTIFACTS_API_TOKEN f
   assert.equal(result.code, 0, result.stdout);
   assert.match(result.stdout, /✓ Artifacts namespace fixture-ns is in us, as gq\.ops\.json says/u);
   assert.equal(fetch.requests[0].headers.Authorization, "Bearer env-artifacts");
-  assert.ok(!actions(exec).some((line) => line.startsWith("sigillo secrets")));
+  assert.ok(!actions(exec).some((line) => line.startsWith("sigillo secrets get")));
 });
 
 test("gq doctor only warns when it can't check the namespace's jurisdiction", async () => {

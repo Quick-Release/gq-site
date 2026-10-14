@@ -8,8 +8,9 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 
+import { parseEnv } from "../../src/cli/env-files.mjs";
 import { VERSION } from "../../src/version.mjs";
-import { runGq, temporaryDirectory } from "../support/fixture-site.mjs";
+import { recordingExec, runGq, temporaryDirectory } from "../support/fixture-site.mjs";
 import { newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
 const PLUGINS = [
@@ -100,6 +101,32 @@ test("gq new's env templates hold public configuration and placeholders only", a
       if (/KEY|SECRET|TOKEN|PASSWORD|SALT|AUTH/u.test(name)) assert.match(value, allowed, name);
     }
   }
+  assert.deepEqual(parseEnv(await readSite(site.root, "apps/cms/.env.example")), {
+    DB_NAME: "db",
+    DB_USER: "db",
+    DB_PASSWORD: "db",
+    DB_HOST: "db",
+    DB_PREFIX: "wp_",
+    WP_ENV: "development",
+    WP_ENVIRONMENT_TYPE: "local",
+    WP_HOME: "https://acme-admin.ddev.site",
+    WP_SITEURL: "${WP_HOME}/wp",
+    GRAPHQL_DEBUG: "true",
+    GRAPHQL_CORS_ORIGINS: "http://localhost:4321,https://localhost:4321",
+    GETQUICK_FRONTEND_URL: "http://localhost:4321",
+    DISABLE_WP_CRON: "false",
+    AUTH_KEY: "acme-local-auth-key",
+    SECURE_AUTH_KEY: "acme-local-secure-auth-key",
+    LOGGED_IN_KEY: "acme-local-logged-in-key",
+    NONCE_KEY: "acme-local-nonce-key",
+    AUTH_SALT: "acme-local-auth-salt",
+    SECURE_AUTH_SALT: "acme-local-secure-auth-salt",
+    LOGGED_IN_SALT: "acme-local-logged-in-salt",
+    NONCE_SALT: "acme-local-nonce-salt",
+  });
+  assert.deepEqual(parseEnv(await readSite(site.root, "apps/frontend/.env.example")), {
+    PUBLIC_WORDPRESS_GRAPHQL_URL: "https://acme-admin.ddev.site/wp/graphql",
+  });
 });
 
 test("gq new reads no secret, calls no provider and writes none of the environment", async () => {
@@ -128,6 +155,30 @@ test("gq new reads no secret, calls no provider and writes none of the environme
       assert.ok(!content.includes(value), `${path} holds ${name}`);
     }
   }
+});
+
+test("a fresh content Site generates both local env files without copying injected credentials", async () => {
+  const site = await newSite();
+  const exec = recordingExec();
+  const result = await runGq(["setup", "--no-ddev"], {
+    cwd: site.root,
+    env: {
+      COMPOSER_AUTH: "private-registry-login",
+      DB_PASSWORD: "private-server-password",
+      AUTH_KEY: "private-production-key",
+    },
+    exec,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  for (const app of ["cms", "frontend"]) {
+    const generated = await readSite(site.root, `apps/${app}/.env`);
+    assert.equal(generated, await readSite(site.root, `apps/${app}/.env.example`));
+    assert.doesNotMatch(
+      generated,
+      /private-registry-login|private-server-password|private-production-key/u,
+    );
+  }
+  assert.equal(parseEnv(await readSite(site.root, "apps/cms/.env")).DB_PASSWORD, "db");
 });
 
 test("gq new prints the provisioning sequence and runs none of it", async () => {
@@ -328,6 +379,6 @@ function answering(answers) {
 function envEntries(text) {
   return text
     .split("\n")
-    .filter((line) => /^[A-Z_]+=/u.test(line))
+    .filter((line) => /^[A-Z_][A-Z0-9_]*=/u.test(line))
     .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]);
 }

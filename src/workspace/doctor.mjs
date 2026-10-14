@@ -4,8 +4,8 @@
 // (`packageManager`, .mise.toml or .nvmrc), the files each app must have
 // (the variant's defaults plus gq.ops.json `doctor.requiredFiles`), the DDEV
 // project (apps/cms/.ddev/config.yaml `name`) and gq.ops.json's `sigillo` and
-// `artifacts`. Missing required pieces fail it; drift only warns. Its one
-// network read: the Artifacts namespace's jurisdiction, with
+// `artifacts`. Missing required pieces fail it; drift only warns. Reads
+// Sigillo's variable names and the Artifacts namespace's jurisdiction, with
 // ARTIFACTS_API_TOKEN from the environment or Sigillo `staging`.
 
 import { existsSync, readFileSync } from "node:fs";
@@ -24,6 +24,7 @@ import {
 } from "../manifest/site-settings.mjs";
 import { sigilloSecrets } from "../sigillo/commands.mjs";
 import { VERSION } from "../version.mjs";
+import { checkLocalEnvFiles } from "./env-files.mjs";
 import { FRONTEND_PATH } from "./layout.mjs";
 
 const PACKAGE_NAME = "@getquick/site";
@@ -97,9 +98,9 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
 
   io.out("\nEnvironment:");
   if (existsSync(join(root, FRONTEND_PATH, ".env"))) ok(`${FRONTEND_PATH}/.env exists`);
-  else warn(`${FRONTEND_PATH}/.env is missing — copy .env.example and set the GraphQL URL`);
+  else warn(`${FRONTEND_PATH}/.env is missing — run: gq setup --no-ddev`);
   if (existsSync(join(root, CMS_PATH, ".env"))) ok(`${CMS_PATH}/.env exists`);
-  else warn(`${CMS_PATH}/.env is missing — copy .env.example and set local credentials`);
+  else warn(`${CMS_PATH}/.env is missing — run: gq cms start`);
 
   // Local uploads only; the production prerequisite is gq media check's.
   io.out("\nMedia (local development):");
@@ -107,7 +108,11 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
     ops: context.config,
     cmsEnv: readText(join(root, CMS_PATH, ".env")),
   });
-  for (const { status, detail, action } of media.checks) {
+  for (const { name, status, detail, action } of media.checks) {
+    if (name === "bucket-fallback" && status === "ok") {
+      ok("media missing locally is served from the configured bucket URL");
+      continue;
+    }
     if (status === "ok") ok(detail);
     else (status === "not-ready" ? fail : warn)(action ? `${detail} — ${action}` : detail);
   }
@@ -115,6 +120,9 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
   if (context.config.sigillo) {
     io.out("\nSecrets (Sigillo):");
     sigilloReady = await checkSigillo({ root, sigillo: context.config.sigillo, capture, report });
+    if (sigilloReady) {
+      await checkLocalSecrets({ context, env, exec, requiredFiles, report });
+    }
   }
 
   if (context.config.artifacts && context.config.cloudflare?.accountId) {
@@ -152,6 +160,44 @@ function createReport(io) {
     },
     healthy: () => healthy,
   };
+}
+
+async function checkLocalSecrets({ context, env, exec, requiredFiles, report }) {
+  const environments = new Map();
+  for (const [alias, name] of Object.entries(context.config.sigillo.environments ?? {})) {
+    environments.set(name, alias);
+  }
+  if (environments.size === 0) {
+    report.fail(
+      "local secret check needs a mapped Sigillo environment — configure gq.ops.json sigillo.environments",
+    );
+    return;
+  }
+  const secretNames = new Set();
+  let complete = true;
+  for (const [name, alias] of environments) {
+    try {
+      const secrets = await sigilloSecrets({ context, env, exec }, alias);
+      for (const variable of (await secrets.list()).split(/\r?\n/u)) {
+        if (variable.trim()) secretNames.add(variable.trim());
+      }
+    } catch {
+      // Sigillo stderr is untrusted output and might contain secret values.
+      report.fail(
+        `could not list Sigillo ${name} variable names — check connectivity and access with gq sigillo secrets ${alias}`,
+      );
+      complete = false;
+    }
+  }
+  if (complete) {
+    await checkLocalEnvFiles({
+      root: context.projectRoot,
+      project: context.config.project,
+      requiredFiles,
+      secretNames,
+      report,
+    });
+  }
 }
 
 async function checkNode({ root, project, manifest, capture, report }) {
@@ -228,18 +274,18 @@ async function checkArtifactsRemote({ config, capture, report }) {
 async function checkSigillo({ root, sigillo, capture, report }) {
   const binary = join(root, "node_modules", ".bin", "sigillo");
   if (!existsSync(binary)) {
-    report.warn("Sigillo CLI is missing — run: pnpm install");
+    report.fail("Sigillo CLI is missing — run: pnpm install");
     return false;
   }
   if (String(sigillo.projectId ?? "").startsWith("REPLACE_WITH_")) {
-    report.warn(
+    report.fail(
       "gq.ops.json sigillo.projectId is still a placeholder — cms:dev and deploy:frontend will not run",
     );
     return false;
   }
   report.ok(`Sigillo project ${sigillo.projectId}`);
   if ((await capture(binary, ["me", "--api-url", sigillo.apiUrl])).code !== 0) {
-    report.warn("Sigillo is not logged in — run: pnpm sigillo:login");
+    report.fail("Sigillo is not logged in — run: pnpm sigillo:login");
     return false;
   }
   report.ok("Sigillo is logged in");
