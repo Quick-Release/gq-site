@@ -23,7 +23,7 @@ set -euo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 cache="${GQ_SMOKE_CACHE:-${TMPDIR:-/tmp}/gq-smoke-cache}"
 version=$(sed -n 's/.*"roots\/wordpress": "\([0-9.]*\)".*/\1/p' "$repo/blueprint/templates/apps/cms/composer.json")
-polylang_graphql=0.1.0
+polylang_graphql=0.1.3
 mkdir -p "$cache"
 
 fetch() {

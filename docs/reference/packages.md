@@ -41,6 +41,13 @@ from that file and from the registry's `satis.json` and
 `release-packages.json`. Packages the registry serves for other projects are
 not added.
 
+The blueprint's required GETQUICK packages use `manual` policy. They use exact
+versions except GQ Design, whose `*@stable` constraint accepts any stable
+release available in the registry, including new major versions. Updating a
+Site's lockfile selects its version; `composer install` keeps the locked version.
+`check` still reports new releases; `propose --write` does not change these
+constraints. The `caret` policy is available for requirements using caret ranges.
+
 `getquick/gq-theme` is catalogued as `none`/`manual`. It is a separate
 package from `getquick/getquick-theme`, which registers the primary menu
 location and supplies design defaults that `deploy/ploi/admin.sh`,

@@ -7,19 +7,24 @@ public WordPress frontend (`web/app/mu-plugins/content-api.php`).
 
 ## Stack
 
-- Bedrock, with WordPress exact-pinned (`roots/wordpress`)
+- Bedrock, with WordPress, plugins and themes exact-pinned in `composer.json`,
+  except GQ Design, which accepts any stable release from the GETQUICK registry
 - The GETQUICK plugins and `getquick-theme`, from the private GETQUICK
   Composer registry
 - [WPGraphQL](https://wp-packages.org/packages/wp-plugin/wp-graphql) and
   [WPGraphQL Blocks](https://wp-packages.org/packages/wp-plugin/wpgraphql-blocks),
   S3 Uploads (media on R2), Simple History, Cimo Image Optimizer and Safe SVG,
   from [WP Packages](https://wp-packages.org/)
-- PHP 8.3+, MariaDB
+- PHP 8.4.1+, MariaDB
 
 Composer installs every plugin and theme, so none is committed. A plugin or
 child theme of the site's own goes in `web/app/plugins` or `web/app/themes`,
 unignored in `.gitignore`. Commit `composer.lock` once the first
 `pnpm cms:composer` writes it, so deploys install exactly what you tested.
+`composer update getquick/gq-design` selects the latest stable GQ Design
+release available in the registry that meets the site's dependency requirements,
+including releases in a new major version. Review and commit the updated lockfile
+before deploying it.
 
 ## Local setup
 
