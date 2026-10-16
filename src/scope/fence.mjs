@@ -243,8 +243,8 @@ function expandHome(path) {
 }
 
 // Splits a shell command into simple commands' words: quotes and escapes
-// are honoured, `;`, `&&`, `||`, `|`, `&` and newlines separate commands, and
-// redirections become their own words. A heredoc stays one word (`<<EOF`) and
+// are honoured; shell separators, parentheses, `$(` and backticks end commands,
+// and redirections become their own words. A heredoc stays one word (`<<EOF`) and
 // its body is skipped: it is input, not commands. Enough to read what a
 // command touches; it doesn't expand variables or substitutions.
 export function segments(command) {
@@ -282,6 +282,14 @@ export function segments(command) {
     } else if (char === "\\" && index + 1 < command.length) {
       word += command[++index];
       inWord = true;
+    } else if (
+      char === "(" ||
+      char === ")" ||
+      char === "`" ||
+      (char === "$" && command[index + 1] === "(")
+    ) {
+      if (char === "$") index += 1;
+      endSegment();
     } else if (char === "<" && command[index + 1] === "<" && command[index + 2] !== "<") {
       endWord();
       index += 2;
