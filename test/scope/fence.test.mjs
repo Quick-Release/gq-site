@@ -159,6 +159,47 @@ test("segments splits simple commands and keeps quoted words whole", () => {
   ]);
 });
 
+test("read-only commands in substitutions and subshells pass", () => {
+  for (const command of [
+    "ls $(grep -rl x a 2>/dev/null)",
+    "(cd /tmp && ls 2>/dev/null)",
+    "ls `grep -rl x a 2>/dev/null`",
+  ]) {
+    assert.equal(bash(command), null, command);
+  }
+});
+
+test("writes outside the repository in substitutions and subshells are denied", () => {
+  for (const command of [
+    "echo $(cat f > /elsewhere/out)",
+    "(echo hi > /elsewhere/out)",
+    "echo `cat f > /elsewhere/out`",
+    "echo $(touch /elsewhere/out)",
+    "(touch /elsewhere/out)",
+    "echo `touch /elsewhere/out`",
+  ]) {
+    assert.match(bash(command), /outside this repository/u, command);
+  }
+});
+
+test("substitution and subshell delimiters end words and segments", () => {
+  assert.deepEqual(segments("ls prefix$(cat f)suffix; (ls a); echo `cat b`"), [
+    ["ls", "prefix"],
+    ["cat", "f"],
+    ["suffix"],
+    ["ls", "a"],
+    ["echo"],
+    ["cat", "b"],
+  ]);
+});
+
+test("quoted parentheses and substitution delimiters stay in their words", () => {
+  assert.deepEqual(segments("echo 'a)b' \"c)d\" '$(cat f)' '`cat f`' '(ls)'"), [
+    ["echo", "a)b", "c)d", "$(cat f)", "`cat f`", "(ls)"],
+  ]);
+  assert.match(bash('cat f > "/dev/null)"'), /outside this repository/u);
+});
+
 test("a heredoc's body is input, not commands", () => {
   const body =
     "into releases/<version>-<sha>/, link shared/\nrm -rf /data/code/getquick/clients/ekis";
