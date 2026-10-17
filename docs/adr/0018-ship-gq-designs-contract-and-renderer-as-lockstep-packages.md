@@ -114,8 +114,7 @@ packages propose` moves the group together or not at all, and `gq doctor`
   adapter. Whether the Elements blocks (video hero, grid, loop, social links)
   enter the manifest is GQ Design's decision.
 - Ekis's workspace packages stay the source until gq-design's first release;
-  Ekis then switches to the published packages and adds the
-  `getquick-design/container` renderer it lacks, as part of its adoption
+  Ekis then switches to the published packages as part of its adoption
   ([#18](https://github.com/Quick-Release/gq-site/issues/18)).
 - Sites already generated keep their copy of the content helpers; only new
   Sites import them from `@getquick/content`.
