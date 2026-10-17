@@ -543,15 +543,11 @@ test("a local edit also holds back a pending manifest migration", async () => {
   assert.deepEqual(await snapshot(site.root), before);
 });
 
-test("gq new refuses a commerce site and a directory that isn't empty", async () => {
+test("gq new refuses a directory that isn't empty, and an unknown variant", async () => {
   const parent = await temporaryDirectory();
   await writeFile(join(parent, "notes.md"), "mine\n");
 
   for (const [argv, message] of [
-    [
-      ["new", "shop", "--project", "shop", "--variant", "commerce"],
-      "gq: gq new --variant commerce is not supported until phase 4.\n",
-    ],
     [["new", ".", "--project", "acme", "--variant", "content"], `gq: ${parent} is not empty.\n`],
     [
       ["new", "notes.md", "--project", "acme", "--variant", "content"],
@@ -563,7 +559,7 @@ test("gq new refuses a commerce site and a directory that isn't empty", async ()
     ],
     [
       ["new", "acme", "--project", "acme", "--variant", "content", "--yes"],
-      "gq: Usage: gq new <dir> --project <name> --variant content [--locale <locale>]\n",
+      "gq: Usage: gq new <dir> --project <name> --variant <content|commerce> [--locale <locale>]\n",
     ],
   ]) {
     const result = await runGq(argv, { cwd: parent });
