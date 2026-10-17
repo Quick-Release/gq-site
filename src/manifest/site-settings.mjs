@@ -1,9 +1,9 @@
 // What release, version, verify and doctor read about a site: the
 // blueprint's defaults for its variant with the additions its gq.ops.json
-// declares (`release`, `verify`, `doctor`) appended. The content variant
-// has defaults for all three (VARIANT_DEFAULTS.content below); commerce has
-// none until a commerce site adopts the blueprint (phase 4), so a commerce
-// site declares everything as additions.
+// declares (`release`, `verify`, `doctor`) appended. Both variants have
+// defaults for all three (VARIANT_DEFAULTS below); commerce's are content's
+// with the Frontend's build added and its own Frontend's required files
+// (ADR 0017).
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -17,62 +17,75 @@ export const RELEASE_CONFIG_FILENAME = "shop-devtools.config.mjs";
 const VERSION_FILE = "VERSION";
 const CHANGELOG_PATH = "CHANGELOG.md";
 
-const NO_DEFAULTS = {
-  release: { jsonFiles: [], textFiles: [], paths: [] },
-  verify: { checks: [] },
-  doctor: { requiredFiles: {} },
-};
-
 const COMPOSER_CHECK = (...args) => ({
   cmd: "composer",
   args: ["--working-dir=apps/cms", ...args],
   requires: ["php"],
 });
 
-export const VARIANT_DEFAULTS = {
-  content: {
-    release: {
-      jsonFiles: ["package.json", "apps/frontend/package.json"],
-      textFiles: [],
-      paths: [
-        VERSION_FILE,
-        CHANGELOG_PATH,
-        "README.md",
-        "package.json",
-        "pnpm-workspace.yaml",
-        MANIFEST_FILENAME,
-        "infra",
-        "deploy/ploi/admin.sh",
-        "AGENTS.md",
-        "apps/cms/.gitignore",
-        "apps/cms/composer.json",
-        "apps/cms/composer.lock",
-        "apps/frontend/package.json",
-      ],
+const CONTENT_DEFAULTS = {
+  release: {
+    jsonFiles: ["package.json", "apps/frontend/package.json"],
+    textFiles: [],
+    paths: [
+      VERSION_FILE,
+      CHANGELOG_PATH,
+      "README.md",
+      "package.json",
+      "pnpm-workspace.yaml",
+      MANIFEST_FILENAME,
+      "infra",
+      "deploy/ploi/admin.sh",
+      "AGENTS.md",
+      "apps/cms/.gitignore",
+      "apps/cms/composer.json",
+      "apps/cms/composer.lock",
+      "apps/frontend/package.json",
+    ],
+  },
+  // What `gq verify`, the pre-push hook, `gq release push` and Cloudflare
+  // CI run, in order.
+  verify: {
+    checks: [
+      { cmd: "pnpm", args: ["run", "check"] },
+      { cmd: "pnpm", args: ["run", "lint"] },
+      { cmd: "pnpm", args: ["run", "test"] },
+      { cmd: "pnpm", args: ["run", "test:scripts"] },
+      { cmd: "pnpm", args: ["run", "infra:check"] },
+      { cmd: "pnpm", args: ["run", "ci:check"] },
+      COMPOSER_CHECK("validate"),
+      COMPOSER_CHECK("run", "lint"),
+      COMPOSER_CHECK("run", "test"),
+    ],
+  },
+  doctor: {
+    requiredFiles: {
+      "apps/cms": ["composer.json", ".ddev/config.yaml"],
+      "apps/frontend": ["package.json", "astro.config.mjs"],
     },
-    // What `gq verify`, the pre-push hook, `gq release push` and Cloudflare
-    // CI run, in order.
+  },
+};
+
+export const VARIANT_DEFAULTS = {
+  content: CONTENT_DEFAULTS,
+  // The storefront is built by Vite (vp build), so its build is a check of
+  // its own; the content Frontend's build is astro check, already run.
+  commerce: {
+    release: CONTENT_DEFAULTS.release,
     verify: {
       checks: [
-        { cmd: "pnpm", args: ["run", "check"] },
-        { cmd: "pnpm", args: ["run", "lint"] },
-        { cmd: "pnpm", args: ["run", "test"] },
-        { cmd: "pnpm", args: ["run", "test:scripts"] },
-        { cmd: "pnpm", args: ["run", "infra:check"] },
-        { cmd: "pnpm", args: ["run", "ci:check"] },
-        COMPOSER_CHECK("validate"),
-        COMPOSER_CHECK("run", "lint"),
-        COMPOSER_CHECK("run", "test"),
+        ...CONTENT_DEFAULTS.verify.checks.slice(0, 3),
+        { cmd: "pnpm", args: ["run", "build"] },
+        ...CONTENT_DEFAULTS.verify.checks.slice(3),
       ],
     },
     doctor: {
       requiredFiles: {
         "apps/cms": ["composer.json", ".ddev/config.yaml"],
-        "apps/frontend": ["package.json", "astro.config.mjs"],
+        "apps/frontend": ["package.json", "vite.config.ts"],
       },
     },
   },
-  commerce: NO_DEFAULTS,
 };
 
 // The settings for the validated manifest `config` of the site at

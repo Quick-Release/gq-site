@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+!.env.example
+node_modules/
+.alchemy/
+dist/
+.output/
+.tanstack/
+.vite/

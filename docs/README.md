@@ -7,6 +7,7 @@
 | Document                                              | Use it for                                                                                                                                                          |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Generate and sync a site](guides/sites.md)           | New content sites, managed-file ownership, locks, sync conflicts and create-once files.                                                                             |
+| [Commerce sites](guides/commerce-sites.md)            | New commerce sites: what the variant generates, rate-limit namespaces, private packages and adopting from a foundation.                                             |
 | [Local site development](guides/local-development.md) | Setup, doctor, verify, DDEV, Composer and a local design-plugin checkout.                                                                                           |
 | [Sigillo secrets](guides/secrets.md)                  | Per-command secret injection and checkout login without downloading environments.                                                                                   |
 | [Provisioning and deployment](guides/provisioning.md) | The new content Site flow and readiness, Ploi provisioning/releases/media, database backup and live-to-local sync, Cloudflare tokens/buckets, CI and GitHub wiring. |

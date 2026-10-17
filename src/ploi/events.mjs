@@ -17,6 +17,7 @@
 
 import { applyEnv } from "../dotenv-text.mjs";
 import { createReporter } from "../cli/reporter.mjs";
+import { refuseOnCommerce } from "../manifest/variant.mjs";
 import { createPloiServerClient } from "./server-client.mjs";
 
 export const EVENT_SECRET = "PUBLICATION_EVENT_SECRET";
@@ -75,6 +76,11 @@ export async function inspectCmsEvents({ ops, token, secret, fetch }) {
 // `gq ploi events [--dry-run]`. Resolves to an exit code.
 export async function runEvents({ context, parsed, fetch, io, interactive }) {
   const ops = context.config;
+  refuseOnCommerce(
+    ops,
+    "gq ploi events",
+    "it has no publication events; gq ploi provision gives its CMS the storefront's proxy secret.",
+  );
   if (!ops.ploi?.siteId) throw new Error("gq.ops.json ploi.siteId is required.");
   const secret = context.env[EVENT_SECRET]?.trim();
   if (!secret) {

@@ -1,4 +1,5 @@
-// gq new: creates a content site from the blueprint in a new directory: a v1
+// gq new: creates a content or commerce site from the blueprint in a new
+// directory (ADR 0017 for commerce): a v1
 // gq.ops.json, the managed files, the create-once scaffolding (the CMS and
 // Frontend skeletons among it) and gq.lock.json, then `git init`. In a
 // terminal it asks for the values its arguments lack; elsewhere it names
@@ -15,7 +16,9 @@ import { MANIFEST_FILENAME, validateManifest, writeManifest } from "../manifest/
 import { LOCALE_PATTERN, SCHEMA_URL, SCHEMA_VERSION, VARIANTS } from "../manifest/schema.mjs";
 import { applyManagedFiles, planManagedFiles } from "./managed-files.mjs";
 
-export const NEW_USAGE = ["gq new <dir> --project <name> --variant content [--locale <locale>]"];
+export const NEW_USAGE = [
+  "gq new <dir> --project <name> --variant <content|commerce> [--locale <locale>]",
+];
 
 const VALUE_OPTIONS = { "--project": "project", "--variant": "variant", "--locale": "locale" };
 
@@ -26,20 +29,34 @@ const LOCALE_HINT = "a WordPress locale, like en_US, pt_PT or pt_PT_ao90";
 // What `project` names: npm packages, Workers, buckets and the DDEV project.
 const PROJECT_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 
-// The plugins the CMS skeleton's composer.json installs, in the order its
-// deploy activates them.
-const CONTENT_PLUGINS = [
-  "gq-design",
-  "gq-support",
-  "wp-graphql",
-  "wpgraphql-blocks",
-  "s3-uploads",
-  "simple-history",
-  "cimo-image-optimizer",
-  "safe-svg",
-];
+// The plugins each variant's CMS skeleton composer.json installs, in the
+// order its deploy activates them. GQ eCommerce needs GQ Design and
+// WooCommerce active first; the storefront reads the Store API and WordPress
+// REST, so a commerce CMS has no WPGraphQL.
+const PLUGINS = {
+  content: [
+    "gq-design",
+    "gq-support",
+    "wp-graphql",
+    "wpgraphql-blocks",
+    "s3-uploads",
+    "simple-history",
+    "cimo-image-optimizer",
+    "safe-svg",
+  ],
+  commerce: [
+    "gq-design",
+    "woocommerce",
+    "getquick-ecommerce",
+    "gq-support",
+    "s3-uploads",
+    "simple-history",
+    "cimo-image-optimizer",
+    "safe-svg",
+  ],
+};
 
-// The root scripts that provision a new site, in order. Each runs its gq
+// The root scripts that provision a new content site, in order. Each runs its gq
 // command through gq sigillo run, which injects the command's secrets.
 // cf:media and ploi:media host the CMS's uploads on R2, independently of it;
 // frontend:secrets generates the Frontend's refresh token and event key
@@ -58,15 +75,20 @@ const PROVISIONING = [
   "ploi:events",
 ];
 
+// A commerce Site's: frontend:secrets first, since ploi:provision gives the
+// CMS the storefront's proxy secret from Sigillo, and ci:deploy gives CI
+// releases all of them. It has no publication store, so no ploi:events.
+const COMMERCE_PROVISIONING = [
+  "frontend:secrets",
+  ...PROVISIONING.filter((script) => !["frontend:secrets", "ploi:events"].includes(script)),
+];
+
 export function isNewCommand(argv) {
   return argv[0] === "new";
 }
 
 export async function runNewCommand(args, { cwd, env, exec, stdin, io, interactive }) {
   const given = parseNewArguments(args);
-  if (given.variant === "commerce") {
-    throw new Error("gq new --variant commerce is not supported until phase 4.");
-  }
   const options = interactive ? await askForMissing(given, { stdin, io }) : given;
   if (options === undefined) return 1;
   const missing = missingValues(options);
@@ -88,7 +110,7 @@ export async function runNewCommand(args, { cwd, env, exec, stdin, io, interacti
     schemaVersion: SCHEMA_VERSION,
     project,
     variant,
-    wordpress: { plugins: CONTENT_PLUGINS, locale },
+    wordpress: { plugins: PLUGINS[variant], locale },
   });
   const root = resolve(cwd, directory);
   if ((await readDirectoryIfExists(root))?.length > 0) throw new Error(`${root} is not empty.`);
@@ -106,20 +128,24 @@ export async function runNewCommand(args, { cwd, env, exec, stdin, io, interacti
   for (const { path } of [{ path: MANIFEST_FILENAME }, ...plan.files, plan.lock]) {
     io.out(`  ${path}`);
   }
-  reportProvisioning(io, { project, directory: relative(cwd, root) || "." });
+  reportProvisioning(io, { project, variant, directory: relative(cwd, root) || "." });
   return 0;
 }
 
-function reportProvisioning(io, { project, directory }) {
+function reportProvisioning(io, { project, variant, directory }) {
   io.out("");
   io.out(`Next, provision ${project} with the existing commands (gq new ran none of them):`);
   io.out(`  cd ${directory}`);
   io.out("  pnpm install");
   io.out("  # Fill in gq.ops.json (sigillo, domains, ploi, releases, media, backups,");
   io.out("  # cloudflare, artifacts, ci, github), then regenerate the managed files.");
+  if (variant === "commerce") {
+    io.out("  # A commerce site also records its own cloudflare.rateLimitNamespaces, unused");
+    io.out("  # IDs from the account's register (see the commerce sites guide).");
+  }
   io.out("  # Leave github out to keep the code in Cloudflare Artifacts only:");
   io.out("  pnpm exec gq sync");
-  for (const script of PROVISIONING) {
+  for (const script of variant === "commerce" ? COMMERCE_PROVISIONING : PROVISIONING) {
     io.out(scriptLine(script));
     // An Artifacts-only site pushes to Artifacts instead of connecting GitHub.
     if (script === "github:setup") {
@@ -127,6 +153,10 @@ function reportProvisioning(io, { project, directory }) {
         `  ${"pnpm git:artifacts setup".padEnd(24)}  # or, without github: origin is Artifacts`,
       );
     }
+  }
+  if (variant === "commerce") {
+    reportCommerceRelease(io);
+    return;
   }
   io.out("  # Release (pnpm push minor), install WordPress, then release again so the CMS");
   io.out("  # deploy activates the plugins and theme and applies the event key. CI releases");
@@ -137,6 +167,15 @@ function reportProvisioning(io, { project, directory }) {
   io.out("  # Ready only when every part holds: CMS schema, Frontend store and secrets,");
   io.out("  # the CMS's scheduler reconciling, and independent media (exit 1 until then):");
   io.out(scriptLine("site:check"));
+}
+
+function reportCommerceRelease(io) {
+  io.out("  # Release (pnpm push minor), install WordPress, then release again so the CMS");
+  io.out("  # deploy activates WooCommerce, GQ eCommerce and the theme and updates");
+  io.out("  # WooCommerce's database. Prove its uploads with a CMS check user:");
+  io.out(scriptLine("media:check:upload"));
+  io.out("  # A commerce Site has no readiness check yet (gq-site#26): nothing above,");
+  io.out("  # pnpm verify included, makes it ready, and gq site check refuses it.");
 }
 
 function scriptLine(script) {
@@ -179,7 +218,7 @@ async function askForMissing(given, { stdin, io }) {
       options: VARIANTS.map((value) =>
         value === "content"
           ? { value, label: "content", hint: "a content site" }
-          : { value, label: value, hint: "not supported until phase 4", disabled: true },
+          : { value, label: value, hint: "a WooCommerce shop with a TanStack Start storefront" },
       ),
       ...streams,
     });

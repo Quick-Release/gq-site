@@ -47,7 +47,7 @@ async function renderTemplate(template, manifest) {
 }
 
 // What a template's `{{name}}` stands for: the manifest's site values under
-// their key paths, `Project` (project in PascalCase, for names and prose),
+// their key paths (`variant` among them), `Project` (project in PascalCase, for names and prose),
 // `deployStatusMarker` (the CMS deploy's status line, which gq ploi release
 // waits for), `wordpress.plugins` space-separated (none until the manifest
 // lists some, so the deploy script stays valid shell), `wordpress.locale`
@@ -64,6 +64,7 @@ function templateValues(manifest) {
   const { project } = manifest;
   return {
     project,
+    variant: manifest.variant,
     Project: project
       .split(/[^A-Za-z0-9]+/u)
       .filter(Boolean)
@@ -100,8 +101,9 @@ function templateValues(manifest) {
 // existing file, and the lock to record (`lock.status` `unchanged`, `create`
 // or `update`). `recreate` lists the create-once files to write again.
 export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
-  const recreatable = ownership.createOnce.filter(({ template }) => template !== undefined);
-  const apps = new Set(ownership.createOnce.flatMap(({ app }) => app ?? []));
+  const owned = ownershipFor(manifest.variant);
+  const recreatable = owned.createOnce.filter(({ template }) => template !== undefined);
+  const apps = new Set(owned.createOnce.flatMap(({ app }) => app ?? []));
   for (const path of recreate) {
     if (!recreatable.some((entry) => entry.path === path)) {
       const rootFiles = recreatable.flatMap((entry) => (entry.app ? [] : [entry.path]));
@@ -117,10 +119,10 @@ export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
     if ((await readEntry(join(root, app))) === undefined) missingApps.add(app);
   }
   const planned = await Promise.all([
-    ...ownership.fullyGenerated.map((entry) => planGeneratedFile(root, lock, manifest, entry)),
-    ...ownership.generatedSections.map((entry) => planSection(root, lock, entry)),
-    ...ownership.managedKeys.map((entry) => planKeys(root, lock, manifest, entry)),
-    ...ownership.createOnce.map((entry) =>
+    ...owned.fullyGenerated.map((entry) => planGeneratedFile(root, lock, manifest, entry)),
+    ...owned.generatedSections.map((entry) => planSection(root, lock, entry)),
+    ...owned.managedKeys.map((entry) => planKeys(root, lock, manifest, entry)),
+    ...owned.createOnce.map((entry) =>
       planCreateOnce(root, lock, manifest, entry, { recreate, missingApps }),
     ),
   ]);
@@ -142,6 +144,21 @@ export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
   )}\n`;
   const status = lock === undefined ? "create" : lock.text === content ? "unchanged" : "update";
   return { files, lock: { path: LOCK_FILENAME, status, content } };
+}
+
+// The ownership entries a site of `variant` gets: those that name it in
+// their `variants`, and those that name none, which every variant gets. Two
+// entries may share a path when each names its own variants, so a commerce
+// site's file can come from another template than a content site's.
+export function ownershipFor(variant) {
+  return Object.fromEntries(
+    Object.entries(ownership).map(([category, entries]) => [
+      category,
+      Array.isArray(entries)
+        ? entries.filter(({ variants }) => variants === undefined || variants.includes(variant))
+        : entries,
+    ]),
+  );
 }
 
 // Writes what `plan` creates or updates, the lock last. Refuses a plan with
