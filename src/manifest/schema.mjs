@@ -330,6 +330,14 @@ export const manifestSchema = z
         accountId: z.string().optional(),
         zoneId: z.string().optional(),
         zoneName: z.string().optional(),
+        rateLimitNamespaces: z
+          .record(z.string().regex(/^[A-Z][A-Z0-9_]*$/u), z.int().positive())
+          .optional()
+          .describe(
+            "A commerce Site's rate-limit namespace IDs, by the storefront Runtime's binding: " +
+              "per Cloudflare account, so each Site has its own. Left out, the storefront " +
+              "deploy refuses once the Runtime declares rate limits.",
+          ),
       })
       .optional(),
     github: z.strictObject({ repository: z.string().optional() }).optional(),
@@ -408,6 +416,7 @@ export const manifestSchema = z
   })
   .superRefine(checkForms)
   .superRefine(checkFrontendZone)
+  .superRefine(checkVariant)
   .meta({ title: "gq.ops.json", description: "A GETQUICK site's manifest (schema v1)." });
 
 // forms: on a content Site with the package pair, whose CMS deploy activates
@@ -514,6 +523,19 @@ function validProxyAddress(value) {
   if (!/^\d{1,3}$/u.test(prefix)) return false;
   const length = Number(prefix);
   return length > 0 && length <= (family === 4 ? 32 : 128);
+}
+
+// What only one variant may declare. A commerce Site is monolingual until
+// multilingual commerce is decided (ADR 0017): wordpress.languages means
+// Polylang and its GraphQL wiring, which a commerce Site doesn't have.
+function checkVariant({ variant, wordpress }, context) {
+  if (variant === "commerce" && wordpress?.languages !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["wordpress", "languages"],
+      message: "isn't supported on a commerce Site yet: it has only wordpress.locale",
+    });
+  }
 }
 
 // wordpress.languages: beside the default language, each locale and slug

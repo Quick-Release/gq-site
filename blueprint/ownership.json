@@ -2,15 +2,18 @@
   "fullyGenerated": [
     {
       "path": "apps/cms/scripts/patch-dependencies.php",
-      "template": "templates/apps/cms/scripts/patch-dependencies.php"
+      "template": "templates/apps/cms/scripts/patch-dependencies.php",
+      "variants": ["content"]
     },
     {
       "path": "apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch",
-      "template": "templates/apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch"
+      "template": "templates/apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/workers/consent-purge.ts",
-      "template": "templates/apps/frontend/workers/consent-purge.ts"
+      "template": "templates/apps/frontend/workers/consent-purge.ts",
+      "variants": ["content"]
     },
     {
       "path": ".mise.toml",
@@ -113,12 +116,14 @@
     },
     {
       "path": "infra/consent.ts",
-      "template": "templates/infra/consent.ts"
+      "template": "templates/infra/consent.ts",
+      "variants": ["content"]
     },
     {
       "path": "infra/frontend.run.ts",
       "template": "templates/infra/frontend.run.ts",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "infra/package.json",
@@ -126,7 +131,13 @@
     },
     {
       "path": "infra/scripts/deploy-frontend.mjs",
-      "template": "templates/infra/scripts/deploy-frontend.mjs"
+      "template": "templates/infra/scripts/deploy-frontend.mjs",
+      "variants": ["content"]
+    },
+    {
+      "path": "infra/scripts/deploy-frontend.mjs",
+      "template": "templates/commerce/infra/scripts/deploy-frontend.mjs",
+      "variants": ["commerce"]
     },
     {
       "path": "infra/tsconfig.json",
@@ -144,32 +155,37 @@
       "path": "apps/frontend/src/pages/gq/consent.ts",
       "template": "templates/apps/frontend/src/pages/gq/consent.ts",
       "contentRuntime": "package",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/pages/gq/consent/[...rest].ts",
       "template": "templates/apps/frontend/src/pages/gq/consent/[...rest].ts",
       "contentRuntime": "package",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/pages/gq/forms/[...rest].ts",
       "template": "templates/apps/frontend/src/pages/gq/forms/[...rest].ts",
       "contentRuntime": "package",
       "manifestKey": "forms",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/pages/gq/events.ts",
       "template": "templates/apps/frontend/src/pages/gq/events.ts",
       "contentRuntime": "package",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/pages/gq/refresh.ts",
       "template": "templates/apps/frontend/src/pages/gq/refresh.ts",
       "contentRuntime": "package",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": ".claude/skills",
@@ -178,34 +194,55 @@
     {
       "path": "apps/frontend/src/routes/gq.consent.$.ts",
       "template": "templates/tanstack/apps/frontend/src/routes/gq.consent.$.ts",
-      "framework": "tanstack"
+      "framework": "tanstack",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/routes/gq.consent.ts",
       "template": "templates/tanstack/apps/frontend/src/routes/gq.consent.ts",
-      "framework": "tanstack"
+      "framework": "tanstack",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/routes/gq.events.ts",
       "template": "templates/tanstack/apps/frontend/src/routes/gq.events.ts",
-      "framework": "tanstack"
+      "framework": "tanstack",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/routes/gq.refresh.ts",
       "template": "templates/tanstack/apps/frontend/src/routes/gq.refresh.ts",
-      "framework": "tanstack"
+      "framework": "tanstack",
+      "variants": ["content"]
     },
     {
       "path": "infra/frontend.run.ts",
       "template": "templates/tanstack/infra/frontend.run.ts",
-      "framework": "tanstack"
+      "framework": "tanstack",
+      "variants": ["content"]
+    },
+    {
+      "path": "infra/frontend.run.ts",
+      "template": "templates/commerce/infra/frontend.run.ts",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/frontend/src/routes/gq.forms.$.ts",
       "template": "templates/tanstack/apps/frontend/src/routes/gq.forms.$.ts",
       "framework": "tanstack",
       "contentRuntime": "package",
-      "manifestKey": "forms"
+      "manifestKey": "forms",
+      "variants": ["content"]
+    },
+    {
+      "path": "infra/storefront-bindings.ts",
+      "template": "templates/commerce/infra/storefront-bindings.ts",
+      "variants": ["commerce"]
+    },
+    {
+      "path": ".npmrc",
+      "template": "templates/commerce/npmrc",
+      "variants": ["commerce"]
     }
   ],
   "generatedSections": [
@@ -227,12 +264,14 @@
     {
       "path": "apps/cms/composer.json",
       "template": "templates/fragments/cms-composer.keys.json",
-      "contentRuntime": "package"
+      "contentRuntime": "package",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/package.json",
       "template": "templates/fragments/frontend-package.keys.json",
-      "contentRuntime": "package"
+      "contentRuntime": "package",
+      "variants": ["content"]
     }
   ],
   "createOnce": [
@@ -258,7 +297,8 @@
     {
       "path": "pnpm-workspace.yaml",
       "template": "templates/pnpm-workspace.yaml",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/cms/.ddev/commands/host/db-sync",
@@ -274,12 +314,26 @@
     {
       "path": "apps/cms/.env.example",
       "template": "templates/apps/cms/env.example",
-      "app": "apps/cms"
+      "app": "apps/cms",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/cms/.env.example",
+      "template": "templates/commerce/apps/cms/env.example",
+      "app": "apps/cms",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/cms/.env.production.example",
       "template": "templates/apps/cms/env.production.example",
-      "app": "apps/cms"
+      "app": "apps/cms",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/cms/.env.production.example",
+      "template": "templates/commerce/apps/cms/env.production.example",
+      "app": "apps/cms",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/cms/.gitignore",
@@ -294,12 +348,26 @@
     {
       "path": "apps/cms/README.md",
       "template": "templates/apps/cms/README.md",
-      "app": "apps/cms"
+      "app": "apps/cms",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/cms/README.md",
+      "template": "templates/commerce/apps/cms/README.md",
+      "app": "apps/cms",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/cms/composer.json",
       "template": "templates/apps/cms/composer.json",
-      "app": "apps/cms"
+      "app": "apps/cms",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/cms/composer.json",
+      "template": "templates/commerce/apps/cms/composer.json",
+      "app": "apps/cms",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/cms/config/application.php",
@@ -349,7 +417,8 @@
     {
       "path": "apps/cms/web/app/mu-plugins/content-api.php",
       "template": "templates/apps/cms/web/app/mu-plugins/content-api.php",
-      "app": "apps/cms"
+      "app": "apps/cms",
+      "variants": ["content"]
     },
     {
       "path": "apps/cms/web/app/plugins/.gitkeep",
@@ -384,54 +453,75 @@
     {
       "path": "apps/frontend/.env.example",
       "template": "templates/apps/frontend/env.example",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/.gitignore",
       "template": "templates/apps/frontend/gitignore",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/frontend/.gitignore",
+      "template": "templates/commerce/apps/frontend/gitignore",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/frontend/README.md",
       "template": "templates/apps/frontend/README.md",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/frontend/README.md",
+      "template": "templates/commerce/apps/frontend/README.md",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/frontend/astro.config.mjs",
       "template": "templates/apps/frontend/astro.config.mjs",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/components/Home.astro",
       "template": "templates/apps/frontend/src/components/Home.astro",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/lib/content.ts",
       "template": "templates/apps/frontend/src/lib/content.ts",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/lib/copy.ts",
       "template": "templates/apps/frontend/src/lib/copy.ts",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/test/wordpress-stub.ts",
       "template": "templates/apps/frontend/src/test/wordpress-stub.ts",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/package.json",
       "template": "templates/apps/frontend/package.json",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/public/favicon.svg",
@@ -447,55 +537,64 @@
       "path": "apps/frontend/src/env.d.ts",
       "template": "templates/apps/frontend/src/env.d.ts",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/layouts/Layout.astro",
       "template": "templates/apps/frontend/src/layouts/Layout.astro",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/pages/[...slug].astro",
       "template": "templates/apps/frontend/src/pages/[...slug].astro",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/pages/index.astro",
       "template": "templates/apps/frontend/src/pages/index.astro",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/routes.test.ts",
       "template": "templates/apps/frontend/src/routes.test.ts",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/styles/global.css",
       "template": "templates/apps/frontend/src/styles/global.css",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/tsconfig.json",
       "template": "templates/apps/frontend/tsconfig.json",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/vite.config.ts",
       "template": "templates/apps/frontend/vite.config.ts",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/vitest.config.ts",
       "template": "templates/apps/frontend/vitest.config.ts",
       "app": "apps/frontend",
-      "framework": "astro"
+      "framework": "astro",
+      "variants": ["content"]
     },
     {
       "path": "deploy/ploi/admin.d/10-theme.sh",
@@ -507,54 +606,128 @@
       "path": "apps/frontend/package.json",
       "template": "templates/tanstack/apps/frontend/package.json",
       "framework": "tanstack",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/frontend/package.json",
+      "template": "templates/commerce/apps/frontend/package.json",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/frontend/src/router.tsx",
       "template": "templates/tanstack/apps/frontend/src/router.tsx",
       "framework": "tanstack",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/frontend/src/router.tsx",
+      "template": "templates/commerce/apps/frontend/src/router.tsx",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/frontend/src/routes/$.tsx",
       "template": "templates/tanstack/apps/frontend/src/routes/$.tsx",
       "framework": "tanstack",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/src/routes/__root.tsx",
       "template": "templates/tanstack/apps/frontend/src/routes/__root.tsx",
       "framework": "tanstack",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/frontend/src/routes/__root.tsx",
+      "template": "templates/commerce/apps/frontend/src/routes/__root.tsx",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/frontend/src/site.server.ts",
       "template": "templates/tanstack/apps/frontend/src/site.server.ts",
       "framework": "tanstack",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "variants": ["content"]
     },
     {
       "path": "apps/frontend/tsconfig.json",
       "template": "templates/tanstack/apps/frontend/tsconfig.json",
       "framework": "tanstack",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/frontend/tsconfig.json",
+      "template": "templates/commerce/apps/frontend/tsconfig.json",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/frontend/vite.config.ts",
       "template": "templates/tanstack/apps/frontend/vite.config.ts",
       "framework": "tanstack",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/frontend/vite.config.ts",
+      "template": "templates/commerce/apps/frontend/vite.config.ts",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
     },
     {
       "path": "pnpm-workspace.yaml",
       "template": "templates/tanstack/pnpm-workspace.yaml",
-      "framework": "tanstack"
+      "framework": "tanstack",
+      "variants": ["content"]
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "template": "templates/tanstack/pnpm-workspace.yaml",
+      "variants": ["commerce"]
     },
     {
       "path": "apps/frontend/src/lib/content.ts",
       "template": "templates/tanstack/apps/frontend/src/lib/content.ts",
       "framework": "tanstack",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/frontend/src/routeTree.gen.ts",
+      "template": "templates/commerce/apps/frontend/src/routeTree.gen.ts",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
+    },
+    {
+      "path": "apps/frontend/src/routes/index.tsx",
+      "template": "templates/commerce/apps/frontend/src/routes/index.tsx",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
+    },
+    {
+      "path": "apps/frontend/src/components/Home.tsx",
+      "template": "templates/commerce/apps/frontend/src/components/Home.tsx",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
+    },
+    {
+      "path": "apps/frontend/src/site.ts",
+      "template": "templates/commerce/apps/frontend/src/site.ts",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
+    },
+    {
+      "path": "apps/frontend/src/home.test.tsx",
+      "template": "templates/commerce/apps/frontend/src/home.test.tsx",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
     }
   ]
 }

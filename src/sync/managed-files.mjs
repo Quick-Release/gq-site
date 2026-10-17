@@ -51,7 +51,7 @@ async function renderTemplate(template, manifest) {
 }
 
 // What a template's `{{name}}` stands for: the manifest's site values under
-// their key paths, `Project` (project in PascalCase, for names and prose),
+// their key paths (`variant` among them), `Project` (project in PascalCase, for names and prose),
 // `deployStatusMarker` (the CMS deploy's status line, which gq ploi release
 // waits for), `wordpress.plugins` space-separated (none until the manifest
 // lists some, so the deploy script stays valid shell), `wordpress.locale`
@@ -68,6 +68,7 @@ function templateValues(manifest) {
   const { project } = manifest;
   return {
     project,
+    variant: manifest.variant,
     Project: project
       .split(/[^A-Za-z0-9]+/u)
       .filter(Boolean)
@@ -207,12 +208,16 @@ export async function applyManagedFiles(root, plan) {
   }
 }
 
-// Whether an ownership entry applies to the Site: one marked with a
+// Whether an ownership entry applies to the Site: one marked with
+// `variants` applies only to a Site of one of them (ADR 0017), so two entries
+// may share a path, each for its own variants; one marked with a `framework`
+// only to a Site whose Frontend uses it; one marked with a
 // `contentRuntime` applies only to a Site whose gq.ops.json names that
 // runtime (ADR 0020), so a Site generated before keeps what it copied; one
 // marked with a `manifestKey` only while gq.ops.json has that key (`forms`).
 function appliesTo(entry, manifest) {
   return (
+    (entry.variants === undefined || entry.variants.includes(manifest.variant)) &&
     (entry.framework === undefined || entry.framework === frontendFramework(manifest)) &&
     (entry.contentRuntime === undefined || entry.contentRuntime === manifest.contentRuntime) &&
     (entry.manifestKey === undefined || manifest[entry.manifestKey] !== undefined)
