@@ -35,7 +35,46 @@ exits 0). It prints its provisioning sequence and runs none of it.
 A commerce site has no readiness check: which health checks make one ready is
 [#26](https://github.com/Quick-Release/gq-site/issues/26)'s decision. Until
 then nothing it passes, `pnpm verify`, formatting or manifest validation
-included, makes it ready. `gq media check` applies to both variants.
+included, makes it ready, and `gq site check` refuses to run. `gq media check`
+applies to both variants.
+
+`gq frontend refresh`, `gq frontend events check` and `gq ploi events` are
+content-only: a commerce site has no publication store or publication events,
+and each refuses there, saying why.
+
+## Provisioning
+
+`gq new` prints the sequence. It differs from a content site's in three ways:
+
+- `pnpm frontend:secrets` runs first. On a commerce site it generates the
+  storefront Runtime's secrets into Sigillo staging: the proxy secret it shares
+  with GQ eCommerce, and the session and cart-handle keyrings. Turnstile's
+  secret comes from Cloudflare, not from gq.
+- `pnpm ploi:provision` gives the CMS's `.env` the proxy secret
+  (`GETQUICK_STOREFRONT_PROXY_SECRET`). It shows the step, never the value, and
+  warns until the secret is in Sigillo.
+- There is no `ploi:events`, `frontend:refresh` or `site:check`.
+
+`pnpm ci:deploy` gives the CI Worker the storefront's secrets and a
+`GITHUB_PACKAGES_TOKEN` when Sigillo staging has them. CI starts using them
+once the Frontend depends on the storefront Runtime.
+
+## Local data
+
+`pnpm db:sync` stays live-to-local only. On a commerce site it anonymises the
+copy straight after importing it, before WordPress reads it:
+
+- **Customers:** every user whose only role is customer gets
+  `customer-<ID>@example.invalid` and no password.
+- **Saved addresses:** cleared on every account.
+- **Orders:** billing and shipping data, notes, IP addresses and user agents
+  are blanked, in both the HPOS tables and the legacy order meta.
+- **Everything else personal:** the customer lookup, review and order-note
+  authors, and download logs are anonymised, and carts (WooCommerce sessions)
+  are emptied.
+
+Store staff keep their accounts. Its local check reads the Store API, since a
+commerce CMS has no WPGraphQL.
 
 ## Rate-limit namespaces
 

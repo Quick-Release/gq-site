@@ -18,6 +18,7 @@ import { relaunchWithLocalCa } from "../db/sync.mjs";
 import { parseDotenv } from "../dotenv-text.mjs";
 import { frontendOrigin } from "../frontend/commands.mjs";
 import { siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
+import { COMMERCE_READINESS_ISSUE, refuseOnCommerce } from "../manifest/variant.mjs";
 import { localMediaReadiness } from "../media/readiness.mjs";
 import { cmsReadiness, notReady, ok, result, siteReadiness } from "./readiness.mjs";
 
@@ -59,6 +60,11 @@ export function siteCommandOptions(command) {
 
 // Resolves to the exit code: 0 when ready, 1 when not.
 export async function runSiteCommand({ argv, context, parsed, env, fetch, exec, io }) {
+  refuseOnCommerce(
+    context.config,
+    "gq site check",
+    `commerce readiness isn't defined yet (${COMMERCE_READINESS_ISSUE}), and passing pnpm verify doesn't make a Site ready.`,
+  );
   if (parsed.local && parsed.url) {
     throw new Error(
       "--local checks this machine's CMS; --url names a deployed Frontend. Pick one.",
