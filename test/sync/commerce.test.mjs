@@ -390,3 +390,23 @@ test("a gated commerce foundation adopts the commerce variant through gq sync", 
   const check = await runGq(["sync", "--check"], { cwd: root });
   assert.equal(check.code, 0, check.stderr);
 });
+
+// gq packages proposes and writes the content CMS's pins only (its catalogue
+// reads one composer.json), so the commerce skeleton's must follow them: a
+// requirement both install has the same constraint in both.
+test("the commerce CMS skeleton pins every shared requirement as the content one does", async () => {
+  const templates = new URL("../../blueprint/templates/", import.meta.url);
+  const read = async (path) => JSON.parse(await readFile(new URL(path, templates), "utf8"));
+  const content = await read("apps/cms/composer.json");
+  const commerce = await read("commerce/apps/cms/composer.json");
+  for (const section of ["require", "require-dev"]) {
+    for (const [name, constraint] of Object.entries(commerce[section])) {
+      if (Object.hasOwn(content[section], name)) {
+        assert.equal(constraint, content[section][name], `${section} ${name}`);
+      }
+    }
+  }
+  assert.deepEqual(commerce.repositories, content.repositories);
+  assert.deepEqual(commerce.config, content.config);
+  assert.deepEqual(commerce.scripts, content.scripts);
+});
