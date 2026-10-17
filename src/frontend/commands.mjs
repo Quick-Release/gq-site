@@ -21,7 +21,10 @@
 // consent records with; ADR 0019) (32 random bytes each, hex) into Sigillo staging
 // when they are missing or too short for the Frontend to accept. Values go to
 // Sigillo over stdin and are never printed. Deploys, CI releases (gq ci
-// deploy) and the CMS (gq ploi events) take them from there.
+// deploy) and the CMS (gq ploi events) take them from there. On a commerce
+// Site it generates the storefront Runtime's secrets instead (ADR 0017): the
+// proxy secret it shares with GQ eCommerce (gq ploi provision gives it to the
+// CMS) and its two keyrings. Refresh and events are content-only.
 //
 //   gq frontend secrets [--dry-run]
 //   gq frontend refresh [--uri <path>]... [--url <frontend origin>] [--json]
@@ -32,6 +35,7 @@ import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { createReporter } from "../cli/reporter.mjs";
 import { SECRETS_ENVIRONMENT } from "../cloudflare/tokens.mjs";
 import { siteLanguages } from "../manifest/schema.mjs";
+import { isCommerce, refuseOnCommerce } from "../manifest/variant.mjs";
 import { sigilloSecrets } from "../sigillo/commands.mjs";
 
 export const FRONTEND_USAGE = [
@@ -47,6 +51,38 @@ export const FRONTEND_SECRETS = {
   CONSENT_READ_TOKEN: "the CMS's bearer for consent record reads",
 };
 export const MINIMUM_SECRET_LENGTH = 32;
+
+/**
+ * A commerce Site's storefront secrets, each with how it is generated: the
+ * proxy secret is at least 32 characters; a keyring is a base64url key of at
+ * least 32 bytes (the storefront Runtime's infra.json). Turnstile's secret
+ * comes from Cloudflare, not from gq.
+ */
+export const STOREFRONT_SECRETS = {
+  GETQUICK_STOREFRONT_PROXY_SECRET: {
+    purpose: "proves the storefront's requests to GQ eCommerce, shared with the CMS",
+    generate: () => randomBytes(32).toString("hex"),
+  },
+  GETQUICK_AUTH_COOKIE_SECRET: {
+    purpose: "the session envelope's keyring",
+    generate: () => randomBytes(32).toString("base64url"),
+  },
+  GETQUICK_CART_SESSION_SECRET: {
+    purpose: "the cart handles' keyring, never the session envelope's",
+    generate: () => randomBytes(32).toString("base64url"),
+  },
+};
+
+// The secrets `gq frontend secrets` keeps in Sigillo for this Site.
+function siteSecrets(ops) {
+  if (isCommerce(ops)) return STOREFRONT_SECRETS;
+  return Object.fromEntries(
+    Object.entries(FRONTEND_SECRETS).map(([name, purpose]) => [
+      name,
+      { purpose, generate: () => randomBytes(32).toString("hex") },
+    ]),
+  );
+}
 
 const MARKS = { promoted: "✓", superseded: "✓", kept: "✗" };
 
@@ -146,11 +182,16 @@ function printReport(body, io, languages) {
 // Resolves to the exit code: 0 when everything asked for was refreshed (or the
 // Frontend accepts this Site's events), 1 when not.
 export async function runFrontendCommand({ context, parsed, env, fetch, exec, io, interactive }) {
-  if (parsed.command.join(" ") === "frontend events check") {
-    return checkEvents({ context, parsed, fetch, io });
-  }
   if (parsed.command.join(" ") === "frontend secrets") {
     return generateSecrets({ context, parsed, env, exec, io, interactive });
+  }
+  refuseOnCommerce(
+    context.config,
+    `gq ${parsed.command.join(" ")}`,
+    "its storefront has no publication store or publication events.",
+  );
+  if (parsed.command.join(" ") === "frontend events check") {
+    return checkEvents({ context, parsed, fetch, io });
   }
   const url = frontendOrigin(parsed, context.config);
   const uris = requestedUris(parsed);
@@ -226,7 +267,8 @@ export async function runFrontendCommand({ context, parsed, env, fetch, exec, io
 async function generateSecrets({ context, parsed, env, exec, io, interactive }) {
   const secrets = await sigilloSecrets({ context, env, exec }, SECRETS_ENVIRONMENT);
   const listed = await secrets.list();
-  const plan = Object.keys(FRONTEND_SECRETS).map((name) => {
+  const wanted = siteSecrets(context.config);
+  const plan = Object.keys(wanted).map((name) => {
     const stored = new RegExp(`\\b${name}\\b`, "u").test(listed);
     const value = context.env[name]?.trim();
     if (!stored) return { name, action: "generate" };
@@ -244,7 +286,7 @@ async function generateSecrets({ context, parsed, env, exec, io, interactive }) 
         action === "keep"
           ? `✓ ${name} in Sigillo ${secrets.name}`
           : action === "generate"
-            ? `+ generate ${name} (${FRONTEND_SECRETS[name]}), store it in Sigillo ${secrets.name}`
+            ? `+ generate ${name} (${wanted[name].purpose}), store it in Sigillo ${secrets.name}`
             : `~ ${name} is shorter than ${MINIMUM_SECRET_LENGTH} characters, which the Frontend refuses: generate a new one`,
       )
       .join("\n"),
@@ -260,11 +302,13 @@ async function generateSecrets({ context, parsed, env, exec, io, interactive }) 
     return 0;
   }
   for (const { name } of changes) {
-    await secrets.set(name, randomBytes(32).toString("hex"));
+    await secrets.set(name, wanted[name].generate());
     ui.success(`${name} stored in Sigillo ${secrets.name}`);
   }
   ui.outro(
-    "Bind them: pnpm ci:deploy (CI releases), then deploy the Frontend (a release or pnpm deploy:frontend); pnpm ploi:events gives the CMS its event key and consent read token for its next release.",
+    isCommerce(context.config)
+      ? "Bind them: pnpm ploi:provision gives the CMS the proxy secret, pnpm ci:deploy gives CI releases all three, then deploy the Frontend (a release or pnpm deploy:frontend)."
+      : "Bind them: pnpm ci:deploy (CI releases), then deploy the Frontend (a release or pnpm deploy:frontend); pnpm ploi:events gives the CMS its event key and consent read token for its next release.",
   );
   return 0;
 }

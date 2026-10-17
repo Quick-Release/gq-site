@@ -87,10 +87,13 @@ const PROVISIONING = [
   "ploi:events",
 ];
 
-// A commerce Site's: no publication store, so no events to give the CMS
-// (ploi:events) and nothing to refresh; frontend:secrets generates the
-// storefront's secrets instead, before ci:deploy gives them to CI releases.
-const COMMERCE_PROVISIONING = PROVISIONING.filter((script) => script !== "ploi:events");
+// A commerce Site's: frontend:secrets first, since ploi:provision gives the
+// CMS the storefront's proxy secret from Sigillo, and ci:deploy gives CI
+// releases all of them. It has no publication store, so no ploi:events.
+const COMMERCE_PROVISIONING = [
+  "frontend:secrets",
+  ...PROVISIONING.filter((script) => !["frontend:secrets", "ploi:events"].includes(script)),
+];
 
 export function isNewCommand(argv) {
   return argv[0] === "new";
@@ -156,6 +159,10 @@ function reportProvisioning(io, { project, variant, directory }) {
   io.out("  pnpm install");
   io.out("  # Fill in gq.ops.json (sigillo, domains, ploi, releases, media, backups,");
   io.out("  # cloudflare, artifacts, ci, github), then regenerate the managed files.");
+  if (variant === "commerce") {
+    io.out("  # A commerce site also records its own cloudflare.rateLimitNamespaces, unused");
+    io.out("  # IDs from the account's register (see the commerce sites guide).");
+  }
   io.out("  # Leave github out to keep the code in Cloudflare Artifacts only:");
   io.out("  pnpm exec gq sync");
   for (const script of variant === "commerce" ? COMMERCE_PROVISIONING : PROVISIONING) {

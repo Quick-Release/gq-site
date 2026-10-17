@@ -6,7 +6,8 @@
 //      presigned PUT URL (no SSH, no R2 credentials on the server)
 //   2. download that backup, check its size and checksum
 //   3. install composer.lock (WordPress core and plugins), snapshot the local
-//      database, then import the backup
+//      database, then import the backup; on a commerce Site, anonymise its
+//      customers and orders before anything else reads them (anonymise.mjs)
 //   4. search-replace the live admin/frontend URLs with the local ones
 //   5. create (or reset) the local administrator, run `wp core update-db`,
 //      install the language packs of gq.ops.json's wordpress.locale, and
@@ -34,15 +35,17 @@ import { fileURLToPath } from "node:url";
 
 import {
   CMS_PATH,
-  DEFAULT_LOCAL_FRONTEND_URL,
   commandExists,
   composerInstall,
   ddevStatus,
   describeDdev,
   ensureCmsEnv,
   localEnvDefaults,
+  localFrontendUrl,
 } from "../cms/local.mjs";
 import { syncLocalDesign } from "../cms/local-design.mjs";
+import { isCommerce } from "../manifest/variant.mjs";
+import { LIST_TABLES_SQL, anonymisationSql } from "./anonymise.mjs";
 import { createPloiServerClient } from "../ploi/server-client.mjs";
 import { createR2Client } from "../r2.mjs";
 import { createReporter } from "../cli/reporter.mjs";
@@ -198,7 +201,7 @@ function readConfig(ops, { backupOnly }) {
   return {
     bucket: ops.backups.bucket,
     prefix: ops.backups.prefix ?? "db/",
-    localFrontendUrl: ops.local?.frontendUrl ?? DEFAULT_LOCAL_FRONTEND_URL,
+    localFrontendUrl: localFrontendUrl(ops),
   };
 }
 
@@ -329,6 +332,16 @@ async function runDatabase({ context, parsed, env, fetch, exec, io, interactive,
 
     ui.info("Importing the live database into DDEV");
     await ddev(["import-db", `--file=${dumpPath}`]);
+    if (isCommerce(ops)) {
+      ui.info("Anonymising customers and orders");
+      const listed = await ddev(["mysql", "-N", "-B", "-e", LIST_TABLES_SQL], { capture: true });
+      const tables = listed
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const sql = anonymisationSql(local.prefix, tables);
+      if (sql) await ddev(["mysql"], { input: sql });
+    }
 
     ui.info("Replacing live URLs with local ones");
     for (const [from, to] of searchReplacePairs({
@@ -393,7 +406,13 @@ async function runDatabase({ context, parsed, env, fetch, exec, io, interactive,
     }
 
     step.start(`Checking ${local.homeUrl}`);
-    await verifyLocalSite({ ddev, fetch, homeUrl: local.homeUrl, admin });
+    await verifyLocalSite({
+      ddev,
+      fetch,
+      homeUrl: local.homeUrl,
+      admin,
+      commerce: isCommerce(ops),
+    });
     step.stop(
       `${local.homeUrl} serves the live content; ${admin.login} / ${admin.password} can log in`,
     );
@@ -435,11 +454,13 @@ async function installLanguagePacks({ ddev, exec, cmsRoot, env, ui }, locale) {
 // ddev in the site's CMS directory. Its output goes to run()'s streams as it
 // arrives, unless `capture` asks for it back.
 function ddevRunner(exec, cmsRoot, env, io) {
-  return async (args, { capture = false } = {}) => {
+  return async (args, { capture = false, input } = {}) => {
     const result = await exec(
       "ddev",
       args,
-      capture ? { cwd: cmsRoot, env } : { cwd: cmsRoot, env, stdout: io.stdout, stderr: io.stderr },
+      capture
+        ? { cwd: cmsRoot, env, input }
+        : { cwd: cmsRoot, env, input, stdout: io.stdout, stderr: io.stderr },
     );
     if (result.code !== 0) {
       const detail = capture ? `: ${(result.stderr || result.stdout).trim()}` : "";
@@ -504,7 +525,7 @@ export async function runServerScript(
 // Confirms the import from both sides: WordPress (in DDEV, through the .env
 // credentials) sees the local URL and a working local administrator, and the
 // site answers GraphQL over HTTP from the host.
-async function verifyLocalSite({ ddev, fetch, homeUrl, admin }) {
+async function verifyLocalSite({ ddev, fetch, homeUrl, admin, commerce }) {
   const php = `$user = get_user_by("login", ${JSON.stringify(admin.login)});
 echo wp_json_encode([
   "home" => get_option("home"),
@@ -520,6 +541,19 @@ echo wp_json_encode([
     throw new Error(`${admin.login} / ${admin.password} is not a working administrator.`);
   }
 
+  // A commerce CMS has no WPGraphQL: its storefront reads the Store API.
+  if (commerce) {
+    const store = await fetch(`${homeUrl}/wp-json/wc/store/v1/products?per_page=1`, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    const products = await store.json().catch(() => null);
+    if (!store.ok || !Array.isArray(products)) {
+      throw new Error(
+        `${homeUrl}/wp-json/wc/store/v1 answered ${store.status}; open ${homeUrl} to see why.`,
+      );
+    }
+    return;
+  }
   const response = await fetch(
     `${homeUrl}/wp/graphql?query=${encodeURIComponent("{generalSettings{url}}")}`,
     { signal: AbortSignal.timeout(30_000) },

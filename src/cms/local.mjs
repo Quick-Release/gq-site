@@ -14,6 +14,17 @@ export const CMS_PATH = "apps/cms";
 
 // Both supported frontend dev servers use the same local origin.
 export const DEFAULT_LOCAL_FRONTEND_URL = "http://localhost:4321";
+// A commerce Site's storefront dev server (vp dev, its vite.config.ts).
+export const DEFAULT_LOCAL_STOREFRONT_URL = "http://localhost:3000";
+
+// The local Frontend WordPress permalinks point at: gq.ops.json
+// local.frontendUrl, or the variant's dev server.
+export function localFrontendUrl(ops) {
+  return (
+    ops.local?.frontendUrl ??
+    (ops.variant === "commerce" ? DEFAULT_LOCAL_STOREFRONT_URL : DEFAULT_LOCAL_FRONTEND_URL)
+  );
+}
 
 export async function commandExists(exec, command, env) {
   // `command -v` is a POSIX sh builtin (macOS and Linux); the name goes in as
@@ -67,7 +78,7 @@ export function ddevEnvValues(project) {
 // The media URL is the bucket's public one (read-only: no R2 credentials).
 export function localEnvDefaults(ops) {
   const defaults = {
-    GETQUICK_FRONTEND_URL: ops.local?.frontendUrl ?? DEFAULT_LOCAL_FRONTEND_URL,
+    GETQUICK_FRONTEND_URL: localFrontendUrl(ops),
   };
   if (ops.media?.domain) defaults.S3_UPLOADS_BUCKET_URL = `https://${ops.media.domain}`;
   return defaults;
