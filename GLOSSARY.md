@@ -49,9 +49,10 @@ _Avoid_: deploy hook (hooks are the Git hooks)
 
 **Variant**:
 The kind of site the blueprint supports: content or commerce. A Site's
-variant is chosen when it is created and never changes; it alone decides the
-Site's app skeletons, managed files and defaults. A commerce Site's Frontend
-is its storefront, and WooCommerce is its only commerce authority. Ekis,
+variant is chosen when it is created and never changes; it decides the
+Site's app skeletons, managed files and defaults, with `framework` choosing
+only between content Frontends. A commerce Site's Frontend is its
+storefront, and WooCommerce is its only commerce authority. Ekis,
 FPA Shop and Bruaa are commerce sites.
 _Avoid_: frontend variant, flavour
 

@@ -30,7 +30,12 @@ renderer packages are not either
   app skeletons, managed files and defaults. There is no `frontend` selector:
   a commerce Site's Frontend is its storefront (gq-platform glossary), and no
   second commerce Frontend exists. One can be added later, additively, with a
-  manifest migration. The variant never changes after creation.
+  manifest migration. The variant never changes after creation. The later
+  `framework` key ([gq-platform ADR 0010](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0010-site-frontend-framework.md))
+  chooses between content Frontends only. A commerce Site's Frontend is
+  TanStack Start whatever `framework` says: `gq new --variant commerce`
+  records `framework: "tanstack"` and refuses `--framework astro`, and the
+  managed files tagged with a framework are content-only.
 - **Managed files vary by variant through `ownership.json`.** An entry may
   list the `variants` it applies to, as `packages.json` entries do; one
   without applies to both. The content Frontend skeleton, the publication
