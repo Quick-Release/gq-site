@@ -57,6 +57,9 @@ composer_install() {
       rsync -a --delete "$shipped_dir" "web/app/$kind/$(basename "$shipped_dir")/"
     done
   done
+  # Verify after restoring shipped plugins too. Runs in full and Composer-only
+  # deployments, before PHP reload or any WordPress activation/database work.
+  php scripts/patch-dependencies.php
 }
 
 cleanup() {

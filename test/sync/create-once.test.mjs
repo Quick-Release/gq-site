@@ -206,12 +206,20 @@ test("an app the site already has gains no skeleton files, now or on a later syn
   const result = await site.run(["sync"]);
 
   assert.equal(result.code, 0, result.stderr);
-  assert.doesNotMatch(result.stdout, /^apps\//mu);
+  assert.deepEqual(result.stdout.match(/^apps\/.*$/gmu), [
+    "apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch: created.",
+    "apps/cms/scripts/patch-dependencies.php: created.",
+  ]);
   assert.doesNotMatch(result.stdout, /^deploy\/ploi\/admin\.d\/10-theme\.sh/mu);
   const files = Object.keys(await snapshot(site.root));
   assert.deepEqual(
     files.filter((path) => path.startsWith("apps/")),
-    ["apps/cms/composer.json", "apps/frontend/package.json"],
+    [
+      "apps/cms/composer.json",
+      "apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch",
+      "apps/cms/scripts/patch-dependencies.php",
+      "apps/frontend/package.json",
+    ],
   );
   assert.ok(!files.includes("deploy/ploi/admin.d/10-theme.sh"));
   const created = (await readLock(site.root)).created;

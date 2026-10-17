@@ -40,6 +40,8 @@ const MANAGED_PATHS = [
   ".nvmrc",
   ".vite-hooks/pre-commit",
   ".vite-hooks/pre-push",
+  "apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch",
+  "apps/cms/scripts/patch-dependencies.php",
   "deploy/ploi/admin.sh",
   "deploy/ploi/polylang.sh",
   "docs/adr/README.md",

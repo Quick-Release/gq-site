@@ -5,6 +5,27 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.18.2 — 2026-10-17
+
+### Fixed
+
+- **Shared wpgraphql-blocks 2.2.0 warning patch.** Manage the reviewed patch
+  and PHP runner through `gq sync`. New CMS apps apply it through Composer's
+  autoload event locally and in CI/production; both full and Composer-only
+  Ploi deployments verify it after restoring shipped code. Reinstalls through
+  `gq cms composer reinstall` rebuild autoloads to run the same lifecycle.
+  Stage and verify both files before replacement, repair partial application,
+  reject unsupported versions/source drift and lint even on reruns. Preserve
+  response bytes without changing global PHP error reporting.
+- **Patch verification** covers upstream sources, reruns, partial file/hunk
+  repair, drift, PHP syntax, actual Composer events and registered resolver
+  response/query-argument equivalence across all 32 blocks argument combinations.
+
+Existing Sites upgrade the exact `@getquick/site` pin, sync, and merge the
+Composer scripts into their site-owned CMS `composer.json` before deployment.
+See [adoption and Nomia extension retirement](docs/guides/dependency-patches.md)
+for the staged rollout, publication steps and Site-local production audit.
+
 ## 0.18.1 — 2026-10-14
 
 ### Fixed

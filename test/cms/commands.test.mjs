@@ -272,6 +272,25 @@ test("gq cms composer install refuses to run without the registry login", async 
   assert.deepEqual(actions(exec), []);
 });
 
+test("gq cms composer reinstall rebuilds autoloads to run dependency patches and propagates failure", async () => {
+  const fixture = await site();
+  for (const code of [0, 19]) {
+    const exec = fakeTools({ codes: { "composer dump-autoload --no-interaction": code } });
+    const result = await fixture.run(
+      ["cms", "composer", "reinstall", "wp-plugin/wpgraphql-blocks"],
+      {
+        env: { CI: "", COMPOSER_AUTH: "{}" },
+        exec,
+      },
+    );
+    assert.equal(result.code, code, result.stderr);
+    assert.deepEqual(actions(exec), [
+      ["composer", "reinstall", "--no-interaction", "wp-plugin/wpgraphql-blocks"],
+      ["composer", "dump-autoload", "--no-interaction"],
+    ]);
+  }
+});
+
 test("gq cms composer lint runs in a running DDEV, else the host Composer, else a started DDEV", async () => {
   const running = fakeTools();
   const fixture = await site();
