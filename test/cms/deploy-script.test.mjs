@@ -33,6 +33,26 @@ function wpCalls(calls, command) {
   return calls.filter(([tool, ...args]) => tool === "wp" && args.join(" ").startsWith(command));
 }
 
+test("full and Composer-only deploys verify dependency patches before activation and fail on patch errors", async () => {
+  const script = await generatedScript();
+  for (const composerOnly of [false, true]) {
+    const result = await deploy(script, { composerOnly });
+    assert.equal(result.code, 0, result.output);
+    const composer = result.calls.findIndex(([tool]) => tool === "composer");
+    const patch = result.calls.findIndex(
+      ([tool, arg]) => tool === "php" && arg === "scripts/patch-dependencies.php",
+    );
+    assert.ok(patch > composer);
+    const activation = result.calls.findIndex(([tool, arg]) => tool === "wp" && arg === "plugin");
+    assert.ok(composerOnly ? activation === -1 : activation > patch);
+    const failed = await deploy(script, { composerOnly, patchExit: 27 });
+    assert.equal(failed.code, 27, failed.output);
+    assert.deepEqual(wpCalls(failed.calls, "plugin activate"), []);
+    assert.deepEqual(wpCalls(failed.calls, "core update-db"), []);
+    assert.match(failed.output, /DEPLOY_STATUS=failed/u);
+  }
+});
+
 test("the deploy script activates exactly the plugins gq.ops.json lists, in order", async () => {
   const result = await deploy(await generatedScript());
 

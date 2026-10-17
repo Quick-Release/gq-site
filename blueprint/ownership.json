@@ -1,5 +1,13 @@
 {
   "fullyGenerated": [
+    {
+      "path": "apps/cms/scripts/patch-dependencies.php",
+      "template": "templates/apps/cms/scripts/patch-dependencies.php"
+    },
+    {
+      "path": "apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch",
+      "template": "templates/apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch"
+    },
     { "path": ".mise.toml", "template": "templates/mise.toml" },
     { "path": ".nvmrc", "template": "templates/nvmrc" },
     {
