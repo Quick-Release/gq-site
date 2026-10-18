@@ -30,6 +30,12 @@ The production GraphQL path updates the content site's
 Alchemy beta.79. No secret binding changes. `sync/graphql-path.test.mjs`
 independently exercises both paths, explicit overrides and local isolation.
 
+The CI image's Composer fix updates the content site's `infra/ci/Dockerfile`
+baseline alongside its source: GNU `patch` for the CMS dependency patch, and
+`COMPOSER_ALLOW_SUPERUSER=1` so Composer runs the allowed plugins as the
+container's root user. `scripts/smoke/ci-composer.sh` builds and exercises
+the rendered image.
+
 ## Preservation
 
 - Preserve fixture paths, contents and version identifiers during organization,
