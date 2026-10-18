@@ -116,11 +116,14 @@ settings events, and real WPGraphQL for `gq site check`'s CMS readiness.
 configuration (the generated `deploy/ploi/polylang.sh`) on a real WordPress
 with Polylang and GQ Polylang for WPGraphQL, read over GraphQL, and the
 events its CMS sends per language (the site's `publication-events.php` and
-`settings-events.php`). The
+`settings-events.php`). `scripts/smoke/ci-composer.sh` builds a generated
+site's Cloudflare CI image with Docker and runs its install step's Composer
+command as the image's root user on a clean CMS (see
+[CMS dependency patches](guides/dependency-patches.md#verification-boundary)). The
 runtime proof also installs the CI Worker's dependencies for Wrangler's local
 workerd runtime. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
 three proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
-`frontend-check.sh` and `frontend-runtime.sh` on every push; the
+`frontend-check.sh`, `frontend-runtime.sh` and `ci-composer.sh` on every push; the
 real-WordPress proof needs PHP and downloads, and the live gate is the
 gq-smoke wizard ([A new content Site, end to end](guides/provisioning.md#a-new-content-site-end-to-end)).
 

@@ -5,6 +5,35 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.18.3 — 2026-10-18
+
+### Fixed
+
+- **Composer plugins in the Cloudflare CI image.** CI steps run as root, and
+  non-interactive Composer disables every plugin for root unless it detects
+  Docker, which Cloudflare's containers aren't. `composer/installers` then
+  left WordPress plugins and themes in `vendor/`, and 0.18.2's dependency
+  patch failed on a missing `web/app/plugins/wpgraphql-blocks/plugin.php`.
+  The managed `infra/ci/Dockerfile` now sets `COMPOSER_ALLOW_SUPERUSER=1`,
+  Composer's supported switch, and installs GNU `patch`, which the patch
+  runner needs and the image lacked. The CMS `composer.json`'s
+  `allow-plugins` still decides which plugins run; secrets, the install
+  command and patch verification are unchanged.
+- **CI install proof.** `scripts/smoke/ci-composer.sh` builds a generated
+  Site's CI image and runs the install step's own Composer command as root
+  on a clean CMS, with Composer's Docker detection off as on Cloudflare:
+  every WordPress package lands in its installer path, the patch applies with
+  the reviewed hashes, the CMS lint and tests pass, a plugin missing from
+  `allow-plugins` is still refused, and without the switch the install fails
+  as it did in CI. GitHub CI runs it on every push.
+
+Existing Sites: upgrade the exact pin and sync, which regenerates only
+`infra/ci/Dockerfile` (and `gq.lock.json`); nothing site-owned changes. CI
+reads the image only when the CI Worker is deployed, so **redeploy the CI
+Worker** (`pnpm ci:deploy`) before the next CI run or release tag; pushing the
+synced Dockerfile alone keeps the old image. See
+[Adopt the CI image fix](docs/guides/dependency-patches.md#adopt-the-ci-image-fix-0183).
+
 ## 0.18.2 — 2026-10-17
 
 ### Fixed

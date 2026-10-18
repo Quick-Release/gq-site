@@ -43,7 +43,12 @@ deploy. Deploy extensions are not needed to apply this dependency patch.
 
 The runner requires PHP compatible with the CMS (8.4.1+) and **GNU patch**
 on PATH (Linux: `patch`; macOS: install GNU patch and put its `patch` on PATH).
-Check `patch --version` locally and on the Ploi host before adoption.
+Check `patch --version` locally and on the Ploi host before adoption. The
+managed Cloudflare CI image installs it from 0.18.3, and sets
+`COMPOSER_ALLOW_SUPERUSER=1` so Composer runs the allowed plugins as the
+container's root user; without that, `composer/installers` doesn't run and
+the runner finds no installed plugin (see
+[Adopt the CI image fix](#adopt-the-ci-image-fix-0183)).
 It stages copies, applies each hunk with zero fuzz, then verifies both complete
 files against reviewed SHA-256 values and runs `php -l` using its own PHP.
 Only then does it replace installed files, with an atomic rename per file.
@@ -121,6 +126,38 @@ by the blueprint PR.
    windows and audits stay **Site-local**. Roll out first on the Reference
    Site, Cooldown Gaming, then on each approved content Site separately.
 
+## Adopt the CI image fix (0.18.3)
+
+A Site on 0.18.2 whose Cloudflare CI install step fails with
+`Composer plugins have been disabled for safety` and
+`GETQUICK dependency patch failed: Missing or unsupported wpgraphql-blocks`
+needs 0.18.3. Do this in a **new session and worktree of that Site's
+repository**; the blueprint PR changes no Site.
+
+1. Upgrade the exact pin and sync:
+
+   ```sh
+   pnpm add -D -E @getquick/site@0.18.3
+   pnpm exec gq sync
+   pnpm exec gq sync --check
+   ```
+
+   The only managed change is `infra/ci/Dockerfile` (plus `gq.lock.json`).
+   `apps/cms/composer.json` is not touched: keep its `allow-plugins` as it is.
+   A Site that removed `composer/installers` or
+   `roots/wordpress-core-installer` from it still has its WordPress packages
+   in `vendor/`, and must restore them.
+
+2. **Redeploy the CI Worker** from the synced checkout: `pnpm ci:deploy`.
+   Wrangler builds and pushes the new image with the Worker; CI keeps running
+   the old image until then. The Worker's secrets are re-sent unchanged.
+
+3. Commit and push the Site PR. Its CI run is the check: the install step's
+   log shows `wpgraphql-blocks 2.2.0 warning patch applied and PHP syntax
+verified.` and no `plugins have been disabled` line. Release as usual
+   afterwards. A release workflow that already failed on 0.18.2 isn't rerun
+   by this; tag or rerun only through the Site's normal release decision.
+
 ## Retire Nomia's extension without a rollout gap
 
 Nomia's separate session belongs in `Quick-Release/nomia-bnq`, local clone
@@ -177,6 +214,16 @@ raw JSON bytes (including field presence/order) and WordPress query arguments,
 and requires zero warnings after reproducing the pristine warning flood.
 Deploy tests cover both paths and failure before activation/database updates.
 CI provisions PHP 8.4, DOM and Composer for these checks.
+
+`scripts/smoke/ci-composer.sh` (Docker and network) proves the Cloudflare CI
+path: it builds a generated Site's CI image and runs the install step's
+Composer command as root on a clean CMS without the GETQUICK registry
+packages (they need `COMPOSER_AUTH`). Composer skips its root check when it
+detects Docker, which Cloudflare's containers aren't, so the proof turns that
+detection off with an `open_basedir = /` PHP ini. It checks installer paths,
+WordPress core, the reviewed hashes, the CMS lint and tests, that
+`allow-plugins` still refuses an unlisted plugin, and that the install fails
+without `COMPOSER_ALLOW_SUPERUSER`.
 
 This is not a full WordPress/GraphQL server test or an exhaustive repair of
 every wpgraphql-blocks issue. In particular, pristine 2.2.0's `RootQuery.coreQuery`
