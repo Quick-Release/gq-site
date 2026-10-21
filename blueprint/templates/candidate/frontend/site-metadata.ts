@@ -8,5 +8,9 @@ const domains = (ops as { domains?: { frontend: string } }).domains;
 export const metadataSite = {
   origin: domains?.frontend ? `https://${domains.frontend}` : "",
   name: "{{Project}}",
-  language: { lang: defaultLanguage.lang, locale: defaultLanguage.locale, dir: htmlDirection(defaultLanguage.lang) },
+  language: {
+    lang: defaultLanguage.lang,
+    locale: defaultLanguage.locale,
+    dir: htmlDirection(defaultLanguage.lang),
+  },
 };

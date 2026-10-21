@@ -15,11 +15,13 @@ export function documentMetadata(facts: DocumentFacts) {
       title: facts.title,
       ...(facts.description === undefined ? {} : { description: facts.description }),
     },
-    translations: facts.translations?.filter((item) => item.translation).map((item) => ({
-      ...item.language,
-      canonical: `${metadataSite.origin.replace(/\/$/u, "")}${item.route}`,
-      published: true,
-    })),
+    translations: facts.translations
+      ?.filter((item) => item.translation)
+      .map((item) => ({
+        ...item.language,
+        canonical: `${metadataSite.origin.replace(/\/$/u, "")}${item.route}`,
+        published: true,
+      })),
   });
   return {
     html: renderMetadataHead(metadata),

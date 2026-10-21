@@ -161,8 +161,9 @@ try {
     ]);
     const pkg = JSON.parse(await readFile(join(frontend, "package.json"), "utf8"));
     assert.equal(pkg.dependencies["@getquick/content"], undefined);
-    for (const task of ["test", "check", "build"])
+    for (const task of ["test", "check", "build", "lint"])
       await command(`ordinary-${framework}-${task}`, "vp", ["-C", frontend, "run", task]);
+    await command(`ordinary-${framework}-format`, "vp", ["-C", frontend, "fmt", "--check", "."]);
     const port = framework === "astro" ? 4383 : 4384;
     const running = await startServer(frontend, framework, port);
     for (const path of ["/", "/missing"]) {

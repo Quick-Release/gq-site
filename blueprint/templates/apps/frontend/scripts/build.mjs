@@ -4,5 +4,8 @@ import { distilledNode } from "@alchemy.run/frontend-frameworks/astro/node";
 
 await build({
   integrations: [distilledNode()],
-  vite: { build: { rolldownOptions: { external: ["cloudflare:workers"] } }, ssr: { external: ["cloudflare:workers"] } },
+  vite: {
+    build: { rolldownOptions: { external: ["cloudflare:workers"] } },
+    ssr: { external: ["cloudflare:workers"] },
+  },
 });

@@ -81,5 +81,7 @@ export function isLanguageHome(route: string, among = languages) {
 /** Direction of the actual locale script, including explicit script subtags. */
 export function htmlDirection(lang: string): "ltr" | "rtl" {
   const script = new Intl.Locale(lang).maximize().script;
-  return ["Arab", "Hebr", "Thaa", "Nkoo", "Adlm", "Rohg", "Syrc"].includes(script ?? "") ? "rtl" : "ltr";
+  return ["Arab", "Hebr", "Thaa", "Nkoo", "Adlm", "Rohg", "Syrc"].includes(script ?? "")
+    ? "rtl"
+    : "ltr";
 }

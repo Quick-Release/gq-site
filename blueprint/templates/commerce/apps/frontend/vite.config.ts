@@ -10,11 +10,23 @@ export default defineConfig({
   build: { sourcemap: true },
   plugins: [tanstackStart({ router: { quoteStyle: "double", semicolons: true } }), react()],
   fmt: {
-    ignorePatterns: ["dist/**", ".tanstack/**", ".output/**", "node_modules/**", "src/routeTree.gen.ts"],
+    ignorePatterns: [
+      "dist/**",
+      ".tanstack/**",
+      ".output/**",
+      "node_modules/**",
+      "src/routeTree.gen.ts",
+    ],
     singleQuote: false,
     semi: true,
   },
   lint: {
-    ignorePatterns: ["dist/**", ".tanstack/**", ".output/**", "node_modules/**", "src/routeTree.gen.ts"],
+    ignorePatterns: [
+      "dist/**",
+      ".tanstack/**",
+      ".output/**",
+      "node_modules/**",
+      "src/routeTree.gen.ts",
+    ],
   },
 });
