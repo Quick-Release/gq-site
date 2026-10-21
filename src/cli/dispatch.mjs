@@ -139,8 +139,7 @@ export async function runCli(
   const [provider, resource, action = "list"] = parsed.command;
 
   if (isReleaseCommand(parsed.command)) {
-    await runReleaseCommand({ parsed, context, env, exec, io });
-    return;
+    return runReleaseCommand({ parsed, context, env, fetch, exec, io, interactive });
   }
 
   if (isPloiWorkflow(parsed.command)) {

@@ -130,6 +130,32 @@ WordPress, the other packages or a Site's own code. The proposal still goes
 through review, a branch and CI like any other blueprint change. Nothing is
 committed, pushed or published.
 
+## A Site on a branch
+
+A Site may install a GETQUICK package from a branch instead of a release,
+for example to ship GQ Design's `main` before it is tagged. Composer needs an
+inline alias whenever another package constrains it: getquick-theme requires
+`getquick/gq-design` `>=0.3.19 <1.0`, so plain `dev-main` doesn't resolve.
+
+```json
+"getquick/gq-design": "dev-main as 0.5.99"
+```
+
+with the CMS `composer.json`'s `"minimum-stability": "dev"` and
+`"prefer-stable": true` (the blueprint's defaults). Pick an alias inside every
+dependant's range and above the newest release, then
+`pnpm cms:composer:update getquick/gq-design` locks the branch's newest commit.
+gq leaves the requirement and the lock alone: `gq sync` (the file is
+create-once; only `--recreate apps/cms/composer.json` writes the blueprint's
+again), the release commands and `gq ploi release` never rewrite or reject
+either. `pnpm release:package getquick/gq-design` locks main's newest commit,
+commits and deploys it ([release package](release.md)).
+
+The server's `composer install` downloads the dist the lock names with the
+registry login only, so the registry must serve the branch's archive; a dist
+URL on `api.github.com` needs a GitHub token the deploy doesn't have. Return
+to a release by setting the caret constraint again and updating the package.
+
 ## Deferred: fleet rollout
 
 These are later phases of the

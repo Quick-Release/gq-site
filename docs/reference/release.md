@@ -69,6 +69,23 @@ version.
   tag. Command output streams through as it runs. Nothing deploys from here:
   Cloudflare CI deploys the pushed `v*` tag.
 
+- `release package <composer-package>` redeploys the CMS with one Composer
+  package updated. From a clean tree it runs `composer update <package>` in
+  `apps/cms` with the host Composer and the registry login (as
+  `gq cms composer update` does), syncs and checks the current `VERSION`
+  (as `release prepare` does, without a bump), commits the changed tracked
+  files (`Update <package> to <version>`, naming the commit of a `dev-*`
+  version), and deploys that commit with `gq ploi release --ref HEAD`. When
+  the lock doesn't change it deploys HEAD as it is. It doesn't tag, push or
+  run the checks: push the commit afterwards. The package must be in
+  `apps/cms/composer.json`'s `require`. Run it under the `staging`
+  environment, which holds `COMPOSER_AUTH`, the Ploi token and the releases
+  R2 key: `pnpm release:package getquick/gq-design`.
+
+A site's `apps/cms/composer.json` and `composer.lock` are its own: no release
+command rewrites a requirement, and none rejects a lock that pins a branch
+commit. See [branch requirements](packages.md#a-site-on-a-branch).
+
 A site that keeps these settings in a `shop-devtools.config.mjs` module
 migrates them with `gq sync --manifest`, which folds the module into `gq.ops.json`, keeping only what
 differs from the variant's defaults, and removes it. It names each default the

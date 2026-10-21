@@ -5,6 +5,32 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.19.0 — 2026-10-21
+
+### Added
+
+- **`gq release package <composer-package>`** (`pnpm release:package`, a new
+  managed script): a fast CMS redeploy of one GETQUICK Composer package. From
+  a clean tree it runs `composer update <package>` in `apps/cms` with the
+  registry login, syncs and checks the current `VERSION` as `release prepare`
+  does, commits the lock (`Update <package> to <version>`, with the commit of
+  a `dev-*` version), and deploys that commit with `gq ploi release`. No tag,
+  push or version bump; push the commit afterwards. An offboarded Site
+  refuses it like `release push`.
+
+### Documented
+
+- **A Site on a branch.** A Site may require a GETQUICK package from a branch,
+  such as `"getquick/gq-design": "dev-main as 0.5.99"` (the alias keeps
+  getquick-theme's `<1.0` constraint satisfiable). `gq sync`, the release
+  commands, `gq ploi release` and package discovery never rewrite the
+  requirement or reject a lock that pins a branch commit; tests now hold
+  that. The registry must serve the branch's archive for the server's
+  `composer install`.
+
+Existing Sites: upgrade the exact pin and run `gq sync`, which adds the
+`release:package` script to `package.json` (and updates `gq.lock.json`).
+
 ## 0.18.3 — 2026-10-18
 
 ### Fixed
