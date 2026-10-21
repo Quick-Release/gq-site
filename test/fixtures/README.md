@@ -30,6 +30,12 @@ The production GraphQL path updates the content site's
 Alchemy beta.79. No secret binding changes. `sync/graphql-path.test.mjs`
 independently exercises both paths, explicit overrides and local isolation.
 
+The CI image's Composer fix updates the content site's `infra/ci/Dockerfile`
+baseline alongside its source: GNU `patch` for the CMS dependency patch, and
+`COMPOSER_ALLOW_SUPERUSER=1` so Composer runs the allowed plugins as the
+container's root user. `scripts/smoke/ci-composer.sh` builds and exercises
+the rendered image.
+
 ## Preservation
 
 - Preserve fixture paths, contents and version identifiers during organization,
@@ -55,3 +61,20 @@ package tests.
 
 For helper roles and targeted test commands, see
 [the development guide](../../docs/development.md#tests).
+
+## wpgraphql-blocks 2.2.0
+
+`wpgraphql-blocks-2.2.0/plugin.php`, `utils.php` and `LICENSE` are unmodified
+upstream files from https://downloads.wordpress.org/plugin/wpgraphql-blocks.2.2.0.zip
+(accessed 2026-10-17). `utils.php` is upstream `includes/utils.php`.
+The GPL-3 license is retained. Source SHA-256 values:
+
+- plugin.php: `1f3f0190cde9c8b5172239b95411ed15c86b708cac284b89a6c8f1ab4a735e98`
+- utils.php: `c5a2fda8bce3e540e893428a4df1da94762159dc0d9cf5616b11b73ce1ee68f7`
+
+The dependency-patch suite uses these independent bytes to reproduce the
+warnings, apply/repair the managed patch, reject drift, lint PHP and compare
+actual registered resolver/scalar responses before and after. Do not regenerate
+these fixtures from the patched output. The patch originates in
+[Nomia PR #3](https://github.com/Quick-Release/nomia-bnq/pull/3), commit
+`0d0d65a3058d9da306b70d3535dfb91b8266e413`, and retains those reviewed bytes.

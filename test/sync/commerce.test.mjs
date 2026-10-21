@@ -408,5 +408,13 @@ test("the commerce CMS skeleton pins every shared requirement as the content one
   }
   assert.deepEqual(commerce.repositories, content.repositories);
   assert.deepEqual(commerce.config, content.config);
-  assert.deepEqual(commerce.scripts, content.scripts);
+  // Only content installs WPGraphQL Blocks and its dependency patch.
+  const {
+    "patch:dependencies": patch,
+    "post-autoload-dump": patchHook,
+    ...sharedScripts
+  } = content.scripts;
+  assert.ok(patch);
+  assert.deepEqual(patchHook, ["@patch:dependencies"]);
+  assert.deepEqual(commerce.scripts, sharedScripts);
 });

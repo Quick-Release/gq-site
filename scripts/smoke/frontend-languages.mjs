@@ -146,6 +146,9 @@ const cms = {
 
 const local = localWorker({ site, work, vars: { FRONTEND_REFRESH_TOKEN: token } });
 
+// Read the root attribute independently of dir/class and attribute order.
+const rootLanguage = (html) => /<html\b[^>]*\slang="([^"]*)"(?=[\s>])/i.exec(html)?.[1];
+
 const alternates = (html) =>
   [...html.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)">/g)].map(
     ([, hreflang, href]) => `${hreflang} ${new URL(href).pathname}`,
@@ -184,7 +187,7 @@ try {
     check(
       `${label}: / is the Portuguese home, with its title, menu and <html lang>`,
       pt.status === 200 &&
-        pt.html.includes('<html lang="pt-PT">') &&
+        rootLanguage(pt.html) === "pt-PT" &&
         pt.html.includes("Bem-vindo à Acme") &&
         /<a href="\/sobre\/"[^>]*>Sobre nós<\/a>/.test(pt.html),
       `HTTP ${pt.status}`,
@@ -192,7 +195,7 @@ try {
     check(
       `${label}: /en/ is the English home from the store, with its title, menu and <html lang>`,
       en.status === 200 &&
-        en.html.includes('<html lang="en-US">') &&
+        rootLanguage(en.html) === "en-US" &&
         en.html.includes("Welcome to Acme") &&
         /<a href="\/en\/about\/"[^>]*>About us<\/a>/.test(en.html) &&
         !en.html.includes("Sobre nós"),
@@ -203,7 +206,7 @@ try {
       `${label}: /sobre/ and /en/about/ link to each other with hreflang alternates`,
       sobre.status === 200 &&
         about.status === 200 &&
-        about.html.includes('<html lang="en-US">') &&
+        rootLanguage(about.html) === "en-US" &&
         JSON.stringify(alternates(sobre.html)) === JSON.stringify(pair) &&
         JSON.stringify(alternates(about.html)) === JSON.stringify(pair),
       `${JSON.stringify(alternates(sobre.html))} ${JSON.stringify(alternates(about.html))}`,
@@ -214,7 +217,7 @@ try {
   const wrong = await visit(port, "/en/sobre/");
   check(
     "/en/sobre/ is a 404 in English: no fallback to the Portuguese page",
-    wrong.status === 404 && wrong.html.includes('<html lang="en-US">'),
+    wrong.status === 404 && rootLanguage(wrong.html) === "en-US",
     `HTTP ${wrong.status}`,
   );
 

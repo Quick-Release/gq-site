@@ -264,7 +264,7 @@ test("gq new --locale sets the site's main language for the CMS deploy and the F
   // gq.ops.json when it is built.
   assert.match(
     await readSite(root, "apps/frontend/src/layouts/Layout.astro"),
-    /<html lang=\{language\.lang\}>/u,
+    /<html lang=\{language\.lang\} dir=\{htmlDirection\(language\.lang\)\}/u,
   );
   assert.match(
     await readSite(root, "apps/frontend/src/lib/site-language.ts"),
@@ -302,7 +302,7 @@ test("outside a terminal, gq new names every value it is missing and writes noth
     assert.equal(
       result.stderr,
       `gq: gq new is missing ${missing}; pass them, or run it in a terminal to be asked. ` +
-        "Usage: gq new <dir> --project <name> --variant <content|commerce> [--locale <locale>]\n",
+        "Usage: gq new <dir> --project <name> --variant <content|commerce> [--locale <locale>] [--metadata-candidate </absolute/content.tgz>]\n",
     );
     assert.deepEqual(result.exec.calls, []);
   }

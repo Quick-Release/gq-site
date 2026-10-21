@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro check",
+    "build": "node scripts/build.mjs",
     "check": "astro check",
     "preview": "astro preview",
     "format": "vp fmt",

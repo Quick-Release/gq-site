@@ -40,6 +40,8 @@ const MANAGED_PATHS = [
   ".nvmrc",
   ".vite-hooks/pre-commit",
   ".vite-hooks/pre-push",
+  "apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch",
+  "apps/cms/scripts/patch-dependencies.php",
   "deploy/ploi/admin.sh",
   "deploy/ploi/polylang.sh",
   "docs/adr/README.md",
@@ -102,6 +104,9 @@ const CREATED_PATHS = [
   "apps/cms/web/index.php",
   "apps/cms/web/wp-config.php",
   "apps/cms/wp-cli.yml",
+  "apps/frontend/scripts/build.mjs",
+  "apps/frontend/src/lib/document-facts.ts",
+  "apps/frontend/src/lib/document-head.ts",
   "apps/frontend/.env.example",
   "apps/frontend/.gitignore",
   "apps/frontend/README.md",
@@ -148,6 +153,7 @@ const CREATED_PATHS = [
   "apps/frontend/src/routes.test.ts",
   "apps/frontend/src/settings.test.ts",
   "apps/frontend/src/styles/global.css",
+  "apps/frontend/src/styles/site.css",
   "apps/frontend/src/test/sqlite-d1.ts",
   "apps/frontend/src/test/wordpress-stub.ts",
   "apps/frontend/src/withdrawals.test.ts",
@@ -559,7 +565,7 @@ test("gq new refuses a directory that isn't empty, and an unknown variant", asyn
     ],
     [
       ["new", "acme", "--project", "acme", "--variant", "content", "--yes"],
-      "gq: Usage: gq new <dir> --project <name> --variant <content|commerce> [--locale <locale>]\n",
+      "gq: Usage: gq new <dir> --project <name> --variant <content|commerce> [--locale <locale>] [--metadata-candidate </absolute/content.tgz>]\n",
     ],
   ]) {
     const result = await runGq(argv, { cwd: parent });

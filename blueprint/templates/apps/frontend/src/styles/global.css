@@ -1,11 +1,12 @@
 @import "tailwindcss";
+@import "./site.css";
 
 @theme {
   --font-display: Georgia, "Times New Roman", serif;
   --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --color-ink: #1c1b18;
-  --color-paper: #ffffff;
-  --color-accent: #2563eb;
+  --color-ink: var(--site-text);
+  --color-paper: var(--site-background);
+  --color-accent: var(--site-link);
 }
 
 :root {
@@ -18,7 +19,6 @@
 
 body {
   margin: 0;
-  min-width: 320px;
   /* Full-width blocks (alignfull, Video Hero) span 100vw. */
   overflow-x: clip;
 }
@@ -36,7 +36,7 @@ main.prose-wp--video-hero {
 
 main > h1 {
   font-family: var(--font-display);
-  font-size: 3rem;
+  font-size: clamp(2rem, 1.5rem + 3vw, 3rem);
   line-height: 1.05;
 }
 
@@ -91,7 +91,7 @@ main > h1 {
 }
 
 .prose-wp {
-  color: #45423c;
+  color: var(--site-muted);
   font-size: 1.125rem;
   line-height: 1.8;
 }
@@ -245,17 +245,17 @@ main > h1 {
 }
 
 .prose-wp blockquote {
-  border-left: 0.25rem solid var(--color-accent);
+  border-inline-start: 0.25rem solid var(--color-accent);
   color: var(--color-ink);
   font-family: var(--font-display);
   font-size: 1.5rem;
   font-style: italic;
-  padding-left: 1.25rem;
+  padding-inline-start: 1.25rem;
 }
 
 .prose-wp ul,
 .prose-wp ol {
-  padding-left: 1.5rem;
+  padding-inline-start: 1.5rem;
 }
 
 .prose-wp ul {

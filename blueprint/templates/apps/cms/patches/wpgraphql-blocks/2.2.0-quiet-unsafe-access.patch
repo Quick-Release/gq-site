@@ -1,0 +1,275 @@
+--- a/web/app/plugins/wpgraphql-blocks/plugin.php
++++ b/web/app/plugins/wpgraphql-blocks/plugin.php
+@@ -24,6 +24,15 @@
+ 
+   class Block
+   {
++    /* gq-patch-2.2.0(quiet): declared properties (match historical assignment order)
++       + guarded unsafe array/property access; see apps/cms/patches */
++    public $dynamicContent;
++    public $originalContent;
++    public $name;
++    public $htmlContent;
++    public $innerBlocks;
++    public $attributes;
++
+     public function __construct($data, $post_id, $post_content, $query_args, $global_theme_styles, $global_db_styles)
+     {
+       $blockString = render_block($data);
+@@ -47,17 +56,17 @@
+       $htmlContent = str_replace("\t", "", $htmlContent);
+       
+       $this->name = $data['blockName'];
+-      $attributes = $data['attrs'];
++      $attributes = $data['attrs'] ?? []; // gq-patch-2.2.0
+ 
+-      if($attributes['style']['elements']['button']){
++      if($attributes['style']['elements']['button'] ?? false){ // gq-patch-2.2.0
+         $global_styles['core/button'] = $attributes['style']['elements']['button'];
+       }
+ 
+-      if($global_theme_styles[$data['blockName']]){
++      if($global_theme_styles[$data['blockName']] ?? false){ // gq-patch-2.2.0
+         $attributes['globalStyles'] = array_merge($attributes['globalStyles'] ?? [], $global_theme_styles[$data['blockName']]);
+       }
+ 
+-      if($global_db_styles[$data['blockName']]){
++      if($global_db_styles[$data['blockName']] ?? false){ // gq-patch-2.2.0
+         $attributes['globalStyles'] = array_merge($attributes['globalStyles'] ?? [], $global_db_styles[$data['blockName']]);
+       }
+ 
+@@ -67,7 +76,10 @@
+         $htmlString = str_replace("\n", "", $htmlString);
+         $htmlString = str_replace("\r", "", $htmlString);
+         $htmlString = str_replace("\t", "", $htmlString);
++        $libxml_prev = libxml_use_internal_errors(true); // gq-patch-2.2.0
+         $dom->loadHTML($htmlString, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
++        libxml_clear_errors();
++        libxml_use_internal_errors($libxml_prev);
+         $audio_tags = $dom->getElementsByTagName('audio');
+         if($audio_tags && $audio_tags[0]){
+           if(!$attributes['src']){
+@@ -161,7 +173,10 @@
+         $htmlString = str_replace("\n", "", $htmlString);
+         $htmlString = str_replace("\r", "", $htmlString);
+         $htmlString = str_replace("\t", "", $htmlString);
++        $libxml_prev = libxml_use_internal_errors(true); // gq-patch-2.2.0
+         $dom->loadHTML($htmlString, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
++        libxml_clear_errors();
++        libxml_use_internal_errors($libxml_prev);
+         $img_tags = $dom->getElementsByTagName('img');
+         if($img_tags && $img_tags[0]){
+           $alt = $img_tags[0]->getAttribute('alt');
+@@ -232,25 +247,25 @@
+       }
+ 
+       if ($data['blockName'] === 'core/query') {
+-        $query_attrs = $attributes['query'];
++        $query_attrs = $attributes['query'] ?? []; // gq-patch-2.2.0
+ 
+         $core_query_args = array(
+-          'post_type' => $query_attrs['postType'],
+-          'posts_per_page' => $query_attrs['perPage'],
+-          'ignore_sticky_posts' => $query_attrs['sticky'] === "exclude",
+-          'cat' => $query_attrs['taxQuery']['category'] ?: [],
+-          'orderby' => $query_attrs['orderBy'],
++          'post_type' => $query_attrs['postType'] ?? null, // gq-patch-2.2.0
++          'posts_per_page' => $query_attrs['perPage'] ?? null, // gq-patch-2.2.0
++          'ignore_sticky_posts' => ($query_attrs['sticky'] ?? null) === "exclude", // gq-patch-2.2.0
++          'cat' => ($query_attrs['taxQuery']['category'] ?? []) ?: [], // gq-patch-2.2.0
++          'orderby' => $query_attrs['orderBy'] ?? null, // gq-patch-2.2.0
+           // 'desc' or 'asc'
+-          'order' => $query_attrs['order'],
+-          'offset' => $query_attrs['offset'],
+-          's' => $query_attrs['search'],
+-          'author' => $query_attrs['author']
++          'order' => $query_attrs['order'] ?? null, // gq-patch-2.2.0
++          'offset' => $query_attrs['offset'] ?? null, // gq-patch-2.2.0
++          's' => $query_attrs['search'] ?? null, // gq-patch-2.2.0
++          'author' => $query_attrs['author'] ?? null // gq-patch-2.2.0
+         );
+ 
+-        if ($query_attrs['sticky'] === "exclude") {
++        if (($query_attrs['sticky'] ?? null) === "exclude") { // gq-patch-2.2.0
+           $sticky_posts = get_option('sticky_posts');
+           $core_query_args['post__not_in'] = $sticky_posts;
+-        } else if ($query_attrs['sticky'] === "only") {
++        } else if (($query_attrs['sticky'] ?? null) === "only") { // gq-patch-2.2.0
+           $sticky_posts = get_option('sticky_posts');
+           $core_query_args['post__in'] = $sticky_posts;
+         }
+@@ -290,12 +305,12 @@
+           // at this point, add class names to the ul tag, based on the $data['attrs'] (i.e. the core/query attributes)
+           $core_post_template_block_string = substr($core_post_template_block_string, 0, strpos($core_post_template_block_string, ">")) . "></ul>";
+ 
+-          if ($data['attrs'] && $data['attrs']['displayLayout'] && $data['attrs']['displayLayout']['type'] === "flex") {
++          if ($data['attrs'] && ($data['attrs']['displayLayout'] ?? false) && ($data['attrs']['displayLayout']['type'] ?? null) === "flex") { // gq-patch-2.2.0
+             $core_post_template_block_string = substr($core_post_template_block_string, 0, strpos($core_post_template_block_string, ">")) . "></ul>";
+             $core_post_template_block_string = str_replace("class=\"", "class=\"is-flex-container ", $core_post_template_block_string);
+           }
+ 
+-          if ($data['attrs'] && $data['attrs']['displayLayout'] && isset($data['attrs']['displayLayout']['columns'])) {
++          if ($data['attrs'] && ($data['attrs']['displayLayout'] ?? null) && isset($data['attrs']['displayLayout']['columns'])) { // gq-patch-2.2.0
+             $core_post_template_block_string = substr($core_post_template_block_string, 0, strpos($core_post_template_block_string, ">")) . "></ul>";
+             $core_post_template_block_string = str_replace("class=\"", "class=\"columns-" . $data['attrs']['displayLayout']['columns'] . " ", $core_post_template_block_string);
+           }
+@@ -369,7 +384,7 @@
+         }
+       }
+ 
+-      if ($data['attrs']['post_id_to_hydrate_template']) {
++      if ($data['attrs']['post_id_to_hydrate_template'] ?? false) { // gq-patch-2.2.0
+         // set global post object here
+         global $post;
+         $post = get_post($data['attrs']['post_id_to_hydrate_template']);
+@@ -384,7 +399,7 @@
+ 
+       if ($data['blockName'] == 'core/paragraph') {
+         $attributes['content'] = substr($htmlContent, strpos($htmlContent, ">") + 1, -4);
+-        if($attributes['align']){
++        if($attributes['align'] ?? false){ // gq-patch-2.2.0
+           $attributes['textAlign'] = $attributes['align'];
+           unset($attributes['align']);
+         }
+@@ -395,7 +410,10 @@
+         $htmlString = str_replace("\n", "", $htmlString);
+         $htmlString = str_replace("\r", "", $htmlString);
+         $htmlString = str_replace("\t", "", $htmlString);
++        $libxml_prev = libxml_use_internal_errors(true); // gq-patch-2.2.0
+         $dom->loadHTML($htmlString, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
++        libxml_clear_errors();
++        libxml_use_internal_errors($libxml_prev);
+         $anchors = $dom->getElementsByTagName('a');
+         if($anchors && $anchors[0]){
+           $url = $anchors[0]->getAttribute('href');
+@@ -429,7 +447,10 @@
+             $htmlString = str_replace("\n", "", $htmlString);
+             $htmlString = str_replace("\r", "", $htmlString);
+             $htmlString = str_replace("\t", "", $htmlString);
+-            $dom->loadHTML($htmlString, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
++            $libxml_prev = libxml_use_internal_errors(true); // gq-patch-2.2.0
++        $dom->loadHTML($htmlString, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
++        libxml_clear_errors();
++        libxml_use_internal_errors($libxml_prev);
+             $bodyElement = $dom->getElementsByTagName('body')->item(0);
+             $topLevelElement = $bodyElement->childNodes[0];
+             if ($topLevelElement) {
+@@ -531,32 +552,32 @@
+             if (isset($queryBlock)) {
+               // query found!
+               // if query found, grab attributes.query
+-              $query_attrs = $queryBlock->attributes['query'];
++              $query_attrs = $queryBlock->attributes['query'] ?? []; // gq-patch-2.2.0
+               // if query found, grab the postTemplateRaw
+-              $postTemplateRaw = $queryBlock->attributes['postTemplateRaw'];
++              $postTemplateRaw = $queryBlock->attributes['postTemplateRaw'] ?? null; // gq-patch-2.2.0
+ 
+               $core_query_args = array(
+-                'post_type' => $query_attrs['postType'],
+-                'posts_per_page' => $query_attrs['perPage'],
+-                'ignore_sticky_posts' => $query_attrs['sticky'] === "exclude",
+-                'cat' => $query_attrs['taxQuery']['category'] ?: [],
+-                'orderby' => $query_attrs['orderBy'],
++                'post_type' => $query_attrs['postType'] ?? null, // gq-patch-2.2.0
++                'posts_per_page' => $query_attrs['perPage'] ?? null, // gq-patch-2.2.0
++                'ignore_sticky_posts' => ($query_attrs['sticky'] ?? null) === "exclude", // gq-patch-2.2.0
++                'cat' => ($query_attrs['taxQuery']['category'] ?? []) ?: [], // gq-patch-2.2.0
++                'orderby' => $query_attrs['orderBy'] ?? null, // gq-patch-2.2.0
+                 // 'desc' or 'asc'
+-                'order' => $query_attrs['order'],
++                'order' => $query_attrs['order'] ?? null, // gq-patch-2.2.0
+                 //'offset' => $query_attrs['offset'] ?? 0,
+-                's' => $query_attrs['search'],
+-                'author' => $query_attrs['author'],
++                's' => $query_attrs['search'] ?? null, // gq-patch-2.2.0
++                'author' => $query_attrs['author'] ?? null, // gq-patch-2.2.0
+                 'paged' => $page,
+               );
+ 
+-              if (isset($query_attrs['offset']) && $query_attrs['offset'] != "0") {
++              if (isset($query_attrs['offset']) && $query_attrs['offset'] != "0") { // (isset already safe) gq-patch-2.2.0
+                 $core_query_args['offset'] = $query_attrs['offset'] * $page;
+               }
+ 
+-              if ($query_attrs['sticky'] === "exclude") {
++              if (($query_attrs['sticky'] ?? null) === "exclude") { // gq-patch-2.2.0
+                 $sticky_posts = get_option('sticky_posts');
+                 $core_query_args['post__not_in'] = $sticky_posts;
+-              } else if ($query_attrs['sticky'] === "only") {
++              } else if (($query_attrs['sticky'] ?? null) === "only") { // gq-patch-2.2.0
+                 $sticky_posts = get_option('sticky_posts');
+                 $core_query_args['post__in'] = $sticky_posts;
+               }
+@@ -584,12 +605,12 @@
+                 // at this point, add class names to the ul tag, based on the $data['attrs'] (i.e. the core/query attributes)
+                 $core_post_template_block_string = substr($core_post_template_block_string, 0, strpos($core_post_template_block_string, ">")) . "></ul>";
+ 
+-                if ($queryBlock->attributes && $queryBlock->attributes['displayLayout'] && $queryBlock->attributes['displayLayout']['type'] === "flex") {
++                if (($queryBlock->attributes ?? null) && ($queryBlock->attributes['displayLayout'] ?? false) && ($queryBlock->attributes['displayLayout']['type'] ?? null) === "flex") { // gq-patch-2.2.0
+                   $core_post_template_block_string = substr($core_post_template_block_string, 0, strpos($core_post_template_block_string, ">")) . "></ul>";
+                   $core_post_template_block_string = str_replace("class=\"", "class=\"is-flex-container ", $core_post_template_block_string);
+                 }
+ 
+-                if ($queryBlock->attributes && $queryBlock->attributes['displayLayout'] && isset($queryBlock->attributes['displayLayout']['columns'])) {
++                if (($queryBlock->attributes ?? null) && ($queryBlock->attributes['displayLayout'] ?? null) && isset($queryBlock->attributes['displayLayout']['columns'])) { // gq-patch-2.2.0
+                   $core_post_template_block_string = substr($core_post_template_block_string, 0, strpos($core_post_template_block_string, ">")) . "></ul>";
+                   $core_post_template_block_string = str_replace("class=\"", "class=\"columns-" . $queryBlock->attributes['displayLayout']['columns'] . " ", $core_post_template_block_string);
+                 }
+
+--- a/web/app/plugins/wpgraphql-blocks/includes/utils.php
++++ b/web/app/plugins/wpgraphql-blocks/includes/utils.php
+@@ -192,7 +192,7 @@
+   {
+     foreach ($blocks as $block) {
+       if ($block->name === "core/query") {
+-        if ($block->attributes['queryId'] == $query_id) {
++        if (($block->attributes['queryId'] ?? null) == $query_id) { // gq-patch-2.2.0
+           return $block;
+         }
+       }
+@@ -216,7 +216,7 @@
+   if (file_exists($theme_json_path)) {
+     $theme_json_contents = file_get_contents($theme_json_path);
+     $theme_json_data = json_decode($theme_json_contents, true);
+-    if($theme_json_data && $theme_json_data['styles'] && $theme_json_data['styles']['blocks']){
++    if($theme_json_data && ($theme_json_data['styles']['blocks'] ?? false)){ // gq-patch-2.2.0
+       $global_theme_styles = $theme_json_data['styles']['blocks'];
+     }
+   }
+@@ -229,7 +229,7 @@
+   $global_styles_post = get_page_by_path("wp-global-styles-" . $theme_slug, OBJECT, 'wp_global_styles');
+   if ($global_styles_post && $global_styles_post->post_content) {
+     $decoded_global_styles = json_decode($global_styles_post->post_content, true);
+-    if($decoded_global_styles && $decoded_global_styles['styles'] && $decoded_global_styles['styles']['blocks']){
++    if($decoded_global_styles && ($decoded_global_styles['styles']['blocks'] ?? false)){ // gq-patch-2.2.0
+       $global_db_styles = $decoded_global_styles['styles']['blocks'];
+     }
+   }
+@@ -283,18 +283,22 @@
+ function clean($blocks)
+ {
+   foreach ($blocks as $block) {
+-    if ($block->attributes && $block->attributes['post_id_to_hydrate_template']) {
++    if (property_exists($block, 'innerBlocks') && !isset($block->innerBlocks)) { unset($block->innerBlocks); } // gq-patch-2.2.0
++    if (property_exists($block, 'originalContent') && !isset($block->originalContent)) { unset($block->originalContent); } // gq-patch-2.2.0
++    if (property_exists($block, 'htmlContent') && !isset($block->htmlContent)) { unset($block->htmlContent); } // gq-patch-2.2.0
++    if (property_exists($block, 'dynamicContent') && !isset($block->dynamicContent)) { unset($block->dynamicContent); } // gq-patch-2.2.0
++    if (($block->attributes ?? null) && ($block->attributes['post_id_to_hydrate_template'] ?? false)) { // gq-patch-2.2.0
+       unset($block->attributes['post_id_to_hydrate_template']);
+     }
+-    if ($block->attributes && $block->attributes['postTemplateRaw']) {
++    if (($block->attributes ?? null) && !empty($block->attributes['postTemplateRaw'])) { // gq-patch-2.2.0
+       unset($block->attributes['postTemplateRaw']);
+     }
+ 
+-    if (!$block->attributes || !count($block->attributes)) {
++    if (!isset($block->attributes) || !count($block->attributes)) { // gq-patch-2.2.0
+       unset($block->attributes);
+     }
+ 
+-    if ($block->innerBlocks) {
++    if (!empty($block->innerBlocks)) { // gq-patch-2.2.0
+       clean($block->innerBlocks);
+     }
+   }
+

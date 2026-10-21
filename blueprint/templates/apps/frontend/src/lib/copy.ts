@@ -8,6 +8,7 @@ import { multilingual, type SiteLanguage } from "./site-language";
 const en = {
   /** The language switcher's label, for screen readers. */
   languages: "Languages",
+  skipToContent: "Skip to content",
   frontPageMissing: {
     heading: "The front page is almost ready.",
     text: "Set a page as the front page in WordPress (Settings → Reading) and publish its blocks to show them here.",
@@ -39,6 +40,7 @@ const copies: Record<string, Copy> = {
   en,
   pt: {
     languages: "Idiomas",
+    skipToContent: "Saltar para o conteúdo",
     frontPageMissing: {
       heading: "A página inicial está quase pronta.",
       text: "Defina uma página como página inicial no WordPress (Definições → Leitura) e publique os seus blocos para os mostrar aqui.",

@@ -108,6 +108,10 @@
     "lint:fix": [
       "pint config scripts tests web/app/mu-plugins/*.php web/index.php web/wp-config.php"
     ],
-    "test": "pest"
+    "test": "pest",
+    "patch:dependencies": "@php scripts/patch-dependencies.php",
+    "post-autoload-dump": [
+      "@patch:dependencies"
+    ]
   }
 }

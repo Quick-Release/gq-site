@@ -20,28 +20,28 @@ const content = home.kind === "found" ? home.content.home : null;
 const chrome = home.kind === "found" ? home.content.chrome : home.kind === "missing" ? home.chrome : null;
 const alternates = home.kind === "found" ? home.content.alternates : [];
 const { vars, colorRules } = blockPresetStyles(content?.spacingSizes ?? [], content?.colors ?? []);
-const siteTitle = content?.page.title || content?.settings.title || "{{Project}}";
+const siteTitle = content?.page.title || content?.settings.title || (home.kind === "unavailable" ? copy.pageUnavailable.title : copy.pageMissing.title);
 const isVideoHeroPage = content?.page.hasVideoHero ?? false;
 ---
 
-<Layout title={siteTitle} description={content?.settings.description} chrome={chrome} language={language} alternates={alternates}>
+<Layout state={home.kind === "found" ? "public" : "error"} title={siteTitle} description={content?.settings.description} chrome={chrome} language={language} alternates={alternates}>
   {content?.page.content ? (
     <>
       <style is:global set:html={colorRules} />
-      <main class={isVideoHeroPage ? "prose-wp prose-wp--video-hero" : "prose-wp"} style={vars} set:html={content.page.content}></main>
+      <main id="main-content" tabindex="-1" class={isVideoHeroPage ? "prose-wp prose-wp--video-hero" : "prose-wp"} style={vars} set:html={content.page.content}></main>
     </>
   ) : home.kind !== "unavailable" ? (
-    <main class="empty-state">
+    <main id="main-content" tabindex="-1" class="empty-state">
       <h1>{copy.frontPageMissing.heading}</h1>
       <p>{copy.frontPageMissing.text}</p>
     </main>
   ) : placeholder ? (
-    <main class="empty-state">
+    <main id="main-content" tabindex="-1" class="empty-state">
       <h1>{copy.frontPagePlaceholder.heading}</h1>
       <p>{copy.frontPagePlaceholder.text}</p>
     </main>
   ) : (
-    <main class="empty-state">
+    <main id="main-content" tabindex="-1" class="empty-state">
       <h1>{copy.frontPageUnavailable.heading}</h1>
       <p>{copy.frontPageUnavailable.text}</p>
     </main>

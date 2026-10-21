@@ -109,3 +109,13 @@ wp gq-events delays     # what the Frontend hasn't confirmed, the cron's last ru
 
 `pnpm cms:lint` (Pint) and `pnpm cms:test` (Pest) cover this site's own PHP.
 Registry packages run their own checks in their repositories.
+
+## Dependency patches
+
+Composer's `post-autoload-dump` applies the blueprint-managed wpgraphql-blocks
+2.2.0 warning patch with `@php scripts/patch-dependencies.php`. Keep this event
+when editing Composer scripts. PHP and GNU patch are required; no Node or
+WordPress runtime is needed. After direct `composer reinstall` or an install
+with `--no-scripts`, explicitly run `composer run patch:dependencies`.
+See the installed blueprint's `docs/guides/dependency-patches.md` for supported
+sources, verification and upgrade/retirement instructions.

@@ -54,6 +54,7 @@ while [ "$#" -gt 1 ]; do
 done
 cp "$1" "$output"`,
   php: `record php "$@"
+if [ "\${1:-}" = scripts/patch-dependencies.php ]; then exit "\${DEPENDENCY_PATCH_EXIT:-0}"; fi
 printf '8.3'`,
   sudo: `record sudo "$@"`,
 };
@@ -79,6 +80,8 @@ export async function deploy(
     polylangLanguages = [],
     failing = [],
     composerAuth = '{"http-basic":{}}',
+    patchExit = 0,
+    composerOnly = false,
   } = {},
 ) {
   const directory = await temporaryDirectory();
@@ -117,6 +120,8 @@ export async function deploy(
       WP_LANGUAGE_INSTALLED: languageInstalled ? "1" : "0",
       WP_POLYLANG_LANGUAGES: polylangLanguages.join("\n"),
       WP_FAILING: failing.join("\n"),
+      DEPENDENCY_PATCH_EXIT: String(patchExit),
+      COMPOSER_ONLY: composerOnly ? "true" : "false",
     },
   });
   const recorded = await readFile(calls, "utf8");

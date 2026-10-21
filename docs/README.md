@@ -15,6 +15,12 @@
 | [Agent skills](guides/skills.md)                      | Register, update, lock and safely check upstream agent skills under `.agents/skills`.                                                                               |
 | [Agent scope](guides/agent-scope.md)                  | The hooks that keep an agent session in its own repository: the router and the write fence.                                                                         |
 
+[Frontend foundations](guides/frontend-foundations.md) covers shared shell starting
+styles, the explicit metadata candidate gate and real framework proof.
+
+[CMS dependency patches](guides/dependency-patches.md) covers the wpgraphql-blocks
+warning fix, existing-Site adoption and Nomia extension retirement.
+
 ## Reference
 
 | Document                                               | Use it for                                                                                       |

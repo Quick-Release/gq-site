@@ -5,7 +5,7 @@ import { site } from "../site";
 // @quick-release/storefront once it is added (docs/guides in @getquick/site).
 export function Home() {
   return (
-    <main>
+    <main id="main-content" tabIndex={-1}>
       <h1>{site.name}</h1>
       <p>The shop is being set up.</p>
     </main>

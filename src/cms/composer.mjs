@@ -46,6 +46,15 @@ export async function runComposerCommand(action, args, { context, env, exec, io 
   if (DEPENDENCY_CHANGES.has(action)) {
     try {
       await composerDependencyChange(cmsRoot, composerArgs, { exec, env, stdio: "inherit" });
+      // Composer reinstall does not emit post-autoload-dump. Rebuild autoloads
+      // so the site's dependency patch lifecycle runs after a reinstall too.
+      if (action === "reinstall") {
+        await composerDependencyChange(cmsRoot, ["dump-autoload", "--no-interaction"], {
+          exec,
+          env,
+          stdio: "inherit",
+        });
+      }
     } catch (error) {
       if (error.exitCode === undefined) throw error;
       io.err(`gq: ${error.message}`);

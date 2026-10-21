@@ -14,13 +14,19 @@ import { basename, join, relative, resolve } from "node:path";
 import packageTemplate from "../../blueprint/templates/fragments/package.keys.json" with { type: "json" };
 import { MANIFEST_FILENAME, validateManifest, writeManifest } from "../manifest/manifest.mjs";
 import { LOCALE_PATTERN, SCHEMA_URL, SCHEMA_VERSION, VARIANTS } from "../manifest/schema.mjs";
+import { recordMetadataCandidate } from "./metadata-candidate.mjs";
 import { applyManagedFiles, planManagedFiles } from "./managed-files.mjs";
 
 export const NEW_USAGE = [
-  "gq new <dir> --project <name> --variant <content|commerce> [--locale <locale>]",
+  "gq new <dir> --project <name> --variant <content|commerce> [--locale <locale>] [--metadata-candidate </absolute/content.tgz>]",
 ];
 
-const VALUE_OPTIONS = { "--project": "project", "--variant": "variant", "--locale": "locale" };
+const VALUE_OPTIONS = {
+  "--project": "project",
+  "--variant": "variant",
+  "--locale": "locale",
+  "--metadata-candidate": "metadataCandidate",
+};
 
 // The main language a new site gets unless it is given another.
 const DEFAULT_LOCALE = "en_US";
@@ -116,6 +122,7 @@ export async function runNewCommand(args, { cwd, env, exec, stdin, io, interacti
   if ((await readDirectoryIfExists(root))?.length > 0) throw new Error(`${root} is not empty.`);
 
   await mkdir(root, { recursive: true });
+  if (options.metadataCandidate) await recordMetadataCandidate(root, options.metadataCandidate);
   await writeManifest(join(root, MANIFEST_FILENAME), manifest);
   const plan = await planManagedFiles(root, manifest);
   await applyManagedFiles(root, plan);
