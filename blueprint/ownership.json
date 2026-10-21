@@ -94,6 +94,39 @@
     }
   ],
   "createOnce": [
+    {
+      "path": "apps/frontend/src/lib/public-route-error.ts",
+      "template": "templates/commerce/apps/frontend/src/lib/public-route-error.ts",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
+    },
+    {
+      "path": "apps/frontend/src/components/ErrorPage.tsx",
+      "template": "templates/commerce/apps/frontend/src/components/ErrorPage.tsx",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
+    },
+    {
+      "path": "apps/frontend/scripts/build.mjs",
+      "template": "templates/apps/frontend/scripts/build.mjs",
+      "app": "apps/frontend",
+      "variants": ["content"]
+    },
+    {
+      "path": "apps/frontend/src/lib/document-facts.ts",
+      "template": "templates/shared/frontend/document-facts.ts",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "apps/frontend/src/lib/document-head.ts",
+      "template": "templates/shared/frontend/document-head.ts",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "apps/frontend/src/styles/site.css",
+      "template": "templates/shared/frontend/site.css",
+      "app": "apps/frontend"
+    },
     { "path": "gq.ops.json" },
     { "path": "GLOSSARY.md", "template": "templates/GLOSSARY.md" },
     { "path": "README.md", "template": "templates/README.md" },

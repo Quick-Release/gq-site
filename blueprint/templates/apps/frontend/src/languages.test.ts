@@ -209,7 +209,7 @@ describe("each language's home", () => {
     const en = await visit("/en/");
 
     expect(pt.status).toBe(200);
-    expect(pt.html).toContain('<html lang="pt-PT">');
+    expect(pt.html).toContain('<html lang="pt-PT" dir="ltr"');
     expect(pt.html).toContain("Bem-vindo à Acme");
     expect(pt.html).toContain("<title>Início — {{Project}}</title>");
     expect(pt.html).toContain('<meta name="description" content="Coisas">');
@@ -217,7 +217,7 @@ describe("each language's home", () => {
     expect(pt.html).toMatch(/<a href="\/" class="site-header__home"/);
 
     expect(en.status).toBe(200);
-    expect(en.html).toContain('<html lang="en-US">');
+    expect(en.html).toContain('<html lang="en-US" dir="ltr"');
     expect(en.html).toContain("Welcome to Acme");
     expect(en.html).toContain("<title>Home — {{Project}}</title>");
     expect(en.html).toContain('<meta name="description" content="Things">');
@@ -300,11 +300,11 @@ describe("entries in each language", () => {
     const about = await visit("/en/about/");
 
     expect(sobre.status).toBe(200);
-    expect(sobre.html).toContain('<html lang="pt-PT">');
+    expect(sobre.html).toContain('<html lang="pt-PT" dir="ltr"');
     expect(sobre.html).toContain("<title>Sobre — {{Project}}</title>");
     expect(sobre.html).toMatch(/<a href="\/sobre\/"[^>]*>Sobre nós<\/a>/);
     expect(about.status).toBe(200);
-    expect(about.html).toContain('<html lang="en-US">');
+    expect(about.html).toContain('<html lang="en-US" dir="ltr"');
     expect(about.html).toContain("<title>About — {{Project}}</title>");
     expect(about.html).toMatch(/<a href="\/en\/about\/"[^>]*>About us<\/a>/);
     expect(about.html).toMatch(/<a href="\/en\/" class="site-header__home"/);
@@ -349,7 +349,7 @@ describe("entries in each language", () => {
     const { status, html } = await visit("/en/sobre/");
 
     expect(status).toBe(404);
-    expect(html).toContain('<html lang="en-US">');
+    expect(html).toContain('<html lang="en-US" dir="ltr"');
     expect(html).toContain("Nothing here.");
     expect(html).toMatch(/<a href="\/en\/"[^>]*>Back to the front page<\/a>/);
     expect(html).not.toContain("Sobre.");
@@ -362,7 +362,7 @@ describe("entries in each language", () => {
     const { status, html } = await visit("/nada/");
 
     expect(status).toBe(404);
-    expect(html).toContain('<html lang="pt-PT">');
+    expect(html).toContain('<html lang="pt-PT" dir="ltr"');
     expect(html).toContain("<title>Página não encontrada — {{Project}}</title>");
     expect(html).toContain("Nada aqui.");
     expect(html).toMatch(/<a href="\/"[^>]*>Voltar à página inicial<\/a>/);
@@ -374,7 +374,7 @@ describe("entries in each language", () => {
     const { status, html } = await visit("/en/about/");
 
     expect(status).toBe(200);
-    expect(html).toContain('<html lang="en-US">');
+    expect(html).toContain('<html lang="en-US" dir="ltr"');
     expect(alternates(html)).toContain("pt-PT https://acme.example/sobre/");
   });
 
@@ -390,7 +390,7 @@ describe("entries in each language", () => {
     const { status, html } = await visit("/sobre/");
 
     expect(status).toBe(200);
-    expect(html).toContain('<html lang="pt-PT">');
+    expect(html).toContain('<html lang="pt-PT" dir="ltr"');
     expect(html).toContain("<title>Sobre — {{Project}}</title>");
     expect(alternates(html)).toEqual([]);
   });

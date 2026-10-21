@@ -22,6 +22,7 @@ import packageTemplate from "../../blueprint/templates/fragments/package.keys.js
 import packageJson from "../../package.json" with { type: "json" };
 import { deployStatusMarker } from "../ploi/provision.mjs";
 import { VERSION } from "../version.mjs";
+import { metadataCandidate } from "./metadata-candidate.mjs";
 
 export const LOCK_FILENAME = "gq.lock.json";
 
@@ -102,8 +103,46 @@ function templateValues(manifest) {
 // or `update`). `recreate` lists the create-once files to write again.
 export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
   const owned = ownershipFor(manifest.variant);
+  const candidate = await metadataCandidate(root);
+  if (candidate) {
+    // One writer for candidate dependency and thin adapter; no ordinary registry pin exists yet.
+    const packageEntry = owned.createOnce.find(
+      (entry) => entry.path === "apps/frontend/package.json",
+    );
+    owned.createOnce = owned.createOnce.filter(
+      (entry) =>
+        !["apps/frontend/package.json", "apps/frontend/src/lib/document-head.ts"].includes(
+          entry.path,
+        ),
+    );
+    owned.managedKeys.push({
+      path: packageEntry.path,
+      initial: packageEntry.template,
+      values: { dependencies: { "@getquick/content": `file:${candidate.artifact}` } },
+    });
+    owned.fullyGenerated.push({
+      path: "apps/frontend/src/lib/document-head.ts",
+      template:
+        manifest.variant === "content"
+          ? "templates/candidate/frontend/content-document-head.ts"
+          : "templates/candidate/frontend/document-head.ts",
+    });
+    if (manifest.variant === "content")
+      owned.fullyGenerated.push({
+        path: "apps/frontend/src/lib/document-projection.ts",
+        template: "templates/candidate/frontend/document-head.ts",
+      });
+    owned.createOnce.push({
+      path: "apps/frontend/src/site-metadata.ts",
+      template:
+        manifest.variant === "content"
+          ? "templates/candidate/frontend/site-metadata.ts"
+          : "templates/candidate/frontend/commerce-site-metadata.ts",
+      app: "apps/frontend",
+    });
+  }
   const recreatable = owned.createOnce.filter(({ template }) => template !== undefined);
-  const apps = new Set(owned.createOnce.flatMap(({ app }) => app ?? []));
+  const apps = new Set(owned.createOnce.flatMap(({ app }) => app ?? []).sort());
   for (const path of recreate) {
     if (!recreatable.some((entry) => entry.path === path)) {
       const rootFiles = recreatable.flatMap((entry) => (entry.app ? [] : [entry.path]));
@@ -262,8 +301,8 @@ async function planSection(root, lock, { path, template }) {
 // the site hasn't changed it since gq wrote it (else it is the site's now).
 // A missing file is created holding the managed keys after the site's own
 // that it starts with: the rendered `initial` template's.
-async function planKeys(root, lock, manifest, { path, template, initial }) {
-  const managed = leafKeys(JSON.parse(await readTemplate(template)));
+async function planKeys(root, lock, manifest, { path, template, initial, values }) {
+  const managed = leafKeys(values ?? JSON.parse(await readTemplate(template)));
   const record = {
     keys: { [path]: Object.fromEntries(managed.map(({ key, value }) => [key, hashValue(value)])) },
   };

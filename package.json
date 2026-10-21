@@ -32,7 +32,8 @@
     "lint": "vp lint .",
     "test": "node --test \"test/*.test.mjs\" \"test/{ci,cli,cloudflare,cms,db,frontend,manifest,media,offboard,ops,packages,ploi,release,scope,sigillo,site,skills,sync,workspace}/*.test.mjs\"",
     "schema": "node scripts/generate-schema.mjs",
-    "release:publish": "node scripts/publish.mjs"
+    "release:publish": "node scripts/publish.mjs",
+    "proof:frontend": "node scripts/smoke/frontend-foundations.mjs"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",

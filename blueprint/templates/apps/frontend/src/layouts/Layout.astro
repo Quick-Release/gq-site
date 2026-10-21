@@ -1,13 +1,17 @@
 ---
+import { documentMetadata } from "../lib/document-head";
 import { copyFor } from "../lib/copy";
 import { pageChrome, type Alternate } from "../lib/delivery";
-import { defaultLanguage, languages, type SiteLanguage } from "../lib/site-language";
+import { htmlDirection, defaultLanguage, languages, type SiteLanguage } from "../lib/site-language";
 import type { SiteChrome } from "../lib/wordpress";
 import "../styles/global.css";
 
 interface Props {
   title?: string;
+  state?: "public" | "private" | "preview" | "withdrawn" | "error" | "redirect";
   description?: string;
+  /** Published excerpt HTML; only the opt-in provider decodes it for metadata. */
+  summaryHtml?: string;
   /** The chrome the page was served with; left out, the layout looks it up. */
   chrome?: SiteChrome | null;
   /** The page's language; left out, the site's default language. */
@@ -46,24 +50,39 @@ const hreflang =
           : [];
       });
 const xDefault = hreflang.find((alternate) => alternate.language.isDefault);
+const state = Astro.props.state ?? ((Astro.response.status ?? 200) === 200 ? "public" : "error");
+const metadata = documentMetadata({
+  title: title === "{{Project}}" ? title : `${title} — {{Project}}`,
+  description: Astro.props.summaryHtml ?? description,
+  route: Astro.url.pathname,
+  state,
+  status: Astro.response.status ?? 200,
+  language: { lang: language.lang, locale: language.locale, dir: htmlDirection(language.lang) },
+  translations: translations.map((alternate) => ({ ...alternate, language: { ...alternate.language, dir: htmlDirection(alternate.language.lang) } })),
+});
 ---
 
 <!doctype html>
-<html lang={language.lang}>
+<html lang={language.lang} dir={htmlDirection(language.lang)} prefix={metadata?.attributes.prefix}>
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width" />
-    {description && <meta name="description" content={description} />}
-    <link rel="icon" href={siteIcon?.sourceUrl || "/favicon.svg"} />
-    <link rel="canonical" href={canonical} />
-    {hreflang.map((alternate) => <link rel="alternate" hreflang={alternate.language.lang} href={alternate.href} />)}
-    {xDefault && <link rel="alternate" hreflang="x-default" href={xDefault.href} />}
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    {metadata ? <Fragment set:html={metadata.html} /> : <>
+    <meta name="robots" content={state === "public" ? "index, follow" : "noindex, nofollow"} />
+    {state === "public" && description && <meta name="description" content={description} />}
+    {state === "public" && <link rel="canonical" href={canonical} />}
+    {state === "public" && hreflang.map((alternate) => <link rel="alternate" hreflang={alternate.language.lang} href={alternate.href} />)}
+    {state === "public" && xDefault && <link rel="alternate" hreflang="x-default" href={xDefault.href} />}
     <title>{title === "{{Project}}" ? title : `${title} — {{Project}}`}</title>
+    </>}
+    <link rel="icon" href={siteIcon?.sourceUrl || "/favicon.svg"} />
   </head>
   <body>
+    <a class="skip-link" href="#main-content">{copyFor(language).skipToContent}</a>
     <header class="site-header">
       <a href={language.home} class="site-header__home">
-        {siteLogo ? <img src={siteLogo.sourceUrl} alt={siteLogo.altText || "{{Project}}"} /> : "{{Project}}"}
+        {siteLogo ? <img decoding="async" src={siteLogo.sourceUrl} alt={siteLogo.altText || "{{Project}}"} /> : "{{Project}}"}
       </a>
       {menuItems.length > 0 && (
         <nav aria-label="Primary">
@@ -91,5 +110,6 @@ const xDefault = hreflang.find((alternate) => alternate.language.isDefault);
       )}
     </header>
     <slot />
+    <footer class="site-footer"><a href={language.home}>{{Project}}</a></footer>
   </body>
 </html>
