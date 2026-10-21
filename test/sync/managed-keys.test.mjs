@@ -44,6 +44,7 @@ const GQ_SCRIPTS = {
   "ploi:status": "gq sigillo run staging -- gq ploi provision --dry-run",
   "ploi:provision": "gq sigillo run staging -- gq ploi provision",
   "ploi:release": "gq sigillo run staging -- gq ploi release",
+  "release:package": "gq sigillo run staging -- gq release package",
   "cf:releases": "gq sigillo run operations -- gq cloudflare releases",
   "cf:media": "gq sigillo run operations -- gq cloudflare media",
   "ploi:media": "gq sigillo run staging -- gq ploi media",

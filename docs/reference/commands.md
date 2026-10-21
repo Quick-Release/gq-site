@@ -88,6 +88,7 @@ gq version sync [version]
 gq release prepare [version]
 gq release tag [version]
 gq release push <major|minor|fix>
+gq release package <composer-package>
 ```
 
 `--json` prints machine-readable output; `ploi api` always prints the
@@ -115,7 +116,7 @@ plan (`✓` done, `-` to cut or `+` to restore, `!` by hand) and need `--yes`
 outside a terminal. While `offboarded` is set, every command that would expose
 the Site again refuses: `cloudflare media|deploy-token|ci|releases`,
 `github setup`, `ci deploy`, `ploi provision|events|media|release`, a
-`ploi api` operation that writes (unless `--dry-run`), `release push|tag` and
+`ploi api` operation that writes (unless `--dry-run`), `release push|tag|package` and
 `frontend refresh|secrets`. `--archive` (irreversible, only once `offboarded`
 is recorded) archives the Site's content to
 `r2://offboarded-clients/<project>/<UTC date>/`, reads it all back, and only

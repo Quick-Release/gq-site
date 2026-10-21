@@ -326,6 +326,139 @@ test("ploi release names the gq.ops.json key a site lacks", async () => {
   assert.equal(result.stderr, "gq: gq.ops.json releases.bucket is required.\n");
 });
 
+// --- gq release package (a package redeploy through ploi release) ---------
+
+const DEV_COMMIT = "b18a61aa565ac77618c772f1e50f4c42155cafa7";
+
+function lockWith(version, reference) {
+  return `${JSON.stringify(
+    {
+      packages: [{ name: "getquick/gq-design", version, source: { type: "git", reference } }],
+      "packages-dev": [],
+    },
+    null,
+    4,
+  )}\n`;
+}
+
+// A content site at 1.4.0 whose CMS requires gq-design from main, locked at
+// 0.4.6.
+function packageSite() {
+  const json = (data) => `${JSON.stringify(data, null, 2)}\n`;
+  return site({
+    files: {
+      VERSION: "1.4.0\n",
+      "package.json": json({ name: "fixture", version: "1.4.0", private: true }),
+      "apps/frontend/package.json": json({ name: "frontend", version: "1.4.0" }),
+      "apps/cms/composer.json": json({
+        require: { "getquick/gq-design": "dev-main as 0.5.99" },
+      }),
+      "apps/cms/composer.lock": lockWith("0.4.6", "a".repeat(40)),
+    },
+  });
+}
+
+// Composer (whose update writes `lock`, if any) and git: a clean tree until
+// Composer has run, then the release commit the fake git of ploi release reads.
+function packageExec(fixture, { lock } = {}) {
+  const release = fakeGit();
+  let updated = false;
+  return recordingExec(async (call) => {
+    const { command, args } = call;
+    if (command === "sh") return {};
+    if (command === "composer") {
+      if (args[0] === "update") {
+        if (lock) await writeFile(fixture.path("apps/cms/composer.lock"), lock);
+        updated = Boolean(lock);
+      }
+      return {};
+    }
+    if (command === "git" && args[0] === "status") {
+      return { stdout: updated ? " M apps/cms/composer.lock\n" : "" };
+    }
+    if (command === "git" && (args[0] === "add" || args[0] === "commit")) return {};
+    return release(command, args);
+  });
+}
+
+test("release package updates one package, commits composer.lock and deploys that commit", async () => {
+  const fixture = await packageSite();
+  const { fetch, state } = fakeProviders();
+  const exec = packageExec(fixture, { lock: lockWith("dev-main", DEV_COMMIT) });
+
+  const result = await fixture.run(["release", "package", "getquick/gq-design"], {
+    env: RELEASE_ENV,
+    fetch,
+    exec,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const commands = exec.calls.map(({ command, args }) => [command, ...args].join(" "));
+  const update = commands.indexOf("composer update getquick/gq-design --no-interaction");
+  const commit = commands.indexOf(
+    "git commit -m Update getquick/gq-design to dev-main (b18a61aa565a)",
+  );
+  const released = commands.indexOf("git rev-parse HEAD^{commit}");
+  assert.ok(update !== -1 && commit !== -1 && released !== -1, commands.join("\n"));
+  assert.ok(update < commands.indexOf("git add --update"));
+  assert.ok(commands.indexOf("git add --update") < commit);
+  assert.ok(commit < released, "the release is of the new commit");
+  // Composer runs in the CMS with the registry login.
+  const composer = exec.calls[update];
+  assert.equal(composer.cwd, fixture.path("apps/cms"));
+  assert.equal(composer.env.COMPOSER_AUTH, RELEASE_ENV.COMPOSER_AUTH);
+  assert.ok(!commands.some((line) => line.startsWith("git tag") || line.startsWith("git push")));
+  assert.ok(state.deployed, "Ploi deployed");
+  assert.match(result.stdout, /Deployed v1\.4\.0 \(0123456\)/u);
+  assert.match(result.stdout, /Push the commit/u);
+});
+
+test("release package with nothing to update redeploys HEAD without committing", async () => {
+  const fixture = await packageSite();
+  const { fetch, state } = fakeProviders();
+  const exec = packageExec(fixture);
+
+  const result = await fixture.run(["release", "package", "getquick/gq-design"], {
+    env: RELEASE_ENV,
+    fetch,
+    exec,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const commands = exec.calls.map(({ command, args }) => [command, ...args].join(" "));
+  assert.ok(!commands.some((line) => line.startsWith("git commit")), commands.join("\n"));
+  assert.match(result.stdout, /already pins getquick\/gq-design 0\.4\.6; deploying HEAD/u);
+  assert.ok(state.deployed);
+});
+
+test("release package refuses a dirty tree, an unrequired package and a malformed name", async () => {
+  const fixture = await packageSite();
+  const dirty = recordingExec(({ command, args }) =>
+    command === "git" && args[0] === "status" ? { stdout: " M README.md\n" } : {},
+  );
+
+  const unclean = await fixture.run(["release", "package", "getquick/gq-design"], {
+    env: RELEASE_ENV,
+    exec: dirty,
+  });
+  assert.equal(unclean.code, 1);
+  assert.match(unclean.stderr, /requires a clean working tree/u);
+  assert.ok(!dirty.calls.some(({ command }) => command === "composer"));
+
+  const unrequired = await fixture.run(["release", "package", "getquick/gq-support"], {
+    env: RELEASE_ENV,
+  });
+  assert.equal(unrequired.code, 1);
+  assert.equal(
+    unrequired.stderr,
+    "gq: apps/cms/composer.json doesn't require getquick/gq-support.\n",
+  );
+
+  const malformed = await fixture.run(["release", "package", "gq-design"], { env: RELEASE_ENV });
+  assert.equal(malformed.code, 1);
+  assert.equal(malformed.stderr, "gq: Usage: gq release package <composer-package>\n");
+});
+
 // --- gq ploi provision -----------------------------------------------------
 
 test("ploi provision --dry-run reports a provisioned site and changes nothing", async () => {

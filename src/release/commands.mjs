@@ -1,11 +1,15 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { CMS_PATH, composerDependencyChange } from "../cms/local.mjs";
 import { loadSiteSettings } from "../manifest/site-settings.mjs";
+import { runRelease } from "../ploi/release.mjs";
 
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const BUMP_KINDS = new Set(["major", "minor", "fix", "patch"]);
+const COMPOSER_NAME = /^[a-z0-9]([_.-]?[a-z0-9]+)*\/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$/u;
+const COMPOSER_LOCK = `${CMS_PATH}/composer.lock`;
 
 // Command → [usage, the options it accepts].
 const RELEASE_COMMANDS = new Map([
@@ -14,6 +18,7 @@ const RELEASE_COMMANDS = new Map([
   ["release prepare", ["gq release prepare [version]", []]],
   ["release tag", ["gq release tag [version]", []]],
   ["release push", ["gq release push <major|minor|fix>", []]],
+  ["release package", ["gq release package <composer-package>", []]],
 ]);
 
 export const RELEASE_USAGE = [...RELEASE_COMMANDS.values()].map(([usage]) => usage);
@@ -36,11 +41,14 @@ export function releaseCommandOptions(parsed) {
   if (name === "release push" && !BUMP_KINDS.has(argument ?? "")) {
     throw new Error(`Usage: ${usage}`);
   }
+  if (name === "release package" && !COMPOSER_NAME.test(argument ?? "")) {
+    throw new Error(`Usage: ${usage}`);
+  }
   return { command: name, allowedOptions };
 }
 
 // Runs a command that releaseCommandOptions() has already accepted.
-export async function runReleaseCommand({ parsed, context, env, exec, io }) {
+export async function runReleaseCommand({ parsed, context, env, fetch, exec, io, interactive }) {
   const argument = parsed.command[2];
   const release = createRelease({
     config: await loadSiteSettings(context),
@@ -54,6 +62,9 @@ export async function runReleaseCommand({ parsed, context, env, exec, io }) {
   if (command === "release push") {
     await release.push(argument);
     return;
+  }
+  if (command === "release package") {
+    return releasePackage(argument, { release, context, env, fetch, exec, io, interactive });
   }
   if (command === "release tag") {
     await release.tag(argument || (await release.readVersion()));
@@ -287,7 +298,94 @@ function createRelease({ config, root, env, exec, io }) {
     await runCommand("git", ["push", "origin", `v${version}`]);
   }
 
-  return { readVersion, writeVersion, sync, check, tag, push };
+  // Every tracked file that changed: from a clean tree, composer.lock and
+  // what the version sync wrote. Composer's installs are ignored or untracked.
+  async function stage() {
+    await runCommand("git", ["add", "--update"]);
+  }
+
+  return { readVersion, writeVersion, sync, check, tag, push, git, runCommand, stage };
+}
+
+// `gq release package <composer-package>`: a fast redeploy of one Composer
+// package. Updates just that package in apps/cms/composer.lock (with the
+// registry login, like `gq cms composer update`), prepares the release at the
+// current VERSION, commits, and deploys that commit with `gq ploi release`.
+// Nothing is pushed, tagged or bumped: the archive is keyed by the commit, so
+// each redeploy is its own. Resolves to the Ploi release's exit code.
+async function releasePackage(name, { release, context, env, fetch, exec, io, interactive }) {
+  const root = context.projectRoot;
+  const composer = JSON.parse(await readFile(join(root, CMS_PATH, "composer.json"), "utf8"));
+  if (!Object.hasOwn(composer.require ?? {}, name)) {
+    throw new Error(`${CMS_PATH}/composer.json doesn't require ${name}.`);
+  }
+  if (await release.git(["status", "--porcelain"])) {
+    throw new Error("gq release package requires a clean working tree: it commits composer.lock.");
+  }
+  const before = lockedPackage(await readLockFile(root), name);
+
+  io.out(`Updating ${name} in ${COMPOSER_LOCK}.`);
+  await composerDependencyChange(join(root, CMS_PATH), ["update", name, "--no-interaction"], {
+    exec,
+    env,
+    stdio: "inherit",
+  });
+  const after = lockedPackage(await readLockFile(root), name);
+  if (!after) throw new Error(`${COMPOSER_LOCK} has no ${name} after composer update.`);
+
+  const version = await release.readVersion();
+  assertVersion(version);
+  await release.sync(version);
+  await release.check(version);
+
+  if (await release.git(["status", "--porcelain"])) {
+    await release.stage();
+    await release.runCommand("git", [
+      "commit",
+      "-m",
+      `Update ${name} to ${describePackage(after)}`,
+    ]);
+  } else {
+    io.out(`${COMPOSER_LOCK} already pins ${name} ${describePackage(before)}; deploying HEAD.`);
+  }
+
+  const code = await runRelease({
+    context,
+    parsed: { ref: "HEAD" },
+    env,
+    fetch,
+    exec,
+    io,
+    interactive,
+  });
+  if (code === 0) {
+    io.out("Deployed. Push the commit to the default branch so the site's history keeps it.");
+  }
+  return code;
+}
+
+async function readLockFile(root) {
+  try {
+    return JSON.parse(await readFile(join(root, COMPOSER_LOCK), "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw error;
+  }
+}
+
+function lockedPackage(lock, name) {
+  return [...(lock.packages ?? []), ...(lock["packages-dev"] ?? [])].find(
+    (pkg) => pkg.name === name,
+  );
+}
+
+// `0.4.6`, or `dev-main (b18a61aa565a)` for a branch.
+function describePackage(pkg) {
+  if (!pkg) return "(not locked)";
+  const reference = pkg.source?.reference ?? pkg.dist?.reference;
+  return pkg.version.startsWith("dev-") && reference
+    ? `${pkg.version} (${reference.slice(0, 12)})`
+    : pkg.version;
 }
 
 function bumpVersion(version, kind) {

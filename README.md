@@ -48,6 +48,23 @@ commands. A manifest without `schemaVersion`, or release settings in a
 [manifest reference](docs/reference/manifest.md) and the
 [release reference](docs/reference/release.md).
 
+### Redeploy one package
+
+To ship a new build of one GETQUICK Composer package (such as GQ Design's
+`main`, required as `"dev-main as 0.5.99"`) to a Site's CMS without a tagged
+release, run from a clean tree of the Site:
+
+```sh
+pnpm release:package getquick/gq-design
+# = gq sigillo run staging -- gq release package getquick/gq-design
+```
+
+It updates that package in `apps/cms/composer.lock` with the registry login,
+syncs the current version, commits, and deploys the commit with
+`gq ploi release`. Push the commit afterwards. See
+[release package](docs/reference/release.md) and
+[a Site on a branch](docs/reference/packages.md#a-site-on-a-branch).
+
 ## Documentation
 
 - **Site guides:** [Generate and sync](docs/guides/sites.md) ·
