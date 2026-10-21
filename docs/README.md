@@ -7,6 +7,7 @@
 | Document                                              | Use it for                                                                                                                                                          |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Generate and sync a site](guides/sites.md)           | New content sites, managed-file ownership, locks, sync conflicts and create-once files.                                                                             |
+| [Commerce sites](guides/commerce-sites.md)            | New commerce sites: what the variant generates, rate-limit namespaces, private packages and adopting from a foundation.                                             |
 | [Local site development](guides/local-development.md) | Setup, doctor, verify, DDEV, Composer and a local design-plugin checkout.                                                                                           |
 | [Sigillo secrets](guides/secrets.md)                  | Per-command secret injection and checkout login without downloading environments.                                                                                   |
 | [Provisioning and deployment](guides/provisioning.md) | The new content Site flow and readiness, Ploi provisioning/releases/media, database backup and live-to-local sync, Cloudflare tokens/buckets, CI and GitHub wiring. |
@@ -57,6 +58,7 @@ guides.
 - [ADR 0014: Keep a Site's code in the EU unless it opts out](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0014-keep-a-sites-code-in-the-eu-unless-it-opts-out.md): Artifacts namespace jurisdictions.
 - [ADR 0015: Hold only the blueprint in this repository](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0015-hold-only-the-blueprint-in-this-repository.md): what belongs in gq-site and what moved out.
 - [ADR 0016: Activate CMS releases from kept builds, and roll back code only](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0016-activate-cms-releases-from-kept-builds-and-roll-back-code-only.md): the CMS release layout, rollback and partial releases.
+- [ADR 0017: Generate commerce Sites from the variant alone](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0017-generate-commerce-sites-from-the-variant-alone.md): what the commerce variant generates and manages, and what waits on package releases.
 - [Rollout plan and evidence](https://github.com/Quick-Release/gq-site/blob/main/docs/plans/getquick-blueprint-rollout.md): accepted gates, passed phases and adoption checklist.
 - [Research](https://github.com/Quick-Release/gq-site/tree/main/docs/research): dated inventories and implementation research.
 - [Agent guidance](https://github.com/Quick-Release/gq-site/tree/main/docs/agents): issue tracking, triage and domain-document use.

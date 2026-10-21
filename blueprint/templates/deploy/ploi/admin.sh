@@ -12,6 +12,8 @@ WP_LOCALE="{{wordpress.locale}}"
 # gq.ops.json's wordpress.languages, as locale:slug pairs; empty for a
 # monolingual Site, which leaves Polylang alone.
 WP_LANGUAGES="{{wordpress.languages}}"
+# gq.ops.json's variant: a commerce Site also updates WooCommerce's database.
+SITE_VARIANT="{{variant}}"
 SITE_PATH="${PLOI_SITE_PATH:-$PWD}"
 # The site has no git repository (Ploi custom deployments): `pnpm ploi:release`
 # uploads a release archive to R2 and passes a short-lived URL as the deploy
@@ -278,6 +280,12 @@ if wp core is-installed; then
     exit 1
   fi
   wp core update-db --quiet
+  # WooCommerce's own database update, after its plugin is active. It only
+  # goes forward: a release that changes WooCommerce's database version says
+  # whether the release before it still runs on it (rollback-safe or not).
+  if [ "$SITE_VARIANT" = commerce ]; then
+    wp wc update
+  fi
   apply_locale
   apply_languages
   run_deploy_extensions

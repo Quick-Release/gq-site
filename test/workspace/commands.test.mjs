@@ -171,7 +171,8 @@ test("gq verify --ci runs every check, PHP or not, without looking for Composer"
 });
 
 test("gq verify honours the requirements a site declares on its checks", async () => {
-  // A commerce site has no default checks: these are all it runs.
+  // A site's own checks run after the variant's defaults (ADR 0017 gave
+  // commerce the same ones as content, plus its Frontend's build).
   const ops = {
     ...OPS,
     variant: "commerce",
@@ -190,7 +191,9 @@ test("gq verify honours the requirements a site declares on its checks", async (
   const skipped = await stopped.run(["verify"], { exec: withoutDdev });
   assert.equal(skipped.code, 0, skipped.stderr);
   assert.deepEqual(
-    actions(withoutDdev).filter((line) => !line.startsWith("ddev")),
+    actions(withoutDdev)
+      .filter((line) => !line.startsWith("ddev"))
+      .slice(-2),
     ["pnpm run test", "composer audit"],
   );
   assert.match(skipped.stderr, /⚠ skipped pnpm run cms:test — install Composer/u);
@@ -201,9 +204,24 @@ test("gq verify honours the requirements a site declares on its checks", async (
   const all = await running.run(["verify"], { exec: everything });
   assert.equal(all.code, 0, all.stderr);
   assert.deepEqual(
-    actions(everything).filter((line) => !line.startsWith("ddev")),
+    actions(everything)
+      .filter((line) => !line.startsWith("ddev"))
+      .slice(-4),
     ["pnpm run test", "pnpm run cms:test", "pnpm run e2e", "composer audit"],
   );
+});
+
+test("a commerce site's default checks are content's, with its Frontend's build", async () => {
+  const fixture = await site({ ops: { ...OPS, variant: "commerce" } });
+  const exec = machine({ installed: [] });
+  const result = await fixture.run(["verify", "--ci"], { exec });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(actions(exec), [
+    ...CONTENT_CHECKS.slice(0, 3),
+    "pnpm run build",
+    ...CONTENT_CHECKS.slice(3),
+  ]);
+  assert.match(result.stdout, /All 10 checks passed/u);
 });
 
 test("gq verify refuses a check requirement it doesn't know", async () => {

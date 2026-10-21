@@ -8,6 +8,7 @@ the installed `gq` ([ADR 0002](https://github.com/Quick-Release/gq-site/blob/mai
 ```sh
 gq new acme --project acme --variant content   # a complete content site, gq.lock.json, git init
 gq new acme --project acme --variant content --locale pt_PT_ao90   # …whose main language is Portuguese (AO90)
+gq new shop --project shop --variant commerce  # a commerce site: WooCommerce CMS and TanStack Start storefront
 gq sync           # migrate gq.ops.json, regenerate managed files, update gq.lock.json
 gq sync --check   # report every pending change, exit 1, write nothing
 gq sync --recreate README.md   # write a create-once file again
@@ -22,8 +23,8 @@ elsewhere it names them and stops. It asks for the site's main language too
 (`--locale`, a WordPress locale), and writes `en_US` without one outside a
 terminal. The project must be lowercase letters,
 digits and hyphens starting with a letter, since it names the site's
-packages, Workers and DDEV project. `--variant commerce` is refused, and so
-is a target directory that isn't empty. It then prints the
+packages, Workers and DDEV project. A target directory that isn't empty is
+refused. `--variant commerce` generates a [commerce site](commerce-sites.md). It then prints the
 provisioning sequence (fill in `gq.ops.json`, `gq sync`, `ploi provision`,
 `cloudflare deploy-token`/`releases`/`media`/`ci`, `ploi media`,
 `github setup`, `frontend secrets`, `ci deploy`, `ploi events`, the releases,
@@ -36,8 +37,10 @@ provisioning sequence (fill in `gq.ops.json`, `gq sync`, `ploi provision`,
 [`blueprint/ownership.json`](../../blueprint/ownership.json), published with the
 package, lists every path the blueprint touches by category: fully
 generated, generated section, managed keys, and create-once. Anything it
-doesn't list is site-owned, and `gq sync` never reads or writes it. Only
-`--variant content` is generated.
+doesn't list is site-owned, and `gq sync` never reads or writes it. An entry
+that names `variants` applies only to a site of those variants; the rest
+apply to both. A commerce site's differences are in
+[Commerce sites](commerce-sites.md).
 
 The fully generated files are the toolchain pins (`.mise.toml`, `.nvmrc`), the Git hooks
 (`.vite-hooks/pre-commit` formats and lints staged files, `pre-push` runs
