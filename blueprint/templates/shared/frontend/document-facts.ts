@@ -1,6 +1,7 @@
 /** Site-owned public document facts; private content must never be passed here. */
 export interface DocumentFacts {
   title: string;
+  kind?: "website" | "article";
   description?: string;
   route: string;
   status: number;

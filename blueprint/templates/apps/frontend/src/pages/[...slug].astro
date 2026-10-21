@@ -46,7 +46,7 @@ const title =
 {home ? (
   <Home home={home} language={language} placeholder={placeholder} />
 ) : (
-<Layout summaryHtml={entry?.excerpt} title={title} chrome={chrome} language={language} alternates={alternates}>
+<Layout kind={isPost ? "article" : "website"} summaryHtml={entry?.excerpt} title={title} chrome={chrome} language={language} alternates={alternates}>
   {entry ? (
     entry.hasVideoHero ? (
       <>

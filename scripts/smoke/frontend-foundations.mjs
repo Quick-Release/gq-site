@@ -374,6 +374,18 @@ try {
         ["design", "published", { spacingSizes: [], colors: [] }],
         ["entry:/about/", "published", entry],
         [
+          "entry:/article/",
+          "published",
+          {
+            ...entry,
+            id: "post-2",
+            title: "Article",
+            date: "2026-10-21T09:30:00",
+            uri: "/article/",
+            translations: [],
+          },
+        ],
+        [
           "entry:/pt/sobre/",
           "published",
           {
@@ -482,6 +494,7 @@ try {
             ["/", "Home — Orbit", languages.en],
             ["/pt/", "Início — Orbit", languages.pt],
             ["/about/", `${title} — Orbit`, languages.en],
+            ["/article/", "Article — Orbit", languages.en],
             ["/pt/sobre/", "Sobre — Orbit", languages.pt],
             ["/rtl/", "العربية — Orbit", languages.ar],
             ["/private", "Private page — Orbit", languages.en, "private", 200],
@@ -553,7 +566,7 @@ try {
               description: path === "/rtl/" ? "صفحة عامة" : summary,
               siteName: "Orbit",
               locale: language.locale === "pt_PT_ao90" ? "pt_PT" : language.locale,
-              type: "website",
+              type: framework === "astro" && path === "/article/" ? "article" : "website",
               images,
               alternates: translated.length
                 ? [

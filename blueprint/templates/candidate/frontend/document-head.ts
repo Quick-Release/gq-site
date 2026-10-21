@@ -7,6 +7,7 @@ export function documentMetadata(facts: DocumentFacts) {
   const metadata = resolveMetadata({
     site: metadataSite,
     state: facts.state,
+    kind: facts.kind,
     status: facts.status,
     statusTitle: facts.state === "public" ? undefined : facts.title,
     canonical: `${metadataSite.origin.replace(/\/$/u, "")}${facts.route}`,

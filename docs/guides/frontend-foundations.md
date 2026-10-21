@@ -43,7 +43,10 @@ it does not silently substitute another page's graph. Error/private routes use
 explicit safe titles and noindex with no successful graph. Indexing metadata is
 not authentication.
 
-Astro projects the provider's safely serialized descriptors. TanStack selects
+Astro projects the provider's safely serialized descriptors. Existing posts use
+the route's `isPost` discriminator (`entry.date`) to pass `kind: "article"`;
+home/pages remain `website`. Existing WordPress dates without an authoritative
+timezone do not supply optional article timestamps or authors. TanStack selects
 only the current route's `loaderData.documentMetadata`, then renders its ordered
 descriptors directly in the document head. This preserves repeated image groups:
 the native TanStack head manager deduplicates meta tags by `name`/`property`.

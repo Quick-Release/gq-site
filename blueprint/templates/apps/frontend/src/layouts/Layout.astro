@@ -8,6 +8,7 @@ import "../styles/global.css";
 
 interface Props {
   title?: string;
+  kind?: "website" | "article";
   state?: "public" | "private" | "preview" | "withdrawn" | "error" | "redirect";
   description?: string;
   /** Published excerpt HTML; only the opt-in provider decodes it for metadata. */
@@ -53,6 +54,7 @@ const xDefault = hreflang.find((alternate) => alternate.language.isDefault);
 const state = Astro.props.state ?? ((Astro.response.status ?? 200) === 200 ? "public" : "error");
 const metadata = documentMetadata({
   title: title === "{{Project}}" ? title : `${title} — {{Project}}`,
+  kind: Astro.props.kind,
   description: Astro.props.summaryHtml ?? description,
   route: Astro.url.pathname,
   state,
