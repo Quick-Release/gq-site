@@ -3,6 +3,21 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Fixed
+
+- **The content skeleton's `src/lib/content.ts` is formatter-stable for any
+  project name** ([#113](https://github.com/Quick-Release/gq-site/issues/113)).
+  For a name of four characters or fewer (e.g. `acme`), the line building the
+  CMS's DDEV GraphQL URL fit in 100 columns, so `vp fmt --check` failed in
+  `apps/frontend` and a new Site's pre-commit hook rewrote the file on its
+  first commit. The DDEV project name is now its own constant. The
+  formatter-stability test now also checks the create-once files `gq new`
+  renders, for 1-, 4- and 40-character names. (`.astro` files aren't
+  formatted by `vp fmt` or the pre-commit hook.) Existing Sites can keep their
+  file; `vp fmt --write` fixes it once.
+
 ## 0.20.1 — 2026-10-22
 
 ### Added
