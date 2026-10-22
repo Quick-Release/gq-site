@@ -10,6 +10,7 @@
 | [Local site development](guides/local-development.md) | Setup, doctor, verify, DDEV, Composer and a local design-plugin checkout.                                                                                           |
 | [Sigillo secrets](guides/secrets.md)                  | Per-command secret injection and checkout login without downloading environments.                                                                                   |
 | [Provisioning and deployment](guides/provisioning.md) | The new content Site flow and readiness, Ploi provisioning/releases/media, database backup and live-to-local sync, Cloudflare tokens/buckets, CI and GitHub wiring. |
+| [Consent and legal pages](guides/consent.md)          | The consent database (in the EU), its secrets and purge, the doctor and readiness checks, wiring the consent Runtime, and adopting it on an existing Site.          |
 | [Offboarding a Site](guides/offboarding.md)           | Cutting a leaving client's public URLs and credentials, the guards while it is offboarded, restoring it, and archiving it before deleting its infrastructure.       |
 | [Agent skills](guides/skills.md)                      | Register, update, lock and safely check upstream agent skills under `.agents/skills`.                                                                               |
 | [Agent scope](guides/agent-scope.md)                  | The hooks that keep an agent session in its own repository: the router and the write fence.                                                                         |

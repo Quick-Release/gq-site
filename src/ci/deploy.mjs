@@ -37,12 +37,14 @@ export const githubWorkerSecrets = Object.freeze({
 });
 
 // The release step hands these to the Frontend deploy when they are set, so a
-// CI release binds the Frontend's refresh token and its publication-event
-// secret like `pnpm deploy:frontend` does. A site without a publication store
-// has neither, and its CI deploys without them.
+// CI release binds the Frontend's refresh token, its publication-event secret
+// and its consent read token like `pnpm deploy:frontend` does. A site without
+// a publication store or consent records has none of them, and its CI
+// deploys without them.
 export const optionalWorkerSecrets = Object.freeze({
   FRONTEND_REFRESH_TOKEN: "FRONTEND_REFRESH_TOKEN",
   PUBLICATION_EVENT_SECRET: "PUBLICATION_EVENT_SECRET",
+  CONSENT_READ_TOKEN: "CONSENT_READ_TOKEN",
   GQ_AUTH_GRAPHQL_CLIENT_ID: "GQ_AUTH_GRAPHQL_CLIENT_ID",
   GQ_AUTH_GRAPHQL_CLIENT_SECRET: "GQ_AUTH_GRAPHQL_CLIENT_SECRET",
 });

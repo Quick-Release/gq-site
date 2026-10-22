@@ -6,7 +6,9 @@
 // project (apps/cms/.ddev/config.yaml `name`) and gq.ops.json's `sigillo` and
 // `artifacts`. Missing required pieces fail it; drift only warns. Reads
 // Sigillo's variable names and the Artifacts namespace's jurisdiction, with
-// ARTIFACTS_API_TOKEN from the environment or Sigillo `staging`.
+// ARTIFACTS_API_TOKEN from the environment or Sigillo `staging`, and the
+// consent databases' jurisdiction (ADR 0019), with CLOUDFLARE_API_TOKEN
+// from either.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,6 +17,11 @@ import { CMS_PATH, commandExists, ddevStatus, phpToolchainAvailable } from "../c
 import { artifactsRemoteUrl, createArtifactsClient } from "../cloudflare/account-client.mjs";
 import { jurisdictionMismatchMessage } from "../cloudflare/ci.mjs";
 import { SECRETS_ENVIRONMENT } from "../cloudflare/tokens.mjs";
+import {
+  CONSENT_JURISDICTION,
+  consentDatabaseName,
+  listConsentDatabases,
+} from "../frontend/consent.mjs";
 import { artifactsJurisdiction, MANIFEST_FILENAME } from "../manifest/schema.mjs";
 import { localMediaReadiness } from "../media/readiness.mjs";
 import {
@@ -127,8 +134,14 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
 
   if (context.config.artifacts && context.config.cloudflare?.accountId) {
     io.out("\nCloudflare Artifacts:");
-    const token = await artifactsToken({ context, env, exec, sigilloReady });
+    const token = await stagingToken("ARTIFACTS_API_TOKEN", { context, env, exec, sigilloReady });
     await checkJurisdiction({ config: context.config, token, fetch, report });
+  }
+
+  if (context.config.cloudflare?.accountId && context.config.project) {
+    io.out("\nConsent records (D1):");
+    const token = await stagingToken("CLOUDFLARE_API_TOKEN", { context, env, exec, sigilloReady });
+    await checkConsentJurisdiction({ config: context.config, token, fetch, report });
   }
 
   io.out("\nLocal WordPress:");
@@ -292,17 +305,54 @@ async function checkSigillo({ root, sigillo, capture, report }) {
   return true;
 }
 
-// ARTIFACTS_API_TOKEN (gq cloudflare ci's) from the environment, or from
-// Sigillo `staging` when the site maps it and Sigillo is logged in; null
-// when neither has it.
-async function artifactsToken({ context, env, exec, sigilloReady }) {
-  if (env.ARTIFACTS_API_TOKEN) return env.ARTIFACTS_API_TOKEN;
+// A Cloudflare token (ARTIFACTS_API_TOKEN, gq cloudflare ci's, or the
+// deploy's CLOUDFLARE_API_TOKEN) from the environment, or from Sigillo
+// `staging` when the site maps it and Sigillo is logged in; null when neither
+// has it.
+async function stagingToken(name, { context, env, exec, sigilloReady }) {
+  if (env[name]) return env[name];
   if (!sigilloReady || !context.config.sigillo.environments?.[SECRETS_ENVIRONMENT]) return null;
   try {
     const secrets = await sigilloSecrets({ context, env, exec }, SECRETS_ENVIRONMENT);
-    return (await secrets.get("ARTIFACTS_API_TOKEN")) || null;
+    return (await secrets.get(name)) || null;
   } catch {
     return null;
+  }
+}
+
+// Visitors' consent records must stay in the EU (CONSENT-1 CN-R8), and
+// Cloudflare can't move a D1 database: one created outside `eu` fails.
+async function checkConsentJurisdiction({ config, token, fetch, report }) {
+  if (!token) {
+    return report.skip(
+      `consent database jurisdiction not checked: no CLOUDFLARE_API_TOKEN in the environment or Sigillo ${SECRETS_ENVIRONMENT}`,
+    );
+  }
+  let databases;
+  try {
+    databases = await listConsentDatabases({
+      accountId: config.cloudflare.accountId,
+      token,
+      fetch,
+      project: config.project,
+    });
+  } catch (error) {
+    return report.warn(`could not list the consent databases: ${error.message}`);
+  }
+  if (databases.length === 0) {
+    return report.skip(
+      `no consent database yet: a Frontend deploy creates it in ${CONSENT_JURISDICTION} (${consentDatabaseName(config.project)})`,
+    );
+  }
+  for (const { name, jurisdiction } of databases) {
+    if (jurisdiction === CONSENT_JURISDICTION) {
+      report.ok(`consent database ${name} is in the ${CONSENT_JURISDICTION} jurisdiction`);
+      continue;
+    }
+    report.fail(
+      `consent database ${name} is in the ${jurisdiction} jurisdiction, not ${CONSENT_JURISDICTION}: Cloudflare can't move it. ` +
+        "Export its records (wrangler d1 export), delete it, redeploy the Frontend to create it in eu, and import them (docs/guides/consent.md)",
+    );
   }
 }
 

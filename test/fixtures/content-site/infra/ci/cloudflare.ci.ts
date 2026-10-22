@@ -23,6 +23,7 @@ const deployConfig = { retries: { limit: 0, delay: 1_000 }, timeout: 15 * 60 * 1
 const frontendSecrets = [
   "FRONTEND_REFRESH_TOKEN",
   "PUBLICATION_EVENT_SECRET",
+  "CONSENT_READ_TOKEN",
   "GQ_AUTH_GRAPHQL_CLIENT_ID",
   "GQ_AUTH_GRAPHQL_CLIENT_SECRET",
 ] as const;

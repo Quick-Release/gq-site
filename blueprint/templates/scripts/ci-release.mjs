@@ -21,8 +21,8 @@ const required = [
 ];
 
 // The Frontend's own secrets: its deploy binds them when set and warns when
-// not (a site without a publication store has neither).
-const optional = ["FRONTEND_REFRESH_TOKEN", "PUBLICATION_EVENT_SECRET"];
+// not (a site without a publication store or consent records has none).
+const optional = ["FRONTEND_REFRESH_TOKEN", "PUBLICATION_EVENT_SECRET", "CONSENT_READ_TOKEN"];
 
 export function missingEnvironment(environment) {
   return required.filter((name) => !environment[name]);

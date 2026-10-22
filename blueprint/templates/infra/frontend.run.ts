@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { ConsentDatabase, ConsentPurge, consentRateLimiter, consentRecords } from "./consent.ts";
 
 // Hostnames live in gq.ops.json (domains), shared with the Ploi and deploy scripts.
 const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), "utf8")) as {
@@ -36,6 +37,10 @@ const durableDelivery = existsSync(publicationMigrations);
 // keeps being served.
 const refreshToken = process.env.FRONTEND_REFRESH_TOKEN?.trim();
 const eventSecret = process.env.PUBLICATION_EVENT_SECRET?.trim();
+// The bearer the Site's CMS reads consent records with (GQ Config's Consent
+// tab), from Sigillo staging. Without it the Worker refuses reads; records are
+// still written.
+const consentReadToken = process.env.CONSENT_READ_TOKEN?.trim();
 
 // Only the read-only edge identity belongs in the public Frontend's server.
 // Automation credentials must never be bound to this Worker.
@@ -97,6 +102,15 @@ export const Website = Cloudflare.Website.Astro(
       sessionKVBindingName: false,
       env: {
         ...publicEnv,
+        // A Frontend with a consent Runtime (infra/consent.ts) records
+        // visitors' decisions in its own eu database.
+        ...(consentRecords
+          ? {
+              CONSENT_DB: yield* ConsentDatabase,
+              CONSENT_RATE_LIMITER: consentRateLimiter(name),
+              ...(consentReadToken ? { CONSENT_READ_TOKEN: Redacted.make(consentReadToken) } : {}),
+            }
+          : {}),
         ...(durableDelivery
           ? {
               ...cmsSecrets,
@@ -118,6 +132,7 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const site = yield* Website;
+    if (consentRecords) yield* ConsentPurge;
 
     return { url: site.url };
   }),

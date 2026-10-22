@@ -32,13 +32,14 @@ const AREAS = {
   cms: "CMS",
   frontend: "Frontend",
   delivery: "Event delivery",
+  consent: "Consent and legal pages",
   media: "Independent media",
 };
 
 const SUMMARIES = {
   production: {
     ready:
-      "Ready: published content is served from the publication store, refreshed by signed CMS events, retried and reconciled by the CMS's scheduler, and uploads are hosted independently of the CMS.",
+      "Ready: published content is served from the publication store, refreshed by signed CMS events, retried and reconciled by the CMS's scheduler, and uploads are hosted independently of the CMS. Every required legal page is assigned, and public pages load nothing from a third party before consent.",
     "not-ready":
       "Not ready: the resilience guarantee doesn't hold until the ✗ checks pass. Fix them in order; each says what to run.",
   },

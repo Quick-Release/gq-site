@@ -36,7 +36,7 @@ test("gq new writes a v1 manifest whose plugins are the ones the CMS skeleton in
   }
   assert.equal(composer.require["getquick/gq-design"], "*@stable");
   assert.equal(composer.require["getquick/getquick-design"], undefined);
-  assert.equal(composer.require["getquick/gq-config"], "0.4.0");
+  assert.equal(composer.require["getquick/gq-config"], "0.4.3");
   assert.equal(composer.require["getquick/getquick-config"], undefined);
   assert.equal(composer.require["getquick/getquick-theme"], "0.5.1");
   // The deploy script activates exactly that list.
