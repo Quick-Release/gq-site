@@ -18,12 +18,22 @@ if (ops.offboarded) {
   process.exit(1);
 }
 
-// A Frontend with the publication store (apps/frontend/migrations) is
+// A Frontend with the publication store (its own apps/frontend/migrations,
+// or, on the content package pair, @getquick/content's `./migrations`,
+// installed in apps/frontend: frontend.run.ts's rule) is
 // refreshed with FRONTEND_REFRESH_TOKEN and receives the CMS's publication
 // events signed with PUBLICATION_EVENT_SECRET, both from Sigillo staging and
 // bound to the Worker as secrets. Deploying without one disables refresh or
 // events, not serving. Their values are never printed.
-if (existsSync(new URL("../../apps/frontend/migrations", import.meta.url))) {
+const frontendApp = new URL("../../apps/frontend/", import.meta.url);
+const contentPackage = new URL("node_modules/@getquick/content/package.json", frontendApp);
+if (
+  existsSync(new URL("migrations", frontendApp)) ||
+  (ops.contentRuntime === "package" &&
+    existsSync(contentPackage) &&
+    typeof JSON.parse(readFileSync(contentPackage, "utf8")).exports?.["./migrations"]?.import ===
+      "string")
+) {
   const secrets = {
     FRONTEND_REFRESH_TOKEN: "gq frontend refresh",
     PUBLICATION_EVENT_SECRET: "the CMS's publication events",

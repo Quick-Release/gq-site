@@ -41,6 +41,11 @@ WordPress locale (`en_US`, `pt_PT`, `pt_PT_ao90`); see
 `wordpress.languages` lists a bilingual site's other languages, each a
 `locale` and the `slug` of its URL directory; see
 [More languages](../guides/sites.md#more-languages).
+`contentRuntime` is `"package"` on a Site that runs the Content Runtime from
+the pinned `getquick/gq-content` and `@getquick/content` pair, whose pins and
+`/gq` routes `gq sync` then manages; `gq new` writes it. Left out, the Site
+keeps the runtime an earlier blueprint copied into it; see
+[The content runtime](../guides/sites.md#the-content-runtime).
 `wordpress.graphqlPath` is an optional exact enum: `/graphql` or `/wp/graphql`
 (the default when omitted). It selects production CMS readiness and the
 Frontend deploy's default public URL, not local DDEV's endpoint; see

@@ -1,26 +1,17 @@
 // The public routes, rendered through Astro's Container API against a stubbed
-// WordPress: what a visitor gets, and which HTTP status, when content is
-// published, confirmed missing, or WordPress fails. These are the live reads
-// of local development (`astro dev`, no publication store) and of an entry's
-// cold lookup; the deployed Frontend serves from its store (homepage.test.ts,
-// entries.test.ts).
+// WordPress: the page a visitor gets, and its HTTP status, when content is
+// published, confirmed missing, or WordPress fails. Delivery itself (the
+// publication store, events, refresh, retries) is @getquick/content's and is
+// tested there; these test what this Site composes from what it delivers:
+// the pages, their words, metadata and chrome.
 import { experimental_AstroContainer as AstroContainer } from "astro/container";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import Entry from "./pages/[...slug].astro";
 import Home from "./pages/index.astro";
-import {
-  data,
-  httpError,
-  queries,
-  stubWordPress,
-  timeout,
-  tokens,
-  type Answer,
-} from "./test/wordpress-stub";
+import { data, httpError, queries, stubWordPress, timeout, tokens } from "./test/wordpress-stub";
 
 // The monolingual Site this file describes: the site's gq.ops.json without
-// wordpress.languages. languages.test.ts and language-updates.test.ts cover
-// the bilingual Site.
+// wordpress.languages.
 vi.mock("../../../gq.ops.json", async (importOriginal) => {
   const { default: ops } = await importOriginal<{
     default: { wordpress: { languages?: unknown } };
@@ -112,74 +103,6 @@ describe("entries read live in local development", () => {
     );
   });
 
-  test.each([
-    ["a WordPress HTTP error", () => httpError(403)],
-    [
-      "a GraphQL error",
-      () =>
-        ({
-          ok: true,
-          json: async () => ({ errors: [{ message: "Internal server error" }] }),
-        }) as Answer,
-    ],
-    [
-      "a GraphQL error next to partial data",
-      () =>
-        ({
-          ok: true,
-          json: async () => ({
-            data: { postBy: null, pageBy: null, designTokens: tokens },
-            errors: [{ message: "Cannot return null for designTokens" }],
-          }),
-        }) as Answer,
-    ],
-    ["an unreachable WordPress", () => Promise.reject(new TypeError("fetch failed"))],
-    [
-      "an answer that isn't JSON",
-      () => ({ ok: true, json: async () => JSON.parse("<html>") }) as Answer,
-    ],
-    ["missing design tokens", () => data({ postBy: null, pageBy: null, designTokens: null })],
-    [
-      "an entry without its required id",
-      () => data({ postBy: null, pageBy: { ...about, id: undefined }, designTokens: tokens }),
-    ],
-    ["no postBy field at all", () => data({ pageBy: null, designTokens: tokens })],
-  ])("%s is a 503 for an entry, not a 404", async (_case, entry) => {
-    stubWordPress({ entry });
-
-    const { status, html } = await render("/about/");
-
-    expect(status).toBe(503);
-    expect(html).not.toContain("Nothing here.");
-  });
-
-  test("an entry whose blocks WordPress fails to return still renders, without them", async () => {
-    const fetchMock = stubWordPress({
-      entry: ({ withBlocks }) =>
-        withBlocks === false
-          ? data({ postBy: null, pageBy: about, designTokens: tokens })
-          : httpError(502),
-    });
-
-    const { status, html } = await render("/about/");
-
-    expect(status).toBe(200);
-    expect(html).toContain("<p>We make things.</p>");
-    expect(queries(fetchMock, "EntryByUri")).toHaveLength(2);
-  });
-
-  test("an entry whose recovery without blocks fails too is a 503, not a 404", async () => {
-    const fetchMock = stubWordPress({
-      entry: ({ withBlocks }) => (withBlocks === false ? timeout() : httpError(502)),
-    });
-
-    const { status, html } = await render("/about/");
-
-    expect(status).toBe(503);
-    expect(html).not.toContain("Nothing here.");
-    expect(queries(fetchMock, "EntryByUri")).toHaveLength(2);
-  });
-
   test("a published entry is still served when the site chrome can't be read", async () => {
     stubWordPress({
       entry: () => data({ postBy: null, pageBy: about, designTokens: tokens }),
@@ -235,8 +158,6 @@ test("a built Frontend without a publication store is a 503 for an entry, and re
   );
 });
 
-// The front page's CMS failures, refresh and outages are in homepage.test.ts:
-// a built Frontend serves it from the publication store only.
 test("a built Frontend without a publication store is a 503 for the front page, and reads no CMS", async () => {
   const fetchMock = stubWordPress({
     home: () =>

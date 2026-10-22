@@ -75,10 +75,11 @@ predating it.
 ### Acceptance gates
 
 - **Local, deterministic:** `scripts/smoke/acceptance.sh` runs `pnpm check`,
-  the generated Frontend's own tests and checks, the workerd runtime proof and
-  the real-WordPress proof, each on a disposable generated Site, without an
-  account or a secret. CI runs the generated Frontend's checks and the
-  runtime proof on every push.
+  the generated Frontend's own tests and checks, and the content pair's
+  wiring proof (served in workerd), each on a disposable generated Site,
+  without an account or a secret. CI runs all three on every push. The
+  runtime's own proofs, on a real WordPress too, run in
+  Quick-Release/gq-content.
 - **Live:** the gq-smoke wizard (`scripts/smoke/gq-smoke-up.sh`) provisions a
   throwaway Site through this flow, then (stages 18 to 22) runs `site:check`
   and the editor-to-visitor acceptance against the real CMS and Worker:
@@ -349,15 +350,19 @@ pnpm frontend:refresh --uri /about-us/       # only these entries
 - A whole-Site refresh makes at least one CMS request per entry in one Worker
   invocation; on Workers' Free plan (50 subrequests) a larger site needs
   `--uri` refreshes.
-- `infra/frontend.run.ts` creates the store only when
-  `apps/frontend/migrations` exists, so a site-owned Frontend without those
-  files deploys without a store.
+- `infra/frontend.run.ts` creates the store only when the Frontend has its
+  migrations: on the content package pair, `@getquick/content` installed in
+  `apps/frontend` (its `./migrations` export), or a Site's own
+  `apps/frontend/migrations`. A
+  Frontend with neither deploys without a store.
 
 ### Publication events
 
 Publishing or updating a page or post refreshes it on the Frontend without a
 deploy ([ADR 0005](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0005-refresh-publications-through-signed-cms-events.md)).
-The CMS skeleton's `web/app/mu-plugins/publication-events.php` sends a signed
+The CMS's content plugin (`getquick/gq-content`, or a copied
+`web/app/mu-plugins/publication-events.php` on a Site generated before it;
+see [The content runtime](sites.md#the-content-runtime)) sends a signed
 publication event to the Frontend's `/gq/events`; the Frontend reads that
 entry from WordPress anonymously, like any refresh, and promotes it only if it
 is published and complete.
@@ -396,22 +401,20 @@ pnpm frontend:events:check    # gq frontend events check
   asking the Worker. A withdrawal the Frontend never received while the CMS
   is down too can't be known: the entry stays served until either is back.
 
-`scripts/smoke/frontend-runtime.sh` proves it on a disposable generated site
-without Cloudflare: Alchemy's Astro build, served in workerd (Wrangler's local
-mode) with a local D1 store, against a stub CMS taken down, a Worker restart,
-a rebuilt redeploy, a cold lookup, a new publication, a moved entry and the
-Worker's event key and withdrawals. `scripts/smoke/cms-events.sh` adds a real
-WordPress (the pinned version, on SQLite, with WP-CLI) running the site's
-publication-events plugin against that Worker: drafts, publications, updates,
-renames, the Frontend down, failed refreshes, another key, a missing one, and
-unpublishing, password-protecting, trashing and deleting.
+The runtime's behaviour, on a real WordPress and in workerd, is proved in
+Quick-Release/gq-content. `scripts/smoke/content-pair.sh` proves that a
+generated Site wires it: the pinned pair, the crontab's command, the
+migrations the deploy resolves, and its Frontend served in workerd with a
+local D1 store, refreshed by `gq frontend refresh` and accepting
+`gq frontend events check` for its own identity only.
 
 ### Shared settings
 
 Changing the menus, the logo, the site's identity (title, tagline, icon) or
 the design presets reaches every page without republishing any
 ([ADR 0007](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0007-refresh-shared-settings-through-settings-events.md)).
-The CMS skeleton's `web/app/mu-plugins/settings-events.php` sends a signed
+The CMS's content plugin (or a copied `web/app/mu-plugins/settings-events.php`)
+sends a signed
 `settings` event, through the publication events' endpoint, key and records,
 when WordPress saves one: a menu shown at the primary location or the
 locations themselves, `site_logo`, `blogname`, `blogdescription`, `site_icon`,
@@ -436,17 +439,13 @@ tagline), never each entry.
 - A whole-Site refresh stores the shared design presets too; a Site last
   refreshed before them serves each page with the presets it was read with.
 
-`scripts/smoke/cms-events.sh` changes each setting through WordPress's own
-APIs (a primary menu, `site_logo`, the tagline and icon, a palette saved
-through the global-styles REST route) and checks the homepage and an entry
-through an outage, a failed settings refresh and its retry.
-
 ### Delivery retries
 
 An event the Frontend didn't confirm is retried by the CMS, without visits or
 republishing, and editors are told the public website is behind
 ([ADR 0008](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0008-retry-event-delivery-from-the-cms-on-a-server-cron.md)).
-The CMS skeleton's `web/app/mu-plugins/delivery-retries.php` reads the
+The CMS's content plugin (or a copied `web/app/mu-plugins/delivery-retries.php`)
+reads the
 entries' and the settings' delivery records as one list, whatever the event's
 action (publications, withdrawals and settings), and `wp gq-events retry-due`
 resends each due one: the same event, so the Frontend's ordering still holds.
@@ -466,12 +465,9 @@ resends each due one: the same event, so the Frontend's ordering still holds.
   Health test and `wp gq-events delays`, which also shows the scheduler's last
   run. None of them shows the key or content.
 
-`scripts/smoke/cms-events.sh` drives `retry-due` on a real WordPress through
-dispatch and refresh failures, a withdrawal, backoff, an interrupted request,
-exhausted attempts and an overlapping run. With the local
-`ddev/ddev-webserver` Docker image present (`GQ_SMOKE_CRON_IMAGE` picks
-another), a real cron daemon runs the exact crontab `gq ploi events` installs
-and delivers a missed publication.
+The plugin installs no cron: `gq ploi events` does, and
+`scripts/smoke/content-pair.sh` checks that its command is the one the
+pinned plugin registers.
 
 ### Reconciliation
 
@@ -506,9 +502,4 @@ after it.
   minutes without a match, and `gq frontend events check` prints the
   Frontend's own record of its last run.
 
-`scripts/smoke/cms-events.sh` makes changes with WordPress's hooks removed (an
-update, a new page, an unpublished page, the tagline). It checks that the
-next `retry-due` brings them to visitors, that a failed run changes nothing
-and is reported, and, with the real cron, that a change appears within five
-minutes. `scripts/smoke/frontend-runtime.sh` reconciles in workerd, including
-60 changes over several runs within the request budget.
+Reconciliation is the runtime's, proved in Quick-Release/gq-content.

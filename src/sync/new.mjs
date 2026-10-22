@@ -13,6 +13,7 @@ import { basename, join, relative, resolve } from "node:path";
 import packageTemplate from "../../blueprint/templates/fragments/package.keys.json" with { type: "json" };
 import { MANIFEST_FILENAME, validateManifest, writeManifest } from "../manifest/manifest.mjs";
 import { LOCALE_PATTERN, SCHEMA_URL, SCHEMA_VERSION, VARIANTS } from "../manifest/schema.mjs";
+import { CONTENT_RUNTIME_PACKAGE } from "./content-pair.mjs";
 import { applyManagedFiles, planManagedFiles } from "./managed-files.mjs";
 
 export const NEW_USAGE = ["gq new <dir> --project <name> --variant content [--locale <locale>]"];
@@ -88,6 +89,8 @@ export async function runNewCommand(args, { cwd, env, exec, stdin, io, interacti
     schemaVersion: SCHEMA_VERSION,
     project,
     variant,
+    // A new Site runs the content runtime from its pinned package pair.
+    contentRuntime: CONTENT_RUNTIME_PACKAGE,
     wordpress: { plugins: CONTENT_PLUGINS, locale },
   });
   const root = resolve(cwd, directory);

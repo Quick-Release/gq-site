@@ -3,7 +3,7 @@
 // placeholder, in each page's language on a multilingual Site. Add a language
 // by its code (the locale's first part); any other language reads English,
 // and so does a monolingual Site, as it always has.
-import { multilingual, type SiteLanguage } from "./site-language";
+import type { SiteLanguage } from "@getquick/content";
 
 const en = {
   /** The language switcher's label, for screen readers. */
@@ -66,7 +66,7 @@ const copies: Record<string, Copy> = {
 };
 
 /** The words for a page in this language: its own on a multilingual Site, or English. */
-export function copyFor(language: SiteLanguage): Copy {
+export function copyFor(language: SiteLanguage, multilingual: boolean): Copy {
   if (!multilingual) return en;
   return copies[language.locale.split("_")[0] ?? ""] ?? en;
 }

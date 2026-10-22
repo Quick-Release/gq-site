@@ -13,6 +13,7 @@
     "test": "vp test --passWithNoTests"
   },
   "dependencies": {
+    "@getquick/content": "0.1.0",
     "astro": "^7.2.9"
   },
   "devDependencies": {

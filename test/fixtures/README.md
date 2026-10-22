@@ -45,6 +45,16 @@ baseline alongside its source: GNU `patch` for the CMS dependency patch, and
 container's root user. `scripts/smoke/ci-composer.sh` builds and exercises
 the rendered image.
 
+The content package pair (ADR 0020) updates the content site's
+`infra/frontend.run.ts` and `infra/scripts/deploy-frontend.mjs` baselines
+alongside their sources: the publication migrations, which switch the store
+on, come from a Site's own `apps/frontend/migrations` when it has them, and
+otherwise, on a Site whose `contentRuntime` is `package`, from
+`@getquick/content` installed in `apps/frontend` (its
+`./migrations` export). The bindings, secrets and store names are unchanged.
+`scripts/smoke/content-pair.sh` runs the rendered resolution against an
+installed package.
+
 ## Preservation
 
 - Preserve fixture paths, contents and version identifiers during organization,

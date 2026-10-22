@@ -1,9 +1,9 @@
-// What the Frontend's runtime proofs share (frontend-runtime.mjs,
-// frontend-languages.mjs, cms-events.mjs): a stub WordPress they can take down, Alchemy's Astro
-// Cloudflare build of a generated site's Frontend (`buildInChild`, what
-// `pnpm deploy:frontend` runs in its build child), and that build served in
-// workerd (Wrangler's local mode) with a local D1 publication store migrated
-// from the Frontend's own migrations. Nothing reaches Cloudflare.
+// What the content pair's wiring proof (content-pair.mjs) uses: a stub
+// WordPress, Alchemy's Astro Cloudflare build of a generated site's Frontend
+// (`buildInChild`, what `pnpm deploy:frontend` runs in its build child), and
+// that build served in workerd (Wrangler's local mode) with a local D1
+// publication store migrated from the migrations the deploy resolves.
+// Nothing reaches Cloudflare.
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
@@ -170,10 +170,10 @@ export function buildFrontend(frontend, siteUrl, graphqlUrl) {
 
 /**
  * A local Worker for the built Frontend: its Wrangler config in `work`, with
- * the publication store persisted under `work/state`, and the Worker's
- * secrets passed as `vars`.
+ * the publication store persisted under `work/state` and migrated from
+ * `migrations`, and the Worker's secrets passed as `vars`.
  */
-export function localWorker({ site, work, vars }) {
+export function localWorker({ site, work, vars, migrations }) {
   const frontend = join(site, "apps/frontend");
   const wrangler = join(site, "infra/ci/node_modules/.bin/wrangler");
   const persist = join(work, "state");
@@ -195,7 +195,7 @@ export function localWorker({ site, work, vars }) {
             binding: "PUBLICATION_DB",
             database_name: "acme-fe-publications",
             database_id: "00000000-0000-0000-0000-000000000000",
-            migrations_dir: join(frontend, "migrations"),
+            migrations_dir: migrations,
           },
         ],
       },

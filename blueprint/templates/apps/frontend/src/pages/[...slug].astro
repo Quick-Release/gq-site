@@ -1,24 +1,25 @@
 ---
+import { blockPresetStyles, formatDate, responseStatus, routeOf } from "@getquick/content";
 import Home from "../components/Home.astro";
 import Layout from "../layouts/Layout.astro";
+import { content } from "../lib/content";
 import { copyFor } from "../lib/copy";
-import { publishedEntry, publishedHome, routeOf } from "../lib/delivery";
-import { isLanguageHome, multilingual, routeLanguage } from "../lib/site-language";
-import { formatDate, responseStatus } from "../lib/wordpress";
-import { blockPresetStyles } from "../lib/wp-block-styles";
 
+const runtime = content();
 const route = routeOf(Astro.url.pathname);
-const language = routeLanguage(route);
-const copy = copyFor(language);
+const language = runtime.routeLanguage(route);
+const copy = copyFor(language, runtime.multilingual);
 
 // Another language's home (/en/) is served as a home, as index.astro serves
 // the default language's.
-const home = isLanguageHome(route) ? await publishedHome(Astro.site?.origin, language) : null;
+const home = runtime.isLanguageHome(route)
+  ? await runtime.publishedHome(Astro.site?.origin, language)
+  : null;
 const placeholder = home?.kind === "unavailable" && import.meta.env.DEV;
 
 // Served from the publication store, last-known-good and without an age
 // limit. Only an entry the store has never held is looked up in the CMS.
-const delivery = home ?? (await publishedEntry(Astro.url.pathname, Astro.site?.origin));
+const delivery = home ?? (await runtime.publishedEntry(Astro.url.pathname, Astro.site?.origin));
 // An entry published at another URI now: its old route redirects there,
 // uncached, since the store's answer can change with the next refresh.
 if (delivery.kind === "moved") {
@@ -56,7 +57,7 @@ const title =
     ) : (
       <main>
         <h1>{entry.title}</h1>
-        {isPost && <time datetime={entry.date}>{formatDate(entry.date, multilingual ? language.lang : "en")}</time>}
+        {isPost && <time datetime={entry.date}>{formatDate(entry.date, runtime.multilingual ? language.lang : "en")}</time>}
         {entry.featuredImage && (
           <img class="featured-image" src={entry.featuredImage.sourceUrl} alt={entry.featuredImage.altText || ""} />
         )}

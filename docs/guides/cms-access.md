@@ -34,8 +34,10 @@ fix the configured endpoint instead. Transport failures do not expose raw errors
 
 ## Frontend and release wiring
 
-The content Frontend skeleton reads only the GraphQL pair from private Worker
-bindings (`src/lib/runtime.ts`), only on the server, and sends it only to the
+The content Frontend reads only the GraphQL pair from private Worker
+bindings (the runtime's `bindings`, given by the skeleton's
+`src/lib/content.ts`; a copied `src/lib/runtime.ts` on a Site generated
+before the content package pair), only on the server, and sends it only to the
 configured `PUBLIC_WORDPRESS_GRAPHQL_URL`, restricted to `/graphql` or
 `/wp/graphql` on the exact HTTPS origin named by `domains.admin` when credentials
 are present. An override to another host, port or path fails before sending.

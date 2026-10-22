@@ -38,6 +38,15 @@
       "policy": "manual"
     },
     {
+      "name": "getquick/gq-content",
+      "upstream": { "repository": "Quick-Release/gq-content", "discovery": "tags" },
+      "install": { "registry": "getquick" },
+      "variants": ["content"],
+      "requirement": "blueprint",
+      "policy": "manual",
+      "note": "The CMS half of the content package pair (ADR 0020): its pin moves only with @getquick/content's, in blueprint/templates/fragments/cms-composer.keys.json and frontend-package.keys.json."
+    },
+    {
       "name": "getquick/gq-polylang-graphql",
       "upstream": { "repository": "Quick-Release/gq-polylang-graphql", "discovery": "tags" },
       "install": { "registry": "getquick" },

@@ -27,7 +27,10 @@ import { createPloiServerClient } from "./server-client.mjs";
 
 export const EVENT_SECRET = "PUBLICATION_EVENT_SECRET";
 
-/** What the cron runs: the CMS's delivery-retries.php sends what is due. */
+/**
+ * What the cron runs: the CMS's delivery retries (getquick/gq-content's, or a
+ * copied delivery-retries.php on a Site generated before it) send what is due.
+ */
 export const RETRY_COMMAND = "wp gq-events retry-due --quiet";
 
 /**

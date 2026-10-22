@@ -442,7 +442,7 @@ async function checkEvents({ origin, project, env, fetch, add }) {
     status === 401
       ? `redeploy the Frontend with Sigillo staging's ${EVENT_SECRET} (pnpm deploy:frontend), and pnpm ci:deploy so CI releases bind it too`
       : status === 403 && /store/u.test(reason)
-        ? "deploy the Frontend with apps/frontend/migrations, which makes infra/frontend.run.ts declare and bind its publication store"
+        ? "deploy the Frontend with its publication migrations (@getquick/content installed in apps/frontend, or a Site's own apps/frontend/migrations), which makes infra/frontend.run.ts declare and bind its publication store"
         : status === 403
           ? `run pnpm frontend:secrets, then pnpm ci:deploy and deploy the Frontend, so the Worker has ${EVENT_SECRET}`
           : status === 404
