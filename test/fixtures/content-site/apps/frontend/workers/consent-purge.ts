@@ -6,11 +6,17 @@ import { createConsentServer, type ConsentDatabase } from "@getquick/content/con
 interface Env {
   SITE_ID: string;
   CONSENT_DB: ConsentDatabase;
+  // gq.ops.json's consent.retentionDays; without it, the Runtime's default.
+  CONSENT_RETENTION_DAYS?: string;
 }
 
 export default {
   async scheduled(_controller: unknown, env: Env): Promise<void> {
-    const consent = createConsentServer({ siteId: env.SITE_ID, bindings: () => env });
+    const consent = createConsentServer({
+      siteId: env.SITE_ID,
+      bindings: () => env,
+      retentionDays: env.CONSENT_RETENTION_DAYS ? Number(env.CONSENT_RETENTION_DAYS) : undefined,
+    });
     const { deleted } = await consent.purge();
     console.log(`Consent purge: ${deleted} record(s) past their retention deleted.`);
   },

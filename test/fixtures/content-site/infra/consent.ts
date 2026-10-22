@@ -36,6 +36,18 @@ export const consentRecords = consentMigrations !== null;
 // time, on every stage. gq doctor fails on one that isn't.
 export const CONSENT_JURISDICTION = "eu";
 
+// How long records are kept after a decision stops being in force (CN-R10):
+// gq.ops.json's consent.retentionDays, bound as CONSENT_RETENTION_DAYS to the
+// Frontend and the purge Worker alike, so the purge deletes what the read
+// endpoints report. Left out, neither gets it and the Runtime's default (5
+// years) applies.
+const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), "utf8")) as {
+  consent?: { retentionDays?: number };
+};
+const retentionDays = ops.consent?.retentionDays;
+export const consentRetention: Record<string, string> =
+  retentionDays === undefined ? {} : { CONSENT_RETENTION_DAYS: String(retentionDays) };
+
 // The retention purge runs daily, at a quiet hour (UTC).
 export const CONSENT_PURGE_SCHEDULE = "17 3 * * *";
 
@@ -90,7 +102,7 @@ export const ConsentPurge = Cloudflare.Worker(
       main: fileURLToPath(new URL("workers/consent-purge.ts", frontendApp)),
       crons: [CONSENT_PURGE_SCHEDULE],
       workersDev: false,
-      env: { SITE_ID: site, CONSENT_DB: yield* ConsentDatabase },
+      env: { SITE_ID: site, CONSENT_DB: yield* ConsentDatabase, ...consentRetention },
     };
   }),
 );

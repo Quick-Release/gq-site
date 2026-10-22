@@ -72,6 +72,13 @@ test("gq new wires a Site to the pinned pair: keys, routes, migrations and ident
   }
   const consentRoute = await readSite(root, CONSENT_ROUTES[0]);
   assert.match(consentRoute, /createConsentServer\(\{\s*siteId: ops\.project,/u);
+  // Its retention is the Worker's CONSENT_RETENTION_DAYS, which the purge
+  // Worker deletes by too (gq.ops.json's consent.retentionDays).
+  assert.match(consentRoute, /retentionDays: retention \? Number\(retention\) : undefined,/u);
+  assert.match(
+    consentRoute,
+    /const \{ CONSENT_RETENTION_DAYS: retention \} = await bindings\(\);/u,
+  );
   assert.match(consentRoute, /from "@getquick\/content\/consent\/server"/u);
   assert.match(consentRoute, /\.handle\(request\)\) \?\? new Response\(null, \{ status: 404 \}\)/u);
   assert.match(await readSite(root, CONSENT_ROUTES[1]), /from "\.\.\/consent"/u);

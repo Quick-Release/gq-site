@@ -39,6 +39,17 @@ rate limiter and `CONSENT_READ_TOKEN`, and a purge Worker runs the Runtime's
 purge; CI forwards the token like the Frontend's other secrets. Written by
 hand and reviewed against the templates, not regenerated.
 
+The Site's consent retention ([#115](https://github.com/Quick-Release/gq-site/issues/115))
+updates the content site's `infra/consent.ts`, `infra/frontend.run.ts` and
+`apps/frontend/workers/consent-purge.ts` baselines alongside their sources:
+`infra/consent.ts` reads `gq.ops.json`'s `consent.retentionDays` at deploy
+and, when it is set, both the Frontend and the purge Worker bind it as the
+plain variable `CONSENT_RETENTION_DAYS`; the purge entry passes it to
+`createConsentServer` as `retentionDays`. The content site's manifest has no
+retention, so its deploy binds none and the Runtime's default applies.
+`sync/graphql-path.test.mjs` exercises both bindings and runs the purge entry
+against a node:sqlite D1 stand-in.
+
 The CI image's Composer fix updates the content site's `infra/ci/Dockerfile`
 baseline alongside its source: GNU `patch` for the CMS dependency patch, and
 `COMPOSER_ALLOW_SUPERUSER=1` so Composer runs the allowed plugins as the

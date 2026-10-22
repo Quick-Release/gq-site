@@ -5,20 +5,34 @@
 // a 404. The Site's identity is its manifest's, as the Content Runtime's and
 // the purge Worker's are. It reads the Worker's bindings itself rather than
 // through src/lib/content.ts, which is the Site's own file, so it works
-// whatever that file exports.
+// whatever that file exports. Records are kept for CONSENT_RETENTION_DAYS
+// (gq.ops.json's consent.retentionDays), the retention the purge Worker
+// deletes by; without it, the Runtime's default.
 import type { APIRoute } from "astro";
-import { createConsentServer, type ConsentBindings } from "@getquick/content/consent/server";
+import {
+  createConsentServer,
+  type ConsentBindings,
+  type ConsentServer,
+} from "@getquick/content/consent/server";
 import ops from "../../../../../gq.ops.json";
 
 export const prerender = false;
 
-const consent = createConsentServer({
-  siteId: ops.project,
-  // The deployed Worker's bindings (infra/frontend.run.ts declares them).
-  // Outside workerd there are none, and the Runtime answers 503.
-  bindings: async () =>
-    ((await import("cloudflare:workers").catch(() => null))?.env ?? {}) as ConsentBindings,
-});
+// The deployed Worker's bindings (infra/frontend.run.ts declares them).
+// Outside workerd there are none, and the Runtime answers 503.
+const bindings = async () =>
+  ((await import("cloudflare:workers").catch(() => null))?.env ?? {}) as ConsentBindings & {
+    CONSENT_RETENTION_DAYS?: string;
+  };
 
-export const ALL: APIRoute = async ({ request }) =>
-  (await consent.handle(request)) ?? new Response(null, { status: 404 });
+let consent: ConsentServer | undefined;
+
+export const ALL: APIRoute = async ({ request }) => {
+  const { CONSENT_RETENTION_DAYS: retention } = await bindings();
+  consent ??= createConsentServer({
+    siteId: ops.project,
+    bindings,
+    retentionDays: retention ? Number(retention) : undefined,
+  });
+  return (await consent.handle(request)) ?? new Response(null, { status: 404 });
+};

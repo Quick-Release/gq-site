@@ -2,8 +2,9 @@
 // isolated Alchemy/Effect stand-ins. No provider, credential or real build runs.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmod, writeFile } from "node:fs/promises";
+import { chmod, mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { createFixtureSite } from "../support/fixture-site.mjs";
@@ -63,9 +64,9 @@ const CONSENT_RUNTIME = {
     'export const consentMigrationsDirectory = "/fixture/consent-migrations/";\n',
 };
 
-async function generatedDeploy({ graphqlPath, durable = true, consent = false } = {}) {
+async function generatedDeploy({ graphqlPath, durable = true, consent = false, ops = {} } = {}) {
   const fixture = await createFixtureSite({
-    ops: { ...OPS, wordpress: { plugins: [], ...(graphqlPath ? { graphqlPath } : {}) } },
+    ops: { ...OPS, wordpress: { plugins: [], ...(graphqlPath ? { graphqlPath } : {}) }, ...ops },
     files: {
       ...STUBS,
       "apps/frontend/README.md": "Site-owned Frontend\n",
@@ -92,6 +93,7 @@ async function generatedDeploy({ graphqlPath, durable = true, consent = false } 
     return JSON.parse(result.stdout);
   };
   return {
+    root: fixture.root,
     script: (env = {}) => run(["scripts/deploy-frontend.mjs"], env),
     website: (env = {}) =>
       run(
@@ -189,4 +191,104 @@ test("a Frontend without the consent Runtime deploys as before: no consent bindi
   for (const name of ["CONSENT_DB", "CONSENT_RATE_LIMITER", "CONSENT_READ_TOKEN"]) {
     assert.equal(env[name], undefined, name);
   }
+});
+
+test("a Site's consent.retentionDays is bound to the Frontend and the purge Worker", async () => {
+  const deploy = await generatedDeploy({ consent: true, ops: { consent: { retentionDays: 365 } } });
+
+  assert.equal(deploy.website().env.CONSENT_RETENTION_DAYS, "365");
+  assert.equal(deploy.website({ TEST_STAGE: "preview" }).env.CONSENT_RETENTION_DAYS, "365");
+  assert.equal(deploy.purge().props.env.CONSENT_RETENTION_DAYS, "365");
+});
+
+test("without consent.retentionDays neither Worker gets a retention: the Runtime's default", async () => {
+  const deploy = await generatedDeploy({ consent: true });
+
+  assert.equal("CONSENT_RETENTION_DAYS" in deploy.website().env, false);
+  assert.equal("CONSENT_RETENTION_DAYS" in deploy.purge().props.env, false);
+});
+
+test("a retention without the consent Runtime binds nothing to the Frontend", async () => {
+  const deploy = await generatedDeploy({ ops: { consent: { retentionDays: 365 } } });
+
+  assert.equal("CONSENT_RETENTION_DAYS" in deploy.website().env, false);
+});
+
+// The generated purge entry, run in Node against the installed consent
+// Runtime and a D1 stand-in over node:sqlite holding the Runtime's own
+// migrations. Nothing is deployed.
+const PURGE_RUN = `
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
+import { consentMigrationsDirectory } from "@getquick/content/consent/migrations";
+import purge from "./workers/consent-purge.ts";
+
+const sqlite = new DatabaseSync(":memory:");
+for (const file of readdirSync(consentMigrationsDirectory).sort()) {
+  sqlite.exec(readFileSync(join(consentMigrationsDirectory, file), "utf8"));
+}
+const CONSENT_DB = {
+  prepare(query) {
+    let values = [];
+    const statement = {
+      bind: (...bound) => ((values = bound), statement),
+      run: async () => ({ meta: { changes: Number(sqlite.prepare(query).run(...values).changes) } }),
+      all: async () => ({ results: sqlite.prepare(query).all(...values) }),
+      first: async () => sqlite.prepare(query).get(...values) ?? null,
+    };
+    return statement;
+  },
+};
+const insert = sqlite.prepare(
+  "INSERT INTO consent_records (consent_id, site_id, recorded_at, decided_at, expires_at, config_version, legal_revisions, preferences, analytics, marketing, external_media, action, language, ui_version) VALUES (?, 'fixture', ?, ?, ?, '1', '{}', 0, 0, 0, 0, 'reject_all', 'en', '1')",
+);
+const DAY = 86_400_000;
+// Each decision stopped being in force (expired) that many days ago.
+for (const [id, days] of [["past-a-year", 400], ["within-a-year", 300]]) {
+  const expired = new Date(Date.now() - days * DAY).toISOString();
+  const decided = new Date(Date.now() - (days + 183) * DAY).toISOString();
+  insert.run(id, decided, decided, expired);
+}
+const env = JSON.parse(process.env.PURGE_ENV);
+const log = console.log;
+console.log = () => {};
+await purge.scheduled({}, { ...env, CONSENT_DB });
+console.log = log;
+console.log(JSON.stringify(sqlite.prepare("SELECT consent_id FROM consent_records ORDER BY id").all().map((row) => row.consent_id)));
+`;
+
+async function generatedPurge() {
+  const fixture = await createFixtureSite({ ops: OPS });
+  const synced = await fixture.run(["sync"]);
+  assert.equal(synced.code, 0, synced.stderr);
+  const frontend = fixture.path("apps/frontend");
+  await mkdir(join(frontend, "node_modules/@getquick"), { recursive: true });
+  await symlink(
+    fileURLToPath(new URL("../../node_modules/@getquick/content", import.meta.url)),
+    join(frontend, "node_modules/@getquick/content"),
+  );
+  await writeFile(join(frontend, "purge-run.mjs"), PURGE_RUN);
+  return (env) => {
+    const result = spawnSync(
+      process.execPath,
+      ["--experimental-strip-types", "--no-warnings", "purge-run.mjs"],
+      {
+        cwd: frontend,
+        encoding: "utf8",
+        env: { PATH: process.env.PATH, PURGE_ENV: JSON.stringify({ SITE_ID: "fixture", ...env }) },
+      },
+    );
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return JSON.parse(result.stdout);
+  };
+}
+
+test("the purge entry deletes records past the Site's retention and keeps newer ones", async () => {
+  const purge = await generatedPurge();
+
+  assert.deepEqual(purge({ CONSENT_RETENTION_DAYS: "365" }), ["within-a-year"]);
+  // Without it, the Runtime's default (1826 days) keeps both.
+  assert.deepEqual(purge({}), ["past-a-year", "within-a-year"]);
 });

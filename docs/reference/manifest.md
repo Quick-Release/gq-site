@@ -30,7 +30,7 @@ site root. Every site-relative path resolves from there. `--project <dir>` or
 required, `domains` has the roles `admin` and `frontend` and an optional
 `docs`, and an unknown or misspelt key fails by its path. The blocks each
 command reads (`ploi`, `cloudflare`, `releases`, `media`, `backups`, `local`,
-`artifacts`, `ci`, `github`, `sigillo`, `wordpress.plugins`,
+`artifacts`, `ci`, `github`, `sigillo`, `consent`, `wordpress.plugins`,
 `wordpress.graphqlPath`, `wordpress.locale`, `wordpress.languages`) are optional; a command names
 the keys it needs. `artifacts.jurisdiction` is where `gq cloudflare ci`
 creates the Artifacts namespace: `eu` (the default when it's left out),
@@ -46,6 +46,11 @@ the pinned `getquick/gq-content` and `@getquick/content` pair, whose pins and
 `/gq` routes `gq sync` then manages; `gq new` writes it. Left out, the Site
 keeps the runtime an earlier blueprint copied into it; see
 [The content runtime](../guides/sites.md#the-content-runtime).
+`consent.retentionDays` is how many days a consent record is kept after its
+decision stops being in force: a whole number from 1 to 1826. Left out, the
+consent Runtime's default (1826, 5 years) applies. The Frontend's deploy reads
+it and binds it as `CONSENT_RETENTION_DAYS` to the Frontend and the purge
+Worker; see [The Site's retention](../guides/consent.md#the-sites-retention).
 `wordpress.graphqlPath` is an optional exact enum: `/graphql` or `/wp/graphql`
 (the default when omitted). It selects production CMS readiness and the
 Frontend deploy's default public URL, not local DDEV's endpoint; see

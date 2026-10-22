@@ -5,7 +5,13 @@ import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ConsentDatabase, ConsentPurge, consentRateLimiter, consentRecords } from "./consent.ts";
+import {
+  ConsentDatabase,
+  ConsentPurge,
+  consentRateLimiter,
+  consentRecords,
+  consentRetention,
+} from "./consent.ts";
 
 // Hostnames live in gq.ops.json (domains), shared with the Ploi and deploy scripts.
 const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), "utf8")) as {
@@ -127,6 +133,7 @@ export const Website = Cloudflare.Website.Astro(
           ? {
               CONSENT_DB: yield* ConsentDatabase,
               CONSENT_RATE_LIMITER: consentRateLimiter(name),
+              ...consentRetention,
               ...(consentReadToken ? { CONSENT_READ_TOKEN: Redacted.make(consentReadToken) } : {}),
             }
           : {}),

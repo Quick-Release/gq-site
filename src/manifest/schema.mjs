@@ -25,6 +25,10 @@ export const CHECK_REQUIREMENTS = ["php", "ddev"];
 // names it. Cloudflare can't change it after the namespace is created.
 export const ARTIFACTS_JURISDICTIONS = ["eu", "us", "unrestricted"];
 export const DEFAULT_ARTIFACTS_JURISDICTION = "eu";
+// The longest a consent record is kept after its decision stops being in
+// force, and the consent Runtime's default (CN-R10; @getquick/content's
+// MAX_RETENTION_DAYS): 5 years.
+export const MAX_CONSENT_RETENTION_DAYS = 1826;
 
 // Where `$schema` points from a site root, through the site's own install.
 export const SCHEMA_URL = "./node_modules/@getquick/site/schema/gq.ops.schema.json";
@@ -200,6 +204,21 @@ export const manifestSchema = z
             "Where the Artifacts namespace keeps the Site's code: gq cloudflare ci creates it " +
               'there, and stops at an existing one elsewhere. Left out, "eu"; "unrestricted" ' +
               "opts out. Cloudflare can't change it after the namespace is created.",
+          ),
+      })
+      .optional(),
+    consent: z
+      .strictObject({
+        retentionDays: z
+          .int()
+          .min(1)
+          .max(MAX_CONSENT_RETENTION_DAYS)
+          .optional()
+          .describe(
+            "How many days the consent records are kept after a decision stops being in force " +
+              "(CN-R10): the Frontend's consent endpoints and the retention purge get it as " +
+              `CONSENT_RETENTION_DAYS. From 1 to ${MAX_CONSENT_RETENTION_DAYS}; left out, the ` +
+              `consent Runtime's default, ${MAX_CONSENT_RETENTION_DAYS} (5 years).`,
           ),
       })
       .optional(),
