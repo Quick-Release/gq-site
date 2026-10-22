@@ -54,9 +54,13 @@ Frontend, in `apps/frontend`:
   `wp-block-styles.test.ts`, `wp-container-layout.test.ts`, and in `src/`
   `entries.test.ts`, `events.test.ts`, `homepage.test.ts`,
   `language-updates.test.ts`, `languages.test.ts`, `reconciliation.test.ts`,
-  `retries.test.ts`, `settings.test.ts`, `withdrawals.test.ts`, with their
-  helper `src/test/sqlite-d1.ts`. The package's own tests prove that
-  behaviour now.
+  `retries.test.ts`, `settings.test.ts`, `withdrawals.test.ts`. The
+  package's own tests prove that behaviour now. Delete their helper
+  `src/test/sqlite-d1.ts` too, unless a test the Site keeps still uses it
+  (say, one that proves the Site's own pages through a refresh): then keep
+  it, and point it at the package's migrations
+  (`@getquick/content/migrations`) instead of the deleted directory. The
+  package doesn't export a D1 test store.
 
 CMS, in `apps/cms/web/app/mu-plugins`: `publication-events.php`,
 `settings-events.php` and `delivery-retries.php`. The plugin declares the
@@ -83,6 +87,13 @@ same PHP namespace, so WordPress stops if both load.
    configures the runtime from `gq.ops.json` (identity, languages, CMS
    origin), the build environment and the Worker's bindings. If sync still
    names a file as edited, that file is a copy step 2 missed.
+
+   A Site coming from a blueprint older than 0.19.1 also gets the consent
+   files from this sync: `infra/consent.ts`,
+   `apps/frontend/workers/consent-purge.ts` and the consent wiring in
+   `infra/frontend.run.ts`. Every Site has them, but they create resources
+   only once `@getquick/content` is installed, which this move does (see
+   section 5).
 
 3. Add the Site's identity to `apps/cms/config/application.php`, which is
    created once too, so sync doesn't touch it:
