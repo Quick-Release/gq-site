@@ -688,6 +688,55 @@ test("ploi events sets only the CMS's event secret in the Ploi site's .env, neve
   assert.equal(fetch.requests.filter(({ method }) => method === "PATCH").length, 1);
 });
 
+const CONSENT_TOKEN = "fixture-consent-read-token-0123456789abcdef";
+
+test("ploi events mirrors the consent read token to the CMS, with the Frontend URL it may be sent to", async () => {
+  const fixture = await site();
+  const { fetch, state } = fakeProviders();
+  const env = {
+    PLOI_API_TOKEN: "ploi-secret",
+    PUBLICATION_EVENT_SECRET: EVENT_KEY,
+    CONSENT_READ_TOKEN: CONSENT_TOKEN,
+  };
+
+  const result = await fixture.run(["ploi", "events"], { env, fetch });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(
+    state.env,
+    `${READY_ENV}PUBLICATION_EVENT_SECRET='${EVENT_KEY}'\n` +
+      `GETQUICK_CONSENT_READ_TOKEN='${CONSENT_TOKEN}'\n` +
+      "GETQUICK_FRONTEND_URL='https://www.example.test'\n",
+  );
+  assert.match(result.stdout, /~ GETQUICK_CONSENT_READ_TOKEN/u);
+  assert.ok(!result.stdout.includes(CONSENT_TOKEN));
+
+  const again = await fixture.run(["ploi", "events"], { env, fetch });
+  assert.match(
+    again.stdout,
+    /already has this Site's PUBLICATION_EVENT_SECRET, GETQUICK_CONSENT_READ_TOKEN/u,
+  );
+  assert.equal(fetch.requests.filter(({ method }) => method === "PATCH").length, 1);
+});
+
+test("ploi events refuses a consent read token too short for the Frontend", async () => {
+  const fixture = await site();
+  const { fetch, state } = fakeProviders();
+
+  const result = await fixture.run(["ploi", "events"], {
+    env: {
+      PLOI_API_TOKEN: "ploi-secret",
+      PUBLICATION_EVENT_SECRET: EVENT_KEY,
+      CONSENT_READ_TOKEN: "short",
+    },
+    fetch,
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /CONSENT_READ_TOKEN must be at least 32 characters/u);
+  assert.equal(state.env, READY_ENV);
+});
+
 test("ploi events adds the crontab that retries the CMS's undelivered events every minute, once", async () => {
   const fixture = await site();
   const { fetch, state } = fakeProviders();

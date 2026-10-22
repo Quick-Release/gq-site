@@ -162,6 +162,16 @@ read a visit makes: a published entry is stored and served, a confirmed
 missing one is a 404, and a failed read is a 503.
 _Avoid_: cache miss (it isn't a fallback for stored entries)
 
+**Consent database**:
+A Site's record of its visitors' consent decisions, one D1 database per
+stage, created in the EU and apart from the publication store: the only
+store a visitor's request writes, and only through the consent Runtime's
+record endpoint
+([ADR 0019](docs/adr/0019-record-visitors-consent-in-a-separate-eu-database.md)).
+It exists only for a Frontend with the consent Runtime, and its retention
+purge runs in a Worker of its own.
+_Avoid_: consent cache, cookie store
+
 ### Releases
 
 **Release**:

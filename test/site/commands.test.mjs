@@ -9,7 +9,12 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
 
-import { LANGUAGES_QUERY, SCHEMA_QUERY, schemaQuery } from "../../src/site/readiness.mjs";
+import {
+  consentQuery,
+  LANGUAGES_QUERY,
+  SCHEMA_QUERY,
+  schemaQuery,
+} from "../../src/site/readiness.mjs";
 import { createFixtureSite, recordingExec, recordingFetch } from "../support/fixture-site.mjs";
 
 const OPS = Object.freeze({
@@ -62,6 +67,18 @@ const CMS_ENV = [
   "S3_UPLOADS_BUCKET_URL='https://media.example.test'",
 ];
 
+// GQ Config's public Legal Contract for one language (LEGAL-1): its
+// controller, the roles with a public value, and the required ones without.
+function legalContract({ fallback = false, missingRequired = [], controller = {} } = {}) {
+  return {
+    controller: { name: "Fixture, Lda.", privacyEmail: "privacy@example.test", ...controller },
+    roles: ["privacy_policy", "cookie_policy"]
+      .filter((role) => !missingRequired.includes(role))
+      .map((role) => ({ role, isFallback: fallback })),
+    missingRequired,
+  };
+}
+
 /** A Site that is ready unless `overrides` say otherwise. */
 function world(overrides = {}) {
   const state = {
@@ -90,6 +107,12 @@ function world(overrides = {}) {
     },
     homeStatus: 200,
     homeHeaders: { "cache-control": "no-cache" },
+    homeHtml: "<main><h1>Welcome</h1></main>",
+    // GQ Config's GA4 toggle and Legal Contract, per language slug (null:
+    // a GQ Config without the Legal Contract).
+    consentQuery: consentQuery(),
+    analytics: { enabled: false, measurementId: null },
+    legal: { pt: legalContract(), en: legalContract() },
     cmsEnv: `${CMS_ENV.join("\n")}\n`,
     crontabs: [{ id: 1, ...CRONTAB }],
     bucket: new Map(),
@@ -118,6 +141,23 @@ function world(overrides = {}) {
           return state.cmsLanguages
             ? { data: { languages: state.cmsLanguages.map((slug) => ({ slug })) } }
             : { errors: [{ message: 'Cannot query field "languages" on type "RootQuery".' }] };
+        }
+        if (query === state.consentQuery) {
+          if (!state.legal) {
+            return {
+              errors: [{ message: 'Cannot query field "getquickLegal" on type "RootQuery".' }],
+            };
+          }
+          const [first = "pt", ...others] = state.cmsLanguages ?? ["pt"];
+          return {
+            data: {
+              googleAnalytics: state.analytics,
+              legal: state.legal[first],
+              ...Object.fromEntries(
+                others.map((slug) => [`legal_${slug.toUpperCase()}`, state.legal[slug]]),
+              ),
+            },
+          };
         }
         assert.equal(query, state.schemaQuery);
         return state.schemaErrors.length > 0
@@ -185,7 +225,7 @@ function world(overrides = {}) {
         });
       }
       if (method === "GET" && pathname === "/") {
-        return new Response("<main><h1>Welcome</h1></main>", {
+        return new Response(state.homeHtml, {
           status: state.homeStatus,
           headers: { "content-type": "text/html", ...state.homeHeaders },
         });
@@ -258,13 +298,16 @@ test("a provisioned, prepared and reconciled Site with independent media is read
     "reconciliation",
     "delivery-delays",
     "cms-events",
+    "legal-pages",
+    "consent-runtime",
+    "third-party-hosts",
     "upload",
   ]) {
     assert.equal(byName[name]?.status, "ok", `${name}: ${byName[name]?.detail}`);
   }
   assert.deepEqual(
     [...new Set(report.checks.map(({ area }) => area))],
-    ["cms", "frontend", "delivery", "media"],
+    ["cms", "frontend", "delivery", "consent", "media"],
   );
 });
 
@@ -275,7 +318,13 @@ test("the report never shows a secret, and the text report groups the checks", a
   const result = await fixture.run(["site", "check"], { env: SECRETS, fetch });
 
   assert.equal(result.code, 0, result.stdout);
-  for (const heading of ["CMS:", "Frontend:", "Event delivery:", "Independent media:"]) {
+  for (const heading of [
+    "CMS:",
+    "Frontend:",
+    "Event delivery:",
+    "Consent and legal pages:",
+    "Independent media:",
+  ]) {
     assert.ok(result.stdout.includes(`\n${heading}\n`), heading);
   }
   assert.match(result.stdout, /^Ready: published content is served from the publication store/mu);
@@ -303,7 +352,7 @@ for (const graphqlPath of [undefined, "/wp/graphql", "/graphql"]) {
     });
     assert.equal(checked.code, 0, checked.stderr);
     const queries = fetch.requests.filter(({ body }) => body?.includes('"query"'));
-    assert.equal(queries.length, 2);
+    assert.equal(queries.length, 3);
     assert.deepEqual(
       [...new Set(queries.map(({ url }) => url))],
       [`https://admin.example.test${path}`],
@@ -469,6 +518,105 @@ test("a CMS without the event key or the retry crontab is not ready", async () =
   assert.match(byName["cms-events"].action, /pnpm ploi:events/u);
 });
 
+// --- consent and legal pages (CONSENT-1, LEGAL-1; ADR 0019) ------------------
+
+const RUNTIME_HEAD = (services) =>
+  `<script type="application/json" id="gq-consent-config">${JSON.stringify({
+    configuration: { schemaVersion: 1, services, categories: [], measurementId: null },
+    language: "pt",
+  })}</script>`;
+
+test("GA4 switched on in GQ Config without the consent Runtime is not ready", async () => {
+  const { code, byName } = await check({
+    analytics: { enabled: true, measurementId: "G-FIXTURE1" },
+  });
+
+  assert.equal(code, 1);
+  assert.equal(byName["consent-runtime"].status, "not-ready");
+  assert.match(byName["consent-runtime"].detail, /GA4 \(GQ Config's analytics toggle\) is on/u);
+  assert.match(byName["consent-runtime"].detail, /no consent Runtime/u);
+  assert.match(byName["consent-runtime"].action, /docs\/guides\/consent\.md/u);
+});
+
+test("GA4 behind the consent Runtime is ready, and the Runtime's services are named", async () => {
+  const { code, byName } = await check({
+    analytics: { enabled: true, measurementId: "G-FIXTURE1" },
+    homeHtml: `<html><head>${RUNTIME_HEAD(["consent", "ga4", "youtube"])}</head><body></body></html>`,
+  });
+
+  assert.equal(code, 0, byName["consent-runtime"].detail);
+  assert.equal(byName["consent-runtime"].status, "ok");
+  assert.match(byName["consent-runtime"].detail, /consent, ga4, youtube/u);
+});
+
+test("a toggle without a measurement ID is off: no Runtime is needed", async () => {
+  const { byName } = await check({ analytics: { enabled: true, measurementId: null } });
+  assert.equal(byName["consent-runtime"].status, "ok");
+});
+
+test("an unknown third-party host on a public page is not ready; the Site's own hosts are", async () => {
+  const { code, byName } = await check({
+    homeHtml: [
+      '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">',
+      '<img src="https://media.example.test/uploads/hero.jpg" srcset="/a.jpg 1x, https://media.example.test/b.jpg 2x">',
+      '<a href="https://elsewhere.example/">a link loads nothing</a>',
+      '<div data-src="https://lazy.example/x.js"></div>',
+      '<iframe src="https://www.youtube.com/embed/abc"></iframe>',
+      '<div class="gq-consent-placeholder" data-gq-consent-blocked="tracker.example"></div>',
+      '<!-- <script src="https://commented.example/x.js"></script> -->',
+    ].join("\n"),
+  });
+
+  assert.equal(code, 1);
+  const hosts = byName["third-party-hosts"];
+  assert.equal(hosts.status, "not-ready");
+  assert.match(hosts.detail, /fonts\.googleapis\.com/u);
+  assert.match(hosts.detail, /www\.youtube\.com/u);
+  assert.match(hosts.detail, /tracker\.example \(blocked by the consent Runtime\)/u);
+  for (const host of [
+    "media.example.test",
+    "elsewhere.example",
+    "lazy.example",
+    "commented.example",
+  ]) {
+    assert.doesNotMatch(hosts.detail, new RegExp(host.replaceAll(".", "\\."), "u"), host);
+  }
+});
+
+test("a missing required legal role or an incomplete controller is not ready", async () => {
+  const missing = await check({
+    legal: { pt: legalContract({ missingRequired: ["cookie_policy"] }) },
+  });
+  assert.equal(missing.code, 1);
+  assert.equal(missing.byName["legal-pages"].status, "not-ready");
+  assert.match(missing.byName["legal-pages"].detail, /missing_required: cookie_policy/u);
+  assert.match(missing.byName["legal-pages"].action, /GETQUICK → Legal/u);
+
+  const controller = await check({
+    legal: { pt: legalContract({ controller: { privacyEmail: "" } }) },
+  });
+  assert.equal(controller.code, 1);
+  assert.match(controller.byName["legal-pages"].detail, /controller_incomplete/u);
+});
+
+test("GQ Config without the Legal Contract is not ready, and says which release adds it", async () => {
+  const { code, byName } = await check({ legal: null });
+
+  assert.equal(code, 1);
+  assert.equal(byName["legal-pages"].status, "not-ready");
+  assert.match(byName["legal-pages"].detail, /no Legal Contract/u);
+  assert.match(byName["legal-pages"].action, /getquick\/gq-config 0\.4\.3/u);
+});
+
+test("a CMS whose .env lacks Sigillo's consent read token is not ready", async () => {
+  const token = "fixture-consent-read-token-0123456789abcdef";
+  const { code, byName } = await check({}, { env: { ...SECRETS, CONSENT_READ_TOKEN: token } });
+
+  assert.equal(code, 1);
+  assert.match(byName["cms-events"].detail, /missing or different GETQUICK_CONSENT_READ_TOKEN/u);
+  assert.ok(!JSON.stringify(byName).includes(token));
+});
+
 test("independent media isn't taken on trust: without the upload probe the Site is not ready", async () => {
   const env = Object.fromEntries(
     Object.entries(SECRETS).filter(([name]) => !name.startsWith("CMS_CHECK_")),
@@ -512,6 +660,7 @@ const checkBilingual = (overrides = {}) =>
     {
       cmsLanguages: ["pt", "en"],
       schemaQuery: schemaQuery(LANGUAGES),
+      consentQuery: consentQuery(LANGUAGES),
       store: { ...PREPARED, languages: { en: { home: "published", chrome: "published" } } },
       ...overrides,
     },
@@ -551,6 +700,20 @@ test("a bilingual Site is ready when every language's front page, chrome and hom
       ({ body }) => body?.includes("GqSiteCheck") && body.includes("language(code: EN)"),
     ),
   );
+});
+
+test("an untranslated legal page only warns, naming its role and language", async () => {
+  const { code, byName, fetch } = await checkBilingual({
+    legal: { pt: legalContract(), en: legalContract({ fallback: true }) },
+  });
+
+  assert.equal(code, 0, byName["legal-pages"].detail);
+  assert.equal(byName["legal-pages"].status, "warn");
+  assert.match(
+    byName["legal-pages"].detail,
+    /missing_translation: privacy_policy \(en\), cookie_policy \(en\)/u,
+  );
+  assert.ok(fetch.requests.some(({ body }) => body?.includes('getquickLegal(language: \\"en\\")')));
 });
 
 test("a missing English home fails readiness and names it", async () => {

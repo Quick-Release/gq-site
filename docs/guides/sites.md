@@ -278,12 +278,13 @@ A site shares four more kinds of file with the blueprint:
   plugins, child theme or pages. The env templates hold public configuration
   and placeholders only (`gq ploi provision` renders the server's `.env` from
   `.env.production.example`).
-  The CMS skeleton requires `getquick/gq-config ^0.4.0` and
+  The CMS skeleton requires `getquick/gq-config 0.4.3` (its Legal Contract
+  and consent read support; [consent guide](consent.md)) and
   `getquick/getquick-theme ^0.5.1`. The config package is a must-use plugin,
   not an entry in `wordpress.plugins`; its load check uses
   `GETQUICK_CONFIG_VERSION`. A CMS app is site-owned, so `gq sync` doesn't
   change its Composer requirements: a site whose CMS requires
-  `getquick/getquick-config` replaces it with `getquick/gq-config ^0.4.0`,
+  `getquick/getquick-config` replaces it with `getquick/gq-config ^0.4.3`,
   raises the theme requirement to `^0.5.1`, and updates and commits
   `composer.lock` alongside `composer.json`.
   `deploy/ploi/admin.d/10-theme.sh`, which activates `getquick-theme`,

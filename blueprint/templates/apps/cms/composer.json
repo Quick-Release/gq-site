@@ -48,7 +48,7 @@
   "require": {
     "php": ">=8.4.1",
     "composer/installers": "^2.0",
-    "getquick/gq-config": "0.4.0",
+    "getquick/gq-config": "0.4.3",
     "getquick/getquick-theme": "0.5.1",
     "getquick/gq-design": "*@stable",
     "getquick/gq-support": "0.1.4",

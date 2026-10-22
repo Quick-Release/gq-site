@@ -6,12 +6,12 @@ test recipes belong in [`test/support/`](../support/), not here.
 
 ## Provenance and use
 
-| Fixture                                                    | Origin                                                                                                       | Used by                                                                                                                                             |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `content-site/`                                            | The expected sixteen CI Worker, Frontend deploy and release-step files for `manifests/content-site.v1.json`. | [`sync/deploy-files.test.mjs`](../sync/deploy-files.test.mjs) compares rendered files and lock hashes with this baseline.                           |
-| `manifests/content-site.v0.json`, `manifests/ekis.v0.json` | Unversioned `gq.ops.json` inputs: a fictional content site's and Ekis's.                                     | [`manifest/schema-and-migrations.test.mjs`](../manifest/schema-and-migrations.test.mjs) checks migration, dropped legacy keys and command refusals. |
-| `manifests/content-site.shop-devtools.config.mjs`          | The content site's legacy release configuration, in the `@getquick/site` 0.8.0 format.                       | The same migration suite checks folding site additions into the manifest while preserving release, verify and doctor behavior.                      |
-| `manifests/content-site.v1.json`                           | The populated schema-v1 generation input, including plugins and site-specific release additions.             | The deploy-file suite renders the content site's wiring from its manifest values.                                                                   |
+| Fixture                                                    | Origin                                                                                                                 | Used by                                                                                                                                             |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content-site/`                                            | The expected eighteen CI Worker, Frontend deploy, consent and release-step files for `manifests/content-site.v1.json`. | [`sync/deploy-files.test.mjs`](../sync/deploy-files.test.mjs) compares rendered files and lock hashes with this baseline.                           |
+| `manifests/content-site.v0.json`, `manifests/ekis.v0.json` | Unversioned `gq.ops.json` inputs: a fictional content site's and Ekis's.                                               | [`manifest/schema-and-migrations.test.mjs`](../manifest/schema-and-migrations.test.mjs) checks migration, dropped legacy keys and command refusals. |
+| `manifests/content-site.shop-devtools.config.mjs`          | The content site's legacy release configuration, in the `@getquick/site` 0.8.0 format.                                 | The same migration suite checks folding site additions into the manifest while preserving release, verify and doctor behavior.                      |
+| `manifests/content-site.v1.json`                           | The populated schema-v1 generation input, including plugins and site-specific release additions.                       | The deploy-file suite renders the content site's wiring from its manifest values.                                                                   |
 
 The `v0` and `v1` suffixes identify manifest schema versions, not package
 versions. The content site (`larkspur`) is fictional; the package tests need no
@@ -29,6 +29,15 @@ The production GraphQL path updates the content site's
 `/wp/graphql`, and a public production URL binding reaches Astro's build child on
 Alchemy beta.79. No secret binding changes. `sync/graphql-path.test.mjs`
 independently exercises both paths, explicit overrides and local isolation.
+
+The consent records ([ADR 0019](../../docs/adr/0019-record-visitors-consent-in-a-separate-eu-database.md))
+add two baselines, `infra/consent.ts` and `apps/frontend/workers/consent-purge.ts`,
+and update `infra/frontend.run.ts`, `infra/scripts/deploy-frontend.mjs`,
+`infra/ci/cloudflare.ci.ts`, `infra/ci/env.ts` and `scripts/ci-release.mjs`:
+a Frontend with the consent Runtime binds its own `eu` consent database, its
+rate limiter and `CONSENT_READ_TOKEN`, and a purge Worker runs the Runtime's
+purge; CI forwards the token like the Frontend's other secrets. Written by
+hand and reviewed against the templates, not regenerated.
 
 The CI image's Composer fix updates the content site's `infra/ci/Dockerfile`
 baseline alongside its source: GNU `patch` for the CMS dependency patch, and

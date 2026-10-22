@@ -12,6 +12,7 @@ import { createFixtureSite, temporaryDirectory } from "../support/fixture-site.m
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
 const DEPLOY_PATHS = [
+  "apps/frontend/workers/consent-purge.ts",
   "infra/ci/Dockerfile",
   "infra/ci/cloudflare.ci.ts",
   "infra/ci/env.ts",
@@ -22,6 +23,7 @@ const DEPLOY_PATHS = [
   "infra/ci/src/index.ts",
   "infra/ci/tsconfig.json",
   "infra/ci/wrangler.jsonc",
+  "infra/consent.ts",
   "infra/frontend.run.ts",
   "infra/package.json",
   "infra/scripts/deploy-frontend.mjs",
@@ -119,6 +121,43 @@ test("every site value in the deploy files comes from gq.ops.json", async () => 
       assert.doesNotMatch(content, pattern, path);
     }
   }
+});
+
+test("the Frontend deploy provisions the consent records in the eu jurisdiction (ADR 0019)", async () => {
+  const fixture = await createFixtureSite({ ops: ACME });
+
+  const result = await fixture.run(["sync"]);
+
+  assert.equal(result.code, 0, result.stderr);
+  const consent = await readSite(fixture.root, "infra/consent.ts");
+  // One database per Site and stage, created in eu, kept in production.
+  assert.match(consent, /^ {2}const database = "acme-shop-fe-consent";$/mu);
+  assert.match(consent, /^ {2}return yield\* Cloudflare\.D1\.Database\("AcmeShopConsent", \{$/mu);
+  assert.match(consent, /^ {4}name: production \? database : `\$\{database\}-\$\{stage\}`,$/mu);
+  assert.match(consent, /^ {4}jurisdiction: CONSENT_JURISDICTION,$/mu);
+  assert.match(consent, /^export const CONSENT_JURISDICTION = "eu";$/mu);
+  assert.match(consent, /\.pipe\(Alchemy\.RemovalPolicy\.retain\(production\)\)/u);
+  // Its migrations are the Frontend's installed consent Runtime's.
+  assert.match(consent, /"\.\/consent\/migrations"/u);
+  // The retention purge: its own Worker on a daily cron, with no public URL.
+  assert.match(consent, /^ {4}const worker = "acme-shop-fe-consent-purge";$/mu);
+  assert.match(consent, /^ {6}crons: \[CONSENT_PURGE_SCHEDULE\],$/mu);
+  assert.match(consent, /^ {6}workersDev: false,$/mu);
+  assert.match(
+    consent,
+    /^ {6}main: fileURLToPath\(new URL\("workers\/consent-purge\.ts", frontendApp\)\),$/mu,
+  );
+
+  const frontend = await readSite(fixture.root, "infra/frontend.run.ts");
+  assert.match(frontend, /^ {14}CONSENT_DB: yield\* ConsentDatabase,$/mu);
+  assert.match(frontend, /^ {14}CONSENT_RATE_LIMITER: consentRateLimiter\(name\),$/mu);
+  assert.match(frontend, /CONSENT_READ_TOKEN: Redacted\.make\(consentReadToken\)/u);
+  assert.match(frontend, /^ {4}if \(consentRecords\) yield\* ConsentPurge;$/mu);
+
+  const purge = await readSite(fixture.root, "apps/frontend/workers/consent-purge.ts");
+  assert.match(purge, /from "@getquick\/content\/consent\/server";$/mu);
+  assert.match(purge, /^ {2}async scheduled\(/mu);
+  assert.match(purge, /\.purge\(\)/u);
 });
 
 test("a gq new site's deploy files hold placeholders until gq.ops.json has the values", async () => {

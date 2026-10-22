@@ -25,9 +25,9 @@ pnpm ploi:media           # the CMS's .env points S3 Uploads at it
 pnpm cf:ci                # Artifacts (in the EU), CI backups, the CI deploy token
 pnpm github:setup         # the push webhook (an Artifacts-only Site: nothing to do)
 pnpm git:artifacts setup  # an Artifacts-only Site: origin is Artifacts
-pnpm frontend:secrets     # FRONTEND_REFRESH_TOKEN, PUBLICATION_EVENT_SECRET
-pnpm ci:deploy            # the CI Worker, with both, so releases bind them
-pnpm ploi:events          # the CMS's event key and its every-minute crontab
+pnpm frontend:secrets     # FRONTEND_REFRESH_TOKEN, PUBLICATION_EVENT_SECRET, CONSENT_READ_TOKEN
+pnpm ci:deploy            # the CI Worker, with them, so releases bind them
+pnpm ploi:events          # the CMS's event key, consent read token and every-minute crontab
 pnpm push minor           # first release; install WordPress, then:
 pnpm push fix             # the deploy activates the plugins and theme
 pnpm frontend:refresh     # prepare the Site: until then its pages are a 503
@@ -49,10 +49,15 @@ for each that fails. What a Site that isn't ready looks like:
 | `publication-store` | the store can't be read, holds no front page or chrome (never prepared) in a language, or a format this Worker doesn't serve | 503 for every page (404 for a language never prepared)   |
 | `homepage`          | the homepage (and each language's, `homepage-en` for `/en/`) isn't a 200, or a cache in front could outlive a withdrawal     | as answered                                              |
 | `reconciliation`    | the Frontend hasn't matched WordPress in ten minutes, or never: the CMS's cron isn't running or its events don't reach it    | the last good content; missed changes wait               |
-| `cms-events`        | Ploi's `.env` lacks this Site's key, or the server lacks the every-minute crontab                                            | publications and withdrawals aren't delivered or retried |
+| `cms-events`        | Ploi's `.env` lacks this Site's key (or Sigillo's consent read token), or the server lacks the every-minute crontab          | publications and withdrawals aren't delivered or retried |
+| `legal-pages`       | GQ Config's Legal Contract lacks a required legal page or the data controller, or GQ Config predates it (0.4.3)              | pages render; their legal links are incomplete           |
+| `consent-runtime`   | GQ Config's GA4 toggle is on (with an ID) and a homepage has no consent Runtime                                              | nothing loads GA4 without the Runtime                    |
+| `third-party-hosts` | a homepage loads from a host outside the Site, or the consent Runtime blocked an unknown host                                | that host is contacted before any consent                |
 | media checks        | `gq media check --upload` isn't ready (see [Independent media](#independent-media))                                          | uploads go down with the CMS                             |
 
-Warnings don't block readiness: events waiting on a failed refresh
+The consent and legal checks are [the consent guide](consent.md)'s. Warnings
+don't block readiness: a legal page without a translation
+(`missing_translation`), events waiting on a failed refresh
 (`delivery-delays`, which `wp gq-events delays` details), a front page
 WordPress confirms isn't set (on a monolingual Site: a bilingual Site needs
 every language's), or no shared design presets stored yet.

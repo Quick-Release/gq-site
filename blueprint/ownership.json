@@ -50,7 +50,12 @@
     { "path": "infra/ci/src/index.ts", "template": "templates/infra/ci/src/index.ts" },
     { "path": "infra/ci/tsconfig.json", "template": "templates/infra/ci/tsconfig.json" },
     { "path": "infra/ci/wrangler.jsonc", "template": "templates/infra/ci/wrangler.jsonc" },
+    { "path": "infra/consent.ts", "template": "templates/infra/consent.ts" },
     { "path": "infra/frontend.run.ts", "template": "templates/infra/frontend.run.ts" },
+    {
+      "path": "apps/frontend/workers/consent-purge.ts",
+      "template": "templates/apps/frontend/workers/consent-purge.ts"
+    },
     { "path": "infra/package.json", "template": "templates/infra/package.json" },
     {
       "path": "infra/scripts/deploy-frontend.mjs",

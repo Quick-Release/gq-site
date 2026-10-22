@@ -314,9 +314,14 @@ test("gq doctor rejects assignments from every Sigillo environment across apps w
     result.stdout + result.stderr,
     /must-stay-private|another-private-value|node_modules.*sets/u,
   );
+  // Listing reads names only; the one value read is the consent check's
+  // Cloudflare token, never a listed assignment's.
   const calls = actions(exec).filter((line) => line.startsWith("sigillo secrets"));
-  assert.equal(calls.length, 3);
-  assert.ok(calls.every((line) => !line.includes(" get ")));
+  assert.equal(calls.filter((line) => !line.includes(" get ")).length, 3);
+  assert.deepEqual(
+    calls.filter((line) => line.includes(" get ")).map((line) => line.split(" ")[3]),
+    ["CLOUDFLARE_API_TOKEN"],
+  );
 });
 
 test("gq doctor allows only the blueprint's exact CMS local stand-ins, even when examples are edited", async () => {
@@ -633,7 +638,7 @@ test("gq doctor confirms the namespace's jurisdiction with ARTIFACTS_API_TOKEN f
   assert.equal(result.code, 0, result.stdout);
   assert.match(result.stdout, /✓ Artifacts namespace fixture-ns is in us, as gq\.ops\.json says/u);
   assert.equal(fetch.requests[0].headers.Authorization, "Bearer env-artifacts");
-  assert.ok(!actions(exec).some((line) => line.startsWith("sigillo secrets get")));
+  assert.ok(!actions(exec).some((line) => line.startsWith("sigillo secrets get ARTIFACTS")));
 });
 
 test("gq doctor only warns when it can't check the namespace's jurisdiction", async () => {
@@ -667,6 +672,96 @@ test("gq doctor skips the jurisdiction check without the Artifacts token", async
   assert.match(
     result.stdout,
     /· Artifacts namespace fixture-ns's jurisdiction not checked: no ARTIFACTS_API_TOKEN/u,
+  );
+});
+
+// The D1 listing for the consent databases (ADR 0019), holding `databases`;
+// the Artifacts listing answers as artifactsApi's does.
+function consentApi({ databases = [], status = 200, namespaces = [] } = {}) {
+  return recordingFetch(({ method, url }) => {
+    assert.equal(method, "GET");
+    const { pathname, searchParams } = new URL(url);
+    if (pathname.endsWith("/artifacts/namespaces")) return { success: true, result: namespaces };
+    assert.equal(pathname, "/client/v4/accounts/account-1/d1/database");
+    assert.equal(searchParams.get("name"), "fixture-fe-consent");
+    if (status !== 200) return json({ success: false, errors: [{ message: "denied" }] }, status);
+    const page = Number(searchParams.get("page") ?? 1);
+    return {
+      success: true,
+      result: page === 1 ? databases : [],
+      result_info: { page, per_page: 50, total_pages: 1 },
+    };
+  });
+}
+
+const CONSENT_TOKEN =
+  "sigillo secrets get CLOUDFLARE_API_TOKEN --api-url https://secrets.example.test " +
+  "--project PROJECT1 --env stage --raw --force";
+
+test("gq doctor fails when a consent database isn't in the eu jurisdiction", async () => {
+  const fixture = await healthySite({}, STAGING_OPS);
+  const exec = machine({ stdout: { [CONSENT_TOKEN]: "staging-deploy\n" } });
+  const fetch = consentApi({
+    databases: [
+      { uuid: "a", name: "fixture-fe-consent", jurisdiction: "eu" },
+      { uuid: "b", name: "fixture-fe-consent-preview", jurisdiction: null },
+      // Another Site's, which the name filter can match too.
+      { uuid: "c", name: "fixture-fe-consent2", jurisdiction: null },
+    ],
+  });
+
+  const result = await fixture.run(["doctor"], { exec, fetch });
+
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(
+    result.stdout,
+    /✗ consent database fixture-fe-consent-preview is in the default jurisdiction, not eu: Cloudflare can't move it/u,
+  );
+  assert.match(result.stdout, /✓ consent database fixture-fe-consent is in the eu jurisdiction/u);
+  assert.doesNotMatch(result.stdout, /fixture-fe-consent2/u);
+  const d1 = fetch.requests.find(({ url }) => url.includes("/d1/"));
+  assert.equal(d1.headers.Authorization, "Bearer staging-deploy");
+  assert.ok(!result.stdout.includes("staging-deploy"));
+});
+
+test("gq doctor passes consent databases in eu, with CLOUDFLARE_API_TOKEN from the environment", async () => {
+  const fixture = await healthySite();
+  const fetch = consentApi({
+    databases: [{ uuid: "a", name: "fixture-fe-consent", jurisdiction: "eu" }],
+  });
+
+  const result = await fixture.run(["doctor"], {
+    env: { CLOUDFLARE_API_TOKEN: "env-deploy" },
+    exec: machine(),
+    fetch,
+  });
+
+  assert.equal(result.code, 0, result.stdout);
+  assert.match(result.stdout, /✓ consent database fixture-fe-consent is in the eu jurisdiction/u);
+});
+
+test("gq doctor reports a Site without a consent database, and skips without a token", async () => {
+  const fixture = await healthySite();
+  const none = await fixture.run(["doctor"], {
+    env: { CLOUDFLARE_API_TOKEN: "env-deploy" },
+    exec: machine(),
+    fetch: consentApi(),
+  });
+  assert.equal(none.code, 0, none.stdout);
+  assert.match(none.stdout, /· no consent database yet: a Frontend deploy creates it in eu/u);
+
+  const denied = await fixture.run(["doctor"], {
+    env: { CLOUDFLARE_API_TOKEN: "env-deploy" },
+    exec: machine(),
+    fetch: consentApi({ status: 403 }),
+  });
+  assert.equal(denied.code, 0, denied.stdout);
+  assert.match(denied.stdout, /⚠ could not list the consent databases: .*denied/u);
+
+  const skipped = await fixture.run(["doctor"], { exec: machine() });
+  assert.match(
+    skipped.stdout,
+    /· consent database jurisdiction not checked: no CLOUDFLARE_API_TOKEN/u,
   );
 });
 

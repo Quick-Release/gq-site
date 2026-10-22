@@ -5,6 +5,40 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+### Added
+
+- **Consent records, provisioned in the EU** ([ADR 0019](docs/adr/0019-record-visitors-consent-in-a-separate-eu-database.md);
+  gq-platform ADR 0008, Proposed). A Frontend with the consent Runtime
+  (`@getquick/content` exporting `./consent/migrations`) deploys with its own
+  consent database, `<project>-fe-consent[-<stage>]`, created with
+  `jurisdiction: "eu"` and migrated from the Runtime, bound as `CONSENT_DB`
+  beside `CONSENT_RATE_LIMITER` and the `CONSENT_READ_TOKEN` secret, and a
+  daily purge Worker, `<project>-fe-consent-purge[-<stage>]`, that calls the
+  Runtime's `purge()`. New managed files: `infra/consent.ts` and
+  `apps/frontend/workers/consent-purge.ts`. A Frontend without the Runtime
+  deploys as before.
+- **`gq frontend secrets`** generates `CONSENT_READ_TOKEN`; CI releases and
+  `pnpm deploy:frontend` bind it; **`gq ploi events`** writes it to the CMS's
+  `.env` as `GETQUICK_CONSENT_READ_TOKEN`, with `GETQUICK_FRONTEND_URL`.
+- **`gq doctor`** fails on a consent database outside `eu`.
+- **`gq site check`** gains a _Consent and legal pages_ part: `legal-pages`
+  (GQ Config's Legal Contract: a missing required page or an incomplete
+  controller isn't ready; an untranslated page warns), `consent-runtime`
+  (GA4 on in GQ Config without the consent Runtime isn't ready) and
+  `third-party-hosts` (a homepage loading from a host outside the Site, or an
+  embed the Runtime blocked, isn't ready). `cms-events` also compares the
+  CMS's consent read token with Sigillo's.
+
+### Changed
+
+- The CMS skeleton requires `getquick/gq-config` 0.4.3 (the Legal Contract
+  and Consent tab).
+
+Existing Sites: upgrade the exact pin and run `gq sync`; nothing changes for
+a Frontend without the consent Runtime. A Site whose GQ Config predates
+0.4.3, has unassigned legal pages or loads third-party hosts is no longer
+ready under `gq site check`. Adoption: [consent guide](docs/guides/consent.md).
+
 ## 0.19.0 — 2026-10-21
 
 ### Added
