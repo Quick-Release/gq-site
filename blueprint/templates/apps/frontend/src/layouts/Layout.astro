@@ -1,5 +1,6 @@
 ---
 import type { Alternate, SiteChrome, SiteLanguage } from "@getquick/content";
+import { consentPage } from "@getquick/content/consent/astro";
 import { content } from "../lib/content";
 import { copyFor } from "../lib/copy";
 import "../styles/global.css";
@@ -50,6 +51,20 @@ const hreflang =
           : [];
       });
 const xDefault = hreflang.find((alternate) => alternate.language.isDefault);
+// The consent Runtime's UI (CONSENT-1, LEGAL-1; docs/guides/consent.md), in
+// the page's language: its configuration and styles in the head, the banner
+// and preferences dialog first in the body, the legal links and the "Cookie
+// settings" control in the footer. The banner is rendered open only without a
+// decision in force. Restyle it through the --gq-consent-* custom properties.
+const configuration = runtime.consentConfiguration(chrome);
+const consent = configuration
+  ? consentPage({
+      configuration,
+      language: language.lang,
+      legal: chrome?.legal,
+      cookie: Astro.request.headers.get("cookie"),
+    })
+  : null;
 ---
 
 <!doctype html>
@@ -63,8 +78,10 @@ const xDefault = hreflang.find((alternate) => alternate.language.isDefault);
     {hreflang.map((alternate) => <link rel="alternate" hreflang={alternate.language.lang} href={alternate.href} />)}
     {xDefault && <link rel="alternate" hreflang="x-default" href={xDefault.href} />}
     <title>{title === "{{Project}}" ? title : `${title} — {{Project}}`}</title>
+    {consent && <Fragment set:html={consent.head} />}
   </head>
   <body>
+    {consent && <Fragment set:html={consent.body} />}
     <header class="site-header">
       <a href={language.home} class="site-header__home">
         {siteLogo ? <img src={siteLogo.sourceUrl} alt={siteLogo.altText || "{{Project}}"} /> : "{{Project}}"}
@@ -95,5 +112,16 @@ const xDefault = hreflang.find((alternate) => alternate.language.isDefault);
       )}
     </header>
     <slot />
+    {consent && (
+      <footer class="site-footer">
+        <Fragment set:html={consent.footer} />
+      </footer>
+    )}
+    <script>
+      // Applies the visitor's decisions, loads each catalog service only after
+      // its grant, and records decisions at /gq/consent.
+      import { startConsent } from "@getquick/content/consent/client";
+      startConsent();
+    </script>
   </body>
 </html>

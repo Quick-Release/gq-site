@@ -1,14 +1,16 @@
 // The Site's content runtime: @getquick/content, configured for this Site from
 // its gq.ops.json, its build environment and its Worker's bindings. The
-// runtime (WPGraphQL reads, the publication store, events and refresh) is the
-// package's; this file only says which Site it serves. The pages and the
-// /gq/events and /gq/refresh routes (managed by gq sync) use it.
+// runtime (WPGraphQL reads, the publication store, events and refresh, and
+// the consent Runtime's embed rewriting) is the package's; this file only says
+// which Site it serves. The pages, the layout and the /gq/events and
+// /gq/refresh routes (managed by gq sync) use it.
 import { createContentRuntime, type ContentBindings } from "@getquick/content/server";
 import ops from "../../../../gq.ops.json";
 
 const manifest = ops as {
   project: string;
-  domains?: { admin: string };
+  domains?: { admin: string; frontend: string };
+  media?: { domain: string };
   wordpress?: { locale?: string; languages?: Array<{ locale: string; slug: string }> };
 };
 
@@ -49,6 +51,21 @@ export function content() {
     development: import.meta.env.DEV,
     isServer: () => import.meta.env.SSR,
     bindings,
+    // CONSENT-1 (docs/guides/consent.md): every published body's third-party
+    // embeds become consent placeholders at delivery, and each language's
+    // chrome carries GQ Config's Legal Contract and GA4 toggle. Declare the
+    // catalog services the Site's pages embed (e.g. "youtube", "vimeo",
+    // "google_maps"); an embed of a service not declared stays blocked. With
+    // no optional service there is no banner, only the "Cookie settings"
+    // control. The Site's own Frontend and media hosts are first party, as
+    // the CMS's is.
+    consent: {
+      services: [],
+      cmsSettings: true,
+      firstPartyHosts: [manifest.domains?.frontend, manifest.media?.domain].filter(
+        (host): host is string => Boolean(host),
+      ),
+    },
   });
 }
 

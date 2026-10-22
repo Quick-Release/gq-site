@@ -1,6 +1,6 @@
 {
   "name": "@getquick/site",
-  "version": "0.20.0",
+  "version": "0.20.1",
   "description": "Shared tooling for GETQUICK sites: the gq CLI",
   "license": "MIT",
   "type": "module",
@@ -41,6 +41,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "playwright": "1.64.1",
     "sigillo": "0.13.0",
     "vite-plus": "1.0.0"
   },

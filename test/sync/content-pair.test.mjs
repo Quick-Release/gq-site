@@ -16,6 +16,12 @@ import { CONTENT_PAIR } from "../../src/sync/content-pair.mjs";
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
 const ROUTES = ["apps/frontend/src/pages/gq/events.ts", "apps/frontend/src/pages/gq/refresh.ts"];
+// The consent Runtime's endpoints (CONSENT-1; ADR 0019): records and their
+// authenticated reads, handed to @getquick/content/consent/server.
+const CONSENT_ROUTES = [
+  "apps/frontend/src/pages/gq/consent.ts",
+  "apps/frontend/src/pages/gq/consent/[...rest].ts",
+];
 const COMPOSER = "apps/cms/composer.json";
 const FRONTEND_PACKAGE = "apps/frontend/package.json";
 
@@ -59,11 +65,27 @@ test("gq new wires a Site to the pinned pair: keys, routes, migrations and ident
   }
   assert.match(await readSite(root, ROUTES[0]), /\.handleEvent\(request/u);
   assert.match(await readSite(root, ROUTES[1]), /\.handleRefresh\(request/u);
+  // So are the consent routes: the package's server, with the Site's
+  // manifest identity, the same one the content runtime and the purge use.
+  for (const route of CONSENT_ROUTES) {
+    assert.equal(lock.files[route], hash(await readSite(root, route)), route);
+  }
+  const consentRoute = await readSite(root, CONSENT_ROUTES[0]);
+  assert.match(consentRoute, /createConsentServer\(\{\s*siteId: ops\.project,/u);
+  assert.match(consentRoute, /from "@getquick\/content\/consent\/server"/u);
+  assert.match(consentRoute, /\.handle\(request\)\) \?\? new Response\(null, \{ status: 404 \}\)/u);
+  assert.match(await readSite(root, CONSENT_ROUTES[1]), /from "\.\.\/consent"/u);
 
   // The Site configures the package rather than copying its runtime.
   const content = await readSite(root, "apps/frontend/src/lib/content.ts");
   assert.match(content, /from "@getquick\/content\/server"/u);
   assert.match(content, /createContentRuntime\(/u);
+  // With the consent Runtime: embeds rewritten at delivery, GQ Config's Legal
+  // Contract and GA4 read into the chrome, and the layout composing its UI.
+  assert.match(content, /consent: \{\s*services: \[\],\s*cmsSettings: true,/u);
+  const layout = await readSite(root, "apps/frontend/src/layouts/Layout.astro");
+  assert.match(layout, /from "@getquick\/content\/consent\/astro"/u);
+  assert.match(layout, /startConsent\(\)/u);
   const files = Object.keys(await snapshot(root));
   for (const copied of [
     "apps/frontend/migrations/0001_publications.sql",
@@ -242,4 +264,47 @@ test("an older Site's existing Frontend gains lib/content.ts only through --recr
   const sync = await run(["sync"]);
   assert.equal(sync.code, 0, sync.stdout + sync.stderr);
   assert.ok(!Object.keys(await snapshot(root)).includes("apps/frontend/src/lib/content.ts"));
+});
+
+test("a Site from before the consent routes gains them through gq sync, its layout untouched", async () => {
+  const { root, run } = await newSite();
+  // As a Site gq 0.20.0 generated: no consent routes, and its own layout and
+  // lib/content.ts without the consent Runtime (create-once, so the Site's).
+  const lock = await readJson(root, "gq.lock.json");
+  for (const route of CONSENT_ROUTES) {
+    await rm(join(root, route));
+    delete lock.files[route];
+  }
+  await writeFile(join(root, "gq.lock.json"), `${JSON.stringify(lock, null, 2)}\n`);
+  const own = {
+    "apps/frontend/src/layouts/Layout.astro": "---\n// The Site's own layout.\n---\n<slot />\n",
+    "apps/frontend/src/lib/content.ts": "// The Site's own runtime options.\n",
+  };
+  for (const [path, text] of Object.entries(own)) await writeFile(join(root, path), text);
+
+  const sync = await run(["sync"]);
+  assert.equal(sync.code, 0, sync.stdout + sync.stderr);
+  const synced = await readJson(root, "gq.lock.json");
+  for (const route of CONSENT_ROUTES) {
+    assert.equal(synced.files[route], hash(await readSite(root, route)), route);
+  }
+  for (const [path, text] of Object.entries(own)) {
+    assert.equal(await readSite(root, path), text, path);
+  }
+  const check = await run(["sync", "--check"]);
+  assert.equal(check.code, 0, check.stdout + check.stderr);
+});
+
+test("a consent route a Site composed by hand is its own: gq sync names it and writes nothing", async () => {
+  const { root, run } = await newSite();
+  const lock = await readJson(root, "gq.lock.json");
+  for (const route of CONSENT_ROUTES) delete lock.files[route];
+  await writeFile(join(root, "gq.lock.json"), `${JSON.stringify(lock, null, 2)}\n`);
+  await writeFile(join(root, CONSENT_ROUTES[0]), "// The Site's hand-composed route.\n");
+  const before = await snapshot(root);
+
+  const sync = await run(["sync"]);
+  assert.equal(sync.code, 1);
+  assert.match(sync.stderr, /apps\/frontend\/src\/pages\/gq\/consent\.ts/u);
+  assert.deepEqual(await snapshot(root), before);
 });

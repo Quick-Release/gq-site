@@ -42,6 +42,8 @@ const MANAGED_PATHS = [
   ".vite-hooks/pre-push",
   "apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch",
   "apps/cms/scripts/patch-dependencies.php",
+  "apps/frontend/src/pages/gq/consent.ts",
+  "apps/frontend/src/pages/gq/consent/[...rest].ts",
   "apps/frontend/src/pages/gq/events.ts",
   "apps/frontend/src/pages/gq/refresh.ts",
   "apps/frontend/workers/consent-purge.ts",

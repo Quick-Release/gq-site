@@ -42,8 +42,9 @@ Frontend, in `apps/frontend`:
   otherwise from the installed `@getquick/content`; deleting the directory is
   what switches the deploy to the package
   (`infra/frontend.run.ts`, `infra/scripts/deploy-frontend.mjs`).
-- `src/pages/gq/events.ts` and `src/pages/gq/refresh.ts`. On a Site on the
-  pair they are managed files. gq never recorded the copies in `gq.lock.json`,
+- `src/pages/gq/events.ts` and `src/pages/gq/refresh.ts`, and
+  `src/pages/gq/consent.ts` and `src/pages/gq/consent/[...rest].ts` if the
+  Site composed consent by hand. On a Site on the pair they are managed files. gq never recorded the copies in `gq.lock.json`,
   so while they exist `gq sync` treats them as local edits, names them and
   writes nothing.
 - `src/lib/delivery.ts`, `events.ts`, `publications.ts`, `reconciliation.ts`,

@@ -76,3 +76,21 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: scripts/smoke/content-pair.sh
+
+  # A generated site's consent UI, routes and records (CONSENT-1, LEGAL-1):
+  # its Frontend served in workerd with a local D1 publication store and
+  # Consent database passes gq-content's shared acceptance suite in Chromium, records
+  # decisions, and is ready by gq site check's consent part with GA4 on;
+  # monolingual and bilingual. No account.
+  consent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps --only-shell chromium
+      - run: scripts/smoke/consent.sh

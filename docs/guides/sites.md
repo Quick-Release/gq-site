@@ -56,7 +56,7 @@ step (`scripts/ci-release.mjs`) and the tests of the CI Worker and release
 step (`scripts/ci.test.mjs`), and the CMS deploy script Ploi runs
 (`deploy/ploi/admin.sh`, with `deploy/ploi/polylang.sh` for a bilingual
 site's languages). On a Site on the content package pair, the Frontend's
-`/gq/events` and `/gq/refresh` routes are fully generated too.
+`/gq/events`, `/gq/refresh` and `/gq/consent` routes are fully generated too.
 
 ## The content runtime
 
@@ -77,7 +77,9 @@ Site `gq sync` manages:
   `composer.lock` and `pnpm-lock.yaml`.
 - **The route adapters**, `apps/frontend/src/pages/gq/events.ts` and
   `refresh.ts`, which hand each request to the package's `handleEvent` and
-  `handleRefresh`.
+  `handleRefresh`, and `gq/consent.ts` and `gq/consent/[...rest].ts`, which
+  hand the consent records and their reads to its `createConsentServer`
+  ([Consent and legal pages](consent.md)).
 
 The Site configures the runtime in `apps/frontend/src/lib/content.ts`
 (created once): its identity is `gq.ops.json`'s `project`, its languages are
@@ -85,7 +87,8 @@ The Site configures the runtime in `apps/frontend/src/lib/content.ts`
 Worker's. The CMS's `config/application.php` defines `GQ_CONTENT_SITE_ID` as
 the same `project`, so the CMS signs its events for the Site the Frontend
 serves. The pages, layout, words and styles stay the Site's, importing the
-package's helpers. The package's README documents its configuration and
+package's helpers; the layout composes the consent Runtime's UI
+([Consent and legal pages](consent.md)). The package's README documents its configuration and
 exports.
 
 A Site generated before this has no `contentRuntime`: it keeps the runtime

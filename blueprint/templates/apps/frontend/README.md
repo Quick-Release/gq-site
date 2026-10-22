@@ -32,7 +32,15 @@ configures it and composes the pages:
   Only `pnpm dev` reads the CMS live without a store.
 - `src/pages/gq/events.ts` and `src/pages/gq/refresh.ts` are managed by
   `gq sync`: they hand the CMS's signed events and the trusted refresh
-  (`pnpm frontend:refresh`) to the runtime. `/gq/` is reserved for them.
+  (`pnpm frontend:refresh`) to the runtime. `src/pages/gq/consent.ts` and
+  `src/pages/gq/consent/[...rest].ts`, also managed, hand visitors' consent
+  decisions and the CMS's authenticated reads of them to the package's
+  consent server. `/gq/` is reserved for them.
+- Consent (CONSENT-1, LEGAL-1): `src/lib/content.ts` turns on the runtime's
+  `consent` option (third-party embeds become placeholders at delivery; GQ
+  Config's legal pages and GA4 toggle reach the chrome) and lists the catalog
+  services the Site embeds. `src/layouts/Layout.astro` renders the consent
+  banner, the legal links and the "Cookie settings" control on every page.
 - `src/pages/index.astro`, `src/pages/[...slug].astro`,
   `src/components/Home.astro` and `src/layouts/Layout.astro` render what the
   runtime delivers, with the status it answers: 200, 404 when WordPress

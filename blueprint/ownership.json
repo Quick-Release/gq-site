@@ -65,6 +65,16 @@
     { "path": "scripts/ci-release.mjs", "template": "templates/scripts/ci-release.mjs" },
     { "path": "scripts/ci.test.mjs", "template": "templates/scripts/ci.test.mjs" },
     {
+      "path": "apps/frontend/src/pages/gq/consent.ts",
+      "template": "templates/apps/frontend/src/pages/gq/consent.ts",
+      "contentRuntime": "package"
+    },
+    {
+      "path": "apps/frontend/src/pages/gq/consent/[...rest].ts",
+      "template": "templates/apps/frontend/src/pages/gq/consent/[...rest].ts",
+      "contentRuntime": "package"
+    },
+    {
       "path": "apps/frontend/src/pages/gq/events.ts",
       "template": "templates/apps/frontend/src/pages/gq/events.ts",
       "contentRuntime": "package"
