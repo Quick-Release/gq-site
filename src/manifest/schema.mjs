@@ -11,6 +11,10 @@ import { z } from "zod";
 export const MANIFEST_FILENAME = "gq.ops.json";
 export const SCHEMA_VERSION = 1;
 export const VARIANTS = ["content", "commerce"];
+// Where a content Site's runtime comes from (ADR 0020): "package" for the
+// pinned getquick/gq-content and @getquick/content pair. A Site without the
+// key keeps the runtime an earlier blueprint copied into it.
+export const CONTENT_RUNTIMES = ["package"];
 export const WORDPRESS_GRAPHQL_PATHS = ["/graphql", "/wp/graphql"];
 // An offboarded Site's phases (ADR 0011): its access cut (`gq offboard`,
 // reversible), then its content archived and its infrastructure deleted.
@@ -118,6 +122,15 @@ export const manifestSchema = z
     schemaVersion: z.literal(SCHEMA_VERSION),
     project: name,
     variant: z.enum(VARIANTS),
+    contentRuntime: z
+      .enum(CONTENT_RUNTIMES)
+      .optional()
+      .describe(
+        'Where the content runtime comes from. "package": the pinned getquick/gq-content and ' +
+          "@getquick/content pair, whose pins and /gq routes gq sync manages; gq new sets it. " +
+          "Left out, the Site keeps the runtime an earlier blueprint copied into it, and gq sync " +
+          "leaves that alone.",
+      ),
     domains: z
       .strictObject({ admin: hostname, frontend: hostname, docs: hostname.optional() })
       .optional(),

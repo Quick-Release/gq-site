@@ -5,6 +5,60 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+### Changed
+
+- **New content Sites run the Content Runtime from the gq-content package
+  pair** ([ADR 0020](docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md);
+  [#77](https://github.com/Quick-Release/gq-site/issues/77)). `gq new` no
+  longer copies the runtime into a Site. It writes
+  `"contentRuntime": "package"` in `gq.ops.json`, and the Site requires the
+  CMS plugin `getquick/gq-content` and the Frontend package
+  `@getquick/content`, both exactly `0.1.0`
+  ([Quick-Release/gq-content v0.1.0](https://github.com/Quick-Release/gq-content/releases/tag/v0.1.0)).
+  On such a Site, `gq sync` manages:
+  - the two pins, as managed keys in `apps/cms/composer.json` and
+    `apps/frontend/package.json`. `gq sync --check` fails while they
+    disagree, naming both;
+  - the route adapters `apps/frontend/src/pages/gq/events.ts` and
+    `refresh.ts`, which hand requests to the package's `handleEvent` and
+    `handleRefresh`.
+    The Frontend skeleton configures the runtime in `src/lib/content.ts`
+    (create-once) and its pages import the package's delivery and HTML
+    helpers (#2 in gq-content). The CMS skeleton defines `GQ_CONTENT_SITE_ID`
+    as the project. The copied delivery, store, events, reconciliation,
+    WPGraphQL client, HTML helpers, their tests, the five SQL migrations and the
+    CMS's three event mu-plugins are gone from the skeletons. The generated
+    Frontend keeps its rendered-route test of what the Site composes.
+- **The publication store's migrations come from the installed package.**
+  `infra/frontend.run.ts` and `infra/scripts/deploy-frontend.mjs` take them
+  from a Site's own `apps/frontend/migrations` when it has them, and
+  otherwise, on a Site on the pair, from `@getquick/content/migrations`
+  installed in `apps/frontend`. An older Site that installs the package for
+  consent alone gets no store from it. Installing the package is what switches durable delivery
+  on.
+- **`blueprint/packages.json`** catalogues `getquick/gq-content`
+  (`manual`): its pin moves only with `@getquick/content`'s.
+- **ADRs 0003–0010 and 0013** are superseded in part: their runtime
+  decisions by gq-content's ADR 0002; their provisioning parts stay.
+- **Proofs.** `scripts/smoke/content-pair.sh` (CI's `content-pair` job,
+  replacing `frontend-runtime`) proves that a generated Site wires the
+  pinned pair: its pins and their published integrity, the crontab's
+  command against the CMS plugin's published ZIP (by SHA-256), the
+  migrations the deploy resolves, and the Frontend served in workerd with a
+  local D1 store through its `/gq` routes, `gq frontend refresh` and
+  `gq frontend events check`. The runtime-behaviour proofs moved to
+  gq-content with the runtime: `frontend-runtime.sh`,
+  `frontend-languages.mjs` and `cms-events.sh` are removed, and
+  `cms-polylang.sh` keeps only the Polylang provisioning half.
+  `test/site/schema.test.mjs` now checks `gq site check`'s schema fields
+  against the pinned package's queries.
+
+Existing Sites: nothing changes. A Site without `contentRuntime` keeps its
+copied runtime, and `gq sync` neither adds the pair nor rewrites or deletes
+its copies; it only stops recording the dropped create-once files in
+`gq.lock.json`. Moving an existing Site onto the pair is a separate
+migration.
+
 ## 0.19.1 — 2026-10-22
 
 ### Added

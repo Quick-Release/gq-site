@@ -1,16 +1,21 @@
 // The fields `gq site check` validates against WPGraphQL are the ones the
-// Frontend skeleton's queries read (apps/frontend/src/lib/wordpress.ts), so
-// a field added to a query can't be left out of the readiness check.
+// pinned content runtime's queries read (@getquick/content, the version the
+// blueprint pins; src/sync/content-pair.mjs), so a field the runtime adds to
+// a query can't be left out of the readiness check.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { SCHEMA_QUERY } from "../../src/site/readiness.mjs";
+import { CONTENT_PAIR } from "../../src/sync/content-pair.mjs";
 
-const wordpress = readFileSync(
-  new URL("../../blueprint/templates/apps/frontend/src/lib/wordpress.ts", import.meta.url),
-  "utf8",
-);
+const runtime = new URL(import.meta.resolve(`${CONTENT_PAIR.npm}/server`));
+const installed = JSON.parse(readFileSync(new URL("../package.json", runtime), "utf8"));
+const server = readFileSync(runtime, "utf8");
+// The queries delivery reads with; the consent settings query only runs on a
+// Site that enables the runtime's consent CMS settings.
+const DELIVERY_QUERIES =
+  /`(\s*query (?:HomePage|SiteChrome|EntryByUri|DesignPresets|PublishedRoutes)\b[^`]*)`/gu;
 
 // GraphQL's own words; the queries' names, variables, argument names,
 // literal values and the JavaScript interpolated into a query are left out
@@ -34,8 +39,9 @@ function selections(text) {
   );
 }
 
-test("the readiness schema check covers every field the Frontend's queries read", () => {
-  const queries = [...wordpress.matchAll(/\/\* GraphQL \*\/ `([^`]*)`/gu)].map((match) => match[1]);
+test("the readiness schema check covers every field the pinned runtime's queries read", () => {
+  assert.equal(installed.version, CONTENT_PAIR.version, "the devDependency is the blueprint's pin");
+  const queries = [...server.matchAll(DELIVERY_QUERIES)].map((match) => match[1]);
   assert.equal(
     queries.length,
     6,

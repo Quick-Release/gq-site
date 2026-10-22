@@ -33,6 +33,15 @@ managed files, its own deploy steps move into deploy extensions, and anything
 the generated sections repeat is removed from the site's own content.
 _Avoid_: onboarding (that is adding a site to the fleet)
 
+**Content Runtime**:
+The Runtime a content Site delivers published content with: gq-content's
+`getquick/gq-content` CMS plugin and `@getquick/content` Frontend package,
+pinned together at one version. A Site whose `gq.ops.json` has
+`contentRuntime: "package"` (every Site `gq new` generates) runs it; a Site
+generated before keeps its copy of the runtime, site-owned
+([ADR 0020](docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+_Avoid_: content skeleton (the skeleton is the Site's starting files)
+
 **Deploy extension**:
 A site-owned step that the generated CMS deploy runs after activating the
 site's plugins, such as activating its theme.

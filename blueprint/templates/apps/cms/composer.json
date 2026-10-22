@@ -52,6 +52,7 @@
     "getquick/getquick-theme": "0.5.1",
     "getquick/gq-design": "*@stable",
     "getquick/gq-support": "0.1.4",
+    "getquick/gq-content": "0.1.0",
     "humanmade/s3-uploads": "3.0.13",
     "oscarotero/env": "^2.0",
     "roots/bedrock-autoloader": "1.1.0",

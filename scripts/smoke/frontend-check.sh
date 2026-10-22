@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # Generates a disposable content site from this checkout's blueprint, installs
-# its Frontend's dependencies and runs the Frontend's tests (including the
-# rendered-route tests in src/routes.test.ts), `astro check`, lint and format,
+# its Frontend's dependencies (the pinned @getquick/content among them) and
+# runs the Frontend's tests (the rendered-route tests in src/routes.test.ts),
+# `astro check` against the package's types, lint and format,
 # then lists a second language in its gq.ops.json (wordpress.languages) and
 # runs the tests and `astro check` again, as a bilingual Site.
 #

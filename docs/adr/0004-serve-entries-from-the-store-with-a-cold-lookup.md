@@ -5,6 +5,16 @@
   language's chrome, and its front page at its own home, amended by
   [ADR 0013](0013-serve-each-language-from-its-own-shared-rows.md))
 - Date: 2026-10-02
+- Superseded in part: its runtime decisions by
+  [gq-content ADR 0002](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0002-preserve-publication-delivery-and-withdrawal-through-extraction.md)
+  for Sites on the content package pair ([ADR 0020](0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+
+## Superseded in part
+
+One row per route, the cold lookup, redirects for moved entries, public
+content only and what may be promoted are the runtime's. Kept here:
+preparation as an explicit operator step (`gq frontend refresh`, whole-Site
+or `--uri`) and the pages' composition of what is delivered.
 
 ## Context
 

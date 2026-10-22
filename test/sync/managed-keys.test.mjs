@@ -124,7 +124,12 @@ test("gq new writes package.json with the managed keys, each hashed in the lock"
   });
   assert.equal(await readSite(site.root, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
   const lock = await readLock(site.root);
-  assert.deepEqual(Object.keys(lock.keys), ["package.json"]);
+  // The content pair's pins are managed keys too (content-pair.test.mjs).
+  assert.deepEqual(Object.keys(lock.keys), [
+    "apps/cms/composer.json",
+    "apps/frontend/package.json",
+    "package.json",
+  ]);
   assert.deepEqual(Object.keys(lock.keys["package.json"]), MANAGED_KEYS);
   assert.equal(lock.keys["package.json"]["scripts.verify"], hash('"gq verify"'));
   assert.equal(lock.keys["package.json"].packageManager, hash('"pnpm@12.6.0"'));

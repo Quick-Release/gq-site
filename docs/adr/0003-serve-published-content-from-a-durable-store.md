@@ -8,6 +8,19 @@
   (the deploy token's D1 permission; readiness requires a prepared store) and
   [ADR 0013](0013-serve-each-language-from-its-own-shared-rows.md) (each language's front page and chrome have their own rows)
 - Date: 2026-10-02
+- Superseded in part: its runtime decisions by
+  [gq-content ADR 0002](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0002-preserve-publication-delivery-and-withdrawal-through-extraction.md)
+  for Sites on the content package pair ([ADR 0020](0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+
+## Superseded in part
+
+The store's schema and its migrations, promotion and its ordering, serving
+without an age limit, and the refresh handler's authorization are the
+runtime's: `@getquick/content` ships the migrations and the handler. Kept
+here: one D1 database per Site and stage, created, retained in production
+and bound by `infra/frontend.run.ts`; the refresh token's provisioning
+(`gq frontend secrets`, CI releases) and `gq frontend refresh`. The opt-in is
+now the installed package's migrations, or a Site's own copy.
 
 ## Context
 

@@ -78,8 +78,8 @@ test("gq new writes CMS and Frontend skeletons named after the project", async (
     /^PUBLIC_WORDPRESS_GRAPHQL_URL=https:\/\/acme-admin\.ddev\.site\/wp\/graphql$/mu,
   );
   assert.match(
-    await readSite(site.root, "apps/frontend/src/lib/wp-block-renderer.ts"),
-    /^export function renderWordPressBlocks\(/mu,
+    await readSite(site.root, "apps/cms/config/application.php"),
+    /^Config::define\('GQ_CONTENT_SITE_ID', 'acme'\);$/mu,
   );
   for (const path of ["deploy/ploi/admin.d/10-theme.sh", "apps/cms/.ddev/commands/host/db-sync"]) {
     assert.equal((await lstat(join(site.root, path))).mode & 0o777, 0o755, path);
@@ -267,8 +267,12 @@ test("gq new --locale sets the site's main language for the CMS deploy and the F
     /<html lang=\{language\.lang\}>/u,
   );
   assert.match(
-    await readSite(root, "apps/frontend/src/lib/site-language.ts"),
+    await readSite(root, "apps/frontend/src/lib/content.ts"),
     /^import ops from "\.\.\/\.\.\/\.\.\/\.\.\/gq\.ops\.json";$/mu,
+  );
+  assert.match(
+    await readSite(root, "apps/frontend/src/lib/content.ts"),
+    /^ {4}wordpress: manifest\.wordpress,$/mu,
   );
 });
 

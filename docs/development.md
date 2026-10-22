@@ -105,26 +105,25 @@ its Frontend dependencies (the networked step) and runs its tests,
 `astro check`, lint and format check. These generated sites install
 `@getquick/site` from this checkout, packed into a tarball
 (`scripts/smoke/this-checkout.sh`), not from npm, so a release push is tested
-before npm serves the release. `scripts/smoke/frontend-runtime.sh` is
-the durable published content runtime proof (see
-[Durable published content](guides/provisioning.md#durable-published-content)),
-then its bilingual variant (`frontend-languages.mjs`, each language served
-from its own rows);
-`scripts/smoke/cms-events.sh` adds a real WordPress for publication and
-settings events, and real WPGraphQL for `gq site check`'s CMS readiness.
+before npm serves the release. `scripts/smoke/content-pair.sh` proves that
+a generated site wires the pinned content runtime
+([ADR 0020](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)):
+its pins and their published integrity, the crontab's command against the
+CMS plugin's published ZIP, the migrations `infra/frontend.run.ts` resolves,
+and the Frontend served in workerd with a local D1 store through its `/gq`
+routes. The runtime's own behaviour is proved in Quick-Release/gq-content.
 `scripts/smoke/cms-polylang.sh` proves a bilingual site's Polylang
 configuration (the generated `deploy/ploi/polylang.sh`) on a real WordPress
-with Polylang and GQ Polylang for WPGraphQL, read over GraphQL, and the
-events its CMS sends per language (the site's `publication-events.php` and
-`settings-events.php`). `scripts/smoke/ci-composer.sh` builds a generated
+with Polylang and GQ Polylang for WPGraphQL, read over GraphQL.
+`scripts/smoke/ci-composer.sh` builds a generated
 site's Cloudflare CI image with Docker and runs its install step's Composer
 command as the image's root user on a clean CMS (see
 [CMS dependency patches](guides/dependency-patches.md#verification-boundary)). The
-runtime proof also installs the CI Worker's dependencies for Wrangler's local
+wiring proof also installs the CI Worker's dependencies for Wrangler's local
 workerd runtime. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
-three proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
-`frontend-check.sh`, `frontend-runtime.sh` and `ci-composer.sh` on every push; the
-real-WordPress proof needs PHP and downloads, and the live gate is the
+two generated-site proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
+`frontend-check.sh`, `content-pair.sh` and `ci-composer.sh` on every push; the
+real-WordPress Polylang proof needs PHP and downloads, and the live gate is the
 gq-smoke wizard ([A new content Site, end to end](guides/provisioning.md#a-new-content-site-end-to-end)).
 
 For blueprint source roles, ownership mappings, and deliberate dotless source

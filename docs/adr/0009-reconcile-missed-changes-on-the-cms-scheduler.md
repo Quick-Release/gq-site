@@ -4,6 +4,15 @@
   (the shared reads are the design and each language's front page and
   chrome; the entries of every language are listed)
 - Date: 2026-10-03
+- Superseded in part: its runtime decisions by
+  [gq-content ADR 0002](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0002-preserve-publication-delivery-and-withdrawal-through-extraction.md)
+  for Sites on the content package pair ([ADR 0020](0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+
+## Superseded in part
+
+What a run compares, its rules, budget, lease, record and diagnostics are
+the runtime's. Kept here: the trigger, the CMS's crontab from ADR 0008, and
+`gq site check`'s reading of the reconciliation the Frontend reports.
 
 ## Context
 

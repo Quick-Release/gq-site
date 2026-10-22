@@ -177,12 +177,16 @@ if (env('GETQUICK_FRONTEND_URL')) {
     Config::define('GETQUICK_FRONTEND_URL', env('GETQUICK_FRONTEND_URL'));
 }
 
-// The key this CMS signs its publication events to the Frontend with
-// (web/app/mu-plugins/publication-events.php). Without it, publishing doesn't
-// refresh the Frontend; in production each publication records why.
+// The key this CMS signs its publication events to the Frontend with (the
+// getquick/gq-content plugin). Without it, publishing doesn't refresh the
+// Frontend; in production each publication records why.
 if (env('PUBLICATION_EVENT_SECRET')) {
     Config::define('PUBLICATION_EVENT_SECRET', env('PUBLICATION_EVENT_SECRET'));
 }
+
+// The Site its events are for: gq.ops.json's project, the identity the
+// Frontend's content runtime accepts (apps/frontend/src/lib/content.ts).
+Config::define('GQ_CONTENT_SITE_ID', '{{project}}');
 
 // Disable the plugin and theme file editor in the admin
 Config::define('DISALLOW_FILE_EDIT', true);

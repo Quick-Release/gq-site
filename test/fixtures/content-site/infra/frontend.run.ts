@@ -10,6 +10,7 @@ import { ConsentDatabase, ConsentPurge, consentRateLimiter, consentRecords } fro
 // Hostnames live in gq.ops.json (domains), shared with the Ploi and deploy scripts.
 const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), "utf8")) as {
   domains: { admin: string; frontend: string };
+  contentRuntime?: "package";
   wordpress?: { graphqlPath?: "/graphql" | "/wp/graphql" };
   offboarded?: { phase: string };
 };
@@ -23,13 +24,31 @@ const graphqlUrl =
 // workers.dev and no preview URLs. Its deploy scripts refuse to run anyway.
 const offboarded = Boolean(ops.offboarded);
 
-// A Frontend that ships the publication store's migrations serves published
-// content from it (durable delivery): new content sites do. A Frontend
-// without them keeps reading the CMS on each request and gets no store.
-const publicationMigrations = fileURLToPath(
-  new URL("../apps/frontend/migrations", import.meta.url),
-);
-const durableDelivery = existsSync(publicationMigrations);
+// A Frontend with the publication store's migrations serves published
+// content from it (durable delivery); without them it keeps reading the CMS
+// on each request and gets no store. A Site generated before the content
+// package pair (ADR 0020) keeps its own copy in apps/frontend/migrations; a
+// Site on the pair (contentRuntime "package") gets them by installing
+// @getquick/content in apps/frontend (its `./migrations` export), so
+// installing the package switches the store on. An older Site that installs
+// the package for consent alone gets no store from it.
+async function installedPublicationMigrations(
+  contentRuntime: string | undefined,
+): Promise<string | null> {
+  const frontendApp = new URL("../apps/frontend/", import.meta.url);
+  const copied = new URL("migrations", frontendApp);
+  if (existsSync(copied)) return fileURLToPath(copied);
+  if (contentRuntime !== "package") return null;
+  const manifest = new URL("node_modules/@getquick/content/package.json", frontendApp);
+  if (!existsSync(manifest)) return null;
+  const entry = JSON.parse(readFileSync(manifest, "utf8")).exports?.["./migrations"]?.import;
+  if (typeof entry !== "string") return null;
+  const module = (await import(new URL(entry, manifest).href)) as { migrationsDirectory: string };
+  return module.migrationsDirectory;
+}
+
+const publicationMigrations = await installedPublicationMigrations(ops.contentRuntime);
+const durableDelivery = publicationMigrations !== null;
 
 // The trusted refresh's credential and the key the CMS signs its publication
 // events with, from Sigillo staging (CI releases get them from the CI Worker).
@@ -69,7 +88,7 @@ const Publications = Effect.gen(function* () {
   const database = "larkspur-fe-publications";
   return yield* Cloudflare.D1.Database("LarkspurPublications", {
     name: production ? database : `${database}-${stage}`,
-    migrations: publicationMigrations,
+    migrations: publicationMigrations ?? undefined,
   }).pipe(Alchemy.RemovalPolicy.retain(production));
 });
 

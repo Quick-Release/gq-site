@@ -2,6 +2,18 @@
 
 - Status: Accepted
 - Date: 2026-10-04
+- Superseded in part: its runtime decisions by
+  [gq-content ADR 0002](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0002-preserve-publication-delivery-and-withdrawal-through-extraction.md)
+  for Sites on the content package pair ([ADR 0020](0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+
+## Superseded in part
+
+Per-language rows, no fallback across languages, events naming their
+language, ordering per language and reconciliation reading every language
+are the runtime's. Kept here: the languages declared in `gq.ops.json`, their
+Polylang provisioning on deploy (`deploy/ploi/polylang.sh`), the Site's
+translated words and language switcher, and readiness covering every
+language.
 
 ## Context
 
