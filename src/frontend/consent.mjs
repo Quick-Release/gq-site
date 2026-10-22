@@ -6,6 +6,7 @@
 // replaced.
 
 import { createCloudflareAccountClient } from "../cloudflare/account-client.mjs";
+import { consentDatabase } from "../offboard/names.mjs";
 
 // infra/consent.ts declares the same jurisdiction and names for the deploy;
 // keep them together.
@@ -17,7 +18,7 @@ export const CMS_CONSENT_READ_TOKEN = "GETQUICK_CONSENT_READ_TOKEN";
 
 /** The production consent database's name; another stage's adds `-<stage>`. */
 export function consentDatabaseName(project) {
-  return `${project}-fe-consent`;
+  return consentDatabase(project);
 }
 
 /**

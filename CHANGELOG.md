@@ -5,6 +5,30 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+### Added
+
+- **Offboarding archives and deletes the consent records**
+  ([#114](https://github.com/Quick-Release/gq-site/issues/114); ADR 0019,
+  ADR 0011). `gq offboard --archive` now finds each stage's consent database
+  (`<project>-fe-consent[-<stage>]`) and purge Worker
+  (`<project>-consent-purge[-<stage>]`): production's by name, another
+  stage's when the stage is tied to the project by its `PUBLICATION_DB`
+  binding, and its purge Worker only when it binds that stage's database
+  as `CONSENT_DB`. The archive exports each database beside
+  `publications*.sql` (`consent.sql`, `consent-<stage>.sql`), and
+  `manifest.json` records them under `sources.frontend[.stages[]].consent`.
+  Once the archive is verified, each purge Worker and then each consent
+  database is deleted, before the Frontend's Workers and stores, and a rerun
+  picks up where a failed one stopped. A look-alike named for a stage
+  nothing ties to the project is listed for the operator and left alone. A
+  Site without a consent Runtime offboards exactly as before.
+  - The archive then holds visitors' consent records, personal data: the
+    [consent guide](docs/guides/consent.md) and the
+    [offboarding guide](docs/guides/offboarding.md) say so, and that
+    CONSENT-1's retention (CN-R10) governs how long the archive keeps them.
+  - `consentDatabaseName` and offboarding share one source for the consent
+    names (`src/offboard/names.mjs`).
+
 ### Fixed
 
 - **The content skeleton's `src/lib/content.ts` is formatter-stable for any
@@ -17,6 +41,7 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   renders, for 1-, 4- and 40-character names. (`.astro` files aren't
   formatted by `vp fmt` or the pre-commit hook.) Existing Sites can keep their
   file; `vp fmt --write` fixes it once.
+  ||||||| parent of 922181a (feat(offboard): archive and delete the consent databases and purge Workers)
 
 ## 0.20.1 — 2026-10-22
 

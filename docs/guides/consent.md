@@ -32,6 +32,13 @@ exporting `./consent/migrations`), the Frontend's deploy
 
 A Frontend without a consent Runtime deploys exactly as before.
 
+Offboarding a Site ([offboarding guide](offboarding.md#archive-a-site))
+exports each consent database into the Site's archive (`consent.sql`,
+`consent-<stage>.sql`), then deletes each purge Worker and each consent
+database. **The archive then holds visitors' consent records**, the
+controller's proof of consent and personal data: CONSENT-1's retention
+(CN-R10) governs how long the archive keeps them, not the archive's own.
+
 Secrets follow the Frontend's others:
 
 ```sh
