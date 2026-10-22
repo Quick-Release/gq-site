@@ -29,6 +29,7 @@ exporting `./consent/migrations`), the Frontend's deploy
 | `CONSENT_READ_TOKEN`                | A Worker secret from Sigillo staging: the bearer the CMS reads records with. Without it, reads are refused and decisions are still recorded.                                                   |
 | `CONSENT_RATE_LIMITER`              | A Workers Rate Limiting binding for the record endpoint: 30 a minute per client IP, counted per Site and stage. The IP isn't stored.                                                           |
 | `<project>-consent-purge[-<stage>]` | A Worker with no public URL, run daily at 03:17 UTC, binding the same database. Its entry, the managed `apps/frontend/workers/consent-purge.ts`, calls the Runtime's `purge()`.                |
+| `CONSENT_RETENTION_DAYS`            | A plain variable on the Frontend and the purge Worker, when `gq.ops.json` sets `consent.retentionDays` ([below](#the-sites-retention)). Without it, the Runtime's default applies.             |
 
 A Frontend without a consent Runtime deploys exactly as before.
 
@@ -53,6 +54,33 @@ GQ Config sends the token only to the HTTPS origin of `GETQUICK_FRONTEND_URL`
 never to a URL saved in its admin. The CMS skeleton requires
 `getquick/gq-config 0.4.3`, the first release with the Legal Contract and the
 Consent tab.
+
+### The Site's retention
+
+Records are deleted once their decision has been out of force (superseded or
+expired) for the retention period: by default the Runtime's maximum, 1826
+days (5 years, CN-R10). A controller that sets a shorter period states it in
+`gq.ops.json`:
+
+```json
+{ "consent": { "retentionDays": 365 } }
+```
+
+It is a whole number of days from 1 to 1826; `gq doctor` and every other
+command refuse anything else. The next Frontend deploy (`pnpm ci:deploy`, or
+a release) binds it as `CONSENT_RETENTION_DAYS` to both Workers from that one
+value: the purge entry deletes by it, and the `/gq/consent` routes pass it to
+`createConsentServer`, so the readiness `check()` reports what the purge
+applies. Nothing needs `gq sync`: the deploy reads `gq.ops.json` itself.
+Removing the key returns both to the Runtime's default on the next deploy.
+
+A Site whose `/gq/consent` routes are its own (one not on the content pair,
+or one that composed them by hand) passes the same value where it creates the
+server, reading `CONSENT_RETENTION_DAYS` from the Worker's bindings:
+
+```ts
+retentionDays: env.CONSENT_RETENTION_DAYS ? Number(env.CONSENT_RETENTION_DAYS) : undefined,
+```
 
 ## What the Blueprint checks
 
@@ -104,7 +132,9 @@ already:
   it returns null; `gq/consent/[...rest].ts` re-exports it for the reads.
   `siteId` is `gq.ops.json`'s `project`, the identity the content runtime and
   the purge Worker use. The bindings are the Worker's (`CONSENT_DB`,
-  `CONSENT_READ_TOKEN`, `CONSENT_RATE_LIMITER`, from `cloudflare:workers`).
+  `CONSENT_READ_TOKEN`, `CONSENT_RATE_LIMITER`, from `cloudflare:workers`),
+  and so is the retention, `CONSENT_RETENTION_DAYS`
+  ([The Site's retention](#the-sites-retention)).
   The protocol stays the package's: `POST /gq/consent` records,
   `/gq/consent/records/<id>`, `/export` and `/stats` read with the bearer.
 - **The runtime option, in `src/lib/content.ts`** (created once, the Site's):

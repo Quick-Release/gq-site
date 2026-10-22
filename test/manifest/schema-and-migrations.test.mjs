@@ -241,6 +241,33 @@ test("an invalid manifest fails naming each key path", async () => {
   }
 });
 
+test("consent.retentionDays is a whole number of days from 1 to the Runtime's 1826", async () => {
+  const site = { schemaVersion: 1, project: "fixture", variant: "content" };
+  for (const retentionDays of [1, 365, 1826]) {
+    const fixture = await createFixtureSite({ ops: { ...site, consent: { retentionDays } } });
+    const result = await fixture.run(["context", "show"]);
+    assert.equal(result.code, 0, `${retentionDays}: ${result.stderr}`);
+  }
+  for (const [consent, problem] of [
+    [{ retentionDays: 0 }, "consent.retentionDays: Too small: expected number to be >=1"],
+    [{ retentionDays: 1827 }, "consent.retentionDays: Too big: expected number to be <=1826"],
+    [
+      { retentionDays: 36.5 },
+      "consent.retentionDays: Invalid input: expected int, received number",
+    ],
+    [
+      { retentionDays: "365" },
+      "consent.retentionDays: Invalid input: expected number, received string",
+    ],
+    [{ retention: 365 }, "consent.retention is not a known key"],
+  ]) {
+    const fixture = await createFixtureSite({ ops: { ...site, consent } });
+    const result = await fixture.run(["context", "show"]);
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr, `gq: gq.ops.json is invalid: ${problem}.\n`);
+  }
+});
+
 test("the published JSON Schema is the one generated from the zod schema", async () => {
   const published = await readFile(
     new URL("../../schema/gq.ops.schema.json", import.meta.url),

@@ -236,6 +236,18 @@
       ],
       "additionalProperties": false
     },
+    "consent": {
+      "type": "object",
+      "properties": {
+        "retentionDays": {
+          "description": "How many days the consent records are kept after a decision stops being in force (CN-R10): the Frontend's consent endpoints and the retention purge get it as CONSENT_RETENTION_DAYS. From 1 to 1826; left out, the consent Runtime's default, 1826 (5 years).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1826
+        }
+      },
+      "additionalProperties": false
+    },
     "ci": {
       "type": "object",
       "properties": {

@@ -28,6 +28,20 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
     CONSENT-1's retention (CN-R10) governs how long the archive keeps them.
   - `consentDatabaseName` and offboarding share one source for the consent
     names (`src/offboard/names.mjs`).
+- **A Site's consent retention, from `gq.ops.json`**
+  ([#115](https://github.com/Quick-Release/gq-site/issues/115); CN-R10,
+  ADR 0019). The new optional `consent.retentionDays` (a whole number of
+  days from 1 to 1826, validated by the schema and `gq doctor`) is how long a
+  consent record is kept after its decision stops being in force. When it is
+  set, the Frontend's deploy (`infra/consent.ts`, `infra/frontend.run.ts`)
+  binds it as the plain variable `CONSENT_RETENTION_DAYS` to the Frontend
+  and the purge Worker from that one value. The managed purge entry
+  (`apps/frontend/workers/consent-purge.ts`) and the content skeleton's
+  managed `/gq/consent` routes pass it to `createConsentServer` as
+  `retentionDays`, so the purge deletes by the retention the read endpoints'
+  `check()` reports. Left out, nothing is bound and both keep the consent
+  Runtime's default (1826 days). A Site whose consent routes are its own adds
+  the same `retentionDays` line ([consent guide](docs/guides/consent.md#the-sites-retention)).
 
 ### Fixed
 
@@ -41,7 +55,6 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   renders, for 1-, 4- and 40-character names. (`.astro` files aren't
   formatted by `vp fmt` or the pre-commit hook.) Existing Sites can keep their
   file; `vp fmt --write` fixes it once.
-  ||||||| parent of 922181a (feat(offboard): archive and delete the consent databases and purge Workers)
 
 ## 0.20.1 — 2026-10-22
 

@@ -64,7 +64,8 @@ Facts checked against the pinned stack (Alchemy 2.0.0-beta.79):
   binds the same database and runs daily on a cron trigger, with no public
   URL, named outside the `<project>-fe-<stage>` pattern that offboarding reads
   as a Frontend stage. Its entry, the managed `apps/frontend/workers/consent-purge.ts`, only
-  calls the consent Runtime's `purge()`: retention stays the Runtime's. One
+  calls the consent Runtime's `purge()`, with the Site's retention when
+  `gq.ops.json` sets one (`consent.retentionDays`, below). One
   Worker for both variants, whatever the Frontend's framework exports.
 - **Its location is checked.** `gq doctor` fails on any of the Site's
   consent databases outside `eu`, since Cloudflare can't move one.
@@ -93,7 +94,11 @@ Facts checked against the pinned stack (Alchemy 2.0.0-beta.79):
 - A consent database created outside the EU can only be replaced: export its
   records, delete it, redeploy and import them ([consent guide](../guides/consent.md)).
 - A Site whose controller sets a shorter retention than the Runtime's default
-  needs it passed to the purge too; the purge Worker uses the default today.
+  (5 years, CN-R10) states it in `gq.ops.json` as `consent.retentionDays`
+  (1 to 1826 days, [#115](https://github.com/Quick-Release/gq-site/issues/115)).
+  The deploy binds it as `CONSENT_RETENTION_DAYS` to the Frontend and the
+  purge Worker from that one value, so the purge deletes by the retention the
+  read endpoints report. Left out, both use the Runtime's default.
 - Offboarding ([ADR 0011](0011-offboard-a-site-by-cutting-access-before-archiving.md))
   archives each stage's consent database (`consent[-<stage>].sql`) with the
   rest of the Site, then deletes its purge Worker and the database. The
