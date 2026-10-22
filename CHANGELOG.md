@@ -57,6 +57,14 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   Site uses to carry its own fields
   ([gq-content ADR 0004](https://github.com/Quick-Release/gq-content/blob/v0.2.0/docs/adr/0004-carry-a-sites-own-content-as-a-typed-extension.md));
   its D1 migrations are byte-identical to 0.1.0's.
+- **Moving an existing Site onto the pair** has its guide,
+  [docs/guides/content-pair-migration.md](docs/guides/content-pair-migration.md):
+  set `contentRuntime`, delete the copied runtime (its `/gq` routes first,
+  which `gq sync` otherwise stops on as local edits, and
+  `apps/frontend/migrations`, which the deploy otherwise keeps using), run
+  `gq sync --recreate apps/frontend/src/lib/content.ts`, define
+  `GQ_CONTENT_SITE_ID` in the CMS, carry the Site's own fields through the
+  package's `extension`, and refresh the whole Site after the release.
 
 Existing Sites: nothing changes. A Site without `contentRuntime` keeps its
 copied runtime, and `gq sync` neither adds the pair nor rewrites or deletes

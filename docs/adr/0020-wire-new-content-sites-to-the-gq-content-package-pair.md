@@ -89,7 +89,8 @@ pair.
   plugin beside its own copies. Rejected.
 - **Migrate existing Sites now.** Out of scope for gq-content's first
   release. A Site may opt in later by setting `contentRuntime` and replacing
-  its copies; that migration needs its own guide.
+  its copies; [Move an existing Site onto the content package pair](../guides/content-pair-migration.md)
+  is that migration's guide.
 
 ## Consequences
 

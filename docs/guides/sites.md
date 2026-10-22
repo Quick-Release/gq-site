@@ -92,7 +92,8 @@ A Site generated before this has no `contentRuntime`: it keeps the runtime
 the blueprint copied into it (`apps/frontend/src/lib/*`,
 `apps/frontend/migrations`, the CMS's event mu-plugins) and its own
 `/gq` routes, and `gq sync` neither adds the pair nor rewrites or deletes
-those copies.
+those copies. To move one onto the pair, follow
+[Move an existing Site onto the content package pair](content-pair-migration.md).
 
 ## Generated deploy wiring
 
