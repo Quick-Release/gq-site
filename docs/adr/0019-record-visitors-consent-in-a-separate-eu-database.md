@@ -95,5 +95,7 @@ Facts checked against the pinned stack (Alchemy 2.0.0-beta.79):
 - A Site whose controller sets a shorter retention than the Runtime's default
   needs it passed to the purge too; the purge Worker uses the default today.
 - Offboarding ([ADR 0011](0011-offboard-a-site-by-cutting-access-before-archiving.md))
-  doesn't yet archive or delete the consent database or the purge Worker:
-  until it does, they are handled by hand.
+  archives each stage's consent database (`consent[-<stage>].sql`) with the
+  rest of the Site, then deletes its purge Worker and the database. The
+  archive then holds visitors' consent records, the controller's proof of
+  consent: CONSENT-1's retention (CN-R10) governs how long it keeps them.

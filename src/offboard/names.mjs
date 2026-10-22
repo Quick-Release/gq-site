@@ -13,6 +13,19 @@ export function publicationsStore(project, stage) {
   return stage ? `${project}-fe-publications-${stage}` : `${project}-fe-publications`;
 }
 
+// The consent database (ADR 0019) of the production Frontend, or of `stage`'s
+// (infra/consent.ts).
+export function consentDatabase(project, stage) {
+  return stage ? `${project}-fe-consent-${stage}` : `${project}-fe-consent`;
+}
+
+// The consent retention purge's Worker of the production Frontend, or of
+// `stage`'s (infra/consent.ts). Named outside `<project>-fe-<stage>`, so it is
+// never taken for a Frontend stage.
+export function consentPurgeWorker(project, stage) {
+  return stage ? `${project}-consent-purge-${stage}` : `${project}-consent-purge`;
+}
+
 // The name gq gives each resource it provisions for `project`, by its role.
 export function ownName(project, role) {
   return {
@@ -43,6 +56,9 @@ export function artifactsRepositoryName(ops) {
 
 // The Worker binding that ties a Frontend stage to its publication store.
 export const PUBLICATION_BINDING = "PUBLICATION_DB";
+
+// The Worker binding that ties a consent purge Worker to its consent database.
+export const CONSENT_BINDING = "CONSENT_DB";
 
 // A non-production stage's name: one word, so `<project>-fe-<stage>` can't
 // be another project's Worker (`<project>-fe-shop-fe` is project

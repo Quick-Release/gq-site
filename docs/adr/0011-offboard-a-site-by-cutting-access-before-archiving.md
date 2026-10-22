@@ -176,6 +176,9 @@ Choices made where the spec left room:
     the archive through a presigned URL (as `gq db backup` does);
   - `publications.sql`: the D1 store's export, and
     `publications-<stage>.sql` for each other stage's store;
+  - `consent.sql` and `consent-<stage>.sql`: each stage's consent database
+    ([ADR 0019](0019-record-visitors-consent-in-a-separate-eu-database.md)),
+    exported, on a Site whose Frontend has a consent Runtime;
   - `backups/`: copies of the Site's own database backups
     (`<backups.prefix><database>/`, where `gq db backup` writes them), or of
     everything under `backups.prefix` when the backups bucket is deleted
@@ -198,7 +201,9 @@ Choices made where the spec left room:
 
 - **The deletions follow gq-smoke-down's order**: the Ploi site (and
   `ploi.siteId` forgotten in gq.ops.json, as gq-smoke-down does), its
-  database and system user; the Frontend Worker and its D1 store (Alchemy
+  database and system user; each stage's consent purge Worker, then its
+  consent database, while the stages they belong to are still tied to the
+  project; the Frontend Worker and its D1 store (Alchemy
   retains a production store, so it is deleted explicitly), and each other
   stage's Worker and store; the CI Worker, its Workflows and its container
   application; the media bucket's custom domain; the media, releases and CI
@@ -222,7 +227,12 @@ Choices made where the spec left room:
     the D1 store `<project>-fe-publications` and the Artifacts repository
     `<project>`. Other stages' Workers and D1 stores go only when the
     `PUBLICATION_DB` binding ties them together, as in the cut; a D1 store
-    named like a stage's that no stage Worker binds is manual. Anything else
+    named like a stage's that no stage Worker binds is manual. Production's
+    consent database `<project>-fe-consent` and purge Worker
+    `<project>-consent-purge` go by those names; a stage's go only when the
+    stage is tied so, its purge Worker only when its `CONSENT_DB` binding is
+    that stage's consent database, and one named for any other stage is
+    manual. Anything else
     gq.ops.json points at, a sibling project's `<project>-shop-media`
     included, is listed as manual.
   - A resource is reported deleted (`✓`) only when an exact lookup finds it
