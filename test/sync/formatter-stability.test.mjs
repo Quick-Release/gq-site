@@ -1,7 +1,8 @@
 // A site's pre-commit hook formats its staged files (vp fmt --write), so a
 // fully generated file must already be as the formatter writes it, whatever
 // the site's values; otherwise the first commit edits it and gq sync then
-// refuses to write. Line lengths that vary with the project name are the risk:
+// refuses to write. The app skeleton gq new creates once must be too, or the
+// site's first commit rewrites it. Line lengths that vary with the project name are the risk:
 // a short name lets the formatter join a wrapped line, a long one splits it.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -11,6 +12,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { createFixtureSite } from "../support/fixture-site.mjs";
+import { newSite } from "../support/generated-site.mjs";
 
 const repo = fileURLToPath(new URL("../..", import.meta.url));
 const ownership = JSON.parse(await readFile(join(repo, "blueprint/ownership.json"), "utf8"));
@@ -32,24 +34,50 @@ function manifest(project) {
   };
 }
 
+// The site's vite.config.ts imports vite-plus; use this package's.
+async function linkVitePlus(root) {
+  await mkdir(join(root, "node_modules"));
+  await symlink(join(repo, "node_modules/vite-plus"), join(root, "node_modules/vite-plus"));
+}
+
+function formatCheck(root, paths) {
+  return spawnSync(join(repo, "node_modules/.bin/vp"), ["fmt", "--check", ...paths], {
+    cwd: root,
+    encoding: "utf8",
+  });
+}
+
 // The shortest name, and one well past any real site's.
-for (const project of ["a", "abcdefghij-abcdefghij-abcdefghij-abcdefg"]) {
+const NAMES = ["a", "abcdefghij-abcdefghij-abcdefghij-abcdefg"];
+
+for (const project of NAMES) {
   test(`fully generated files are formatter-stable for a ${project.length}-character project name`, async () => {
     const fixture = await createFixtureSite({ ops: manifest(project) });
     const result = await fixture.run(["sync"]);
     assert.equal(result.code, 0, result.stderr);
-    // The site's vite.config.ts imports vite-plus; use this package's.
-    await mkdir(fixture.path("node_modules"));
-    await symlink(join(repo, "node_modules/vite-plus"), fixture.path("node_modules/vite-plus"));
+    await linkVitePlus(fixture.root);
 
     const paths = ownership.fullyGenerated
       .filter(({ template }) => template !== undefined)
       .map(({ path }) => path)
       .filter((path) => FORMATTED.test(path));
-    const check = spawnSync(join(repo, "node_modules/.bin/vp"), ["fmt", "--check", ...paths], {
-      cwd: fixture.root,
-      encoding: "utf8",
-    });
+    const check = formatCheck(fixture.root, paths);
+
+    assert.equal(check.status, 0, `${check.stdout}${check.stderr}`);
+  });
+}
+
+// gq new's own name too (four characters), the length a reported site had.
+for (const project of [...NAMES, "acme"]) {
+  test(`create-once files are formatter-stable for a ${project.length}-character project name`, async () => {
+    const site = await newSite(project);
+    await linkVitePlus(site.root);
+
+    const paths = ownership.createOnce
+      .filter(({ template }) => template !== undefined)
+      .map(({ path }) => path)
+      .filter((path) => FORMATTED.test(path));
+    const check = formatCheck(site.root, paths);
 
     assert.equal(check.status, 0, `${check.stdout}${check.stderr}`);
   });

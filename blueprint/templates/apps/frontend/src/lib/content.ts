@@ -14,10 +14,14 @@ const manifest = ops as {
   wordpress?: { locale?: string; languages?: Array<{ locale: string; slug: string }> };
 };
 
+// The CMS's DDEV project, which local development reads. Its own constant, so
+// no line's length depends on the project name's.
+const ddevProject = "{{project}}-admin";
+
 /** The CMS's GraphQL endpoint: the deploy sets it; local development reads DDEV's. */
 const graphqlEndpoint =
   import.meta.env.PUBLIC_WORDPRESS_GRAPHQL_URL?.trim() ||
-  "https://{{project}}-admin.ddev.site/wp/graphql";
+  `https://${ddevProject}.ddev.site/wp/graphql`;
 
 // Imported once, so concurrent requests share one import of the module.
 let workers: Promise<{ env: Record<string, unknown> } | null> | undefined;
