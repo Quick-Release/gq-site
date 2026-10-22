@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.20.0 — 2026-10-22
 
 ### Changed
 
@@ -13,8 +13,8 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   longer copies the runtime into a Site. It writes
   `"contentRuntime": "package"` in `gq.ops.json`, and the Site requires the
   CMS plugin `getquick/gq-content` and the Frontend package
-  `@getquick/content`, both exactly `0.1.0`
-  ([Quick-Release/gq-content v0.1.0](https://github.com/Quick-Release/gq-content/releases/tag/v0.1.0)).
+  `@getquick/content`, both exactly `0.2.0`
+  ([Quick-Release/gq-content v0.2.0](https://github.com/Quick-Release/gq-content/releases/tag/v0.2.0)).
   On such a Site, `gq sync` manages:
   - the two pins, as managed keys in `apps/cms/composer.json` and
     `apps/frontend/package.json`. `gq sync --check` fails while they
@@ -52,6 +52,19 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   `cms-polylang.sh` keeps only the Polylang provisioning half.
   `test/site/schema.test.mjs` now checks `gq site check`'s schema fields
   against the pinned package's queries.
+- `@getquick/site` depends on `@getquick/content` 0.2.0 exactly (was
+  0.1.0), the version new Sites pin. 0.2.0 adds the content extension a
+  Site uses to carry its own fields
+  ([gq-content ADR 0004](https://github.com/Quick-Release/gq-content/blob/v0.2.0/docs/adr/0004-carry-a-sites-own-content-as-a-typed-extension.md));
+  its D1 migrations are byte-identical to 0.1.0's.
+- **Moving an existing Site onto the pair** has its guide,
+  [docs/guides/content-pair-migration.md](docs/guides/content-pair-migration.md):
+  set `contentRuntime`, delete the copied runtime (its `/gq` routes first,
+  which `gq sync` otherwise stops on as local edits, and
+  `apps/frontend/migrations`, which the deploy otherwise keeps using), run
+  `gq sync --recreate apps/frontend/src/lib/content.ts`, define
+  `GQ_CONTENT_SITE_ID` in the CMS, carry the Site's own fields through the
+  package's `extension`, and refresh the whole Site after the release.
 
 Existing Sites: nothing changes. A Site without `contentRuntime` keeps its
 copied runtime, and `gq sync` neither adds the pair nor rewrites or deletes
