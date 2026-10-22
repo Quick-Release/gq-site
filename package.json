@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
-    "@getquick/content": "0.1.0",
+    "@getquick/content": "0.2.0",
     "aws4fetch": "1.0.20",
     "zod": "^4.6.5"
   },

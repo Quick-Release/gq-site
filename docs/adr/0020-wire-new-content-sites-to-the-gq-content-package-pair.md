@@ -19,9 +19,13 @@ the runtime belongs to Quick-Release/gq-content. It now ships there as a
 configured pair released together at one version
 ([gq-content ADR 0001](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0001-release-the-content-runtime-as-a-configured-package-pair.md)):
 the Composer `wordpress-muplugin` `getquick/gq-content`, served from
-composer.getquick.io, and the npm package `@getquick/content`. 0.1.0 is
+composer.getquick.io, and the npm package `@getquick/content`. 0.1.0 was
 published from tag `v0.1.0`
-([gq-content#13](https://github.com/Quick-Release/gq-content/issues/13#issuecomment-6336904617)).
+([gq-content#13](https://github.com/Quick-Release/gq-content/issues/13#issuecomment-6336904617)),
+and 0.2.0, which new Sites pin, from `v0.2.0`. 0.2.0 adds the content
+extension, through which a Site carries its own fields with its
+publications
+([gq-content ADR 0004](https://github.com/Quick-Release/gq-content/blob/v0.2.0/docs/adr/0004-carry-a-sites-own-content-as-a-typed-extension.md)).
 [gq-content ADR 0002](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0002-preserve-publication-delivery-and-withdrawal-through-extraction.md)
 carries this repository's runtime decisions forward.
 
@@ -97,7 +101,7 @@ pair.
   resolves and the `/gq` routes. The generated Frontend keeps its
   rendered-route test of what the Site composes. The real-CMS events proof
   (`cms-events.sh`) and the workerd runtime proofs left with the runtime.
-- Every new Site now has `@getquick/content` installed, and 0.1.0 exports
+- Every new Site now has `@getquick/content` installed, and it exports
   `./consent/migrations`, so by [ADR 0019](0019-record-visitors-consent-in-a-separate-eu-database.md)'s
   rule (`infra/consent.ts`) every new Site's deploy also creates its EU
   consent database, purge Worker and rate limiter, whether or not the Site
