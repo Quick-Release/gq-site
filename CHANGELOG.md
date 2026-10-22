@@ -3,6 +3,46 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## 0.20.1 — 2026-10-22
+
+### Added
+
+- **New content Sites compose the consent Runtime**
+  ([#110](https://github.com/Quick-Release/gq-site/issues/110); CONSENT-1
+  and LEGAL-1 under Platform ADR 0008, **Proposed**). The content skeleton
+  composes `@getquick/content` 0.2.0's consent UI, routes and runtime option
+  at its documented seams, and copies none of its logic:
+  - `src/lib/content.ts` passes `consent: { services: [], cmsSettings: true, firstPartyHosts }`
+    to `createContentRuntime`: published bodies' third-party embeds become
+    placeholders at delivery, and each language's chrome carries GQ Config's
+    Legal Contract and GA4 toggle. The Site's Frontend and media domains are
+    first party.
+  - `src/layouts/Layout.astro` renders `consentPage()`: its configuration
+    and styles in `<head>`, the banner and preferences dialog first in
+    `<body>`, the legal links and **Cookie settings** in a new `<footer>`,
+    and `startConsent()` in a script. With no optional service there is no
+    banner; GQ Config's GA4 toggle adds it.
+  - `src/pages/gq/consent.ts` and `src/pages/gq/consent/[...rest].ts` are
+    new **managed** route adapters (on a Site with
+    `"contentRuntime": "package"`, as `gq/events.ts` and `gq/refresh.ts`):
+    `createConsentServer({ siteId: project, bindings }).handle()`, else 404.
+    The provisioned consent database is now written and read.
+  - The Frontend's stub CMS answers `ConsentSettings`, and its tests assert
+    the composition through Astro's Container API.
+
+  `gq sync` adds the two routes to a 0.20.0 Site and never touches its
+  layout or `lib/content.ts`; [Consent and legal pages](docs/guides/consent.md#adopting-it-on-an-existing-site)
+  gives the exact change to make by hand.
+
+- **`scripts/smoke/consent.sh`** (CI's `consent` job): a generated Site's
+  Frontend, built by Alchemy and served in workerd with a local D1
+  publication store and consent database, passes gq-content's
+  `runConsentAcceptance` in Chromium on representative routes, records a
+  decision at `POST /gq/consent` and reads it back with the bearer, and is
+  ready by `gq site check`'s consent part with GA4 on; monolingual and
+  bilingual. `scripts/smoke/acceptance.sh` runs it too. `playwright` is a
+  development dependency.
+
 ## 0.20.0 — 2026-10-22
 
 ### Changed

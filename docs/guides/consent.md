@@ -82,32 +82,57 @@ Consent tab.
 
 ## Wiring a Frontend
 
-The consent UI is composed in a Site's own files, which `gq sync` never
-writes: the layout, the routes and the components are site-owned (create-once
-skeleton files), so a Site's custom layout is never overwritten. The Runtime's
-documentation is authoritative; in short:
+The Runtime's documentation is authoritative. A Site composes it at its
+documented seams and copies none of its logic.
 
 ### Content (Astro)
 
-- `src/pages/gq/consent.ts` and `src/pages/gq/consent/[...rest].ts`: hand
-  the request to the Runtime's `createConsentServer({ siteId, bindings })`
-  `handle()` (bindings from `cloudflare:workers`: `CONSENT_DB`,
-  `CONSENT_READ_TOKEN`, `CONSENT_RATE_LIMITER`), and answer 404 when it
-  returns null.
-- The layout: `consentPage({ configuration, language, legal, cookie })` from
-  `@getquick/content/consent/astro`, its `head` in `<head>`, its `body` first
-  in `<body>`, its `footer` in the footer, and
-  `startConsent()` from `@getquick/content/consent/client` in a script.
-- Embeds and GQ Config's settings: `createContentRuntime({ consent: { services, cmsSettings: true } })`
-  rewrites every published body's embeds at delivery and reads the Legal
-  Contract and GA4 into each language's chrome. Site components use
-  `embedPlaceholder()`.
+A content Site from `gq new` (0.20.1 and later) composes the consent UI
+already:
+
+- **Routes, managed by `gq sync`** (as `gq/events.ts` and `gq/refresh.ts`
+  are, on a Site with `"contentRuntime": "package"`):
+  `apps/frontend/src/pages/gq/consent.ts` hands the request to the Runtime's
+  `createConsentServer({ siteId, bindings }).handle()`, and answers 404 when
+  it returns null; `gq/consent/[...rest].ts` re-exports it for the reads.
+  `siteId` is `gq.ops.json`'s `project`, the identity the content runtime and
+  the purge Worker use. The bindings are the Worker's (`CONSENT_DB`,
+  `CONSENT_READ_TOKEN`, `CONSENT_RATE_LIMITER`, from `cloudflare:workers`).
+  The protocol stays the package's: `POST /gq/consent` records,
+  `/gq/consent/records/<id>`, `/export` and `/stats` read with the bearer.
+- **The runtime option, in `src/lib/content.ts`** (created once, the Site's):
+  `createContentRuntime({ …, consent: { services: [], cmsSettings: true, firstPartyHosts } })`.
+  Every published body's third-party embeds become placeholders at delivery,
+  and each language's chrome carries GQ Config's Legal Contract and GA4
+  toggle. `firstPartyHosts` are the Site's Frontend and media domains
+  (`domains.frontend`, `media.domain`); the CMS's is included by default.
+- **The UI, in `src/layouts/Layout.astro`** (created once, the Site's):
+  `consentPage({ configuration: runtime.consentConfiguration(chrome), language, legal, cookie })`
+  from `@getquick/content/consent/astro`, its `head` in `<head>`, its `body`
+  first in `<body>`, its `footer` (the legal links and **Cookie settings**)
+  in a `<footer>`, and `startConsent()` from
+  `@getquick/content/consent/client` in a `<script>`. Restyle it through the
+  `--gq-consent-*` custom properties.
 - No cron on the Site's Worker: the purge Worker above runs it.
 
-The content app skeleton still carries its own copy of the content runtime
-rather than `@getquick/content` (#77), so a new content Site gets the
-provisioning and checks but composes the consent UI by hand, as above, until
-the skeleton moves to the package.
+**Services.** A new Site declares no catalog service (`services: []`). With
+GA4 off there is no optional service, so no banner and nothing is recorded,
+but **Cookie settings** and the legal links stay on every page (CN-C1). GQ
+Config's GA4 toggle (with a measurement ID) adds GA4 and the banner. An
+embed of a service the Site hasn't declared, such as a YouTube video in a
+post, is served as a blocked placeholder: nothing loads, and
+`gq site check`'s `third-party-hosts` names it on a homepage. To let
+visitors load it after consent, declare the service in `src/lib/content.ts`
+(`services: ["youtube"]`; the catalog has `youtube`, `vimeo` and
+`google_maps`). A declared service is an optional category, so the banner
+asks for it.
+
+**Proofs.** The generated Frontend's own tests (`src/routes.test.ts`, run by
+`scripts/smoke/frontend-check.sh`) render pages through Astro's Container
+API with the stub CMS. `scripts/smoke/consent.sh` serves the built Frontend
+in workerd with local D1 stores and runs gq-content's
+`runConsentAcceptance` in Chromium, monolingual and bilingual (CI's
+`consent` job).
 
 ### Commerce (TanStack Start)
 
@@ -127,27 +152,108 @@ commerce Frontend's deploy file is to come with it; it imports the same
 
 ## Adopting it on an existing Site
 
-1. Upgrade `@getquick/site` and run `gq sync`: it adds `infra/consent.ts`, the
-   purge entry and the consent wiring in `infra/frontend.run.ts`, the CI
-   secret, and nothing site-owned.
-2. Require `getquick/gq-config` `^0.4.3` in `apps/cms/composer.json`, update
-   the lock and release the CMS. Assign the legal pages and the controller in
-   GETQUICK → Legal.
-3. Add `"@getquick/content": "0.1.0"` (and, on commerce,
-   `"@quick-release/storefront": "0.2.1"`) to `apps/frontend/package.json`,
-   and compose the UI and routes as above. A Site whose `pnpm-workspace.yaml`
-   predates this release adds both, and `@getquick/content` for the CLI, to
-   `minimumReleaseAgeExclude`, as new Sites have, so they install the day
-   they are released.
-4. Don't require `getquick/gq-content` in the CMS while it still has the
-   skeleton's own event mu-plugins (`publication-events.php`,
-   `settings-events.php`, `delivery-retries.php`): they declare the same PHP
-   namespace, and WordPress stops on the redeclaration. Moving the CMS to the
-   package is #77.
-5. `pnpm frontend:secrets`, `pnpm ci:deploy`, `pnpm ploi:events`, then a
-   release: the first deploy creates the consent database in `eu`.
+`gq sync` adds the managed parts. The layout and `lib/content.ts` are the
+Site's, so it never touches them: compose the UI there by hand.
+
+### A Site on the content pair (`"contentRuntime": "package"`, 0.20.0)
+
+1. Upgrade `@getquick/site` and run `gq sync`. It adds
+   `apps/frontend/src/pages/gq/consent.ts` and `gq/consent/[...rest].ts`.
+   If the Site already composed its own `/gq/consent` routes, `gq sync`
+   names them and writes nothing: delete them, then sync again.
+2. In `apps/frontend/src/lib/content.ts`, widen the manifest's type and pass
+   the `consent` option to `createContentRuntime`:
+
+   ```ts
+   const manifest = ops as {
+     project: string;
+     domains?: { admin: string; frontend: string };
+     media?: { domain: string };
+     wordpress?: { locale?: string; languages?: Array<{ locale: string; slug: string }> };
+   };
+   ```
+
+   ```ts
+       bindings,
+       consent: {
+         services: [], // the catalog services the Site embeds, e.g. ["youtube"]
+         cmsSettings: true,
+         firstPartyHosts: [manifest.domains?.frontend, manifest.media?.domain].filter(
+           (host): host is string => Boolean(host),
+         ),
+       },
+     });
+   ```
+
+3. In `apps/frontend/src/layouts/Layout.astro`, import the UI, build it
+   after the chrome is known, and place its parts:
+
+   ```astro
+   ---
+   import { consentPage } from "@getquick/content/consent/astro";
+   // … after `chrome`, `language` and `runtime` are set:
+   const configuration = runtime.consentConfiguration(chrome);
+   const consent = configuration
+     ? consentPage({
+         configuration,
+         language: language.lang,
+         legal: chrome?.legal,
+         cookie: Astro.request.headers.get("cookie"),
+       })
+     : null;
+   ---
+   <head>
+     …
+     {consent && <Fragment set:html={consent.head} />}
+   </head>
+   <body>
+     {consent && <Fragment set:html={consent.body} />}
+     <header>…</header>
+     <slot />
+     {consent && (
+       <footer class="site-footer">
+         <Fragment set:html={consent.footer} />
+       </footer>
+     )}
+     <script>
+       import { startConsent } from "@getquick/content/consent/client";
+       startConsent();
+     </script>
+   </body>
+   ```
+
+   A layout with its own footer puts `consent.footer` in it instead. The
+   banner must stay first in `<body>`.
+
+4. If the Frontend's tests stub WordPress by query name (the skeleton's
+   `src/test/wordpress-stub.ts`), answer `ConsentSettings` too: with
+   `cmsSettings` on, every chrome read also asks GQ Config for the Legal
+   Contract and GA4. A new Site's stub and tests (`src/routes.test.ts`, "the
+   consent UI") show it; `gq sync --recreate` writes them over the Site's
+   own.
+5. `pnpm frontend:secrets` (it generates `CONSENT_READ_TOKEN` when missing),
+   `pnpm ci:deploy`, `pnpm ploi:events`, then a release. Then
+   `pnpm frontend:refresh`, so the stored chrome carries the Legal Contract
+   (GQ Config's `legal` and `analytics` settings events refresh it from then
+   on).
 6. `pnpm doctor` (the jurisdiction) and `pnpm site:check` (legal pages, the
    Runtime, third-party hosts).
+
+### A Site generated before 0.20.0
+
+Move it onto the content pair first
+([Move an existing Site onto the content package pair](content-pair-migration.md)),
+then follow the steps above. Until then it can compose the same parts by
+hand around its copied runtime with `@getquick/content` 0.2.0 installed for
+consent: `consentConfiguration({ services, analytics, controller })` from
+`@getquick/content/consent` takes the place of `runtime.consentConfiguration`,
+and `rewriteEmbeds` the `consent` option's rewriting. Require
+`getquick/gq-config` `^0.4.3` in `apps/cms/composer.json` for the Legal
+Contract and the Consent tab, and don't require `getquick/gq-content` while
+the CMS still has the skeleton's own event mu-plugins
+(`publication-events.php`, `settings-events.php`, `delivery-retries.php`):
+they declare the same PHP namespace, and WordPress stops on the
+redeclaration.
 
 A Site that loaded a third-party script or embed itself replaces it with a
 catalog service through the Runtime, a placeholder, or a self-hosted copy;
@@ -171,28 +277,30 @@ Runtime retries a record it couldn't deliver.
 
 ## Tested Platform release combination
 
-Recorded for `@getquick/site` 0.19.1 on 2026-10-22.
+Recorded for `@getquick/site` 0.20.1 on 2026-10-22.
 
 | Component                                    | Pin           | Artifact                                                                                                                                        |
 | -------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@getquick/site`                             | 0.19.1        | npm; depends on `@getquick/content` 0.1.0 exactly, for readiness's scan                                                                         |
+| `@getquick/site`                             | 0.20.1        | npm; depends on `@getquick/content` 0.2.0 exactly, for readiness's scan                                                                         |
 | `getquick/gq-config`                         | 0.4.3         | GETQUICK Composer registry; pinned in the CMS skeleton                                                                                          |
-| `@getquick/content`                          | 0.1.0         | npm, tag `v0.1.0` at `51a9f3e`, `sha512-lxzkdqcdgf4Ag1bTDLi59jUZmadU7dgW1Z6+aWWcKuMBvrMt5LWumHTntOEMmZhKYeCwvg4gCaWjAybbPvRX2w==`               |
-| `getquick/gq-content`                        | 0.1.0         | GETQUICK Composer registry (`wordpress-muplugin`), the same tag; ZIP SHA-256 `f892d974d80cde9bb9a36e4595f509661fb37f63e0102b1506483fcfc2c78a5e` |
-| `@quick-release/storefront`                  | 0.2.1         | GitHub Packages, `sha512-ndzQqKeSllnUJGJ/ycX75BBpS8QZ4lrZxuVdKmysnC41DG3d4+Ra9OMyBvecTf7ddmmerybZjTUOmn+YZ3Xp8g==`                              |
+| `@getquick/content`                          | 0.2.0         | npm, tag `v0.2.0` at `3806642`, `sha512-zywnQvGpSmiOpuKqCJbt/mHokXQbe/gfvC80ZGtg0TEs7oJKAMjba9tSXZcsHiIogS+b7ez+fBb1OmkFHK6PaA==`               |
+| `getquick/gq-content`                        | 0.2.0         | GETQUICK Composer registry (`wordpress-muplugin`), the same tag; ZIP SHA-256 `9a80fbd57cab1716ed8030b16180115ee992062b3248525a65782ad8dde76850` |
+| `@quick-release/storefront`                  | 0.2.1         | GitHub Packages; checked with 0.19.1 beside `@getquick/content` 0.1.0, not again since                                                          |
 | Alchemy / `@alchemy.run/frontend-frameworks` | 2.0.0-beta.79 | the Blueprint's catalog pin                                                                                                                     |
 
-The app skeletons don't pin `@getquick/content`, `getquick/gq-content` or the
-storefront yet: the content skeleton still carries its own copy of the
-content runtime (#77), and there is no commerce skeleton (#89). A Site adds
-them as above.
+The content skeleton pins `getquick/gq-content` and `@getquick/content`
+(managed keys) and composes the consent UI and routes, as above. There is no
+commerce skeleton yet (#89).
 
 Checked together, without deploying anything or creating a Cloudflare
-resource: in a Site generated by this release with `@getquick/content` 0.1.0
-installed from npm, the generated `infra/` type-checks against Alchemy
-beta.79, `infra/consent.ts` finds the consent migrations, the purge entry
-type-checks, its `scheduled()` against the real migration deletes a record
-past retention and keeps a current one, and `astro check`, lint and format
-pass. Storefront 0.2.1 installs beside `@getquick/content` 0.1.0 (its peer
-range) and its `./consent` export loads. The gq-content ZIP's checksum is
-that of the v0.1.0 release asset.
+resource, on a Site generated by this release with its Frontend installed
+from npm (CI's `generated-frontend`, `content-pair` and `consent` jobs): the
+Frontend's tests, `astro check`, lint and format pass; Alchemy's Astro build
+served in workerd with a local D1 publication store and consent database passes
+gq-content's `runConsentAcceptance` in Chromium on representative routes
+(CN-R1, CN-R4, CN-R6, CN-R13), records a decision through `POST /gq/consent`
+and answers it at `GET /gq/consent/records/<id>` with the bearer only, and
+`gq site check`'s `legal-pages`, `consent-runtime` and `third-party-hosts`
+are ready with GA4 on, monolingual and bilingual (`legal-pages` warns of the
+bilingual fixture's untranslated privacy policy, as it should). The 0.19.1 checks of
+`infra/` and the purge entry stand.

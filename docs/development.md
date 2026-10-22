@@ -112,6 +112,14 @@ its pins and their published integrity, the crontab's command against the
 CMS plugin's published ZIP, the migrations `infra/frontend.run.ts` resolves,
 and the Frontend served in workerd with a local D1 store through its `/gq`
 routes. The runtime's own behaviour is proved in Quick-Release/gq-content.
+`scripts/smoke/consent.sh` proves that a generated site composes the consent
+Runtime (CONSENT-1, LEGAL-1): its Frontend, served the same way with a local
+consent database beside the store, passes gq-content's shared acceptance
+suite (`runConsentAcceptance`) in Chromium on representative routes, records
+a decision through `POST /gq/consent` and reads it back with the bearer, and
+is ready by `gq site check`'s consent part with GA4 on, monolingual and
+bilingual. It needs Playwright's Chromium (`pnpm exec playwright install
+chromium`) or `CHROMIUM` naming one.
 `scripts/smoke/cms-polylang.sh` proves a bilingual site's Polylang
 configuration (the generated `deploy/ploi/polylang.sh`) on a real WordPress
 with Polylang and GQ Polylang for WPGraphQL, read over GraphQL.
@@ -121,8 +129,8 @@ command as the image's root user on a clean CMS (see
 [CMS dependency patches](guides/dependency-patches.md#verification-boundary)). The
 wiring proof also installs the CI Worker's dependencies for Wrangler's local
 workerd runtime. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
-two generated-site proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
-`frontend-check.sh`, `content-pair.sh` and `ci-composer.sh` on every push; the
+three generated-site proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
+`frontend-check.sh`, `content-pair.sh`, `consent.sh` and `ci-composer.sh` on every push; the
 real-WordPress Polylang proof needs PHP and downloads, and the live gate is the
 gq-smoke wizard ([A new content Site, end to end](guides/provisioning.md#a-new-content-site-end-to-end)).
 

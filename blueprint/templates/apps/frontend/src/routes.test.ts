@@ -6,9 +6,18 @@
 // the pages, their words, metadata and chrome.
 import { experimental_AstroContainer as AstroContainer } from "astro/container";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { scanConsentHtml } from "@getquick/content/consent/testing";
 import Entry from "./pages/[...slug].astro";
 import Home from "./pages/index.astro";
-import { data, httpError, queries, stubWordPress, timeout, tokens } from "./test/wordpress-stub";
+import {
+  consentSettings,
+  data,
+  httpError,
+  queries,
+  stubWordPress,
+  timeout,
+  tokens,
+} from "./test/wordpress-stub";
 
 // The monolingual Site this file describes: the site's gq.ops.json without
 // wordpress.languages.
@@ -227,4 +236,98 @@ test("local development with no front page set is a 404 that says how to set one
 
   expect(status).toBe(404);
   expect(html).toContain("The front page is almost ready.");
+});
+
+// CONSENT-1 and LEGAL-1: the consent Runtime's UI, composed by the layout from
+// @getquick/content/consent/astro, on every page. What the UI does (the
+// banner, the decisions, the records) is the Runtime's, tested in gq-content
+// and by its shared acceptance suite in a browser.
+describe("the consent UI", () => {
+  const youtube =
+    '<figure class="wp-block-embed is-provider-youtube"><div class="wp-block-embed__wrapper"><iframe title="Video" width="560" height="315" src="https://www.youtube.com/embed/abcdefghijk?feature=oembed" allowfullscreen></iframe></div></figure>';
+
+  beforeEach(() => {
+    vi.stubEnv("DEV", true);
+  });
+
+  /** The page's footer: the legal links and the Cookie settings control. */
+  function footer(html: string) {
+    return /<footer\b[^>]*>([\s\S]*?)<\/footer>/.exec(html)?.[1] ?? "";
+  }
+
+  test("every page carries the Runtime's configuration, the legal links and Cookie settings", async () => {
+    stubWordPress({
+      home: () =>
+        data({
+          generalSettings: { title: "Acme", description: "" },
+          nodeByUri: frontPage,
+          designTokens: tokens,
+        }),
+      entry: () => data({ postBy: null, pageBy: about, designTokens: tokens }),
+    });
+
+    for (const path of ["/", "/about/", "/gone/"]) {
+      const { html } = await render(path);
+
+      expect(html, path).toMatch(/<script type="application\/json" id="gq-consent-config">/);
+      expect(footer(html), path).toMatch(
+        /<a href="\/privacy\/" data-gq-legal-role="privacy_policy">Privacy policy<\/a>/,
+      );
+      expect(footer(html), path).toMatch(
+        /<a href="\/cookies\/" data-gq-legal-role="cookie_policy">Cookie policy<\/a>/,
+      );
+      // "Cookie settings", in the page's language.
+      expect(footer(html), path).toMatch(/<button[^>]*data-gq-consent-open[^>]*>[^<]+</);
+      expect(html, path).toMatch(/<dialog id="gq-consent-preferences"/);
+    }
+  });
+
+  test("a published YouTube embed is served without its live source", async () => {
+    stubWordPress({
+      entry: () =>
+        data({
+          postBy: null,
+          pageBy: { ...about, content: `<p>We make things.</p>${youtube}` },
+          designTokens: tokens,
+        }),
+    });
+
+    const { status, html } = await render("/about/");
+
+    expect(status).toBe(200);
+    expect(html).toContain("<p>We make things.</p>");
+    const scan = scanConsentHtml(html, {
+      siteOrigin: "https://acme.example",
+      firstPartyHosts: ["media.example"],
+    });
+    expect(scan.liveThirdParty).toEqual([]);
+    // No catalog service is declared yet, so the embed stays blocked.
+    expect(scan.blocked).toEqual([{ host: "www.youtube.com", tag: "iframe" }]);
+  });
+
+  test("with no optional service there is no banner, and Cookie settings stays", async () => {
+    stubWordPress({ entry: () => data({ postBy: null, pageBy: about, designTokens: tokens }) });
+
+    const { html } = await render("/about/");
+
+    expect(html).not.toContain('id="gq-consent-banner"');
+    expect(footer(html)).toContain("data-gq-consent-open");
+  });
+
+  test("GA4 switched on in GQ Config asks first, in a banner before the page", async () => {
+    stubWordPress({
+      entry: () => data({ postBy: null, pageBy: about, designTokens: tokens }),
+      consent: () => consentSettings({ enabled: true, measurementId: "G-TEST1234" }),
+    });
+
+    const { html } = await render("/about/");
+
+    const banner = /<section id="gq-consent-banner"[^>]*>/.exec(html)?.[0];
+    expect(banner).toBeDefined();
+    expect(banner).not.toContain("hidden");
+    expect(html.indexOf('id="gq-consent-banner"')).toBeLessThan(html.indexOf("<header"));
+    expect(html).toContain('"services":["consent","ga4"]');
+    // The tag itself loads only after a grant, from the Runtime's client.
+    expect(html).not.toContain("googletagmanager.com");
+  });
 });
