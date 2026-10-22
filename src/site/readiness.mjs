@@ -34,6 +34,8 @@
 // not-ready, warn, skipped. The Site is "ready" only when nothing is
 // not-ready.
 
+import { scanConsentHtml } from "@getquick/content/consent/testing";
+
 import { RECONCILIATION_STALE_MS, sendCheckEvent } from "../frontend/commands.mjs";
 import { siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
 import { productionMediaReadiness } from "../media/readiness.mjs";
@@ -1019,76 +1021,29 @@ function runtimeCheck(settings, pages) {
   );
 }
 
-// The elements and attributes that make a browser load a URL, as gq-content's
-// scanConsentHtml (@getquick/content/consent/testing) reads them (CN-R1,
-// CN-R13); `<link>` only for what it fetches. HTML comments load nothing.
-// Restated here because the CLI can't depend on an unpublished
-// @getquick/content; once it is published, readiness should call
-// scanConsentHtml instead (ADR 0019).
-const LOADING = {
-  iframe: ["src"],
-  script: ["src"],
-  img: ["src", "srcset"],
-  source: ["src", "srcset"],
-  video: ["src", "poster"],
-  audio: ["src"],
-  embed: ["src"],
-  object: ["data"],
-  link: ["href"],
-  track: ["src"],
-};
-const LINK_LOADS =
-  /\brel\s*=\s*["']?[^"'>]*(stylesheet|preload|icon|modulepreload|preconnect|dns-prefetch)/iu;
-
-/** The hosts a page loads from (live), and those the consent Runtime blocked. */
+/**
+ * The hosts a page loads from before any consent (live), and those the
+ * consent Runtime blocked, by gq-content's own scan (CN-R1, CN-R13). HTML
+ * comments load nothing, so they are left out first.
+ */
 export function scanThirdPartyHosts(html, firstParty) {
-  const source = html.replace(/<!--[\s\S]*?-->/gu, "");
-  const live = new Set();
-  for (const [, tagName, attributes] of source.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/giu)) {
-    const tag = tagName.toLowerCase();
-    if (!LOADING[tag] || (tag === "link" && !LINK_LOADS.test(attributes))) continue;
-    for (const attribute of LOADING[tag]) {
-      const value = new RegExp(
-        `(?:^|\\s)${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
-        "iu",
-      ).exec(attributes);
-      if (!value) continue;
-      const raw = (value[1] ?? value[2] ?? value[3] ?? "").replaceAll("&amp;", "&");
-      const urls =
-        attribute === "srcset" ? raw.split(",").map((each) => each.trim().split(/\s+/u)[0]) : [raw];
-      for (const url of urls) {
-        const host = thirdPartyHost(url, firstParty);
-        if (host) live.add(host);
-      }
-    }
-  }
-  const blocked = new Set(
-    [...source.matchAll(/data-gq-consent-blocked\s*=\s*"([^"]*)"/gu)].map(([, host]) => host),
-  );
-  return { live: [...live].sort(), blocked: [...blocked].sort() };
-}
-
-function thirdPartyHost(value, firstParty) {
-  let url;
-  try {
-    url = new URL(value, firstParty.origin);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-  return firstParty.hosts.has(url.hostname) ? null : url.hostname;
+  const scan = scanConsentHtml(html.replace(/<!--[\s\S]*?-->/gu, ""), firstParty);
+  return {
+    live: [
+      ...new Set(
+        scan.liveThirdParty.map(({ url }) => new URL(url, firstParty.siteOrigin).hostname),
+      ),
+    ].sort(),
+    blocked: [...new Set(scan.blocked.map(({ host }) => host))].sort(),
+  };
 }
 
 function hostsCheck(pages, ops, origin) {
   const name = "third-party-hosts";
   // The Site's own hosts: its Frontend, its CMS and its media domain.
   const firstParty = {
-    origin: origin.href,
-    hosts: new Set(
-      [origin.hostname, ops.domains?.frontend, ops.domains?.admin, ops.media?.domain].filter(
-        Boolean,
-      ),
-    ),
+    siteOrigin: origin.href,
+    firstPartyHosts: [ops.domains?.frontend, ops.domains?.admin, ops.media?.domain].filter(Boolean),
   };
   const read = pages.filter(({ html }) => html !== null);
   if (read.length === 0) {

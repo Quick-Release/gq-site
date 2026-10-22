@@ -72,8 +72,9 @@ Consent tab.
     CMS's or the media domain: no live `script`, `iframe`, `img`, `source`,
     `video`, `audio`, `embed`, `object`, `track` or loading `link`, and no
     embed the Runtime blocked (`data-gq-consent-blocked`: an unknown host, or a catalog service the Site hasn't activated). The
-    rules are gq-content's `scanConsentHtml`'s. Other routes are each Site's
-    acceptance (CONSENT-1 acceptance evidence, item 5).
+    scan is gq-content's own `scanConsentHtml`, from the `@getquick/content`
+    the CLI pins. Other routes are each Site's acceptance (CONSENT-1
+    acceptance evidence, item 5).
   - `cms-events` also requires the CMS's `GETQUICK_CONSENT_READ_TOKEN` to
     match Sigillo's, when Sigillo has one.
 
@@ -132,12 +133,20 @@ commerce Frontend's deploy file is to come with it; it imports the same
 2. Require `getquick/gq-config` `^0.4.3` in `apps/cms/composer.json`, update
    the lock and release the CMS. Assign the legal pages and the controller in
    GETQUICK → Legal.
-3. Add the exact `@getquick/content` (and, on commerce,
-   `@quick-release/storefront`) pins from the tested combination below to
-   `apps/frontend/package.json`, and compose the UI and routes as above.
-4. `pnpm frontend:secrets`, `pnpm ci:deploy`, `pnpm ploi:events`, then a
+3. Add `"@getquick/content": "0.1.0"` (and, on commerce,
+   `"@quick-release/storefront": "0.2.1"`) to `apps/frontend/package.json`,
+   and compose the UI and routes as above. A Site whose `pnpm-workspace.yaml`
+   predates this release adds both, and `@getquick/content` for the CLI, to
+   `minimumReleaseAgeExclude`, as new Sites have, so they install the day
+   they are released.
+4. Don't require `getquick/gq-content` in the CMS while it still has the
+   skeleton's own event mu-plugins (`publication-events.php`,
+   `settings-events.php`, `delivery-retries.php`): they declare the same PHP
+   namespace, and WordPress stops on the redeclaration. Moving the CMS to the
+   package is #77.
+5. `pnpm frontend:secrets`, `pnpm ci:deploy`, `pnpm ploi:events`, then a
    release: the first deploy creates the consent database in `eu`.
-5. `pnpm doctor` (the jurisdiction) and `pnpm site:check` (legal pages, the
+6. `pnpm doctor` (the jurisdiction) and `pnpm site:check` (legal pages, the
    Runtime, third-party hosts).
 
 A Site that loaded a third-party script or embed itself replaces it with a
@@ -162,19 +171,28 @@ Runtime retries a record it couldn't deliver.
 
 ## Tested Platform release combination
 
-| Component                                    | Version                                                        | State                                |
-| -------------------------------------------- | -------------------------------------------------------------- | ------------------------------------ |
-| `@getquick/site`                             | this branch (#106)                                             | unreleased                           |
-| `getquick/gq-config`                         | 0.4.3                                                          | released; pinned in the CMS skeleton |
-| `@getquick/content` / `getquick/gq-content`  | 0.1.0 from `main` at `504d154` (gq-content#29), packed locally | merged, **not published**            |
-| `@quick-release/storefront`                  | 0.2.1 candidate (gq-storefront#17)                             | unmerged, **not published**          |
-| Alchemy / `@alchemy.run/frontend-frameworks` | 2.0.0-beta.79                                                  | the Blueprint's catalog pin          |
+Recorded for `@getquick/site` 0.19.1 on 2026-10-22.
 
-Checked together: the generated `infra/` type-checks against Alchemy
-beta.79; with the packed `@getquick/content` 0.1.0 installed in a generated
-Site, `infra/consent.ts` finds its consent migrations, the purge entry
-type-checks, and its `scheduled()` run against the real migration deleted a
-record past retention and kept a current one; `astro check`, lint and format
-pass in the generated Frontend. Nothing was deployed: no Cloudflare resource
-was created. The combination is recorded again with exact published versions
-when `@getquick/content` and the storefront are released.
+| Component                                    | Pin           | Artifact                                                                                                                                        |
+| -------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@getquick/site`                             | 0.19.1        | npm; depends on `@getquick/content` 0.1.0 exactly, for readiness's scan                                                                         |
+| `getquick/gq-config`                         | 0.4.3         | GETQUICK Composer registry; pinned in the CMS skeleton                                                                                          |
+| `@getquick/content`                          | 0.1.0         | npm, tag `v0.1.0` at `51a9f3e`, `sha512-lxzkdqcdgf4Ag1bTDLi59jUZmadU7dgW1Z6+aWWcKuMBvrMt5LWumHTntOEMmZhKYeCwvg4gCaWjAybbPvRX2w==`               |
+| `getquick/gq-content`                        | 0.1.0         | GETQUICK Composer registry (`wordpress-muplugin`), the same tag; ZIP SHA-256 `f892d974d80cde9bb9a36e4595f509661fb37f63e0102b1506483fcfc2c78a5e` |
+| `@quick-release/storefront`                  | 0.2.1         | GitHub Packages, `sha512-ndzQqKeSllnUJGJ/ycX75BBpS8QZ4lrZxuVdKmysnC41DG3d4+Ra9OMyBvecTf7ddmmerybZjTUOmn+YZ3Xp8g==`                              |
+| Alchemy / `@alchemy.run/frontend-frameworks` | 2.0.0-beta.79 | the Blueprint's catalog pin                                                                                                                     |
+
+The app skeletons don't pin `@getquick/content`, `getquick/gq-content` or the
+storefront yet: the content skeleton still carries its own copy of the
+content runtime (#77), and there is no commerce skeleton (#89). A Site adds
+them as above.
+
+Checked together, without deploying anything or creating a Cloudflare
+resource: in a Site generated by this release with `@getquick/content` 0.1.0
+installed from npm, the generated `infra/` type-checks against Alchemy
+beta.79, `infra/consent.ts` finds the consent migrations, the purge entry
+type-checks, its `scheduled()` against the real migration deletes a record
+past retention and keeps a current one, and `astro check`, lint and format
+pass. Storefront 0.2.1 installs beside `@getquick/content` 0.1.0 (its peer
+range) and its `./consent` export loads. The gq-content ZIP's checksum is
+that of the v0.1.0 release asset.

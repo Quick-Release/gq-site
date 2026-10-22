@@ -562,7 +562,8 @@ test("an unknown third-party host on a public page is not ready; the Site's own 
       '<a href="https://elsewhere.example/">a link loads nothing</a>',
       '<div data-src="https://lazy.example/x.js"></div>',
       '<iframe src="https://www.youtube.com/embed/abc"></iframe>',
-      '<div class="gq-consent-placeholder" data-gq-consent-blocked="tracker.example"></div>',
+      // The consent Runtime's placeholder for an embed it blocked.
+      '<div class="gq-consent-blocked" data-gq-consent-blocked="tracker.example" data-gq-tag="iframe" role="note"><p>Blocked</p></div>',
       '<!-- <script src="https://commented.example/x.js"></script> -->',
     ].join("\n"),
   });

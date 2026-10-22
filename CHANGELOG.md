@@ -5,6 +5,8 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+## 0.19.1 — 2026-10-22
+
 ### Added
 
 - **Consent records, provisioned in the EU** ([ADR 0019](docs/adr/0019-record-visitors-consent-in-a-separate-eu-database.md);
@@ -33,9 +35,24 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 - The CMS skeleton requires `getquick/gq-config` 0.4.3 (the Legal Contract
   and Consent tab).
+- `@getquick/site` depends on `@getquick/content` 0.1.0 exactly: readiness's
+  third-party scan is gq-content's own `scanConsentHtml`.
+- New Sites' `pnpm-workspace.yaml` lets `@getquick/content` and
+  `@quick-release/storefront` install the day they are released, as
+  `@getquick/site` already could.
+
+### Tested with
+
+`getquick/gq-config` 0.4.3, `@getquick/content` and `getquick/gq-content`
+0.1.0 (tag `v0.1.0`, `51a9f3e`) and `@quick-release/storefront` 0.2.1, with
+their integrities in the [consent guide](docs/guides/consent.md#tested-platform-release-combination).
+The skeletons don't pin gq-content or the storefront yet (#77, #89).
 
 Existing Sites: upgrade the exact pin and run `gq sync`; nothing changes for
-a Frontend without the consent Runtime. A Site whose GQ Config predates
+a Frontend without the consent Runtime. A Site's pnpm may hold back
+`@getquick/content`, now a dependency of `@getquick/site`, for its minimum
+release age: add `"@getquick/content"` to `minimumReleaseAgeExclude` in its
+`pnpm-workspace.yaml`. A Site whose GQ Config predates
 0.4.3, has unassigned legal pages or loads third-party hosts is no longer
 ready under `gq site check`. Adoption: [consent guide](docs/guides/consent.md).
 
