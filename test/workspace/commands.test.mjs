@@ -677,11 +677,13 @@ test("gq doctor skips the jurisdiction check without the Artifacts token", async
 
 // The D1 listing for the consent databases (ADR 0019), holding `databases`;
 // the Artifacts listing answers as artifactsApi's does.
-function consentApi({ databases = [], status = 200, namespaces = [] } = {}) {
+function consentApi({ databases = [], status = 200, namespaces = [], details = {} } = {}) {
   return recordingFetch(({ method, url }) => {
     assert.equal(method, "GET");
     const { pathname, searchParams } = new URL(url);
     if (pathname.endsWith("/artifacts/namespaces")) return { success: true, result: namespaces };
+    const detail = /\/d1\/database\/([^/]+)$/u.exec(pathname)?.[1];
+    if (detail) return { success: true, result: details[detail] };
     assert.equal(pathname, "/client/v4/accounts/account-1/d1/database");
     assert.equal(searchParams.get("name"), "fixture-fe-consent");
     if (status !== 200) return json({ success: false, errors: [{ message: "denied" }] }, status);
@@ -738,6 +740,24 @@ test("gq doctor passes consent databases in eu, with CLOUDFLARE_API_TOKEN from t
 
   assert.equal(result.code, 0, result.stdout);
   assert.match(result.stdout, /✓ consent database fixture-fe-consent is in the eu jurisdiction/u);
+});
+
+test("gq doctor reads a database's jurisdiction itself when the listing leaves it out", async () => {
+  const fixture = await healthySite();
+  const fetch = consentApi({
+    databases: [{ uuid: "a", name: "fixture-fe-consent" }],
+    details: { a: { uuid: "a", name: "fixture-fe-consent", jurisdiction: "eu" } },
+  });
+
+  const result = await fixture.run(["doctor"], {
+    env: { CLOUDFLARE_API_TOKEN: "env-deploy" },
+    exec: machine(),
+    fetch,
+  });
+
+  assert.equal(result.code, 0, result.stdout);
+  assert.match(result.stdout, /✓ consent database fixture-fe-consent is in the eu jurisdiction/u);
+  assert.ok(fetch.requests.some(({ url }) => url.endsWith("/d1/database/a")));
 });
 
 test("gq doctor reports a Site without a consent database, and skips without a token", async () => {

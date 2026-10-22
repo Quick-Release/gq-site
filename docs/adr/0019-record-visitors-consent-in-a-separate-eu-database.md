@@ -1,14 +1,16 @@
 # ADR 0019: Record visitors' consent in a separate EU database
 
-- Status: Accepted for the Blueprint, 2026-10-22, as the delegated decision
-  [gq-platform ADR 0008](https://github.com/Quick-Release/gq-platform/blob/claude/cookie-consent-foundation/docs/adr/0008-consent-and-legal-pages.md)
-  asks for beside [ADR 0003](0003-serve-published-content-from-a-durable-store.md).
-  ADR 0008 is itself **Proposed**: this was implemented under the Platform
-  decision owner's directed execution batch, ahead of its acceptance. Revisit
-  it if ADR 0008 is amended or rejected.
+- Status: Accepted
 - Date: 2026-10-22
 
 ## Context
+
+This is the delegated decision
+[gq-platform ADR 0008](https://github.com/Quick-Release/gq-platform/blob/claude/cookie-consent-foundation/docs/adr/0008-consent-and-legal-pages.md)
+asks the Blueprint to record beside [ADR 0003](0003-serve-published-content-from-a-durable-store.md).
+ADR 0008 is itself **Proposed**: this was implemented under the Platform
+decision owner's directed execution batch, ahead of its acceptance, and is to
+be revisited if ADR 0008 is amended or rejected.
 
 CONSENT-1 (gq-platform's consent baseline, Proposed) requires each visitor
 decision to be recorded through a same-origin endpoint on the Site's own
@@ -58,9 +60,10 @@ Facts checked against the pinned stack (Alchemy 2.0.0-beta.79):
   `GETQUICK_FRONTEND_URL`, the only origin GQ Config sends it to.
   `CONSENT_RATE_LIMITER` (30 a minute per client IP, per Site and stage) is
   bound to the Worker; the IP is never stored.
-- **The purge runs in a Worker of its own.** `<project>-fe-consent-purge[-<stage>]`
+- **The purge runs in a Worker of its own.** `<project>-consent-purge[-<stage>]`
   binds the same database and runs daily on a cron trigger, with no public
-  URL. Its entry, the managed `apps/frontend/workers/consent-purge.ts`, only
+  URL, named outside the `<project>-fe-<stage>` pattern that offboarding reads
+  as a Frontend stage. Its entry, the managed `apps/frontend/workers/consent-purge.ts`, only
   calls the consent Runtime's `purge()`: retention stays the Runtime's. One
   Worker for both variants, whatever the Frontend's framework exports.
 - **Its location is checked.** `gq doctor` fails on any of the Site's

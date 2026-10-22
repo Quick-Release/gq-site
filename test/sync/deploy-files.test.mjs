@@ -140,7 +140,7 @@ test("the Frontend deploy provisions the consent records in the eu jurisdiction 
   // Its migrations are the Frontend's installed consent Runtime's.
   assert.match(consent, /"\.\/consent\/migrations"/u);
   // The retention purge: its own Worker on a daily cron, with no public URL.
-  assert.match(consent, /^ {4}const worker = "acme-shop-fe-consent-purge";$/mu);
+  assert.match(consent, /^ {4}const worker = "acme-shop-consent-purge";$/mu);
   assert.match(consent, /^ {6}crons: \[CONSENT_PURGE_SCHEDULE\],$/mu);
   assert.match(consent, /^ {6}workersDev: false,$/mu);
   assert.match(

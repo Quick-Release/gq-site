@@ -23,12 +23,12 @@ When `apps/frontend` has a consent Runtime installed (`@getquick/content`
 exporting `./consent/migrations`), the Frontend's deploy
 (`infra/frontend.run.ts` with the managed `infra/consent.ts`) adds:
 
-| Resource or binding                    | What it is                                                                                                                                                                                     |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<project>-fe-consent[-<stage>]`       | A D1 database created with `jurisdiction: "eu"`, migrated from the Runtime's `consentMigrationsDirectory`, bound as `CONSENT_DB`. Retained in production. Separate from the publication store. |
-| `CONSENT_READ_TOKEN`                   | A Worker secret from Sigillo staging: the bearer the CMS reads records with. Without it, reads are refused and decisions are still recorded.                                                   |
-| `CONSENT_RATE_LIMITER`                 | A Workers Rate Limiting binding for the record endpoint: 30 a minute per client IP, counted per Site and stage. The IP isn't stored.                                                           |
-| `<project>-fe-consent-purge[-<stage>]` | A Worker with no public URL, run daily at 03:17 UTC, binding the same database. Its entry, the managed `apps/frontend/workers/consent-purge.ts`, calls the Runtime's `purge()`.                |
+| Resource or binding                 | What it is                                                                                                                                                                                     |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<project>-fe-consent[-<stage>]`    | A D1 database created with `jurisdiction: "eu"`, migrated from the Runtime's `consentMigrationsDirectory`, bound as `CONSENT_DB`. Retained in production. Separate from the publication store. |
+| `CONSENT_READ_TOKEN`                | A Worker secret from Sigillo staging: the bearer the CMS reads records with. Without it, reads are refused and decisions are still recorded.                                                   |
+| `CONSENT_RATE_LIMITER`              | A Workers Rate Limiting binding for the record endpoint: 30 a minute per client IP, counted per Site and stage. The IP isn't stored.                                                           |
+| `<project>-consent-purge[-<stage>]` | A Worker with no public URL, run daily at 03:17 UTC, binding the same database. Its entry, the managed `apps/frontend/workers/consent-purge.ts`, calls the Runtime's `purge()`.                |
 
 A Frontend without a consent Runtime deploys exactly as before.
 
@@ -71,7 +71,7 @@ Consent tab.
     JavaScript, must load nothing from a host other than the Frontend's, the
     CMS's or the media domain: no live `script`, `iframe`, `img`, `source`,
     `video`, `audio`, `embed`, `object`, `track` or loading `link`, and no
-    embed the Runtime blocked as unknown (`data-gq-consent-blocked`). The
+    embed the Runtime blocked (`data-gq-consent-blocked`: an unknown host, or a catalog service the Site hasn't activated). The
     rules are gq-content's `scanConsentHtml`'s. Other routes are each Site's
     acceptance (CONSENT-1 acceptance evidence, item 5).
   - `cms-events` also requires the CMS's `GETQUICK_CONSENT_READ_TOKEN` to

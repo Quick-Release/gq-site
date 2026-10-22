@@ -58,8 +58,10 @@ export const ConsentDatabase = Effect.gen(function* () {
   }).pipe(Alchemy.RemovalPolicy.retain(production));
 });
 
-// A Workers Rate Limiting binding for the record endpoint. Its namespace is
-// derived from the Worker's name, so each Site and stage counts on its own.
+// A Workers Rate Limiting binding for the record endpoint. Its namespace, a
+// positive integer Cloudflare scopes counters by within the account, is a
+// 32-bit FNV-1a hash of the Worker's name, so each Site and stage counts on
+// its own and keeps the same namespace across deploys.
 export function consentRateLimiter(worker: string) {
   let hash = 0x811c9dc5;
   for (const character of `${worker}:consent`) {
@@ -81,7 +83,7 @@ export const ConsentPurge = Cloudflare.Worker(
     const { stage } = yield* Stack;
     const production = stage === "prod";
     // The project's name stays in constants, as in frontend.run.ts.
-    const worker = "{{project}}-fe-consent-purge";
+    const worker = "{{project}}-consent-purge";
     const site = "{{project}}";
     return {
       name: production ? worker : `${worker}-${stage}`,

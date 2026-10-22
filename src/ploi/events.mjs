@@ -21,13 +21,11 @@
 
 import { applyEnv } from "../dotenv-text.mjs";
 import { createReporter } from "../cli/reporter.mjs";
+import { MINIMUM_SECRET_LENGTH } from "../frontend/commands.mjs";
+import { CMS_CONSENT_READ_TOKEN, CONSENT_READ_TOKEN } from "../frontend/consent.mjs";
 import { createPloiServerClient } from "./server-client.mjs";
 
 export const EVENT_SECRET = "PUBLICATION_EVENT_SECRET";
-
-/** The Frontend's consent read token (Sigillo) and the CMS .env line GQ Config reads it from. */
-export const CONSENT_READ_TOKEN = "CONSENT_READ_TOKEN";
-export const CMS_CONSENT_READ_TOKEN = "GETQUICK_CONSENT_READ_TOKEN";
 
 /** What the cron runs: the CMS's delivery-retries.php sends what is due. */
 export const RETRY_COMMAND = "wp gq-events retry-due --quiet";
@@ -99,13 +97,13 @@ export async function runEvents({ context, parsed, fetch, io, interactive }) {
       `${EVENT_SECRET} is missing; add it to Sigillo staging (openssl rand -hex 32) and run this through gq sigillo run staging.`,
     );
   }
-  if (secret.length < 32) {
+  if (secret.length < MINIMUM_SECRET_LENGTH) {
     throw new Error(
       `${EVENT_SECRET} must be at least 32 characters; the Frontend refuses shorter ones.`,
     );
   }
   const consentToken = context.env[CONSENT_READ_TOKEN]?.trim() || undefined;
-  if (consentToken && consentToken.length < 32) {
+  if (consentToken && consentToken.length < MINIMUM_SECRET_LENGTH) {
     throw new Error(
       `${CONSENT_READ_TOKEN} must be at least 32 characters; the Frontend refuses shorter ones (gq frontend secrets replaces it).`,
     );

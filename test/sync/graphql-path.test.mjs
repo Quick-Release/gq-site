@@ -171,7 +171,7 @@ test("a Frontend with the consent Runtime binds its consent records, in eu, and 
 
   const purge = deploy.purge();
   assert.equal(purge.worker, "FixtureConsentPurge");
-  assert.equal(purge.props.name, "fixture-fe-consent-purge");
+  assert.equal(purge.props.name, "fixture-consent-purge");
   assert.deepEqual(purge.props.crons, ["17 3 * * *"]);
   assert.equal(purge.props.workersDev, false);
   assert.match(purge.props.main, /\/apps\/frontend\/workers\/consent-purge\.ts$/u);

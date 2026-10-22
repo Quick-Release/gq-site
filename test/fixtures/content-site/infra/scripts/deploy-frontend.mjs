@@ -54,10 +54,16 @@ if (consentToken && consentToken.length < 32) {
   );
   process.exit(1);
 }
-if (
-  !consentToken &&
-  existsSync(new URL("../../apps/frontend/node_modules/@getquick/content", import.meta.url))
-) {
+// Whether the deploy records consent, by infra/consent.ts's rule: the
+// Frontend's @getquick/content exports its consent migrations.
+const content = new URL(
+  "../../apps/frontend/node_modules/@getquick/content/package.json",
+  import.meta.url,
+);
+const consentRecords =
+  existsSync(content) &&
+  Boolean(JSON.parse(readFileSync(content, "utf8")).exports?.["./consent/migrations"]);
+if (!consentToken && consentRecords) {
   console.warn(
     "CONSENT_READ_TOKEN isn't set: this deploy disables the CMS's consent record reads. " +
       "Visitors' decisions are still recorded. Run gq frontend secrets.",

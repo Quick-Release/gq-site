@@ -38,12 +38,8 @@ import { RECONCILIATION_STALE_MS, sendCheckEvent } from "../frontend/commands.mj
 import { siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
 import { productionMediaReadiness } from "../media/readiness.mjs";
 import { cmsFetch } from "../cms/access.mjs";
-import {
-  CMS_CONSENT_READ_TOKEN,
-  CONSENT_READ_TOKEN,
-  EVENT_SECRET,
-  inspectCmsEvents,
-} from "../ploi/events.mjs";
+import { CMS_CONSENT_READ_TOKEN, CONSENT_READ_TOKEN } from "../frontend/consent.mjs";
+import { EVENT_SECRET, inspectCmsEvents } from "../ploi/events.mjs";
 
 const TIMEOUT = 30_000;
 const REFRESH_TOKEN = "FRONTEND_REFRESH_TOKEN";
@@ -827,7 +823,10 @@ export async function siteReadiness({ ops, env, fetch, origin, upload = true, no
 
 // --- consent and legal pages ---------------------------------------------------
 
-/** The GQ Config release that adds the Legal Contract, its readiness and the GA4 toggle's field. */
+/**
+ * The first GQ Config release with the Legal Contract: a minimum, not the
+ * CMS skeleton's pin, which may move past it.
+ */
 const GQ_CONFIG_LEGAL = "getquick/gq-config 0.4.3";
 
 /**
@@ -1021,8 +1020,11 @@ function runtimeCheck(settings, pages) {
 }
 
 // The elements and attributes that make a browser load a URL, as gq-content's
-// scanConsentHtml reads them (CN-R1, CN-R13); `<link>` only for what it
-// fetches. HTML comments load nothing.
+// scanConsentHtml (@getquick/content/consent/testing) reads them (CN-R1,
+// CN-R13); `<link>` only for what it fetches. HTML comments load nothing.
+// Restated here because the CLI can't depend on an unpublished
+// @getquick/content; once it is published, readiness should call
+// scanConsentHtml instead (ADR 0019).
 const LOADING = {
   iframe: ["src"],
   script: ["src"],
@@ -1099,7 +1101,10 @@ function hostsCheck(pages, ops, origin) {
   const found = [];
   for (const { url, html } of read) {
     const { live, blocked } = scanThirdPartyHosts(html, firstParty);
-    const hosts = [...live, ...blocked.map((host) => `${host} (blocked by the consent Runtime)`)];
+    const hosts = [
+      ...live,
+      ...blocked.map((host) => `${host} (blocked by the consent Runtime: unknown or inactive)`),
+    ];
     if (hosts.length > 0) found.push(`${url.href}: ${hosts.join(", ")}`);
   }
   if (found.length > 0) {

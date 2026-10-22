@@ -13,7 +13,7 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   consent database, `<project>-fe-consent[-<stage>]`, created with
   `jurisdiction: "eu"` and migrated from the Runtime, bound as `CONSENT_DB`
   beside `CONSENT_RATE_LIMITER` and the `CONSENT_READ_TOKEN` secret, and a
-  daily purge Worker, `<project>-fe-consent-purge[-<stage>]`, that calls the
+  daily purge Worker, `<project>-consent-purge[-<stage>]`, that calls the
   Runtime's `purge()`. New managed files: `infra/consent.ts` and
   `apps/frontend/workers/consent-purge.ts`. A Frontend without the Runtime
   deploys as before.

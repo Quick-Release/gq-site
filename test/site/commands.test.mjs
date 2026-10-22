@@ -572,7 +572,10 @@ test("an unknown third-party host on a public page is not ready; the Site's own 
   assert.equal(hosts.status, "not-ready");
   assert.match(hosts.detail, /fonts\.googleapis\.com/u);
   assert.match(hosts.detail, /www\.youtube\.com/u);
-  assert.match(hosts.detail, /tracker\.example \(blocked by the consent Runtime\)/u);
+  assert.match(
+    hosts.detail,
+    /tracker\.example \(blocked by the consent Runtime: unknown or inactive\)/u,
+  );
   for (const host of [
     "media.example.test",
     "elsewhere.example",

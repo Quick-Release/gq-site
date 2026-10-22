@@ -8,6 +8,10 @@
       "path": "apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch",
       "template": "templates/apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch"
     },
+    {
+      "path": "apps/frontend/workers/consent-purge.ts",
+      "template": "templates/apps/frontend/workers/consent-purge.ts"
+    },
     { "path": ".mise.toml", "template": "templates/mise.toml" },
     { "path": ".nvmrc", "template": "templates/nvmrc" },
     {
@@ -52,10 +56,6 @@
     { "path": "infra/ci/wrangler.jsonc", "template": "templates/infra/ci/wrangler.jsonc" },
     { "path": "infra/consent.ts", "template": "templates/infra/consent.ts" },
     { "path": "infra/frontend.run.ts", "template": "templates/infra/frontend.run.ts" },
-    {
-      "path": "apps/frontend/workers/consent-purge.ts",
-      "template": "templates/apps/frontend/workers/consent-purge.ts"
-    },
     { "path": "infra/package.json", "template": "templates/infra/package.json" },
     {
       "path": "infra/scripts/deploy-frontend.mjs",

@@ -46,7 +46,7 @@ export const FRONTEND_SECRETS = {
   PUBLICATION_EVENT_SECRET: "the key the CMS signs its events with",
   CONSENT_READ_TOKEN: "the CMS's bearer for consent record reads",
 };
-const MINIMUM_SECRET_LENGTH = 32;
+export const MINIMUM_SECRET_LENGTH = 32;
 
 const MARKS = { promoted: "✓", superseded: "✓", kept: "✗" };
 
