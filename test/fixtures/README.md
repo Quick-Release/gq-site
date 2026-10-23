@@ -6,6 +6,24 @@ test recipes belong in [`test/support/`](../support/), not here.
 
 ## Provenance and use
 
+The `presentation/` snapshots come from gq-design commits `4db472b` and
+`76ad385` (#73). `container-saved.html` is the real Gutenberg document after
+sidebar authoring, serialization, parse and valid rerender. The Base controls
+set Width 1/2, Margin inline Auto and Padding inline 4; md sets Width Full and
+lg sets Max width lg. `container-rendered.html` is WordPress `do_blocks` output
+with that plugin's neutral render filter. `container-public.json` is the
+schema-valid public TemplateSerializer node from the same document and real
+`parse_blocks`; it is serializer evidence, not a live REST/GraphQL capture.
+The production presentation proof feeds the HTML through the delivered page
+body and the public node through selected chrome patterns. Its HTTP CMS is a
+stub; it does not replace upstream editor/producer tests.
+
+Immutable SHA-256 values (keep the fixture bytes unchanged):
+
+- `container-saved.html`: `4dfa37339a789fbc2708f183f8050aed723160ebc0068baecef472f1a62bc7e9`
+- `container-rendered.html`: `4de246453e6ed3977082cb51676565b21723cba2ee22e46224887f750b82992d`
+- `container-public.json`: `25ea94c114c1d9381b78a95a2043f9e67d459cabce29674a773886ccf3f966a4`
+
 | Fixture                                                    | Origin                                                                                                                 | Used by                                                                                                                                             |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `content-site/`                                            | The expected eighteen CI Worker, Frontend deploy, consent and release-step files for `manifests/content-site.v1.json`. | [`sync/deploy-files.test.mjs`](../sync/deploy-files.test.mjs) compares rendered files and lock hashes with this baseline.                           |

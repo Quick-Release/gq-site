@@ -87,8 +87,18 @@ languages.
 ## Blocks
 
 `@getquick/content` renders the GETQUICK Design blocks WPGraphQL Blocks
-returns, and `blockPresetStyles` turns the CMS's spacing and color presets
-into the CSS saved block classes need; `src/styles/global.css` styles them.
+returns. The layout installs its shared `presentationStyleSheet` for content
+and selected header/footer patterns, including settings authored after the
+Frontend was built. `blockPresetStyles` supplies the CMS's spacing and color
+presets. Presentation values follow Base and upward breakpoint overrides.
+
+Container sizing applies Tailwind's width caps without centering or padding.
+Authors set margins and padding explicitly. The skeleton no longer imposes
+article widths, sibling spacing, legacy device visibility or constrained-parent
+Container styles on published content. Existing designs can change appearance.
+Keep Site shell styling in `src/styles/global.css` from overriding authored
+presentation. The layout, pages and styles are Site-owned after generation;
+`gq sync` does not replace them automatically.
 
 ## Checks
 

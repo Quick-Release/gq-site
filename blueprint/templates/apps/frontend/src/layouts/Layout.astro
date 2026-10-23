@@ -1,6 +1,6 @@
 ---
 import type { Alternate, DesignBlock, SiteChrome, SiteLanguage } from "@getquick/content";
-import { designGridStyle } from "@getquick/content";
+import { designGridStyle, presentationStyleSheet } from "@getquick/content";
 import { consentPage } from "@getquick/content/consent/astro";
 import { content } from "../lib/content";
 import { copyFor } from "../lib/copy";
@@ -93,11 +93,12 @@ const consent = configuration
     {xDefault && <link rel="alternate" hreflang="x-default" href={xDefault.href} />}
     <title>{title === "{{Project}}" ? title : `${title} — {{Project}}`}</title>
     <style is:inline set:html={designGridStyle()} />
+    <style is:inline set:html={presentationStyleSheet()} />
     {consent && <Fragment set:html={consent.head} />}
   </head>
   <body>
     {consent && <Fragment set:html={consent.body} />}
-    <header class="site-header">
+    <header class={headerPattern ? "gqd-content" : "site-header"}>
       {headerPattern ? (
         <Fragment set:html={headerPattern} />
       ) : (
@@ -135,7 +136,7 @@ const consent = configuration
     <slot />
     {(footerPattern || consent) && (
       <footer class="site-footer">
-        {footerPattern && <Fragment set:html={footerPattern} />}
+        {footerPattern && <div class="gqd-content"><Fragment set:html={footerPattern} /></div>}
         {consent && <Fragment set:html={consent.footer} />}
       </footer>
     )}

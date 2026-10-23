@@ -138,6 +138,33 @@ For blueprint source roles, ownership mappings, and deliberate dotless source
 names, see the [blueprint map](../blueprint/README.md). `ownership.json` remains
 the authority for which site paths are touched.
 
+### Staged presentation consumer checks
+
+Before a coordinated content release is published, set `GQ_CONTENT_TARBALL`
+to the absolute path of an immutable `@getquick/content` preview tarball.
+The generated-site smoke scripts install it through a local workspace override.
+The generated package files retain their published pins; the preview bundles
+its shared Design dependencies and needs no private registry access.
+
+```sh
+GQ_CONTENT_TARBALL=/absolute/path/to/getquick-content-preview.tgz scripts/smoke/frontend-check.sh
+GQ_CONTENT_TARBALL=/absolute/path/to/getquick-content-preview.tgz scripts/smoke/presentation.sh
+```
+
+The presentation proof builds the actual generated Astro frontend and serves it
+in local workerd with its publication store. The CMS supplies the saved document
+after the build, so the browser checks production CSS for late-authored content.
+It checks nested Container caps at every default breakpoint boundary and explicit
+centering, padding and upward overrides in the page body and selected chrome,
+in both LTR and RTL. Versioned fixtures in `test/fixtures/presentation/` retain
+the real saved-editor document, WordPress-rendered HTML and neutral public node;
+`test/fixtures/README.md` records provenance and hashes. The CMS's HTTP envelope
+is stubbed. Editor save/reload and live producer acceptance remain upstream checks.
+
+Staged preview success does not establish that the currently published content
+version supports the new exports. Advance the managed CMS/npm pair only after
+the coordinated version is published, then rerun without the local override.
+
 ## Releasing
 
 1. Bump `version` in `package.json`, add its section to `CHANGELOG.md`, and

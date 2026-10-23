@@ -27,7 +27,7 @@ const isVideoHeroPage = content?.page.hasVideoHero ?? false;
   {content?.page.content ? (
     <>
       <style is:global set:html={colorRules} />
-      <main class={isVideoHeroPage ? "prose-wp prose-wp--video-hero" : "prose-wp"} style={vars} set:html={content.page.content}></main>
+      <main class={isVideoHeroPage ? "gqd-content prose-wp prose-wp--video-hero" : "gqd-content prose-wp"} style={vars} set:html={content.page.content}></main>
     </>
   ) : home.kind !== "unavailable" ? (
     <main class="empty-state">

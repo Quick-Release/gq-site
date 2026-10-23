@@ -5,6 +5,7 @@ const ignorePatterns = [
   ".agents/**",
   "blueprint/templates/**",
   "test/fixtures/content-site/**",
+  "test/fixtures/presentation/**",
   "node_modules/**",
   "coverage/**",
 ];

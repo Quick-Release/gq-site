@@ -52,17 +52,17 @@ const title =
     entry.hasVideoHero ? (
       <>
         <style is:global set:html={colorRules} />
-        <main class="prose-wp prose-wp--video-hero" style={vars} set:html={entry.content}></main>
+        <main class="gqd-content prose-wp prose-wp--video-hero" style={vars} set:html={entry.content}></main>
       </>
     ) : (
       <main>
-        <h1>{entry.title}</h1>
+        <h1 class="entry-title">{entry.title}</h1>
         {isPost && <time datetime={entry.date}>{formatDate(entry.date, runtime.multilingual ? language.lang : "en")}</time>}
         {entry.featuredImage && (
           <img class="featured-image" src={entry.featuredImage.sourceUrl} alt={entry.featuredImage.altText || ""} />
         )}
         <style is:global set:html={colorRules} />
-        <div class="prose-wp" style={vars} set:html={entry.content}></div>
+        <div class="gqd-content prose-wp" style={vars} set:html={entry.content}></div>
       </main>
     )
   ) : delivery.kind === "missing" ? (

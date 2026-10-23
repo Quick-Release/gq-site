@@ -63,6 +63,8 @@ test("gq new writes a workspace whose root scripts run the Frontend and the pinn
   const frontend = JSON.parse(await readSite(site.root, "apps/frontend/package.json"));
   assert.equal(frontend.name, "@acme/frontend");
   assert.equal(frontend.version, root.version);
+  assert.equal(frontend.devDependencies.tailwindcss, "4.3.3");
+  assert.equal(frontend.devDependencies["@tailwindcss/vite"], "4.3.3");
   const workspace = await readSite(site.root, "pnpm-workspace.yaml");
   for (const line of ['  - "apps/*"', '  - "infra"', '  - "infra/ci"']) {
     assert.ok(workspace.split("\n").includes(line), line);
