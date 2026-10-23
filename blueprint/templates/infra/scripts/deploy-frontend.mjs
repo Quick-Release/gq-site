@@ -18,6 +18,16 @@ if (ops.offboarded) {
   process.exit(1);
 }
 
+// Validate before invoking Alchemy; secret values are never logged.
+if (
+  ops.preview !== undefined ||
+  process.env.GQ_PREVIEW_ACCESS_CLIENT_ID !== undefined ||
+  process.env.GQ_PREVIEW_ACCESS_CLIENT_SECRET !== undefined
+) {
+  const { previewBindings } = await import("@getquick/site/preview-bindings");
+  previewBindings(ops, process.env, () => undefined);
+}
+
 // A Frontend with the publication store (its own apps/frontend/migrations,
 // or, on the content package pair, @getquick/content's `./migrations`,
 // installed in apps/frontend: frontend.run.ts's rule) is

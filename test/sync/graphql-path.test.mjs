@@ -23,11 +23,14 @@ const STUBS = {
     exports: { ".": "./index.js", "./Stack": "./Stack.js", "./Cloudflare": "./Cloudflare.js" },
   }),
   "node_modules/alchemy/index.js":
-    "export const Stack = () => undefined; export const RemovalPolicy = { retain: () => value => value };",
+    "export const Stack = (_id, _options, program) => program; export const RemovalPolicy = { retain: () => value => value };",
   "node_modules/alchemy/Stack.js":
     "export const Stack = { *[Symbol.iterator]() { return { stage: process.env.TEST_STAGE }; } };",
   "node_modules/alchemy/Cloudflare.js": `
-    export const Website = { Astro: (_id, props) => props };
+    export const Website = { Astro: (_id, props) => (function* () {
+      const result = yield* props;
+      return { ...result, bind: () => function* (bindings) { globalThis.previewBindings = bindings; } };
+    })() };
     export const Worker = (id, props) => ({ worker: id, props });
     export const RateLimit = (name, props) => ({ rateLimit: name, ...props });
     export const D1 = { Database: (id, props) => ({
@@ -76,6 +79,12 @@ async function generatedDeploy({ graphqlPath, durable = true, consent = false, o
   });
   const synced = await fixture.run(["sync"]);
   assert.equal(synced.code, 0, synced.stderr);
+  await mkdir(fixture.path("node_modules/@getquick"), { recursive: true });
+  await symlink(
+    fileURLToPath(new URL("../../", import.meta.url)),
+    fixture.path("node_modules/@getquick/site"),
+    "dir",
+  );
   // An executable named alchemy captures only the public URL; it never deploys.
   const executable = fixture.path("alchemy");
   await writeFile(
@@ -95,6 +104,12 @@ async function generatedDeploy({ graphqlPath, durable = true, consent = false, o
   return {
     root: fixture.root,
     script: (env = {}) => run(["scripts/deploy-frontend.mjs"], env),
+    scriptResult: (env = {}) =>
+      spawnSync(process.execPath, ["scripts/deploy-frontend.mjs"], {
+        cwd: join(fixture.root, "infra"),
+        encoding: "utf8",
+        env: { PATH: fixture.root, ...env },
+      }),
     website: (env = {}) =>
       run(
         [
@@ -102,6 +117,16 @@ async function generatedDeploy({ graphqlPath, durable = true, consent = false, o
           "--input-type=module",
           "--eval",
           'import { Website } from "./frontend.run.ts"; import { runSync } from "effect/Effect"; console.log(JSON.stringify(runSync(Website)));',
+        ],
+        env,
+      ),
+    bindings: (env = {}) =>
+      run(
+        [
+          "--experimental-strip-types",
+          "--input-type=module",
+          "--eval",
+          'import stack from "./frontend.run.ts"; import { runSync } from "effect/Effect"; runSync(stack); console.log(JSON.stringify(globalThis.previewBindings ?? {}));',
         ],
         env,
       ),
@@ -291,4 +316,51 @@ test("the purge entry deletes records past the Site's retention and keeps newer 
   assert.deepEqual(purge({ CONSENT_RETENTION_DAYS: "365" }), ["within-a-year"]);
   // Without it, the Runtime's default (1826 days) keeps both.
   assert.deepEqual(purge({}), ["past-a-year", "within-a-year"]);
+});
+
+test("preview config and secrets are runtime bindings, absent from Astro build env", async () => {
+  const deploy = await generatedDeploy({
+    ops: {
+      preview: {
+        cmsUrl: "https://cms.example.test",
+        audience: "https://www.example.test/gq/preview",
+      },
+    },
+  });
+  const env = {
+    GQ_PREVIEW_ACCESS_CLIENT_ID: "dedicated-id",
+    GQ_PREVIEW_ACCESS_CLIENT_SECRET: "dedicated-secret",
+  };
+  const website = deploy.website(env);
+  assert.equal(website.env.GQ_PREVIEW_CMS_URL, undefined);
+  assert.equal(website.env.GQ_PREVIEW_ACCESS_CLIENT_SECRET, undefined);
+  assert.deepEqual(deploy.bindings(env), {
+    env: {
+      GQ_PREVIEW_CMS_URL: "https://cms.example.test",
+      GQ_PREVIEW_AUDIENCE: "https://www.example.test/gq/preview",
+      GQ_PREVIEW_ACCESS_CLIENT_ID: { redacted: "dedicated-id" },
+      GQ_PREVIEW_ACCESS_CLIENT_SECRET: { redacted: "dedicated-secret" },
+    },
+  });
+  assert.deepEqual((await generatedDeploy()).bindings(), {});
+});
+
+test("managed deploy rejects malformed preview and partial secrets before Alchemy", async () => {
+  const preview = {
+    cmsUrl: "https://cms.example.test",
+    audience: "https://www.example.test/gq/preview",
+  };
+  const deploy = await generatedDeploy({ ops: { preview } });
+  const partial = deploy.scriptResult({ GQ_PREVIEW_ACCESS_CLIENT_SECRET: "do-not-disclose" });
+  assert.equal(partial.status, 1);
+  assert.equal(partial.stdout, "");
+  assert.match(partial.stderr, /must be nonempty and set together/u);
+  assert.doesNotMatch(partial.stderr, /do-not-disclose/u);
+  for (const invalid of [null, false, 0, "", { cmsUrl: preview.cmsUrl }]) {
+    await writeFile(join(deploy.root, "gq.ops.json"), JSON.stringify({ ...OPS, preview: invalid }));
+    const result = deploy.scriptResult();
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /preview.cmsUrl/u);
+  }
 });

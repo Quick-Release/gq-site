@@ -96,3 +96,52 @@ and the `release`, `verify` and `doctor` additions. Provider-specific settings
 are documented with [provisioning](../guides/provisioning.md), and Sigillo
 settings with [secrets](../guides/secrets.md). For managed-file ownership and
 adoption, see [Generate and sync a site](../guides/sites.md).
+
+### Draft preview bindings
+
+Optional `preview` config opts a Site into the server-only draft preview
+bindings used by its Site-owned `/gq/preview` route:
+
+```json
+{
+  "preview": {
+    "cmsUrl": "https://cms.example.com",
+    "audience": "https://www.example.com/gq/preview"
+  }
+}
+```
+
+`preview.cmsUrl` maps to `GQ_PREVIEW_CMS_URL`: an exact HTTPS CMS origin,
+without a trailing slash, path, query, fragment or userinfo.
+`preview.audience` maps to `GQ_PREVIEW_AUDIENCE`: the exact full HTTPS
+Frontend URL ending in `/gq/preview`, without query, fragment or userinfo.
+Both fields are required when the block exists. These are plain configuration,
+not secrets. Neither uses a `PUBLIC_` variable.
+
+Operators may supply the paired `GQ_PREVIEW_ACCESS_CLIENT_ID` and
+`GQ_PREVIEW_ACCESS_CLIENT_SECRET` through the existing Sigillo staging /
+CI-injected deployment environment. Both must be nonempty and supplied together,
+with preview config. The managed deploy binds them as Redacted Worker secrets;
+never put their values in the manifest, source, logs or frontend build variables.
+Use a dedicated Cloudflare Access service identity, restricted to POST on only
+`/wp-json/getquick-design/v1/page-previews/redeem` and
+`/wp-json/getquick-design/v1/page-previews/render` on the configured CMS.
+Arrange that restriction at the gateway/origin (including method enforcement);
+this plumbing does not provision Access applications or policies.
+Never reuse GraphQL or automation credentials, or bind per-user WordPress
+credentials. Preview sessions use opaque tokens.
+
+Without the preview block and its optional secrets, no preview bindings are
+added and existing deployments keep their behavior. Partial or malformed
+configuration fails before Alchemy deploys. Bindings are attached after Website
+initialization so they are runtime-only, outside Astro's build environment.
+The Site runtime reads Worker bindings first, with local `import.meta.env`
+fallback owned by the Site. Any development loopback exception belongs there;
+the managed production config accepts HTTPS only.
+
+Adoption: release a blueprint version containing this change, update the Site's
+`@getquick/site` pin (Cooldown Gaming currently uses 0.18.3), install it and
+run `gq sync` to regenerate managed infra. Review the upgrade's other managed
+changes before adoption. Add the Site-owned route/helper and optional manifest
+block, then arrange the dedicated Access identity and injected secrets before a
+separately authorized deploy. Do not hand-edit fully generated infra files.

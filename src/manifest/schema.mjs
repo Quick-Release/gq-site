@@ -7,6 +7,7 @@
 // and `doctor` hold only additions to the variant's defaults
 // (site-settings.mjs), so a site states only how it differs.
 import { z } from "zod";
+import { validPreviewUrl } from "../frontend/preview-bindings.mjs";
 
 export const MANIFEST_FILENAME = "gq.ops.json";
 export const SCHEMA_VERSION = 1;
@@ -137,6 +138,19 @@ export const manifestSchema = z
       ),
     domains: z
       .strictObject({ admin: hostname, frontend: hostname, docs: hostname.optional() })
+      .optional(),
+    preview: z
+      .strictObject({
+        cmsUrl: z
+          .string()
+          .refine((value) => validPreviewUrl(value), "must be an exact HTTPS origin"),
+        audience: z
+          .string()
+          .refine(
+            (value) => validPreviewUrl(value, true),
+            "must be an exact HTTPS /gq/preview URL",
+          ),
+      })
       .optional(),
     sigillo: z
       .strictObject({

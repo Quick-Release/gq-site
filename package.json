@@ -9,7 +9,8 @@
   },
   "exports": {
     ".": "./src/index.mjs",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./preview-bindings": "./src/frontend/preview-bindings.mjs"
   },
   "files": [
     "bin",
