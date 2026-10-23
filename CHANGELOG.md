@@ -3,6 +3,42 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Changed
+
+- **New Sites pin the gq-content 0.3.0 pair** (was 0.2.0): `getquick/gq-content`
+  and `@getquick/content` exactly `0.3.0`
+  ([Quick-Release/gq-content v0.3.0](https://github.com/Quick-Release/gq-content/releases/tag/v0.3.0),
+  tag at `a84d4db`), in the managed keys, the CMS and Frontend skeletons, and
+  `@getquick/site`'s own dependency. 0.3.0 serves the header and footer
+  editors select in GQ Design's Header & Footer with the site chrome, as
+  `SiteChrome.header` and `.footer` (`{ title, blocks }` or null), and
+  renders them with `content.renderDesignPattern`
+  ([gq-content ADR 0006](https://github.com/Quick-Release/gq-content/blob/v0.3.0/docs/adr/0006-serve-cms-selected-header-and-footer-patterns-with-site-chrome.md)).
+  There is no new D1 migration. The content-pair smoke checks 0.3.0's
+  published integrity and ZIP.
+- **The content skeleton's layout renders the selected header and footer**
+  (`apps/frontend/src/layouts/Layout.astro`, created once). Each region
+  renders through `renderDesignPattern`, and the layout keeps its own header
+  (logo and primary menu) when the chrome serves none; the language switcher
+  and the consent footer stay. A Site block without saved HTML needs a
+  renderer the Site passes in `blocks`; until then it renders nothing and is
+  logged. The skeleton's stubbed WordPress answers `header` and `footer`, and
+  a rendered-route test proves a selected pattern replaces the Site's own.
+  Patterns need GQ Design 0.4.1 or newer on the CMS (`getquick/gq-design` is
+  required at `*@stable`, so a Site's `composer.lock` decides).
+- The readiness schema test leaves out 0.3.0's entry query by `nodeByUri`,
+  which runs only on a Site that configures `collections`. `gq site check`
+  doesn't require `designPattern`: a CMS without it still serves the chrome.
+
+Existing Sites on the pair: upgrade `@getquick/site`, run `gq sync`, update
+both lockfiles, then follow
+[0.2.0 to 0.3.0](docs/guides/content-pair-migration.md#020-to-030-getquicksite-0220):
+GQ Design 0.4.1+, port the layout's header and footer by hand, add
+`header: null, footer: null` to chrome stubs, and refresh the whole Site
+after the release.
+
 ## 0.21.0 — 2026-10-22
 
 ### Added

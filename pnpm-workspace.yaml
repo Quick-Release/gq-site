@@ -4,7 +4,7 @@ packages:
 
 # GETQUICK's consent Runtime, pinned exactly, installs the day it is released.
 minimumReleaseAgeExclude:
-  - "@getquick/content@0.2.0"
+  - "@getquick/content@0.3.0"
 
 overrides:
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0

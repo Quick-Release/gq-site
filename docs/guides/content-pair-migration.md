@@ -6,7 +6,8 @@ it since. New Sites run the pair from Quick-Release/gq-content instead: the CMS
 plugin `getquick/gq-content` and the npm package `@getquick/content`, pinned
 to one version
 ([ADR 0020](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
-This guide moves an existing Site onto the pair at 0.2.0. Nothing moves it
+This guide moves an existing Site onto the pair at the blueprint's pin,
+0.3.0. Nothing moves it
 for you: until its `gq.ops.json` says `"contentRuntime": "package"`, `gq sync`
 leaves the copy alone.
 
@@ -71,7 +72,7 @@ same PHP namespace, so WordPress stops if both load.
 
 1. If `apps/frontend/package.json` already depends on `@getquick/content` (a
    Site that adopted consent added 0.1.0 by hand), set it to exactly the
-   blueprint's pin (`0.2.0`) or remove it. gq sync takes over a pin that
+   blueprint's pin (`0.3.0`) or remove it. gq sync takes over a pin that
    already matches; a different one is the Site's own, and gq sync stops on
    it as a local edit.
 2. Run:
@@ -132,7 +133,7 @@ The skeleton's own pages show the result: compare the Site's
 `node_modules/@getquick/site/blueprint/templates/apps/frontend/src/`.
 
 A change the Site made to the copied runtime moves into the Site's own code.
-0.2.0 covers the changes a Site made to show its own content
+The pair (since 0.2.0) covers the changes a Site made to show its own content
 ([gq-content ADR 0004](https://github.com/Quick-Release/gq-content/blob/v0.2.0/docs/adr/0004-carry-a-sites-own-content-as-a-typed-extension.md)):
 
 - **Fields of its own on pages and posts** (a block tree a plugin exposes as
@@ -157,7 +158,7 @@ A change the Site made to the copied runtime moves into the Site's own code.
   `blockPresetStyles(spacing, colors, scope)` and
   `presetRootStyle(spacing, colors)` from `@getquick/content`.
 
-A change 0.2.0 has no seam for belongs in gq-content: raise it there before
+A change the pair has no seam for belongs in gq-content: raise it there before
 moving the Site. The Site's tests of what it renders stay; tests of the
 copied runtime go with it.
 
@@ -180,7 +181,7 @@ front page and the site chrome are stored, so a script can wait on it.
 Then check:
 
 - `gq frontend events check`: the Frontend accepts the CMS's signed events.
-- `wp gq-events version` on the CMS prints `0.2.0`, and `wp gq-events status`
+- `wp gq-events version` on the CMS prints the pinned version (`0.3.0`), and `wp gq-events status`
   shows no stuck deliveries.
 - `pnpm doctor` and `pnpm site:check`.
 
@@ -189,6 +190,52 @@ deploy with it creates the Site's EU consent database, purge Worker and rate
 limiter ([ADR 0019](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0019-record-visitors-consent-in-a-separate-eu-database.md)).
 Run `pnpm frontend:secrets` before that deploy, so `CONSENT_READ_TOKEN`
 exists; [Consent and legal pages](consent.md) covers the rest.
+
+## Upgrading a Site already on the pair
+
+A Site on the pair moves to a new version of it by upgrading
+`@getquick/site` and running `gq sync`, which sets both pins; then
+`composer update getquick/gq-content` in `apps/cms` and `pnpm install`, and
+commit both lockfiles. Each version's notes are in gq-content's
+`docs/releases/`. What a version asks of the Site beyond that is below.
+
+### 0.2.0 to 0.3.0 (`@getquick/site` 0.22.0)
+
+0.3.0 serves the header and footer editors select in GQ Design's Header &
+Footer with the site chrome, as `chrome.header` and `chrome.footer`
+([gq-content ADR 0006](https://github.com/Quick-Release/gq-content/blob/v0.3.0/docs/adr/0006-serve-cms-selected-header-and-footer-patterns-with-site-chrome.md),
+[release notes](https://github.com/Quick-Release/gq-content/blob/v0.3.0/docs/releases/0.3.0.md)).
+There is no new D1 migration.
+
+1. **Require GQ Design 0.4.1 or newer.** The blueprint requires
+   `getquick/gq-design` at `*@stable`, so the Site's `composer.lock` decides
+   its version: `composer update getquick/gq-design` in `apps/cms` if it is
+   older. With GQ Design 0.2.17 to 0.4.0 both regions are null and the Site
+   keeps its own header and footer; before 0.2.17 the chrome is still served,
+   both null, with a warning that names the version needed.
+2. **Render the regions in the layout.** `layouts/Layout.astro` is created
+   once, so `gq sync` doesn't change an existing Site's. Port what the
+   blueprint's layout now does
+   (`node_modules/@getquick/site/blueprint/templates/apps/frontend/src/layouts/Layout.astro`):
+   render each with `content().renderDesignPattern(chrome?.header, { siteOrigin, home, blocks, onUnrendered })`,
+   and keep the Site's own header or footer when it returns an empty string.
+   A Site block in a pattern that has no saved HTML (a menu-backed
+   navigation block such as `getquick/header-navigation`) renders only
+   through a renderer the Site passes in `blocks`; see
+   `@getquick/content`'s README, "Header and footer patterns".
+3. **Fix chrome stubs and fixtures.** `SiteChrome.header` and `.footer` are
+   required. A test that builds a `SiteChrome` adds `header: null, footer: null`;
+   so does a stubbed WordPress that answers the `SiteChrome` query, or the
+   chrome read fails its schema check (`header: Required; footer: Required`).
+4. **Release, then refresh the whole Site.** A Site release deploys the CMS
+   before the Frontend, so the CMS's new `patterns` settings event (and
+   `archives`, for collections) can reach the old Frontend first; it is
+   refused and retried. Rows 0.2.0 stored serve both regions as null until
+   the next chrome refresh, so run `pnpm frontend:refresh` with no `--uri`
+   after the deploy, as in section 5.
+
+Patterns aren't per language yet: every language is served the same
+selection ([gq-design #53](https://github.com/Quick-Release/gq-design/issues/53)).
 
 ## Rolling back
 

@@ -251,6 +251,9 @@ function answers(content, languages) {
             },
           ],
         },
+        // GQ Design's Header & Footer selects no pattern.
+        header: null,
+        footer: null,
       };
     },
     // GQ Config's consent settings, as the content runtime reads them into

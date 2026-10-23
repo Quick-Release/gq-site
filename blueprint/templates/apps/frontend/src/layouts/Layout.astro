@@ -1,5 +1,5 @@
 ---
-import type { Alternate, SiteChrome, SiteLanguage } from "@getquick/content";
+import type { Alternate, DesignBlock, SiteChrome, SiteLanguage } from "@getquick/content";
 import { consentPage } from "@getquick/content/consent/astro";
 import { content } from "../lib/content";
 import { copyFor } from "../lib/copy";
@@ -34,6 +34,19 @@ const { menuItems, siteIcon, siteLogo } = chrome ?? {
   siteIcon: null,
   siteLogo: null,
 };
+// The header and footer editors select in GQ Design's Header & Footer, as
+// the chrome serves them; empty when it serves none (the region uses a
+// template part, nothing published is selected, or the CMS's GQ Design is
+// older than 0.4.1), and the layout keeps its own. Saved HTML renders as it
+// was published; a block that needs code (a dynamic or Site block) needs a
+// renderer in `blocks` (see @getquick/content's "Header and footer patterns").
+const patternOptions = {
+  siteOrigin: Astro.site?.origin,
+  home: language.home,
+  onUnrendered: (block: DesignBlock) => console.warn(`No renderer for ${block.name}`),
+};
+const headerPattern = runtime.renderDesignPattern(chrome?.header, patternOptions);
+const footerPattern = runtime.renderDesignPattern(chrome?.footer, patternOptions);
 const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.url;
 // The page and its published translations, in the site's language order,
 // each under its language's tag, then the default language's as x-default.
@@ -83,19 +96,25 @@ const consent = configuration
   <body>
     {consent && <Fragment set:html={consent.body} />}
     <header class="site-header">
-      <a href={language.home} class="site-header__home">
-        {siteLogo ? <img src={siteLogo.sourceUrl} alt={siteLogo.altText || "{{Project}}"} /> : "{{Project}}"}
-      </a>
-      {menuItems.length > 0 && (
-        <nav aria-label="Primary">
-          <ul>
-            {menuItems.map((item) => (
-              <li>
-                <a href={item.href} target={item.target ?? undefined}>{item.label}</a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+      {headerPattern ? (
+        <Fragment set:html={headerPattern} />
+      ) : (
+        <>
+          <a href={language.home} class="site-header__home">
+            {siteLogo ? <img src={siteLogo.sourceUrl} alt={siteLogo.altText || "{{Project}}"} /> : "{{Project}}"}
+          </a>
+          {menuItems.length > 0 && (
+            <nav aria-label="Primary">
+              <ul>
+                {menuItems.map((item) => (
+                  <li>
+                    <a href={item.href} target={item.target ?? undefined}>{item.label}</a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+        </>
       )}
       {alternates.length > 0 && (
         <nav class="language-switcher" aria-label={copyFor(language, runtime.multilingual).languages}>
@@ -112,9 +131,10 @@ const consent = configuration
       )}
     </header>
     <slot />
-    {consent && (
+    {(footerPattern || consent) && (
       <footer class="site-footer">
-        <Fragment set:html={consent.footer} />
+        {footerPattern && <Fragment set:html={footerPattern} />}
+        {consent && <Fragment set:html={consent.footer} />}
       </footer>
     )}
     <script>
