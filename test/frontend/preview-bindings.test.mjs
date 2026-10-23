@@ -126,3 +126,28 @@ test("trusted CMS credentials are required, paired and private even without Acce
     );
   }
 });
+
+test("preview credentials reject surrounding whitespace without changing internal password spaces", () => {
+  const env = {
+    ...credentials,
+    GQ_PREVIEW_ACCESS_CLIENT_ID: "preview-id",
+    GQ_PREVIEW_ACCESS_CLIENT_SECRET: "preview-secret",
+  };
+  for (const key of Object.keys(env)) {
+    for (const value of [` ${env[key]}`, `${env[key]} `]) {
+      assert.throws(
+        () => previewBindings({ preview }, { ...env, [key]: value }, String),
+        (error) => /surrounding whitespace/u.test(error.message) && !error.message.includes(value),
+      );
+    }
+  }
+  const password = "abcd efgh ijkl mnop";
+  assert.equal(
+    previewBindings(
+      { preview },
+      { ...credentials, GQ_PREVIEW_CMS_APPLICATION_PASSWORD: password },
+      String,
+    ).GQ_PREVIEW_CMS_APPLICATION_PASSWORD,
+    password,
+  );
+});

@@ -161,7 +161,8 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const site = yield* Website;
-    // Bind after Website init: preview config never enters Astro build env.
+    // Keep preview out of explicit Website.env; Alchemy still exposes bindings
+    // to the build process. Build plugins and dependencies must be trusted.
     if (ops.preview) yield* site.bind`Preview`({ env: previewEnv });
     if (consentRecords) yield* ConsentPurge;
 

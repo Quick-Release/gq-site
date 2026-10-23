@@ -133,8 +133,9 @@ Access is an additional gateway check, not the Design trust identity.
 When `preview` exists, `GQ_PREVIEW_CMS_USERNAME` and
 `GQ_PREVIEW_CMS_APPLICATION_PASSWORD` are required together, nonempty, and bound
 as Redacted Worker secrets after Website initialization. Username cannot contain
-`:`; neither value can contain CR/LF. These authenticate a dedicated trusted
-Site CMS identity using Basic Authorization on both redeem and render POSTs.
+`:`; neither value can contain CR/LF or surrounding whitespace. Values are
+never trimmed; internal application-password spaces are preserved. These
+authenticate a dedicated trusted Site CMS identity using Basic Authorization on both redeem and render POSTs.
 Use a dedicated subscriber with no agent-authoring grant, `edit_pages`, or
 super-admin rights. Never reuse the agent's application password, GraphQL or
 other automation credentials. Configure the CMS option
@@ -145,7 +146,7 @@ blueprint validation checks presence/shape and cannot establish those rights.
 
 Inject both values through the private Sigillo staging / CI deployment
 environment, just like the optional Access pair. Never put credentials in
-`gq.ops.json`, `PUBLIC_` variables, Astro build env, client imports, serialized
+`gq.ops.json`, explicit `Website.env`, `PUBLIC_` variables, client imports, serialized
 HTML, logs, or agent handoffs. The manifest rejects credential fields. The Site
 reads these bindings only in server routes and sends the Basic header only to
 the configured CMS's two preview endpoints, alongside Access headers if used.
@@ -153,19 +154,34 @@ Do not follow redirects carrying credentials or forward either header to the
 browser. See [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
 
 For rotation, an authorized operator creates a replacement dedicated application
-password, privately stages the replacement pair, updates the configured CMS UUID
-(and userId if changed), deploys the matching Site secrets in a separately
-authorized maintenance window, then revokes the old password. Expect fail-closed
-preview downtime while identities differ. Rotating the configured identity
+password, privately stages the replacement pair in Sigillo, updates the
+configured CMS UUID (and userId if changed), updates the CI Worker secrets via
+`pnpm ci:deploy`, and deploys the matching Site secrets in a separately
+authorized maintenance window. Confirm both Sigillo and CI use the replacement
+before revoking the old password. Expect fail-closed preview downtime while identities differ. Rotating the configured identity
 invalidates prior handoffs and reviews: issue a fresh preview and inspect again.
 Do not restore old receipts or roll back to a revoked credential.
 
 Without the preview block and any preview secrets, no preview bindings are
 added and existing deployments keep their behavior. Partial or malformed
-configuration fails before Alchemy deploys. Bindings are attached after Website
-initialization so they are runtime-only, outside Astro's build environment.
-The Site runtime reads Worker bindings first, with local `import.meta.env`
-fallback owned by the Site. Any development loopback exception belongs there;
+configuration fails before Alchemy deploys. With preview configured, frontend
+plan commands also require the Sigillo credentials; run them through the same
+private staging injection as deployment. When disabling preview, remove its
+secrets from Sigillo and clear stale CI Worker secrets before the next release;
+remaining preview secrets fail closed without the manifest block.
+
+Bindings are attached after Website initialization, outside explicit
+`Website.env`. This is not build-process isolation: installed Alchemy beta.79
+merges bindings before building, Astro `resolveBuildEnv` unwraps Redacted values,
+and `BuildChild` inherits the process environment. Preview credentials are visible
+to the build process. Build plugins and the dependency supply chain are part of
+the trusted boundary. This wiring does not write credentials to generated files
+or expose them as `PUBLIC_` values; build code must not serialize or log them.
+
+The Site must read credentials exclusively from server-side Worker bindings,
+never `import.meta.env`, fallback credentials, or hardcoded bundle values.
+Local `import.meta.env` fallback is permitted only for the nonsecret CMS URL
+and audience. Any development loopback exception belongs to the Site;
 the managed production config accepts HTTPS only.
 
 Adoption: release a blueprint version containing this change, update the Site's
@@ -192,7 +208,10 @@ After independent reviewed releases, the Cooldown Gaming owner must:
    install, run `gq sync`, and review all generated changes. Adopt the released
    Design contract through the normal CMS release process. This PR changes no pins.
 2. Adapt `feat/gq-design-agent-preview` (`046d859`): its server-only helper reads
-   `GQ_PREVIEW_CMS_USERNAME` / `GQ_PREVIEW_CMS_APPLICATION_PASSWORD` and sends Basic
+   `GQ_PREVIEW_CMS_USERNAME` / `GQ_PREVIEW_CMS_APPLICATION_PASSWORD` exclusively
+   from Worker bindings, never `import.meta.env`, credential fallbacks or
+   hardcoded bundle values. Only the nonsecret CMS URL and audience may fall
+   back to `import.meta.env`. The helper sends Basic
    auth on both `/wp-json/getquick-design/v1/page-previews/redeem` and `/render`.
    Preserve optional Access headers, immediate bootstrap fragment removal,
    same-origin checks, private cookies, no-store/no-referrer responses and clean

@@ -69,9 +69,12 @@ installed package.
 The optional private draft preview adoption updates `infra/frontend.run.ts`,
 `infra/scripts/deploy-frontend.mjs`, `infra/ci/env.ts`,
 `infra/ci/cloudflare.ci.ts` and `scripts/ci-release.mjs` alongside the managed
-sources. Config is runtime-only; the dedicated Site CMS credential pair is
-required when preview is configured and optional Access credentials stay
-separate. CI forwards these private secrets only to the release step.
+sources. Preview uses Worker bindings outside explicit `Website.env`, but
+Alchemy merges bindings before build and the build process can read credentials.
+Build plugins and dependencies are trusted; this is not build-process isolation.
+The dedicated Site CMS credential pair is required when preview is configured
+and optional Access credentials stay separate. CI forwards these private
+secrets only to the release step.
 `sync/graphql-path.test.mjs` exercises the rendered runtime and validation;
 `ci/commands.test.mjs` checks secret-store forwarding. These are explicit
 behavioral baseline changes, not a snapshot refresh.

@@ -323,7 +323,7 @@ test("the generated Frontend deploy and CI release step refuse an offboarded Sit
   assert.equal(release.stdout, "", "it refuses before anything else");
 });
 
-test("preview config is attached only to the Worker after Astro initialization", async () => {
+test("preview config uses site.bind after Website initialization", async () => {
   const fixture = await createFixtureSite({
     ops: {
       ...ACME,

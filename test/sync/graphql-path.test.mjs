@@ -318,7 +318,7 @@ test("the purge entry deletes records past the Site's retention and keeps newer 
   assert.deepEqual(purge({}), ["past-a-year", "within-a-year"]);
 });
 
-test("preview config and secrets are runtime bindings, absent from Astro build env", async () => {
+test("preview config and secrets use bindings, absent from explicit Website.env", async () => {
   const deploy = await generatedDeploy({
     ops: {
       preview: {

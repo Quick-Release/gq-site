@@ -22,10 +22,15 @@ export function previewBindings(ops, env, redact) {
   const secret = env.GQ_PREVIEW_ACCESS_CLIENT_SECRET;
   if (
     (id !== undefined || secret !== undefined) &&
-    (typeof id !== "string" || !id.trim() || typeof secret !== "string" || !secret.trim())
+    (typeof id !== "string" ||
+      !id.trim() ||
+      id !== id.trim() ||
+      typeof secret !== "string" ||
+      !secret.trim() ||
+      secret !== secret.trim())
   ) {
     throw new Error(
-      "GQ_PREVIEW_ACCESS_CLIENT_ID and GQ_PREVIEW_ACCESS_CLIENT_SECRET must be nonempty and set together.",
+      "GQ_PREVIEW_ACCESS_CLIENT_ID and GQ_PREVIEW_ACCESS_CLIENT_SECRET must be nonempty and set together, without surrounding whitespace.",
     );
   }
   if (ops.preview === undefined) {
@@ -42,13 +47,15 @@ export function previewBindings(ops, env, redact) {
   if (
     typeof user !== "string" ||
     !user.trim() ||
+    user !== user.trim() ||
     /[:\r\n]/u.test(user) ||
     typeof password !== "string" ||
     !password.trim() ||
+    password !== password.trim() ||
     /[\r\n]/u.test(password)
   ) {
     throw new Error(
-      "GQ_PREVIEW_CMS_USERNAME and GQ_PREVIEW_CMS_APPLICATION_PASSWORD must be nonempty and set together; username cannot contain a colon and credentials cannot contain newlines.",
+      "GQ_PREVIEW_CMS_USERNAME and GQ_PREVIEW_CMS_APPLICATION_PASSWORD must be nonempty and set together; username cannot contain a colon and credentials cannot contain newlines or surrounding whitespace.",
     );
   }
   return {
