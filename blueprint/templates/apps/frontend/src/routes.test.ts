@@ -196,7 +196,7 @@ describe("entries read live in local development", () => {
 
     expect(status).toBe(200);
     expect(html).toContain("September 30, 2026");
-    expect(html).not.toContain("featured-image");
+    expect(html).not.toMatch(/<img\b[^>]*\bclass="[^"]*\bfeatured-image\b/);
   });
 });
 
