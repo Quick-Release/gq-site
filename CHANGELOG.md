@@ -3,6 +3,34 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## 0.23.0 — 2026-10-23
+
+### Added
+
+- **Optional trusted private Site preview bindings** ([#122](https://github.com/Quick-Release/gq-site/pull/122)).
+  The manifest accepts HTTPS `preview.cmsUrl` and `preview.audience`, and the
+  new `@getquick/site/preview-bindings` export validates them before deployment.
+  Configured previews require a dedicated trusted Site CMS username/application
+  password pair; an optional Access service pair adds gateway authentication.
+  Managed Frontend deployment binds private credentials as Redacted Worker
+  secrets outside explicit `Website.env`; CI forwards them to the release step.
+  Partial, malformed or orphaned configuration fails closed. Sites without
+  preview configuration or secrets keep their existing behavior.
+- **Preview trust and adoption guidance** documents the dedicated low-privilege
+  CMS identity, private Sigillo/CI injection, rotation and pending human review
+  and public-delivery acceptance. Alchemy merges bindings before building:
+  build code and dependencies can read credentials and must be trusted not to
+  serialize or log them. This is not build-process isolation.
+
+Existing Sites: after publication, upgrade the exact `@getquick/site` pin,
+install and run `gq sync`, reviewing all intervening managed changes. Add the
+Site-owned server routes/helper and optional manifest configuration separately;
+arrange the dedicated CMS identity, private credentials and any Access policy
+before a separately authorized deployment. See
+[private draft preview configuration](docs/reference/manifest.md#draft-preview-bindings).
+This release prepares blueprint plumbing; it does not establish live preview,
+human review or public-delivery acceptance (Design issues 66/67).
+
 ## 0.22.0 — 2026-10-23
 
 ### Changed
