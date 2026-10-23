@@ -6,6 +6,7 @@
 // the pages, their words, metadata and chrome.
 import { experimental_AstroContainer as AstroContainer } from "astro/container";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { designGridStyle } from "@getquick/content";
 import { scanConsentHtml } from "@getquick/content/consent/testing";
 import Entry from "./pages/[...slug].astro";
 import Home from "./pages/index.astro";
@@ -123,6 +124,11 @@ describe("entries read live in local development", () => {
     expect(header).toContain('<p class="brand">Acme header</p>');
     expect(header).not.toContain("About us");
     expect(header).not.toContain("logo.svg");
+    // One shared stylesheet covers selected chrome and page content alike.
+    const gridCss = designGridStyle();
+    const head = /<head\b[^>]*>([\s\S]*?)<\/head>/.exec(html)?.[1] ?? "";
+    expect(head).toContain(gridCss);
+    expect(html.split(gridCss)).toHaveLength(2);
     expect(/<footer\b[^>]*>([\s\S]*?)<\/footer>/.exec(html)?.[1]).toContain("<p>© Acme</p>");
     // A Site block renders only through the Site's renderer.
     expect(warn).toHaveBeenCalledWith("No renderer for acme/navigation");

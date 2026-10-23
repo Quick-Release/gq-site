@@ -1,5 +1,6 @@
 ---
 import type { Alternate, DesignBlock, SiteChrome, SiteLanguage } from "@getquick/content";
+import { designGridStyle } from "@getquick/content";
 import { consentPage } from "@getquick/content/consent/astro";
 import { content } from "../lib/content";
 import { copyFor } from "../lib/copy";
@@ -91,6 +92,7 @@ const consent = configuration
     {hreflang.map((alternate) => <link rel="alternate" hreflang={alternate.language.lang} href={alternate.href} />)}
     {xDefault && <link rel="alternate" hreflang="x-default" href={xDefault.href} />}
     <title>{title === "{{Project}}" ? title : `${title} — {{Project}}`}</title>
+    <style is:inline set:html={designGridStyle()} />
     {consent && <Fragment set:html={consent.head} />}
   </head>
   <body>
