@@ -1,6 +1,6 @@
 {
   "name": "@getquick/site",
-  "version": "0.23.0",
+  "version": "0.23.1",
   "description": "Shared tooling for GETQUICK sites: the gq CLI",
   "license": "MIT",
   "type": "module",
@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
-    "@getquick/content": "0.3.0",
+    "@getquick/content": "0.3.1",
     "aws4fetch": "1.0.20",
     "zod": "^4.6.5"
   },

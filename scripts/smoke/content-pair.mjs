@@ -48,14 +48,13 @@ import {
   visit,
 } from "./frontend-runtime-lib.mjs";
 
-// The pair Quick-Release/gq-content published as v0.3.0 (tag at a84d4db), as
-// its release manifest records it: the npm tarball's integrity and the CMS plugin
-// ZIP's SHA-256. A new pin brings its own.
+// The pair Quick-Release/gq-content published as v0.3.1 (source cbf2925), as
+// its immutable release manifest records it. A new pin brings its own hashes.
 const PUBLISHED = {
-  "0.3.0": {
+  "0.3.1": {
     integrity:
-      "sha512-POYM4pGNmW+eVA5tMNnhPm57fP9NgVnD0zLYx7H0IEJ4YeATa9EK13uHXuMkkiKWRz20xotmFLULnG4xZ7JB9A==",
-    zipSha256: "14730720474149934314b77a3da64682971c3d7169c16e8fae8c65b1b82297f5",
+      "sha512-g5MMkL6NvUMo+BJ5f4T94WAcNGdFNDneMpoSK76s2cvbgW+Lyb0nFab2uig2BW+eDh9gcMqDafeJyJZ0oWL3rA==",
+    zipSha256: "a20c2afe1cd37c2789fc2fd839d6c00f5cb4eb2279c3d1746efbf353f95fecc0",
   },
 };
 

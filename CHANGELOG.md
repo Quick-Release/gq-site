@@ -3,6 +3,22 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## 0.23.1 — 2026-10-23
+
+### Fixed
+
+- Pin `@getquick/content` and `getquick/gq-content` to the published 0.3.1
+  pair ([runtime release](https://github.com/Quick-Release/gq-content/releases/tag/v0.3.1),
+  source `cbf2925`). CMS-selected Grid blocks retain their responsive column
+  classes; the runtime supplies shared styles for chrome and content.
+- New Sites render `designGridStyle()` from `@getquick/content` once in the
+  layout's document head. Existing Sites must add the same head style manually:
+  `Layout.astro` is create-once and sync does not edit it. See
+  [Grid adoption](docs/guides/content-pair-migration.md#030-to-031-getquicksite-0231).
+  Sync updates both managed pins; install both dependencies and commit lockfiles
+  before releasing the CMS and Frontend together. No CMS resave or data migration
+  is required. Site per-block renderers and configured column counts remain in force.
+
 ## 0.23.0 — 2026-10-23
 
 ### Added
