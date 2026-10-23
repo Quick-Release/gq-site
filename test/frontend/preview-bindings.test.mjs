@@ -4,6 +4,10 @@ import { previewBindings } from "../../src/frontend/preview-bindings.mjs";
 import { validateManifest } from "../../src/manifest/manifest.mjs";
 
 const preview = { cmsUrl: "https://cms.example", audience: "https://www.example/gq/preview" };
+const credentials = {
+  GQ_PREVIEW_CMS_USERNAME: "site-preview",
+  GQ_PREVIEW_CMS_APPLICATION_PASSWORD: "private-password",
+};
 const manifest = { schemaVersion: 1, project: "example", variant: "content" };
 test("preview is opt-in and config becomes server bindings with dedicated secrets", () => {
   assert.deepEqual(
@@ -15,6 +19,7 @@ test("preview is opt-in and config becomes server bindings with dedicated secret
     previewBindings(
       { preview },
       {
+        ...credentials,
         GQ_PREVIEW_ACCESS_CLIENT_ID: "preview-id",
         GQ_PREVIEW_ACCESS_CLIENT_SECRET: "preview-secret",
         GQ_AUTH_GRAPHQL_CLIENT_ID: "graphql-id",
@@ -22,6 +27,8 @@ test("preview is opt-in and config becomes server bindings with dedicated secret
       (value) => ({ redacted: value }),
     ),
     {
+      GQ_PREVIEW_CMS_USERNAME: { redacted: "site-preview" },
+      GQ_PREVIEW_CMS_APPLICATION_PASSWORD: { redacted: "private-password" },
       GQ_PREVIEW_CMS_URL: preview.cmsUrl,
       GQ_PREVIEW_AUDIENCE: preview.audience,
       GQ_PREVIEW_ACCESS_CLIENT_ID: { redacted: "preview-id" },
@@ -82,8 +89,40 @@ test("malformed or partial preview config fails without disclosing values", () =
       ),
     /require preview/u,
   );
-  assert.deepEqual(previewBindings({ preview }, {}, String), {
+  assert.deepEqual(previewBindings({ preview }, credentials, String), {
+    ...credentials,
     GQ_PREVIEW_CMS_URL: "https://cms.example",
     GQ_PREVIEW_AUDIENCE: "https://www.example/gq/preview",
   });
+});
+
+test("trusted CMS credentials are required, paired and private even without Access", () => {
+  for (const env of [
+    {},
+    { GQ_PREVIEW_CMS_USERNAME: "sensitive-value" },
+    { GQ_PREVIEW_CMS_APPLICATION_PASSWORD: "sensitive-value" },
+    { ...credentials, GQ_PREVIEW_CMS_USERNAME: " " },
+    { ...credentials, GQ_PREVIEW_CMS_USERNAME: "user:password" },
+    { ...credentials, GQ_PREVIEW_CMS_APPLICATION_PASSWORD: "\r\nsensitive-value" },
+    { ...credentials, GQ_PREVIEW_CMS_APPLICATION_PASSWORD: " " },
+  ]) {
+    assert.throws(
+      () => previewBindings({ preview }, env, String),
+      (error) =>
+        /must be nonempty and set together/u.test(error.message) &&
+        !error.message.includes("sensitive-value"),
+    );
+  }
+  for (const env of [
+    credentials,
+    { GQ_PREVIEW_CMS_USERNAME: "site-preview" },
+    { GQ_PREVIEW_CMS_APPLICATION_PASSWORD: "private-password" },
+  ]) {
+    assert.throws(() => previewBindings({}, env, String), /require preview/u);
+  }
+  for (const key of ["username", "applicationPassword", "GQ_PREVIEW_CMS_APPLICATION_PASSWORD"]) {
+    assert.throws(() =>
+      validateManifest({ ...manifest, preview: { ...preview, [key]: "sensitive-value" } }),
+    );
+  }
 });

@@ -230,6 +230,8 @@ test("no secret reaches a generated file, and generation calls no provider", asy
     SIGILLO_TOKEN: "secret-sigillo-token",
     FRONTEND_REFRESH_TOKEN: "secret-frontend-refresh-token-0123456789",
     PUBLICATION_EVENT_SECRET: "secret-publication-event-key-0123456789",
+    GQ_PREVIEW_CMS_USERNAME: "secret-preview-username",
+    GQ_PREVIEW_CMS_APPLICATION_PASSWORD: "secret-preview-password",
     GQ_PREVIEW_ACCESS_CLIENT_ID: "secret-preview-client-id",
     GQ_PREVIEW_ACCESS_CLIENT_SECRET: "secret-preview-client-secret",
     GQ_AUTH_GRAPHQL_CLIENT_ID: "secret-graphql-client-id",

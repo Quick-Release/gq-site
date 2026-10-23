@@ -22,7 +22,15 @@ const required = [
 
 // The Frontend's own secrets: its deploy binds them when set and warns when
 // not (a site without a publication store or consent records has none).
-const optional = ["FRONTEND_REFRESH_TOKEN", "PUBLICATION_EVENT_SECRET", "CONSENT_READ_TOKEN"];
+const optional = [
+  "FRONTEND_REFRESH_TOKEN",
+  "PUBLICATION_EVENT_SECRET",
+  "CONSENT_READ_TOKEN",
+  "GQ_PREVIEW_CMS_USERNAME",
+  "GQ_PREVIEW_CMS_APPLICATION_PASSWORD",
+  "GQ_PREVIEW_ACCESS_CLIENT_ID",
+  "GQ_PREVIEW_ACCESS_CLIENT_SECRET",
+];
 
 export function missingEnvironment(environment) {
   return required.filter((name) => !environment[name]);

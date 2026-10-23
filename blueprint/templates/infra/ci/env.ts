@@ -29,5 +29,10 @@ export type Bindings = CiBindings & {
   // Optional read-only CMS edge identity; never the automation service.
   GQ_AUTH_GRAPHQL_CLIENT_ID?: string;
   GQ_AUTH_GRAPHQL_CLIENT_SECRET?: string;
+  // Dedicated trusted Site CMS identity and optional preview gateway identity.
+  GQ_PREVIEW_CMS_USERNAME?: string;
+  GQ_PREVIEW_CMS_APPLICATION_PASSWORD?: string;
+  GQ_PREVIEW_ACCESS_CLIENT_ID?: string;
+  GQ_PREVIEW_ACCESS_CLIENT_SECRET?: string;
   MIRROR_WORKFLOW: Workflow<MirrorParams>;
 };

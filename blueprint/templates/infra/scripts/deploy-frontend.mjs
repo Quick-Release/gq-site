@@ -21,6 +21,8 @@ if (ops.offboarded) {
 // Validate before invoking Alchemy; secret values are never logged.
 if (
   ops.preview !== undefined ||
+  process.env.GQ_PREVIEW_CMS_USERNAME !== undefined ||
+  process.env.GQ_PREVIEW_CMS_APPLICATION_PASSWORD !== undefined ||
   process.env.GQ_PREVIEW_ACCESS_CLIENT_ID !== undefined ||
   process.env.GQ_PREVIEW_ACCESS_CLIENT_SECRET !== undefined
 ) {

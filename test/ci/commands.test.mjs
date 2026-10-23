@@ -526,3 +526,18 @@ test("git artifacts leaves other hosts, store and erase to git", async () => {
     assert.equal(result.stdout, "");
   }
 });
+
+test("passes private preview pairs from the secret store to the CI Worker", () => {
+  const preview = {
+    GQ_PREVIEW_CMS_USERNAME: "site-preview",
+    GQ_PREVIEW_CMS_APPLICATION_PASSWORD: "private-password",
+    GQ_PREVIEW_ACCESS_CLIENT_ID: "preview-access-id",
+    GQ_PREVIEW_ACCESS_CLIENT_SECRET: "private-access-secret",
+  };
+  const without = JSON.parse(secretsPayload(STORE));
+  const withPreview = JSON.parse(secretsPayload({ ...STORE, ...preview }));
+  for (const [name, value] of Object.entries(preview)) {
+    assert.equal(without[name], undefined);
+    assert.equal(withPreview[name], value);
+  }
+});

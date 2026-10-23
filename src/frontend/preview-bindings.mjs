@@ -16,6 +16,8 @@ export function validPreviewUrl(value, audience = false) {
 }
 
 export function previewBindings(ops, env, redact) {
+  const user = env.GQ_PREVIEW_CMS_USERNAME;
+  const password = env.GQ_PREVIEW_CMS_APPLICATION_PASSWORD;
   const id = env.GQ_PREVIEW_ACCESS_CLIENT_ID;
   const secret = env.GQ_PREVIEW_ACCESS_CLIENT_SECRET;
   if (
@@ -27,8 +29,8 @@ export function previewBindings(ops, env, redact) {
     );
   }
   if (ops.preview === undefined) {
-    if (id !== undefined || secret !== undefined) {
-      throw new Error("Preview Access secrets require preview.cmsUrl and preview.audience.");
+    if (id !== undefined || secret !== undefined || user !== undefined || password !== undefined) {
+      throw new Error("Preview secrets require preview.cmsUrl and preview.audience.");
     }
     return {};
   }
@@ -37,7 +39,21 @@ export function previewBindings(ops, env, redact) {
       "preview.cmsUrl must be an exact HTTPS origin and preview.audience an exact HTTPS /gq/preview URL.",
     );
   }
+  if (
+    typeof user !== "string" ||
+    !user.trim() ||
+    /[:\r\n]/u.test(user) ||
+    typeof password !== "string" ||
+    !password.trim() ||
+    /[\r\n]/u.test(password)
+  ) {
+    throw new Error(
+      "GQ_PREVIEW_CMS_USERNAME and GQ_PREVIEW_CMS_APPLICATION_PASSWORD must be nonempty and set together; username cannot contain a colon and credentials cannot contain newlines.",
+    );
+  }
   return {
+    GQ_PREVIEW_CMS_USERNAME: redact(user),
+    GQ_PREVIEW_CMS_APPLICATION_PASSWORD: redact(password),
     GQ_PREVIEW_CMS_URL: ops.preview.cmsUrl,
     GQ_PREVIEW_AUDIENCE: ops.preview.audience,
     ...(id && secret

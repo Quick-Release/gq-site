@@ -328,16 +328,20 @@ test("preview config and secrets are runtime bindings, absent from Astro build e
     },
   });
   const env = {
+    GQ_PREVIEW_CMS_USERNAME: "site-preview",
+    GQ_PREVIEW_CMS_APPLICATION_PASSWORD: "private-password",
     GQ_PREVIEW_ACCESS_CLIENT_ID: "dedicated-id",
     GQ_PREVIEW_ACCESS_CLIENT_SECRET: "dedicated-secret",
   };
   const website = deploy.website(env);
   assert.equal(website.env.GQ_PREVIEW_CMS_URL, undefined);
-  assert.equal(website.env.GQ_PREVIEW_ACCESS_CLIENT_SECRET, undefined);
+  for (const key of Object.keys(env)) assert.equal(website.env[key], undefined);
   assert.deepEqual(deploy.bindings(env), {
     env: {
       GQ_PREVIEW_CMS_URL: "https://cms.example.test",
       GQ_PREVIEW_AUDIENCE: "https://www.example.test/gq/preview",
+      GQ_PREVIEW_CMS_USERNAME: { redacted: "site-preview" },
+      GQ_PREVIEW_CMS_APPLICATION_PASSWORD: { redacted: "private-password" },
       GQ_PREVIEW_ACCESS_CLIENT_ID: { redacted: "dedicated-id" },
       GQ_PREVIEW_ACCESS_CLIENT_SECRET: { redacted: "dedicated-secret" },
     },
@@ -356,6 +360,10 @@ test("managed deploy rejects malformed preview and partial secrets before Alchem
   assert.equal(partial.stdout, "");
   assert.match(partial.stderr, /must be nonempty and set together/u);
   assert.doesNotMatch(partial.stderr, /do-not-disclose/u);
+  const missing = deploy.scriptResult();
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /GQ_PREVIEW_CMS_USERNAME/u);
+  assert.equal(missing.stdout, "");
   for (const invalid of [null, false, 0, "", { cmsUrl: preview.cmsUrl }]) {
     await writeFile(join(deploy.root, "gq.ops.json"), JSON.stringify({ ...OPS, preview: invalid }));
     const result = deploy.scriptResult();
