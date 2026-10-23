@@ -49,6 +49,22 @@
       ],
       "additionalProperties": false
     },
+    "preview": {
+      "type": "object",
+      "properties": {
+        "cmsUrl": {
+          "type": "string"
+        },
+        "audience": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "cmsUrl",
+        "audience"
+      ],
+      "additionalProperties": false
+    },
     "sigillo": {
       "type": "object",
       "properties": {

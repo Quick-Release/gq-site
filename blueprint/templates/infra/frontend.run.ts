@@ -1,3 +1,4 @@
+import { previewBindings } from "@getquick/site/preview-bindings";
 import * as Alchemy from "alchemy";
 import { Stack } from "alchemy/Stack";
 import * as Cloudflare from "alchemy/Cloudflare";
@@ -17,9 +18,11 @@ import {
 const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), "utf8")) as {
   domains: { admin: string; frontend: string };
   contentRuntime?: "package";
+  preview?: { cmsUrl: string; audience: string };
   wordpress?: { graphqlPath?: "/graphql" | "/wp/graphql" };
   offboarded?: { phase: string };
 };
+const previewEnv = previewBindings(ops, process.env, Redacted.make);
 const productionHostname = ops.domains.frontend;
 // Alchemy beta.79 passes string Website.env values to Astro's build child,
 // overriding the app's local .env. This is public configuration, not a secret.
@@ -158,6 +161,9 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const site = yield* Website;
+    // Keep preview out of explicit Website.env; Alchemy still exposes bindings
+    // to the build process. Build plugins and dependencies must be trusted.
+    if (ops.preview) yield* site.bind`Preview`({ env: previewEnv });
     if (consentRecords) yield* ConsentPurge;
 
     return { url: site.url };

@@ -230,6 +230,10 @@ test("no secret reaches a generated file, and generation calls no provider", asy
     SIGILLO_TOKEN: "secret-sigillo-token",
     FRONTEND_REFRESH_TOKEN: "secret-frontend-refresh-token-0123456789",
     PUBLICATION_EVENT_SECRET: "secret-publication-event-key-0123456789",
+    GQ_PREVIEW_CMS_USERNAME: "secret-preview-username",
+    GQ_PREVIEW_CMS_APPLICATION_PASSWORD: "secret-preview-password",
+    GQ_PREVIEW_ACCESS_CLIENT_ID: "secret-preview-client-id",
+    GQ_PREVIEW_ACCESS_CLIENT_SECRET: "secret-preview-client-secret",
     GQ_AUTH_GRAPHQL_CLIENT_ID: "secret-graphql-client-id",
     GQ_AUTH_GRAPHQL_CLIENT_SECRET: "secret-graphql-client-secret",
     GQ_AUTH_AUTOMATION_CLIENT_ID: "secret-automation-client-id",
@@ -317,4 +321,23 @@ test("the generated Frontend deploy and CI release step refuse an offboarded Sit
     "acme-shop is offboarded (gq.ops.json offboarded): a release would expose it again. If the Site is coming back, run gq offboard --restore first.\n",
   );
   assert.equal(release.stdout, "", "it refuses before anything else");
+});
+
+test("preview config uses site.bind after Website initialization", async () => {
+  const fixture = await createFixtureSite({
+    ops: {
+      ...ACME,
+      preview: { cmsUrl: "https://cms.acme.test", audience: "https://www.acme.test/gq/preview" },
+    },
+  });
+  const result = await fixture.run(["sync"]);
+  assert.equal(result.code, 0, result.stderr);
+  const frontend = await readSite(fixture.root, "infra/frontend.run.ts");
+  assert.match(frontend, /previewBindings\(ops, process.env, Redacted.make\)/u);
+  assert.match(
+    frontend,
+    /const site = yield\* Website;[\s\S]*site.bind`Preview`\(\{ env: previewEnv \}\)/u,
+  );
+  assert.doesNotMatch(frontend, /\.\.\.previewEnv/u);
+  assert.doesNotMatch(frontend, /PUBLIC_GQ_PREVIEW/u);
 });
