@@ -41,6 +41,12 @@ configures it and composes the pages:
   Config's legal pages and GA4 toggle reach the chrome) and lists the catalog
   services the Site embeds. `src/layouts/Layout.astro` renders the consent
   banner, the legal links and the "Cookie settings" control on every page.
+- Header and footer: `src/layouts/Layout.astro` renders the patterns editors
+  select in GQ Design's Header & Footer (`chrome.header`, `chrome.footer`;
+  GQ Design 0.4.1 or newer) with `renderDesignPattern`, and its own header
+  when there is none. A Site block without saved HTML renders only through a
+  renderer passed in `blocks` (`@getquick/content`'s README, "Header and
+  footer patterns").
 - `src/pages/index.astro`, `src/pages/[...slug].astro`,
   `src/components/Home.astro` and `src/layouts/Layout.astro` render what the
   runtime delivers, with the status it answers: 200, 404 when WordPress
@@ -51,7 +57,8 @@ configures it and composes the pages:
 ## Durable published content
 
 The deployed Frontend serves the front page, the entries (published pages and
-posts) and the site chrome (menu, logo, icon, site identity, design presets)
+posts) and the site chrome (menu, logo, icon, site identity, design presets,
+selected header and footer)
 from its publication store, a D1 database bound as `PUBLICATION_DB`
 (`../../infra/frontend.run.ts`). The store's migrations ship in
 `@getquick/content` (`@getquick/content/migrations`), and the deploy applies

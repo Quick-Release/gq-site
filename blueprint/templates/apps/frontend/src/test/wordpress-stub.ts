@@ -15,6 +15,9 @@ export const chrome = {
   menuItems: {
     nodes: [{ id: "a", parentId: null, label: "About us", url: "/about/", target: null }],
   },
+  // GQ Design's Header & Footer selects no pattern, so the layout keeps its own.
+  header: null,
+  footer: null,
 };
 
 /** GQ Config's Legal Contract for a language, as getquickLegal answers it (LEGAL-1). */

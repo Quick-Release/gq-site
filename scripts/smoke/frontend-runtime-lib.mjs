@@ -131,6 +131,9 @@ export function stubCms(entries) {
                   { id: "a", parentId: null, label: this.menuLabel, url: "/about/", target: null },
                 ],
               },
+              // GQ Design's Header & Footer selects no pattern.
+              header: null,
+              footer: null,
             },
           }[name];
           response.writeHead(data ? 200 : 400, { "content-type": "application/json" });

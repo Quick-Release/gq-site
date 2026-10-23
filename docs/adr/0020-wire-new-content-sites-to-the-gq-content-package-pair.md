@@ -22,10 +22,13 @@ the Composer `wordpress-muplugin` `getquick/gq-content`, served from
 composer.getquick.io, and the npm package `@getquick/content`. 0.1.0 was
 published from tag `v0.1.0`
 ([gq-content#13](https://github.com/Quick-Release/gq-content/issues/13#issuecomment-6336904617)),
-and 0.2.0, which new Sites pin, from `v0.2.0`. 0.2.0 adds the content
+and 0.2.0 from `v0.2.0`. 0.2.0 adds the content
 extension, through which a Site carries its own fields with its
 publications
 ([gq-content ADR 0004](https://github.com/Quick-Release/gq-content/blob/v0.2.0/docs/adr/0004-carry-a-sites-own-content-as-a-typed-extension.md)).
+0.3.0, which new Sites pin, serves the header and footer selected in GQ
+Design with the site chrome
+([gq-content ADR 0006](https://github.com/Quick-Release/gq-content/blob/v0.3.0/docs/adr/0006-serve-cms-selected-header-and-footer-patterns-with-site-chrome.md)).
 [gq-content ADR 0002](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0002-preserve-publication-delivery-and-withdrawal-through-extraction.md)
 carries this repository's runtime decisions forward.
 

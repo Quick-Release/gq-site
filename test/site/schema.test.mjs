@@ -13,9 +13,14 @@ const runtime = new URL(import.meta.resolve(`${CONTENT_PAIR.npm}/server`));
 const installed = JSON.parse(readFileSync(new URL("../package.json", runtime), "utf8"));
 const server = readFileSync(runtime, "utf8");
 // The queries delivery reads with; the consent settings query only runs on a
-// Site that enables the runtime's consent CMS settings.
+// Site that enables the runtime's consent CMS settings, and the entry query
+// by `nodeByUri` only on a Site that configures `collections`, which the
+// blueprint's doesn't. The chrome's GQ Design header and footer
+// (`designPattern`) end the SiteChrome query's text here, and aren't checked:
+// a CMS without them still serves the chrome, with neither.
 const DELIVERY_QUERIES =
   /`(\s*query (?:HomePage|SiteChrome|EntryByUri|DesignPresets|PublishedRoutes)\b[^`]*)`/gu;
+const COLLECTIONS_QUERY = /\bnode: nodeByUri\(/u;
 
 // GraphQL's own words; the queries' names, variables, argument names,
 // literal values and the JavaScript interpolated into a query are left out
@@ -30,6 +35,9 @@ function selections(text) {
   return new Set(
     text
       .replace(/\$\{[^}]*\}/gu, "")
+      // An interpolation a nested template literal cuts off (the chrome's
+      // `designPattern` fields).
+      .replace(/\$\{[^}]*$/u, "")
       .replace(/^\s*query \w+(\([^)]*\))?/mu, "")
       .replace(/\$\w+/gu, "")
       .replace(/\w+\s*:/gu, "")
@@ -41,7 +49,9 @@ function selections(text) {
 
 test("the readiness schema check covers every field the pinned runtime's queries read", () => {
   assert.equal(installed.version, CONTENT_PAIR.version, "the devDependency is the blueprint's pin");
-  const queries = [...server.matchAll(DELIVERY_QUERIES)].map((match) => match[1]);
+  const queries = [...server.matchAll(DELIVERY_QUERIES)]
+    .map((match) => match[1])
+    .filter((query) => !COLLECTIONS_QUERY.test(query));
   assert.equal(
     queries.length,
     6,

@@ -10,6 +10,7 @@ import { scanConsentHtml } from "@getquick/content/consent/testing";
 import Entry from "./pages/[...slug].astro";
 import Home from "./pages/index.astro";
 import {
+  chrome,
   consentSettings,
   data,
   httpError,
@@ -86,6 +87,48 @@ describe("entries read live in local development", () => {
     expect(html).toContain("<p>We make things.</p>");
     expect(html).toMatch(/<a href="\/about\/"[^>]*>About us<\/a>/);
     expect(html).toContain('src="https://media.example/logo.svg"');
+  });
+
+  test("the header and footer GQ Design selects replace the site's own", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const block = (name: string, content: string | null) => ({
+      name,
+      attributes: {},
+      content,
+      children: [],
+    });
+    const fetchMock = stubWordPress({
+      entry: () => data({ postBy: null, pageBy: about, designTokens: tokens }),
+      chrome: () =>
+        data({
+          ...chrome,
+          header: {
+            title: "Main header",
+            blocksJson: JSON.stringify([
+              block("core/paragraph", '<p class="brand">Acme header</p>'),
+              block("acme/navigation", null),
+            ]),
+          },
+          footer: {
+            title: "Main footer",
+            blocksJson: JSON.stringify([block("core/paragraph", "<p>© Acme</p>")]),
+          },
+        }),
+    });
+
+    const { status, html } = await render("/about/");
+
+    expect(status).toBe(200);
+    const header = /<header\b[^>]*>([\s\S]*?)<\/header>/.exec(html)?.[1] ?? "";
+    expect(header).toContain('<p class="brand">Acme header</p>');
+    expect(header).not.toContain("About us");
+    expect(header).not.toContain("logo.svg");
+    expect(/<footer\b[^>]*>([\s\S]*?)<\/footer>/.exec(html)?.[1]).toContain("<p>© Acme</p>");
+    // A Site block renders only through the Site's renderer.
+    expect(warn).toHaveBeenCalledWith("No renderer for acme/navigation");
+    expect(
+      JSON.parse(queries(fetchMock, "SiteChrome")[0]![1].body as string).variables,
+    ).toMatchObject({ template: "page" });
   });
 
   test("an entry WordPress confirms isn't published is a 404", async () => {
