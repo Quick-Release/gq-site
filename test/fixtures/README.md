@@ -36,6 +36,20 @@ fulfilled locally during browser checks.
 - `media-saved.html`: `656b3dbaf0037de44209119bc90a064201431077383e863dfa3477d061e73c92`
 - `media-public.json`: `0e600dd03a342a31d87832815eaa5a0da6203fdc4e2dbb8ffe00e626702988a7`
 
+`media-source-public.json` is unchanged from gq-design
+`2b40c7eb78b7b7a41f7fc4ebb5158c88e4162f26`,
+`tests/fixtures/media-presentation/public.json`. The production proof now reads
+this newer capture; the original snapshot above remains preserved. It adds the
+actual REST producer comparison (`restNodes`) and authoritative Image source
+attributes recovered from saved HTML (`sourceNode`), including safe source sets,
+intrinsic dimensions and link metadata. The captured Image/Cover HTML is
+unchanged. Canonical `728a60d` also reserves caption space inside the authored
+Image figure: the proof therefore checks the figure's 192px height and that its
+media plus caption fit inside, rather than requiring the image alone to be
+192px. The starter supplies no source parser or caption CSS.
+
+- `media-source-public.json`: `385b5b07f800c9189b7a2a52a98f88ea9d6a7addb0839ff5fd262c50a698f4ff`
+
 `theme-delivery.json` is unchanged from gq-design `2a181bf`,
 `tests/fixtures/theme-presentation-delivery.json`. Its embedded provenance records
 the WordPress 7.0 capture, test and saved-document hashes. Both deliveries retain
