@@ -24,6 +24,48 @@ Immutable SHA-256 values (keep the fixture bytes unchanged):
 - `container-rendered.html`: `4de246453e6ed3977082cb51676565b21723cba2ee22e46224887f750b82992d`
 - `container-public.json`: `25ea94c114c1d9381b78a95a2043f9e67d459cabce29674a773886ccf3f966a4`
 
+The `media-saved.html` and `media-public.json` snapshots are unchanged from
+gq-design `c5dc50a`, `tests/fixtures/media-presentation/{saved.html,public.json}`.
+The saved document uses Gutenberg 7.0 with shared Image controls and valid reopen;
+the public file records real `parse_blocks`, TemplateSerializer and native
+`render_block` output from a read-only request. The linked Image and Cover have
+real HTML. Featured Image HTML is empty without a post, and Site Logo assets are
+null without branding context; neither proves those consumers. The SVG URL is
+fulfilled locally during browser checks.
+
+- `media-saved.html`: `656b3dbaf0037de44209119bc90a064201431077383e863dfa3477d061e73c92`
+- `media-public.json`: `0e600dd03a342a31d87832815eaa5a0da6203fdc4e2dbb8ffe00e626702988a7`
+
+`theme-delivery.json` is unchanged from gq-design `2a181bf`,
+`tests/fixtures/theme-presentation-delivery.json`. Its embedded provenance records
+the WordPress 7.0 capture, test and saved-document hashes. Both deliveries retain
+the real saved/reopened document, public WordPress-rendered HTML, producer nodes
+and complete resolved tokens for the default and overridden themes. The starter
+uses the actual HTML and theme values through its stubbed GraphQL envelope; an
+empty legacy `spacingSizes` list completes that envelope without changing the
+fixture values. This is frontend rendering evidence, not a live CMS transport test.
+
+- `theme-delivery.json`: `8c1f5a1af6b58a02c9f282f2999d4e808d3c9f5469dd5779ad0b118c9e84a41d`
+
+`layout-delivery.json` is unchanged from gq-design `720b84a`,
+`tests/fixtures/layout-presentation-saved.json`. It records actual Gutenberg 7.0
+Grid columns, native Group gap and Column alignment inspector edits, valid
+save/reload, and actual REST-rendered HTML and producer nodes. Native unequal
+columns, nonstacking behavior, Spacer units/resets and Separator opacity are
+part of the captured document. Its embedded provenance identifies the capture.
+
+- `layout-delivery.json`: `682377d90e6d87554d31dd80062733a00a7054594fbca23fe7ec05131aec51f4`
+
+`hero-saved.html` and `hero-youtube.html` are unchanged snapshots of gq-design
+`4e6f3dd`, `tests/fixtures/video-hero-{presentation,youtube}.html`. They are real
+Gutenberg saved documents with half-width, 64 spacing-unit height, nested links
+and independent media/foreground presentation. The YouTube document includes
+deferred `data-src`, localized title and cover/contain/reset overrides. These
+files establish saved-input provenance, not a live REST capture or consent proof.
+
+- `hero-saved.html`: `ceb2ddc6360274c5ab97e18836f3755df641fc720a5e2aefe931ff01b9c92239`
+- `hero-youtube.html`: `dbdf5b59fb89f673f8f780fbedae4360e60a76a31a6cdfd5461fde2d7440b4f4`
+
 | Fixture                                                    | Origin                                                                                                                 | Used by                                                                                                                                             |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `content-site/`                                            | The expected eighteen CI Worker, Frontend deploy, consent and release-step files for `manifests/content-site.v1.json`. | [`sync/deploy-files.test.mjs`](../sync/deploy-files.test.mjs) compares rendered files and lock hashes with this baseline.                           |

@@ -23,7 +23,7 @@ const siteTitle = content?.page.title || content?.settings.title || "{{Project}}
 const isVideoHeroPage = content?.page.hasVideoHero ?? false;
 ---
 
-<Layout title={siteTitle} description={content?.settings.description} chrome={chrome} language={language} alternates={alternates}>
+<Layout title={siteTitle} description={content?.settings.description} chrome={chrome} language={language} alternates={alternates} theme={content?.theme}>
   {content?.page.content ? (
     <>
       <style is:global set:html={colorRules} />

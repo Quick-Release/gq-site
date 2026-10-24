@@ -19,8 +19,6 @@
 body {
   margin: 0;
   min-width: 320px;
-  /* Full-width blocks (alignfull, Video Hero) span 100vw. */
-  overflow-x: clip;
 }
 
 .entry-title {
@@ -80,76 +78,6 @@ body {
 ::selection {
   color: var(--color-paper);
   background: var(--color-accent);
-}
-
-/* A Video Hero is a viewport-sized entry surface, not part of the article measure.
-   body clips its horizontal overflow. */
-
-.prose-wp .wp-block-getquick-design-video-hero {
-  position: relative;
-  display: grid;
-  width: 100vw;
-  height: 100vh;
-  height: 100svh;
-  max-width: 100vw;
-  box-sizing: border-box;
-  margin-block: 0;
-  margin-inline: calc(50% - 50vw);
-  overflow: hidden;
-  isolation: isolate;
-  color: #fff;
-  place-items: center;
-  background: #000;
-}
-
-.prose-wp .wp-block-getquick-design-video-hero .gqd-video-hero__media,
-.prose-wp .wp-block-getquick-design-video-hero__media {
-  position: absolute;
-  z-index: -1;
-  overflow: hidden;
-  background: inherit;
-  inset: 0;
-}
-
-.prose-wp .wp-block-getquick-design-video-hero .gqd-video-hero__video,
-.prose-wp .wp-block-getquick-design-video-hero .gqd-video-hero__poster,
-.prose-wp .wp-block-getquick-design-video-hero__video,
-.prose-wp .wp-block-getquick-design-video-hero__poster {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  inset: 0;
-}
-
-.prose-wp .wp-block-getquick-design-video-hero .gqd-video-hero__video--youtube,
-.prose-wp .wp-block-getquick-design-video-hero__video--youtube {
-  width: max(100%, 177.78svh);
-  height: max(100%, 56.25vw);
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  border: 0;
-  pointer-events: none;
-}
-
-.prose-wp .wp-block-getquick-design-video-hero .gqd-video-hero__poster,
-.prose-wp .wp-block-getquick-design-video-hero__poster {
-  z-index: -1;
-}
-
-.prose-wp .wp-block-getquick-design-video-hero .gqd-video-hero__content,
-.prose-wp .wp-block-getquick-design-video-hero__content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  width: 100%;
-  height: 100%;
-  box-sizing: border-box;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
 }
 
 .prose-wp .wp-block-getquick-design-social-links {

@@ -161,6 +161,14 @@ the real saved-editor document, WordPress-rendered HTML and neutral public node;
 `test/fixtures/README.md` records provenance and hashes. The CMS's HTTP envelope
 is stubbed. Editor save/reload and live producer acceptance remain upstream checks.
 
+The same proof also consumes the real native Image/Cover and layout fixtures,
+checks resolved-theme changes without rebuilding, and verifies the saved Hero's
+box, media layer and focusable foreground. The theme fixture checks heading,
+list and media Preflight against both captured resolved themes. Report these
+cases separately from pending navigation, Query context, Carousel interactions,
+Hero YouTube/consent, and contextual Featured Image/branding checks; the bounded
+proof does not establish full catalog or fleet acceptance.
+
 Staged preview success does not establish that the currently published content
 version supports the new exports. Advance the managed CMS/npm pair only after
 the coordinated version is published, then rerun without the local override.

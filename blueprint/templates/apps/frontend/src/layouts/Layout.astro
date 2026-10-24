@@ -1,6 +1,6 @@
 ---
-import type { Alternate, DesignBlock, SiteChrome, SiteLanguage } from "@getquick/content";
-import { designGridStyle, presentationStyleSheet } from "@getquick/content";
+import type { Alternate, DesignBlock, DesignTheme, SiteChrome, SiteLanguage } from "@getquick/content";
+import { designThemeStyleSheet, presentationStyleSheet, resolveDesignTheme, videoHeroStyleSheet } from "@getquick/content";
 import { consentPage } from "@getquick/content/consent/astro";
 import { content } from "../lib/content";
 import { copyFor } from "../lib/copy";
@@ -15,6 +15,8 @@ interface Props {
   language?: SiteLanguage;
   /** Where its readers may switch language (a multilingual Site's pages only). */
   alternates?: Alternate[];
+  /** The resolved theme delivered with the publication. */
+  theme?: DesignTheme;
 }
 
 const runtime = content();
@@ -28,6 +30,7 @@ const chrome =
   Astro.props.chrome !== undefined
     ? Astro.props.chrome
     : await runtime.pageChrome(Astro.site?.origin);
+const theme = resolveDesignTheme(Astro.props.theme ?? (await runtime.designPresets())?.theme);
 // Chrome that can't be served leaves the menu, logo and icon out of this
 // response only; it doesn't mean the site has none, so the page is still served.
 const { menuItems, siteIcon, siteLogo } = chrome ?? {
@@ -92,8 +95,9 @@ const consent = configuration
     {hreflang.map((alternate) => <link rel="alternate" hreflang={alternate.language.lang} href={alternate.href} />)}
     {xDefault && <link rel="alternate" hreflang="x-default" href={xDefault.href} />}
     <title>{title === "{{Project}}" ? title : `${title} — {{Project}}`}</title>
-    <style is:inline set:html={designGridStyle()} />
-    <style is:inline set:html={presentationStyleSheet()} />
+    <style is:inline set:html={designThemeStyleSheet(theme)} />
+    <style is:inline set:html={videoHeroStyleSheet()} />
+    <style is:inline set:html={presentationStyleSheet(theme)} />
     {consent && <Fragment set:html={consent.head} />}
   </head>
   <body>
@@ -144,7 +148,17 @@ const consent = configuration
       // Applies the visitor's decisions, loads each catalog service only after
       // its grant, and records decisions at /gq/consent.
       import { startConsent } from "@getquick/content/consent/client";
+      import { mountVideoHero } from "@getquick/content/design/client";
       startConsent();
+      let unmountHeroes = () => {};
+      const mountHeroes = () => {
+        unmountHeroes();
+        const cleanups = [...document.querySelectorAll<HTMLElement>(".wp-block-getquick-design-video-hero")].map(mountVideoHero);
+        unmountHeroes = () => cleanups.forEach((cleanup) => cleanup());
+      };
+      mountHeroes();
+      window.addEventListener("pagehide", () => unmountHeroes());
+      window.addEventListener("pageshow", mountHeroes);
     </script>
   </body>
 </html>
