@@ -164,10 +164,17 @@ is stubbed. Editor save/reload and live producer acceptance remain upstream chec
 The same proof also consumes the real native Image/Cover and layout fixtures,
 checks resolved-theme changes without rebuilding, and verifies the saved Hero's
 box, media layer and focusable foreground. The theme fixture checks heading,
-list and media Preflight against both captured resolved themes. Report these
-cases separately from pending navigation, Query context, Carousel interactions,
-Hero YouTube/consent, and contextual Featured Image/branding checks; the bounded
-proof does not establish full catalog or fleet acceptance.
+list and media Preflight against both captured resolved themes. Preview6 also
+checks actual typography list/button semantics in body and neutral chrome,
+Carousel responsive hiding/restoration, keyboard/focus and autoplay behavior,
+and the refreshed standard Post Query fixture through the existing publication
+loader. Query checks include ordered repetition, recursive Post Content,
+transparent references and responsive Grid/Heading/Button CSS. Carousel controls
+use a clearly labelled supporting visibility variant of the captured input.
+Report these cases separately from pending navigation, complete native Columns
+structural defaults, typography computed-style parity, Hero YouTube/consent and
+contextual Featured Image/branding checks; the bounded proof does not establish
+full catalog or fleet acceptance.
 
 Staged preview success does not establish that the currently published content
 version supports the new exports. Advance the managed CMS/npm pair only after

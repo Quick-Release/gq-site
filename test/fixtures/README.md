@@ -66,6 +66,55 @@ files establish saved-input provenance, not a live REST capture or consent proof
 - `hero-saved.html`: `ceb2ddc6360274c5ab97e18836f3755df641fc720a5e2aefe931ff01b9c92239`
 - `hero-youtube.html`: `dbdf5b59fb89f673f8f780fbedae4360e60a76a31a6cdfd5461fde2d7440b4f4`
 
+`carousel-public.json` is unchanged from gq-design `3232d3c`,
+`packages/design-contract/fixtures/blocks/carousel-presentation.json`. It is the
+actual anonymous WordPress 7.0 REST `getquickBlocks` tree for the saved #78
+Gutenberg document; actual HTTP GraphQL tree equality and strict public schema
+validation passed upstream. The capture ran plugin checkout `bf709f59` through
+integration `f57ae3e`. Its source/provenance companion is
+`packages/design-contract/fixtures/blocks/carousel-presentation.md` at that commit.
+The actual fixture authors navigation hidden. A separately labelled supporting
+public-input variant changes only navigation visibility to exercise controls;
+that variant is not claimed as a second captured editor document.
+
+- `carousel-public.json`: `ddb58fb636e28b3da412575775b22a0f73aae30f3afbb5d1728a007a4a7cc6f2`
+
+`typography-delivery.json` is unchanged from gq-design `b11b763`,
+`tests/fixtures/typography-presentation-delivery.json`. Both theme cases contain
+the actual saved/reopened Gutenberg page, public rendered HTML, neutral nodes,
+tokens and post/site context. The production proof uses captured body HTML and
+the neutral nodes as selected chrome, preserving list-item `attributes.content`
+and button rich text. That chrome selection is a consumer test envelope, not a
+captured Design layout. The fixture records `layout.available=false`: the
+preview-only template was rejected with HTTP 422 for missing region references.
+It supplies no valid delivered dynamic Site/Post layout nodes, so those families
+and layout-endpoint acceptance remain pending.
+
+The preview5 (`991e399`) run failed the neutral selected-chrome ordered list.
+Preview6 (`6695e02`) passes captured body and neutral chrome list/button semantics
+through the actual production route. The starter adds no local renderer. Theme
+typography and dynamic-layout acceptance are not established by those semantic
+checks.
+
+- `typography-delivery.json`: `55916b46bbfed0bb4ee64bd89a0ff9c39ab5f4e8fe8039db0099dc3a94a32d77`
+
+`presentation/query-composition/post-{public.json,saved.html}` are unchanged from
+gq-design `6b5f746`, `tests/fixtures/query-composition/`. They replace `627d5e6`
+as the semantic acceptance input: real REST selects the standard Posts
+`00081 Beta` then `00081 Gamma`, and each untouched `publishedPost` records the
+actual public WPGraphQL response. The latest producer supplies Button
+`url="#details"`, `text="Read item"` and `tagName="a"`; none are added locally.
+The preview6 production proof selects the actual neutral Query as chrome, loads
+the two Post URI records through the publication loader, and supplies the shared
+preloader's synchronous callback. It checks producer order without reselection,
+matching recursive Post Content, transparent synced references, Grid geometry
+at 767/768/1000px, Heading CSS and Button href/text/tag/padding/radius. GraphQL
+envelopes add required transport metadata around the unchanged captured records;
+the HTTP server is a stub. The CPT variant is not adopted as loader evidence.
+
+- `query-composition/post-public.json`: `74af8206e68cddc5a2488f7a460ccf5f99ac435bbd8608a28729f17205af782b`
+- `query-composition/post-saved.html`: `b353c7430aa9a2edcb9cabacc46581b015f23fa3cc3b4eb65e4028335a8e158f`
+
 | Fixture                                                    | Origin                                                                                                                 | Used by                                                                                                                                             |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `content-site/`                                            | The expected eighteen CI Worker, Frontend deploy, consent and release-step files for `manifests/content-site.v1.json`. | [`sync/deploy-files.test.mjs`](../sync/deploy-files.test.mjs) compares rendered files and lock hashes with this baseline.                           |

@@ -1,0 +1,240 @@
+{
+  "blocks": [
+    {
+      "name": "getquick-design/query",
+      "attributes": {
+        "items": [
+          {
+            "id": 662,
+            "type": "post",
+            "slug": "00081-beta",
+            "uri": "/00081-beta/"
+          },
+          {
+            "id": 663,
+            "type": "post",
+            "slug": "00081-gamma",
+            "uri": "/00081-gamma/"
+          }
+        ],
+        "offset": 1,
+        "order": "asc",
+        "orderBy": "title",
+        "patternId": 664,
+        "perPage": 2,
+        "postType": "post"
+      },
+      "content": null,
+      "children": [
+        {
+          "name": "core/post-title",
+          "attributes": {
+            "level": 2,
+            "presentation": {
+              "base": {
+                "fontSize": "2xl"
+              }
+            }
+          },
+          "content": null,
+          "children": [],
+          "supported": true,
+          "dataRequirements": [
+            "post"
+          ]
+        },
+        {
+          "name": "core/post-content",
+          "attributes": {
+            "presentation": {
+              "base": {
+                "paddingBlock": 2
+              }
+            }
+          },
+          "content": null,
+          "children": [],
+          "supported": true,
+          "dataRequirements": [
+            "post"
+          ]
+        },
+        {
+          "name": "core/block",
+          "attributes": {
+            "ref": 659
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "getquick-design/grid",
+              "attributes": {
+                "presentation": {
+                  "base": {
+                    "gridColumns": "1",
+                    "gap": 4
+                  },
+                  "md": {
+                    "gridColumns": "2"
+                  }
+                }
+              },
+              "content": null,
+              "children": [
+                {
+                  "name": "getquick-design/container",
+                  "attributes": {},
+                  "content": null,
+                  "children": [
+                    {
+                      "name": "core/heading",
+                      "attributes": {
+                        "level": 3,
+                        "presentation": {
+                          "base": {
+                            "fontSize": "xl",
+                            "fontWeight": "bold"
+                          }
+                        }
+                      },
+                      "content": "<h3 class=\"wp-block-heading\">Pattern details</h3>",
+                      "children": [],
+                      "supported": true
+                    }
+                  ],
+                  "supported": true
+                },
+                {
+                  "name": "getquick-design/container",
+                  "attributes": {},
+                  "content": null,
+                  "children": [
+                    {
+                      "name": "core/buttons",
+                      "attributes": {
+                        "presentation": {
+                          "base": {
+                            "gap": 2
+                          }
+                        }
+                      },
+                      "content": null,
+                      "children": [
+                        {
+                          "name": "core/button",
+                          "attributes": {
+                            "presentation": {
+                              "base": {
+                                "paddingInline": 4,
+                                "borderRadius": "lg"
+                              }
+                            },
+                            "tagName": "a",
+                            "url": "#details",
+                            "text": "Read item"
+                          },
+                          "content": "<div class=\"wp-block-button\"><a class=\"wp-block-button__link wp-element-button\" href=\"#details\">Read item</a></div>",
+                          "children": [],
+                          "supported": true
+                        }
+                      ],
+                      "supported": true
+                    }
+                  ],
+                  "supported": true
+                }
+              ],
+              "supported": true
+            }
+          ],
+          "supported": true
+        }
+      ],
+      "supported": true
+    }
+  ],
+  "items": [
+    {
+      "id": 662,
+      "title": "00081 Beta",
+      "blocks": [
+        {
+          "name": "core/paragraph",
+          "attributes": [],
+          "content": "<p>00081 Beta content</p>",
+          "children": [],
+          "supported": true
+        },
+        {
+          "name": "core/block",
+          "attributes": {
+            "ref": 660
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {
+                "presentation": {
+                  "base": {
+                    "fontSize": "lg"
+                  }
+                }
+              },
+              "content": "<p>Nested item body</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        }
+      ],
+      "publishedPost": {
+        "databaseId": 662,
+        "title": "00081 Beta",
+        "getquickBlocksJson": "[{\"name\":\"core\\/paragraph\",\"attributes\":{},\"content\":\"<p>00081 Beta content<\\/p>\",\"children\":[],\"supported\":true},{\"name\":\"core\\/block\",\"attributes\":{\"ref\":660},\"content\":null,\"children\":[{\"name\":\"core\\/paragraph\",\"attributes\":{\"presentation\":{\"base\":{\"fontSize\":\"lg\"}}},\"content\":\"<p>Nested item body<\\/p>\",\"children\":[],\"supported\":true}],\"supported\":true}]"
+      }
+    },
+    {
+      "id": 663,
+      "title": "00081 Gamma",
+      "blocks": [
+        {
+          "name": "core/paragraph",
+          "attributes": [],
+          "content": "<p>00081 Gamma content</p>",
+          "children": [],
+          "supported": true
+        },
+        {
+          "name": "core/block",
+          "attributes": {
+            "ref": 660
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {
+                "presentation": {
+                  "base": {
+                    "fontSize": "lg"
+                  }
+                }
+              },
+              "content": "<p>Nested item body</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        }
+      ],
+      "publishedPost": {
+        "databaseId": 663,
+        "title": "00081 Gamma",
+        "getquickBlocksJson": "[{\"name\":\"core\\/paragraph\",\"attributes\":{},\"content\":\"<p>00081 Gamma content<\\/p>\",\"children\":[],\"supported\":true},{\"name\":\"core\\/block\",\"attributes\":{\"ref\":660},\"content\":null,\"children\":[{\"name\":\"core\\/paragraph\",\"attributes\":{\"presentation\":{\"base\":{\"fontSize\":\"lg\"}}},\"content\":\"<p>Nested item body<\\/p>\",\"children\":[],\"supported\":true}],\"supported\":true}]"
+      }
+    }
+  ]
+}

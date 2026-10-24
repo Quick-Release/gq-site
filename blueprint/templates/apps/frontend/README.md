@@ -109,6 +109,14 @@ motion and media replacement; the Site supplies no second media observer.
 Sizing and foreground alignment stay authored independently. Consent still
 controls whether optional third-party media can load.
 
+Carousel uses `designCarouselStyle` and the browser `mountDesignCarousels` from
+the same package. Shared runtime code owns slides, accessible controls and
+motion preferences. Selected chrome Query patterns preload producer-selected
+standard Post/Page URIs through `runtime.preloadDesignQueryPosts`; rendering
+uses its synchronous `resolvePost` callback. The Site does not select items
+again or fetch from inside the renderer. Other post types require a separately
+authorized loader.
+
 ## Checks
 
 `pnpm check` (`astro check`), `pnpm lint` (`vp lint`) and `pnpm test`

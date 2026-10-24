@@ -1,6 +1,6 @@
 ---
 import type { Alternate, DesignBlock, DesignTheme, SiteChrome, SiteLanguage } from "@getquick/content";
-import { designThemeStyleSheet, presentationStyleSheet, resolveDesignTheme, videoHeroStyleSheet } from "@getquick/content";
+import { designCarouselStyle, designThemeStyleSheet, presentationStyleSheet, resolveDesignTheme, videoHeroStyleSheet } from "@getquick/content";
 import { consentPage } from "@getquick/content/consent/astro";
 import { content } from "../lib/content";
 import { copyFor } from "../lib/copy";
@@ -44,9 +44,14 @@ const { menuItems, siteIcon, siteLogo } = chrome ?? {
 // older than 0.4.1), and the layout keeps its own. Saved HTML renders as it
 // was published; a block that needs code (a dynamic or Site block) needs a
 // renderer in `blocks` (see @getquick/content's "Header and footer patterns").
+const preloadedPosts = await runtime.preloadDesignQueryPosts(
+  [...(chrome?.header?.blocks ?? []), ...(chrome?.footer?.blocks ?? [])],
+  Astro.site?.origin,
+);
 const patternOptions = {
   siteOrigin: Astro.site?.origin,
   home: language.home,
+  resolvePost: preloadedPosts.resolvePost,
   onUnrendered: (block: DesignBlock) => console.warn(`No renderer for ${block.name}`),
 };
 const headerPattern = runtime.renderDesignPattern(chrome?.header, patternOptions);
@@ -97,6 +102,7 @@ const consent = configuration
     <title>{title === "{{Project}}" ? title : `${title} — {{Project}}`}</title>
     <style is:inline set:html={designThemeStyleSheet(theme)} />
     <style is:inline set:html={videoHeroStyleSheet()} />
+    <style is:inline set:html={designCarouselStyle()} />
     <style is:inline set:html={presentationStyleSheet(theme)} />
     {consent && <Fragment set:html={consent.head} />}
   </head>
@@ -148,17 +154,21 @@ const consent = configuration
       // Applies the visitor's decisions, loads each catalog service only after
       // its grant, and records decisions at /gq/consent.
       import { startConsent } from "@getquick/content/consent/client";
-      import { mountVideoHero } from "@getquick/content/design/client";
+      import { mountDesignCarousels, mountVideoHero } from "@getquick/content/design/client";
       startConsent();
-      let unmountHeroes = () => {};
-      const mountHeroes = () => {
-        unmountHeroes();
+      let unmountPresentation = () => {};
+      const mountPresentation = () => {
+        unmountPresentation();
+        const unmountCarousels = mountDesignCarousels();
         const cleanups = [...document.querySelectorAll<HTMLElement>(".wp-block-getquick-design-video-hero")].map(mountVideoHero);
-        unmountHeroes = () => cleanups.forEach((cleanup) => cleanup());
+        unmountPresentation = () => {
+          unmountCarousels();
+          cleanups.forEach((cleanup) => cleanup());
+        };
       };
-      mountHeroes();
-      window.addEventListener("pagehide", () => unmountHeroes());
-      window.addEventListener("pageshow", mountHeroes);
+      mountPresentation();
+      window.addEventListener("pagehide", () => unmountPresentation());
+      window.addEventListener("pageshow", mountPresentation);
     </script>
   </body>
 </html>

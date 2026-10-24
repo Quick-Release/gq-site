@@ -26,10 +26,19 @@ const saved = readFileSync(
   "utf8",
 );
 const publicDocument = JSON.parse(readFileSync(new URL("container-public.json", fixture), "utf8"));
-const mediaDocument = JSON.parse(readFileSync(new URL("media-public.json", fixture), "utf8"));
+const mediaDocument = JSON.parse(
+  readFileSync(new URL("media-source-public.json", fixture), "utf8"),
+);
 const themeDocument = JSON.parse(readFileSync(new URL("theme-delivery.json", fixture), "utf8"));
 const layoutDocument = JSON.parse(readFileSync(new URL("layout-delivery.json", fixture), "utf8"));
 const heroSaved = readFileSync(new URL("hero-saved.html", fixture), "utf8");
+const carouselDocument = JSON.parse(readFileSync(new URL("carousel-public.json", fixture), "utf8"));
+const typographyDocument = JSON.parse(
+  readFileSync(new URL("typography-delivery.json", fixture), "utf8"),
+);
+const queryDocument = JSON.parse(
+  readFileSync(new URL("query-composition/post-public.json", fixture), "utf8"),
+);
 const installed = join(frontend, "node_modules/@getquick/content");
 const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
 const { resolveDesignTheme } = await import(
@@ -66,6 +75,7 @@ try {
   });
   cms.entries.set("/layout/", { id: "75", title: "Layout", content: layoutDocument.html });
   cms.entries.set("/hero/", { id: "79", title: "Hero", content: heroSaved });
+  cms.entries.set("/carousel/", { id: "78", title: "Carousel", content: "<p>Carousel proof</p>" });
   cms.answers.EntryByUri = ({ uri }) => ({
     postBy: null,
     pageBy: {
@@ -101,6 +111,12 @@ try {
     process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {},
   );
   const page = await browser.newPage();
+  await page.route("https://example.test/*.svg", (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320"><rect width="640" height="320" fill="blue"/></svg>',
+    }),
+  );
   await page.route("https://example.test/poster.jpg", (route) =>
     route.fulfill({
       contentType: "image/svg+xml",
@@ -191,7 +207,13 @@ try {
   await image.evaluate((element) => element.decode());
   const imageBox = await image.boundingBox();
   const wrapperBox = await page.locator(".prose-wp .wp-block-image").boundingBox();
-  assert.equal(imageBox.height, 192, "Image height uses 48 default spacing units");
+  assert.equal(wrapperBox.height, 192, "Image wrapper height uses 48 default spacing units");
+  const captionBox = await page.locator(".prose-wp figcaption").boundingBox();
+  assert.equal(
+    imageBox.height + captionBox.height,
+    wrapperBox.height,
+    "caption fits inside the authored Image box",
+  );
   assert.equal(imageBox.width, wrapperBox.width, "linked media fills its authored wrapper");
   assert.equal(await image.getAttribute("alt"), "Mountain");
   assert.equal(await image.locator("..").getAttribute("href"), "https://example.test/route");
@@ -358,6 +380,272 @@ try {
     true,
   );
   console.log("✓ real saved Hero box, independent foreground and keyboard-accessible link");
+  for (const delivery of typographyDocument.cases) {
+    cms.entries.set("/typography/", {
+      id: "76",
+      title: "Typography",
+      content: delivery.renderedHTML,
+    });
+    cms.answers.DesignPresets = () => ({
+      designTokens: { ...delivery.tokens, spacingSizes: [] },
+    });
+    cms.answers.SiteChrome = () => ({
+      generalSettings: { siteIcon: null, siteLogo: null },
+      menuItems: { nodes: [] },
+      header: { title: "Typography", blocksJson: JSON.stringify(delivery.neutralNodes) },
+      footer: null,
+    });
+    const refreshed = await runGq(site, ["frontend", "refresh", "--url", origin, "--json"], {
+      FRONTEND_REFRESH_TOKEN: token,
+    });
+    assert.equal(refreshed.code, 0, refreshed.stdout + refreshed.stderr);
+    assert.equal((await page.goto(`${origin}/typography/`)).status(), 200);
+    for (const region of [".prose-wp", "header.gqd-content"]) {
+      const root = page.locator(region);
+      const list = root.locator("ol");
+      assert.equal(await list.count(), 1, `${delivery.name} ${region}: ordered list is rendered`);
+      assert.equal(await list.getAttribute("start"), "3");
+      assert.equal(await list.getAttribute("reversed"), "");
+      assert.equal(
+        await list
+          .locator(":scope > li")
+          .evaluate((element) => element.firstChild.textContent.trim()),
+        "Parent item",
+        `${delivery.name} ${region}: parent rich text survives null list content`,
+      );
+      assert.equal((await list.locator("ul > li").textContent()).trim(), "Nested item");
+      const button = root.getByRole("link", { name: "Go shopping", exact: true });
+      assert.equal(await button.getAttribute("href"), "/shop");
+      assert.equal(await button.getAttribute("title"), "Spend > save");
+      assert.equal(await button.getAttribute("target"), "_blank");
+      assert.equal(await button.getAttribute("rel"), "noopener");
+      assert.equal(await button.locator("strong").textContent(), "shopping");
+    }
+  }
+  console.log("✓ real typography body and neutral chrome retain nested list and button rich text");
+  cms.answers.DesignPresets = () => ({
+    designTokens: { ...themeDocument.deliveries[0].tokens, spacingSizes: [] },
+  });
+  cms.answers.SiteChrome = () => ({
+    generalSettings: { siteIcon: null, siteLogo: null },
+    menuItems: { nodes: [] },
+    header: { title: "Carousel", blocksJson: JSON.stringify([carouselDocument.blocks[0].node]) },
+    footer: null,
+  });
+  const carouselRefresh = await runGq(site, ["frontend", "refresh", "--url", origin, "--json"], {
+    FRONTEND_REFRESH_TOKEN: token,
+  });
+  assert.equal(carouselRefresh.code, 0, carouselRefresh.stdout + carouselRefresh.stderr);
+  await page.setViewportSize({ width: 640, height: 900 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  assert.equal((await page.goto(`${origin}/carousel/`)).status(), 200);
+  const carousel = page.getByRole("region", { name: "Carousel", exact: true, includeHidden: true });
+  const slides = carousel.locator(".wp-block-getquick-design-slider img");
+  assert.equal(await slides.count(), 3, "the actual public producer retains all ordered slides");
+  const visible = await Promise.all([0, 1, 2].map((index) => slides.nth(index).isVisible()));
+  assert.deepEqual(
+    visible,
+    [true, false, false],
+    "only the active slide occupies the rendered Carousel",
+  );
+  assert.equal((await carousel.boundingBox()).height, 150);
+  assert.equal(await carousel.getByRole("link").getAttribute("href"), "/first-slide");
+  assert.equal(
+    await carousel.getByRole("navigation").count(),
+    0,
+    "saved navigation visible=false remains hidden",
+  );
+  for (const width of [767, 768, 769, 1279, 1280, 1281]) {
+    await page.setViewportSize({ width, height: 900 });
+    const box = await carousel.boundingBox();
+    if (width >= 768 && width < 1280) {
+      assert.equal(box, null, `display:none removes Carousel layout at ${width}`);
+    } else {
+      assert.ok(box, `Carousel is restored at ${width}`);
+      assert.equal(
+        await carousel.evaluate(
+          (element) => element.ownerDocument.defaultView.getComputedStyle(element).display,
+        ),
+        "grid",
+        "display reset restores the actual Carousel layout",
+      );
+      if (width >= 1280) assert.notEqual(box.height, 240, "Auto clears inherited explicit height");
+    }
+  }
+  await page.setViewportSize({ width: 640, height: 900 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await carousel.getByRole("link").focus();
+  await page.waitForTimeout(3200);
+  assert.equal(
+    await slides.nth(0).isVisible(),
+    true,
+    "autoplay pauses while a slide link has focus",
+  );
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.reload();
+  await page.waitForTimeout(3200);
+  assert.equal(
+    await slides.nth(0).isVisible(),
+    true,
+    "reduced motion keeps the active slide still",
+  );
+  console.log("✓ actual saved/public Carousel enhances ordered slides through production chrome");
+  // Supporting public-input variant: expose the fixture's existing controls.
+  // This variant is not claimed as a separate captured editor save.
+  const withControls = structuredClone(carouselDocument.blocks[0].node);
+  withControls.children.find(
+    (child) => child.name === "getquick-design/carousel-navigation",
+  ).attributes.visible = true;
+  cms.answers.SiteChrome = () => ({
+    generalSettings: { siteIcon: null, siteLogo: null },
+    menuItems: { nodes: [] },
+    header: { title: "Carousel controls", blocksJson: JSON.stringify([withControls]) },
+    footer: null,
+  });
+  const controlsRefresh = await runGq(site, ["frontend", "refresh", "--url", origin, "--json"], {
+    FRONTEND_REFRESH_TOKEN: token,
+  });
+  assert.equal(controlsRefresh.code, 0, controlsRefresh.stdout + controlsRefresh.stderr);
+  await page.goto(`${origin}/carousel/`);
+  const next = carousel.getByRole("button", { name: "Next slide", exact: true });
+  await next.click();
+  assert.equal(await slides.nth(1).isVisible(), true);
+  await next.press("ArrowRight");
+  assert.equal(await slides.nth(2).isVisible(), true);
+  assert.equal(
+    await next.evaluate((element) => element === element.ownerDocument.activeElement),
+    true,
+  );
+  await next.press("Home");
+  assert.equal(await slides.nth(0).isVisible(), true);
+  await carousel.getByRole("button", { name: "Go to slide 3", exact: true }).click();
+  assert.equal(await slides.nth(2).isVisible(), true);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.getByRole("button", { name: "Cookie settings", exact: true }).focus();
+  await carousel.hover();
+  await page.waitForTimeout(3200);
+  assert.equal(await slides.nth(2).isVisible(), true, "hover pauses autoplay");
+  await page.mouse.move(639, 899);
+  await page.waitForTimeout(3200);
+  assert.equal(
+    await slides.nth(0).isVisible(),
+    true,
+    "autoplay advances after focus and hover leave",
+  );
+  console.log("✓ public Carousel controls, keyboard focus, hover pause and autoplay resume");
+  const navigation = carousel.getByRole("navigation", { name: "Carousel navigation", exact: true });
+  assert.equal(
+    await navigation.evaluate(
+      (element) => element.ownerDocument.defaultView.getComputedStyle(element).backgroundColor,
+    ),
+    "rgb(1, 2, 3)",
+    "the fixture's navigation background is implemented",
+  );
+  const queryLoads = [];
+  const entryAnswer = cms.answers.EntryByUri;
+  cms.answers.EntryByUri = ({ uri }) => {
+    const identity = queryDocument.blocks[0].attributes.items.find((item) => item.uri === uri);
+    if (!identity) return entryAnswer({ uri });
+    queryLoads.push(uri);
+    const record = queryDocument.items.find((item) => item.id === identity.id).publishedPost;
+    return {
+      postBy: {
+        ...record,
+        id: String(record.databaseId),
+        uri,
+        content: "",
+        excerpt: "",
+        date: "2026-10-24T00:00:00",
+        status: "publish",
+        isRestricted: false,
+        modifiedGmt: "2026-10-24T00:00:00",
+        featuredImage: null,
+      },
+      pageBy: null,
+      designTokens: { ...themeDocument.deliveries[0].tokens, spacingSizes: [] },
+    };
+  };
+  cms.entries.set("/query/", { id: "81", title: "Query", content: "<p>Query proof</p>" });
+  cms.answers.SiteChrome = () => ({
+    generalSettings: { siteIcon: null, siteLogo: null },
+    menuItems: { nodes: [] },
+    header: { title: "Query", blocksJson: JSON.stringify(queryDocument.blocks) },
+    footer: null,
+  });
+  const queryRefresh = await runGq(site, ["frontend", "refresh", "--url", origin, "--json"], {
+    FRONTEND_REFRESH_TOKEN: token,
+  });
+  assert.equal(queryRefresh.code, 0, queryRefresh.stdout + queryRefresh.stderr);
+  assert.equal((await page.goto(`${origin}/query/`)).status(), 200);
+  const query = page.locator("header.gqd-content");
+  assert.deepEqual(await query.locator(".wp-block-post-title").allTextContents(), [
+    "00081 Beta",
+    "00081 Gamma",
+  ]);
+  assert.deepEqual(
+    queryLoads,
+    ["/00081-beta/", "/00081-gamma/"],
+    "producer-selected URI loader order",
+  );
+  const bodies = query.locator(".wp-block-post-content");
+  assert.equal(await bodies.count(), 2);
+  for (const [index, name] of ["00081 Beta", "00081 Gamma"].entries()) {
+    assert.deepEqual(await bodies.nth(index).locator("p").allTextContents(), [
+      `${name} content`,
+      "Nested item body",
+    ]);
+  }
+  assert.deepEqual(
+    await query.locator(":scope > *").evaluateAll((nodes) => nodes.map((node) => node.className)),
+    await query
+      .locator(
+        ":scope > .wp-block-post-title, :scope > .wp-block-post-content, :scope > .wp-block-getquick-design-grid",
+      )
+      .evaluateAll((nodes) => nodes.map((node) => node.className)),
+    "resolved synced references add no layout wrapper",
+  );
+  for (const width of [767, 768, 1000]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const grid of await query.locator(".wp-block-getquick-design-grid").all()) {
+      const computed = await grid.evaluate((element) => {
+        const style = element.ownerDocument.defaultView.getComputedStyle(element);
+        return {
+          display: style.display,
+          columns: style.gridTemplateColumns.split(" ").length,
+          gap: style.gap,
+        };
+      });
+      assert.deepEqual(computed, { display: "grid", columns: width < 768 ? 1 : 2, gap: "16px" });
+    }
+  }
+  for (const heading of await query.getByRole("heading", { name: "Pattern details" }).all()) {
+    assert.deepEqual(
+      await heading.evaluate((element) => {
+        const style = element.ownerDocument.defaultView.getComputedStyle(element);
+        return { size: style.fontSize, weight: style.fontWeight };
+      }),
+      { size: "20px", weight: "700" },
+    );
+  }
+  const buttons = query.getByRole("link", { name: "Read item", exact: true });
+  assert.equal(await buttons.count(), 2);
+  for (const button of await buttons.all()) {
+    assert.equal(await button.getAttribute("href"), "#details");
+    assert.deepEqual(
+      await button.evaluate((element) => {
+        const style = element.ownerDocument.defaultView.getComputedStyle(element);
+        return {
+          tag: element.tagName,
+          padding: style.paddingInlineStart,
+          radius: style.borderRadius,
+        };
+      }),
+      { tag: "A", padding: "16px", radius: "8px" },
+    );
+  }
+  console.log(
+    "✓ refreshed real Query producer order, publication preloads, recursive content, transparent references and styled links",
+  );
 } finally {
   await browser?.close();
   await stopWorker(worker);
