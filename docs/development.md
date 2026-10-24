@@ -211,10 +211,27 @@ establish full catalog or fleet acceptance.
 Staged preview success does not establish that the currently published content
 version supports the new exports. Advance the managed CMS/npm pair only after
 the coordinated version is published, then rerun without the local override.
-The bounded final candidate uses immutable content preview10 from runtime commit
+The accepted phase-6 evidence uses immutable content preview10 from runtime commit
 `52bbd6db056adc99915eaa18525a85f9c231d42a`, bundled Design commit
 `634f58c8e42c8a1e7f8334e937126b472387d405` (Design 0.9/wire 2). Archive SHA-256:
 `14d1f7675af9d7e8e4102de529a286e913be442501d8f634bca111ab7d845edd`.
+
+Subsequent independent installed-facade verification used content candidate
+`cbb447f27174c12b01f4f4ec0848debda4609f6c`, bundling both Design archives at
+`c4bcc5a9ef72ecad2b48495596464c9d4daa8c8b`. Archive
+`getquick-content-c4bcc5a-final-candidate.tgz` SHA-256:
+`d9977fe89e6e76eead1761fa9591f5dc95322d15aa6cb557d3dec6ff164a2af2`.
+With only `GQ_CONTENT_TARBALL` changed to that archive, `frontend-check.sh`
+passed 15 monolingual and 15 bilingual tests, both Astro checks reported zero
+errors/warnings/hints, and frontend lint/format passed. `presentation.sh`
+passed all 22 production groups, including the separate saved Hero consent run.
+The Site implementation stayed at reviewed commit `0bddf43`; no new runtime
+implementation or fixture substitution was needed. This verifies the final
+installed facade through the bounded starter paths, retaining all provenance
+and coverage limits above. Root `pnpm check` previously passed 768 tests at
+that implementation commit; the dependency-independent root suite was not rerun
+for this archive-only verification.
+
 Published managed CMS/npm pins remain `0.3.1`; Tailwind pins are exactly `4.3.3`.
 Commerce generation and gq-design #12 Actions package access remain separately
 owned prerequisites, outside these consumer checks.
