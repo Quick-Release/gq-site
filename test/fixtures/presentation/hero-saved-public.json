@@ -1,0 +1,88 @@
+{
+  "blocks": [
+    {
+      "fixture": "getquick-video-hero-saved-presentation",
+      "node": {
+        "attributes": {
+          "iframeTitle": "Decorative background video",
+          "posterId": 0,
+          "posterUrl": "https://example.test/poster.jpg",
+          "presentation": {
+            "base": {
+              "alignItems": "end",
+              "height": 64,
+              "justifyContent": "end",
+              "objectFit": "contain",
+              "textAlign": "start",
+              "width": "1/2"
+            }
+          },
+          "style": {
+            "color": {
+              "background": "#000000",
+              "text": "#ffffff"
+            }
+          },
+          "videoId": 0,
+          "videoType": "self-hosted",
+          "videoUrl": ""
+        },
+        "children": [
+          {
+            "attributes": {
+              "content": "<a href=\"#destination\">Explore the collection</a>"
+            },
+            "children": [],
+            "content": "<p><a href=\"#destination\">Explore the collection</a></p>",
+            "name": "core/paragraph",
+            "supported": true
+          }
+        ],
+        "content": null,
+        "name": "getquick-design/video-hero",
+        "supported": true
+      }
+    },
+    {
+      "fixture": "getquick-video-hero-saved-youtube",
+      "node": {
+        "attributes": {
+          "iframeTitle": "Video \"di\" sfondo & musica",
+          "posterId": 0,
+          "posterUrl": "https://example.test/poster.jpg",
+          "presentation": {
+            "base": {
+              "height": 64,
+              "objectFit": "cover",
+              "width": "1/2"
+            },
+            "lg": {
+              "objectFit": "reset"
+            },
+            "md": {
+              "objectFit": "contain"
+            }
+          },
+          "videoId": 0,
+          "videoType": "youtube",
+          "videoUrl": "https://youtu.be/dQw4w9WgXcQ"
+        },
+        "children": [
+          {
+            "attributes": {
+              "content": "<a href=\"#next\">Discover more</a>"
+            },
+            "children": [],
+            "content": "<p><a href=\"#next\">Discover more</a></p>",
+            "name": "core/paragraph",
+            "supported": true
+          }
+        ],
+        "content": null,
+        "name": "getquick-design/video-hero",
+        "supported": true
+      }
+    }
+  ],
+  "renderer": "neutral"
+}

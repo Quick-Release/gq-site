@@ -1,0 +1,9 @@
+Captured flag PNG provenance
+
+Source distribution: Polylang Free 3.8.10, installed from WordPress.org.
+Source files: polylang/flags/gb.png and polylang/flags/fr.png.
+These are unchanged HTTP response bytes, retained only as producer test evidence.
+Polylang is distributed under GPLv2 or later; its readme credits famfamfam as the
+source of most included flags and identifies those flags as public domain.
+Upstream: https://wordpress.org/plugins/polylang/
+Flag-source credit: http://famfamfam.com/

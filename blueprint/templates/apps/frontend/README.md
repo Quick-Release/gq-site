@@ -87,8 +87,39 @@ languages.
 ## Blocks
 
 `@getquick/content` renders the GETQUICK Design blocks WPGraphQL Blocks
-returns, and `blockPresetStyles` turns the CMS's spacing and color presets
-into the CSS saved block classes need; `src/styles/global.css` styles them.
+returns. The layout installs its shared `presentationStyleSheet` for content
+and selected header/footer patterns, including settings authored after the
+Frontend was built. Its scoped `designThemeStyleSheet` applies Preflight and
+resolved theme variables to `.gqd-content`; both stylesheets use the delivered
+theme, so refreshed spacing and breakpoints update together without rebuilding.
+`blockPresetStyles` supplies the CMS's spacing and color presets. Presentation
+values follow Base and upward breakpoint overrides.
+
+Container sizing applies Tailwind's width caps without centering or padding.
+Authors set margins and padding explicitly. The skeleton no longer imposes
+article widths, sibling spacing, legacy device visibility or constrained-parent
+Container styles on published content. Existing designs can change appearance.
+Keep Site shell styling in `src/styles/global.css` from overriding authored
+presentation. The layout, pages and styles are Site-owned after generation;
+`gq sync` does not replace them automatically.
+
+Video Hero uses the package's `videoHeroStyleSheet` and browser-only
+`mountVideoHero`. The initializer handles decorative player sizing, reduced
+motion and media replacement; the Site supplies no second media observer.
+Sizing and foreground alignment stay authored independently. Consent still
+controls whether optional third-party media can load.
+
+Carousel uses `designCarouselStyle` and the browser `mountDesignCarousels` from
+the same package. Shared runtime code owns slides, accessible controls and
+motion preferences. Selected chrome Query patterns preload producer-selected
+standard Post/Page URIs through `runtime.preloadDesignQueryPosts`; rendering
+uses its synchronous `resolvePost` callback. The Site does not select items
+again or fetch from inside the renderer. Other post types require a separately
+authorized loader.
+
+Navigation uses `navigationStyleSheet(theme)` and `mountDesignNavigation` from
+the public content facade. The shared lifecycle owns mobile panels, submenus
+and keyboard focus for both saved HTML and neutral chrome.
 
 ## Checks
 

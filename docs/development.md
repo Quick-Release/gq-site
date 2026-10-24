@@ -138,6 +138,120 @@ For blueprint source roles, ownership mappings, and deliberate dotless source
 names, see the [blueprint map](../blueprint/README.md). `ownership.json` remains
 the authority for which site paths are touched.
 
+### Staged presentation consumer checks
+
+Before a coordinated content release is published, set `GQ_CONTENT_TARBALL`
+to the absolute path of an immutable `@getquick/content` preview tarball.
+The generated-site smoke scripts install it through a local workspace override.
+The generated package files retain their published pins; the preview bundles
+its shared Design dependencies and needs no private registry access.
+
+```sh
+GQ_CONTENT_TARBALL=/absolute/path/to/getquick-content-preview.tgz scripts/smoke/frontend-check.sh
+GQ_CONTENT_TARBALL=/absolute/path/to/getquick-content-preview.tgz scripts/smoke/presentation.sh
+```
+
+The presentation proof builds the actual generated Astro frontend and serves it
+in local workerd with its publication store. The CMS supplies the saved document
+after the build, so the browser checks production CSS for late-authored content.
+It checks nested Container caps at every default breakpoint boundary and explicit
+centering, padding and upward overrides in the page body and selected chrome,
+in both LTR and RTL. Versioned fixtures in `test/fixtures/presentation/` retain
+the real saved-editor document, WordPress-rendered HTML and neutral public node;
+`test/fixtures/README.md` records provenance and hashes. The CMS's HTTP envelope
+is stubbed. Editor save/reload and live producer acceptance remain upstream checks.
+
+The same proof also consumes the real native Image/Cover and layout fixtures,
+checks resolved-theme changes without rebuilding, and verifies the saved Hero's
+box, media layer and focusable foreground. The theme fixture checks heading,
+list and media Preflight against both captured resolved themes. Preview6 also
+checks actual typography list/button semantics in body and neutral chrome,
+Carousel responsive hiding/restoration, keyboard/focus and autoplay behavior,
+and the refreshed standard Post Query fixture through the existing publication
+loader. Query checks include ordered repetition, recursive Post Content,
+transparent references and responsive Grid/Heading/Button CSS. Carousel controls
+use a clearly labelled supporting visibility variant of the captured input.
+The actual saved navigation capture also checks mobile open/Escape/focus return,
+ordered links and native descendants, Social Links visibility, and authored
+styles at every default breakpoint edge in LTR/RTL. Its body HTML and neutral
+tree differ upstream and are asserted independently, as the fixture provenance
+records. Ordinary native/custom body menus also open and close through the
+configured package's existing HTML-delivery enhancement and the same initializer.
+Additional actual captures exercise native Columns without core CSS
+at 781/782/783px (stacking, unequal/equal growth and native/neutral alignment),
+the latest layout's narrow parent and gap-reset chronology, and source-derived
+inline Heading/Paragraph content with computed typography at both captured
+themes' thresholds.
+
+The conditional language proof uses real Free Polylang EN/FR captures, serving
+the exact captured flag PNGs at their original URLs. It independently checks
+neutral layout current state and native body current state, names/flags-only
+accessibility, dropdown controls, RTL spacing and scriptless native select
+navigation. A separate null-flag native capture checks accessible names without
+invented assets. These cases do not claim Pro or broad HTML/neutral parity.
+Supporting Site/Post context cases use existing publication loaders and public
+home settings for recursive post content, Featured Image and primary/dark/title
+Branding fallback; they do not establish a valid saved dynamic Design layout.
+Supporting Cover cases check omission/aspect/source-shell height boundaries and
+real WebM playback with reduced-motion pause/resume and cleanup/remount. The
+WebM is generated test media, not a new CMS Cover-video capture. Lifecycle event
+checks exercise cleanup/remount; they do not establish browser back-forward
+cache behavior.
+
+The script also runs a separate Hero production build that temporarily declares
+YouTube in the disposable Site configuration, restoring that source afterwards.
+It checks saved HTML and registered REST dispatcher nodes through consent grant,
+reduced motion, responsive iframe geometry and withdrawal, with all player
+requests fulfilled locally. The saved self-hosted case has an empty video URL;
+it does not establish streaming-video playback. Report these cases separately
+from pending submenu interactions and valid saved dynamic typography layout
+delivery; the bounded proof does not
+establish full catalog or fleet acceptance.
+
+Staged preview success does not establish that the currently published content
+version supports the new exports. Advance the managed CMS/npm pair only after
+the coordinated version is published, then rerun without the local override.
+The accepted phase-6 evidence uses immutable content preview10 from runtime commit
+`52bbd6db056adc99915eaa18525a85f9c231d42a`, bundled Design commit
+`634f58c8e42c8a1e7f8334e937126b472387d405` (Design 0.9/wire 2). Archive SHA-256:
+`14d1f7675af9d7e8e4102de529a286e913be442501d8f634bca111ab7d845edd`.
+
+Subsequent independent installed-facade verification used content candidate
+`cbb447f27174c12b01f4f4ec0848debda4609f6c`, bundling both Design archives at
+`c4bcc5a9ef72ecad2b48495596464c9d4daa8c8b`. Archive
+`getquick-content-c4bcc5a-final-candidate.tgz` SHA-256:
+`d9977fe89e6e76eead1761fa9591f5dc95322d15aa6cb557d3dec6ff164a2af2`.
+With only `GQ_CONTENT_TARBALL` changed to that archive, `frontend-check.sh`
+passed 15 monolingual and 15 bilingual tests, both Astro checks reported zero
+errors/warnings/hints, and frontend lint/format passed. `presentation.sh`
+passed all 22 production groups, including the separate saved Hero consent run.
+The Site implementation stayed at reviewed commit `0bddf43`; no new runtime
+implementation or fixture substitution was needed. This verifies the final
+installed facade through the bounded starter paths, retaining all provenance
+and coverage limits above. Root `pnpm check` previously passed 768 tests at
+that implementation commit; the dependency-independent root suite was not rerun
+for this archive-only verification.
+
+The `0.23.2` release adopts the published `0.3.2` pair from source/tag
+`698b98965b8138d25e273d9cdafe84f8397ca66d`, independently verifying the npm
+archive SHA-256 `18df1f27ca3284338e611c611bef1f22707b9578f5145be670b7be50ab6b0373`
+and public CMS ZIP SHA-256
+`89706f3f1796e78d20bbe34ea6205834709052b9fa3446b58ae102dfc169d774`.
+The normal npm lock holds the published SRI, and both managed fragments and
+full skeletons pin `0.3.2`. No content archive override is used for release
+checks: `pnpm check` passes 768 tests, generated frontend checks pass 15+15
+with zero Astro diagnostics, and presentation checks pass all 22 production
+groups. The broader consent smoke passes 32 monolingual and 56 bilingual
+shared checks, plus generated routes/records/third-party probes. The
+paired-package smoke also verifies the published npm lock integrity, CMS ZIP
+identity, managed keys, crontab, migrations and actual package route delivery.
+The schema probe now checks the published runtime's `databaseId`, `getquickBlocksJson`
+and `theme` fields; its existing coverage guard exposed the missing fields.
+The earlier accepted preview evidence retained published `0.3.1` pins and is
+recorded separately above. Tailwind pins are exactly `4.3.3`.
+Commerce generation and gq-design #12 Actions package access remain separately
+owned prerequisites, outside these consumer checks.
+
 ## Releasing
 
 1. Bump `version` in `package.json`, add its section to `CHANGELOG.md`, and

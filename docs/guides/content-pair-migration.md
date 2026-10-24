@@ -7,7 +7,7 @@ plugin `getquick/gq-content` and the npm package `@getquick/content`, pinned
 to one version
 ([ADR 0020](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
 This guide moves an existing Site onto the pair at the blueprint's pin,
-0.3.1. Nothing moves it
+0.3.2. Nothing moves it
 for you: until its `gq.ops.json` says `"contentRuntime": "package"`, `gq sync`
 leaves the copy alone.
 
@@ -72,7 +72,7 @@ same PHP namespace, so WordPress stops if both load.
 
 1. If `apps/frontend/package.json` already depends on `@getquick/content` (a
    Site that adopted consent added 0.1.0 by hand), set it to exactly the
-   blueprint's pin (`0.3.1`) or remove it. gq sync takes over a pin that
+   blueprint's pin (`0.3.2`) or remove it. gq sync takes over a pin that
    already matches; a different one is the Site's own, and gq sync stops on
    it as a local edit.
 2. Run:
@@ -181,7 +181,7 @@ front page and the site chrome are stored, so a script can wait on it.
 Then check:
 
 - `gq frontend events check`: the Frontend accepts the CMS's signed events.
-- `wp gq-events version` on the CMS prints the pinned version (`0.3.1`), and `wp gq-events status`
+- `wp gq-events version` on the CMS prints the pinned version (`0.3.2`), and `wp gq-events status`
   shows no stuck deliveries.
 - `pnpm doctor` and `pnpm site:check`.
 
@@ -269,6 +269,45 @@ No CMS resave or data migration is required. Existing configured column
 counts remain in force: three desktop columns with two children leave an
 empty third track. Adjust the editor setting only if the design calls for
 two columns.
+
+### 0.3.1 to 0.3.2 (`@getquick/site` 0.23.2)
+
+Upgrade the root `@getquick/site` pin to `0.23.2`, run `pnpm install`, then
+`pnpm exec gq sync`. Sync updates both managed content keys to exactly `0.3.2`;
+there is no per-Site version override. Run `pnpm install` again and, in
+`apps/cms`, `composer update getquick/gq-content getquick/gq-design --with-all-dependencies`.
+The paired CMS release requires Design `0.9.0`; verify both installed versions
+and review any Site-owned Design constraint through its normal package policy. Review
+and commit `gq.lock.json`, `pnpm-lock.yaml` and `apps/cms/composer.lock`, then
+check `pnpm exec gq sync --check`. Install the published packages through the
+normal registries; local preview archives are not release dependencies.
+
+**Adopt Site-owned presentation wiring deliberately.** Sync does not rewrite
+create-once layouts, pages, runtime configuration or styles. Compare the new
+starter's `Layout.astro`, `Home.astro`, `[...slug].astro` and `global.css` with
+the Site's equivalents. Compose the resolved publication theme through shared
+`designThemeStyleSheet`, `presentationStyleSheet`, `navigationStyleSheet`,
+`designCarouselStyle` and `videoHeroStyleSheet`; use `.gqd-content` for body
+and selected chrome. Use the shared `design/client` mounts for navigation,
+Carousel, Hero and Cover videos, with cleanup/remount in the Site lifecycle.
+Remove superseded local Container/Hero appearance rules after reviewing the
+Site's intended design. Do not copy a model, parser or playback policy into
+the Site. Tailwind is pinned to exactly `4.3.3` in new starter output.
+
+Supply authorized post context with `designPostContext` only when neutral
+blocks were delivered. Site title/description come from already loaded public
+home settings, with an explicit frontend home URL. Preload producer-selected
+standard Post/Page Query records outside synchronous rendering; do not apply
+offset/order/count again or infer an unsupported CPT loader.
+
+This adopts neutral Base/upward presentation and scoped reset defaults, with
+deliberate appearance changes: no implicit Container centering/padding and no
+implicit Hero viewport breakout/foreground centering. Check the Site's actual
+saved body, selected chrome, theme/breakpoints, native layout, links, consent
+and reduced-motion behavior. Supporting contexts and media tests are not new
+CMS editor captures or proof of every dynamic layout. Release the CMS and
+Frontend together through the Site's normal workflow; a blueprint upgrade
+does not deploy either half.
 
 ## Rolling back
 

@@ -1,6 +1,6 @@
 ---
-import type { Alternate, DesignBlock, SiteChrome, SiteLanguage } from "@getquick/content";
-import { designGridStyle } from "@getquick/content";
+import type { Alternate, DesignBlock, DesignPostContext, DesignTheme, SiteChrome, SiteLanguage, WordPressSettings } from "@getquick/content";
+import { designCarouselStyle, designThemeStyleSheet, navigationStyleSheet, presentationStyleSheet, resolveDesignTheme, videoHeroStyleSheet } from "@getquick/content";
 import { consentPage } from "@getquick/content/consent/astro";
 import { content } from "../lib/content";
 import { copyFor } from "../lib/copy";
@@ -15,6 +15,14 @@ interface Props {
   language?: SiteLanguage;
   /** Where its readers may switch language (a multilingual Site's pages only). */
   alternates?: Alternate[];
+  /** The resolved theme delivered with the publication. */
+  theme?: DesignTheme;
+  /** Authorized current post, already loaded by the page. */
+  post?: DesignPostContext;
+  /** A home response's Site settings; null means that response had none. */
+  siteSettings?: WordPressSettings | null;
+  /** The Site chooses the surface used by canonical Branding logo selection. */
+  colorScheme?: "light" | "dark";
 }
 
 const runtime = content();
@@ -28,6 +36,13 @@ const chrome =
   Astro.props.chrome !== undefined
     ? Astro.props.chrome
     : await runtime.pageChrome(Astro.site?.origin);
+const theme = resolveDesignTheme(Astro.props.theme ?? (await runtime.designPresets())?.theme);
+const siteHome = Astro.props.siteSettings === undefined && (chrome?.header || chrome?.footer)
+  ? await runtime.publishedHome(Astro.site?.origin, language)
+  : null;
+const siteSettings = Astro.props.siteSettings !== undefined
+  ? Astro.props.siteSettings
+  : siteHome?.kind === "found" ? siteHome.content.home.settings : null;
 // Chrome that can't be served leaves the menu, logo and icon out of this
 // response only; it doesn't mean the site has none, so the page is still served.
 const { menuItems, siteIcon, siteLogo } = chrome ?? {
@@ -41,9 +56,20 @@ const { menuItems, siteIcon, siteLogo } = chrome ?? {
 // older than 0.4.1), and the layout keeps its own. Saved HTML renders as it
 // was published; a block that needs code (a dynamic or Site block) needs a
 // renderer in `blocks` (see @getquick/content's "Header and footer patterns").
+const preloadedPosts = await runtime.preloadDesignQueryPosts(
+  [...(chrome?.header?.blocks ?? []), ...(chrome?.footer?.blocks ?? []), ...(Astro.props.post?.blocks ?? [])],
+  Astro.site?.origin,
+);
 const patternOptions = {
   siteOrigin: Astro.site?.origin,
   home: language.home,
+  post: Astro.props.post,
+  colorScheme: Astro.props.colorScheme ?? "light",
+  textContext: siteSettings ? { site: {
+    ...siteSettings,
+    url: new URL(language.home, Astro.site ?? Astro.url).href,
+  } } : undefined,
+  resolvePost: preloadedPosts.resolvePost,
   onUnrendered: (block: DesignBlock) => console.warn(`No renderer for ${block.name}`),
 };
 const headerPattern = runtime.renderDesignPattern(chrome?.header, patternOptions);
@@ -92,12 +118,16 @@ const consent = configuration
     {hreflang.map((alternate) => <link rel="alternate" hreflang={alternate.language.lang} href={alternate.href} />)}
     {xDefault && <link rel="alternate" hreflang="x-default" href={xDefault.href} />}
     <title>{title === "{{Project}}" ? title : `${title} — {{Project}}`}</title>
-    <style is:inline set:html={designGridStyle()} />
+    <style is:inline set:html={designThemeStyleSheet(theme)} />
+    <style is:inline set:html={videoHeroStyleSheet()} />
+    <style is:inline set:html={designCarouselStyle()} />
+    <style is:inline set:html={navigationStyleSheet(theme)} />
+    <style is:inline set:html={presentationStyleSheet(theme)} />
     {consent && <Fragment set:html={consent.head} />}
   </head>
   <body>
     {consent && <Fragment set:html={consent.body} />}
-    <header class="site-header">
+    <header class={headerPattern ? "gqd-content" : "site-header"}>
       {headerPattern ? (
         <Fragment set:html={headerPattern} />
       ) : (
@@ -135,7 +165,7 @@ const consent = configuration
     <slot />
     {(footerPattern || consent) && (
       <footer class="site-footer">
-        {footerPattern && <Fragment set:html={footerPattern} />}
+        {footerPattern && <div class="gqd-content"><Fragment set:html={footerPattern} /></div>}
         {consent && <Fragment set:html={consent.footer} />}
       </footer>
     )}
@@ -143,7 +173,25 @@ const consent = configuration
       // Applies the visitor's decisions, loads each catalog service only after
       // its grant, and records decisions at /gq/consent.
       import { startConsent } from "@getquick/content/consent/client";
+      import { mountDesignCarousels, mountDesignCoverVideos, mountDesignNavigation, mountVideoHero } from "@getquick/content/design/client";
       startConsent();
+      let unmountPresentation = () => {};
+      const mountPresentation = () => {
+        unmountPresentation();
+        const unmountCarousels = mountDesignCarousels();
+        const unmountCoverVideos = mountDesignCoverVideos();
+        const unmountNavigation = mountDesignNavigation();
+        const cleanups = [...document.querySelectorAll<HTMLElement>(".wp-block-getquick-design-video-hero")].map(mountVideoHero);
+        unmountPresentation = () => {
+          unmountCarousels();
+          unmountCoverVideos();
+          unmountNavigation();
+          cleanups.forEach((cleanup) => cleanup());
+        };
+      };
+      mountPresentation();
+      window.addEventListener("pagehide", () => unmountPresentation());
+      window.addEventListener("pageshow", mountPresentation);
     </script>
   </body>
 </html>

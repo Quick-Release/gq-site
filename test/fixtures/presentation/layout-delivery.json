@@ -1,0 +1,223 @@
+{
+  "provenance": {
+    "wordpress": "7.0",
+    "baseline": "Tailwind CSS 4.3.3",
+    "test": "tests/browser/grid-layout.spec.mjs",
+    "seam": "Real Gutenberg Grid columns, native Group Gap and native Column Align self inspector edits; saved/reloaded with valid blocks; actual REST getquickBlocks and content.rendered from disposable WordPress."
+  },
+  "invalid": [],
+  "nodes": [
+    {
+      "name": "getquick-design/grid",
+      "attributes": {
+        "anchor": "layout-grid",
+        "presentation": {
+          "base": {
+            "gridColumns": "3",
+            "gap": 4,
+            "paddingInline": 2
+          },
+          "md": {
+            "gridColumns": "4",
+            "rowGap": 0
+          },
+          "xl": {
+            "gridColumns": "reset"
+          },
+          "2xl": {
+            "gridColumns": "3"
+          }
+        }
+      },
+      "content": null,
+      "children": [
+        {
+          "name": "getquick-design/container",
+          "attributes": {},
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>One</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        },
+        {
+          "name": "getquick-design/container",
+          "attributes": {},
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Two</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        },
+        {
+          "name": "getquick-design/container",
+          "attributes": {},
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Three</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        },
+        {
+          "name": "getquick-design/container",
+          "attributes": {},
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Four</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        }
+      ],
+      "supported": true
+    },
+    {
+      "name": "core/group",
+      "attributes": {
+        "presentation": {
+          "base": {
+            "display": "flex",
+            "gap": 6,
+            "alignItems": "center"
+          },
+          "lg": {
+            "flexDirection": "column"
+          }
+        }
+      },
+      "content": null,
+      "children": [
+        {
+          "name": "core/paragraph",
+          "attributes": {},
+          "content": "<p>Group one</p>",
+          "children": [],
+          "supported": true
+        },
+        {
+          "name": "core/paragraph",
+          "attributes": {},
+          "content": "<p>Group two</p>",
+          "children": [],
+          "supported": true
+        }
+      ],
+      "supported": true
+    },
+    {
+      "name": "core/columns",
+      "attributes": {
+        "isStackedOnMobile": false,
+        "presentation": {
+          "base": {
+            "gap": 4,
+            "alignItems": "start"
+          }
+        }
+      },
+      "content": null,
+      "children": [
+        {
+          "name": "core/column",
+          "attributes": {
+            "width": "25%"
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Quarter</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        },
+        {
+          "name": "core/column",
+          "attributes": {
+            "presentation": {
+              "lg": {
+                "alignSelf": "end"
+              },
+              "base": {
+                "alignSelf": "center"
+              }
+            },
+            "width": "75%"
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Three quarters</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        }
+      ],
+      "supported": true
+    },
+    {
+      "name": "core/spacer",
+      "attributes": {
+        "height": "37px",
+        "presentation": {
+          "md": {
+            "height": 8
+          },
+          "xl": {
+            "height": "reset"
+          }
+        }
+      },
+      "content": "<div style=\"height:37px\" aria-hidden=\"true\" id=\"layout-spacer\" class=\"wp-block-spacer\"></div>",
+      "children": [],
+      "supported": true
+    },
+    {
+      "name": "core/separator",
+      "attributes": {
+        "presentation": {
+          "base": {
+            "width": "1/2",
+            "marginInline": "auto",
+            "opacity": "50"
+          }
+        }
+      },
+      "content": "<hr class=\"wp-block-separator has-alpha-channel-opacity\" id=\"layout-separator\" />",
+      "children": [],
+      "supported": true
+    }
+  ],
+  "html": "\n<div class=\"wp-block-getquick-design-grid gqd-presentation\" style=\"--gqd-base-gridColumns:repeat(3, minmax(0, 1fr));--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 4);--gqd-base-paddingInline:calc(var(--gqd-spacing, 0.25rem) * 2);--gqd-md-gridColumns:repeat(4, minmax(0, 1fr));--gqd-md-rowGap:calc(var(--gqd-spacing, 0.25rem) * 0);--gqd-xl-gridColumns:none;--gqd-2xl-gridColumns:repeat(3, minmax(0, 1fr));--gqd-base-gridColumns:repeat(3, minmax(0, 1fr));--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 4);--gqd-base-paddingInline:calc(var(--gqd-spacing, 0.25rem) * 2);--gqd-md-gridColumns:repeat(4, minmax(0, 1fr));--gqd-md-rowGap:calc(var(--gqd-spacing, 0.25rem) * 0);--gqd-xl-gridColumns:none;--gqd-2xl-gridColumns:repeat(3, minmax(0, 1fr))\" id=\"layout-grid\">\n<div class=\"wp-block-getquick-design-container gqd-presentation\">\n<p class=\"wp-block-paragraph\">One</p>\n</div>\n\n\n\n<div class=\"wp-block-getquick-design-container gqd-presentation\">\n<p class=\"wp-block-paragraph\">Two</p>\n</div>\n\n\n\n<div class=\"wp-block-getquick-design-container gqd-presentation\">\n<p class=\"wp-block-paragraph\">Three</p>\n</div>\n\n\n\n<div class=\"wp-block-getquick-design-container gqd-presentation\">\n<p class=\"wp-block-paragraph\">Four</p>\n</div>\n</div>\n\n\n\n<div style=\"--gqd-base-display:flex;--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 6);--gqd-base-alignItems:center;--gqd-lg-flexDirection:column\" id=\"layout-group\" class=\"wp-block-group gqd-presentation\">\n<p class=\"wp-block-paragraph\">Group one</p>\n\n\n\n<p class=\"wp-block-paragraph\">Group two</p>\n</div>\n\n\n\n<div style=\"--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 4);--gqd-base-alignItems:flex-start\" class=\"wp-block-columns is-not-stacked-on-mobile gqd-presentation\" id=\"layout-columns\">\n<div class=\"wp-block-column is-layout-flow wp-block-column-is-layout-flow gqd-presentation\" style=\"flex-basis:25%\">\n<p class=\"wp-block-paragraph\">Quarter</p>\n</div>\n\n\n\n<div class=\"wp-block-column is-layout-flow wp-block-column-is-layout-flow gqd-presentation\" style=\"flex-basis:75%;--gqd-lg-alignSelf:end;--gqd-base-alignSelf:center\">\n<p class=\"wp-block-paragraph\">Three quarters</p>\n</div>\n</div>\n\n\n\n<div style=\"height:37px;--gqd-md-height:calc(var(--gqd-spacing, 0.25rem) * 8);--gqd-xl-height:auto\" aria-hidden=\"true\" id=\"layout-spacer\" class=\"wp-block-spacer gqd-presentation\"></div>\n\n\n\n<hr style=\"--gqd-base-width:50.00000000%;--gqd-base-marginInline:auto;--gqd-base-opacity:0.5\" class=\"wp-block-separator has-alpha-channel-opacity gqd-presentation\" id=\"layout-separator\"/>\n",
+  "document": "<!-- wp:getquick-design/grid {\"presentation\":{\"base\":{\"gridColumns\":\"3\",\"gap\":4,\"paddingInline\":2},\"md\":{\"gridColumns\":\"4\",\"rowGap\":0},\"xl\":{\"gridColumns\":\"reset\"},\"2xl\":{\"gridColumns\":\"3\"}},\"anchor\":\"layout-grid\"} -->\n<div class=\"wp-block-getquick-design-grid gqd-presentation\" style=\"--gqd-base-gridColumns:repeat(3, minmax(0, 1fr));--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 4);--gqd-base-paddingInline:calc(var(--gqd-spacing, 0.25rem) * 2);--gqd-md-gridColumns:repeat(4, minmax(0, 1fr));--gqd-md-rowGap:calc(var(--gqd-spacing, 0.25rem) * 0);--gqd-xl-gridColumns:none;--gqd-2xl-gridColumns:repeat(3, minmax(0, 1fr))\" id=\"layout-grid\"><!-- wp:getquick-design/container -->\n<div class=\"wp-block-getquick-design-container gqd-presentation\"><!-- wp:paragraph -->\n<p>One</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:getquick-design/container -->\n\n<!-- wp:getquick-design/container -->\n<div class=\"wp-block-getquick-design-container gqd-presentation\"><!-- wp:paragraph -->\n<p>Two</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:getquick-design/container -->\n\n<!-- wp:getquick-design/container -->\n<div class=\"wp-block-getquick-design-container gqd-presentation\"><!-- wp:paragraph -->\n<p>Three</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:getquick-design/container -->\n\n<!-- wp:getquick-design/container -->\n<div class=\"wp-block-getquick-design-container gqd-presentation\"><!-- wp:paragraph -->\n<p>Four</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:getquick-design/container --></div>\n<!-- /wp:getquick-design/grid -->\n\n<!-- wp:group {\"presentation\":{\"base\":{\"display\":\"flex\",\"gap\":6,\"alignItems\":\"center\"},\"lg\":{\"flexDirection\":\"column\"}},\"anchor\":\"layout-group\"} -->\n<div id=\"layout-group\" class=\"wp-block-group\"><!-- wp:paragraph -->\n<p>Group one</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>Group two</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:group -->\n\n<!-- wp:columns {\"isStackedOnMobile\":false,\"presentation\":{\"base\":{\"gap\":4,\"alignItems\":\"start\"}},\"anchor\":\"layout-columns\"} -->\n<div class=\"wp-block-columns is-not-stacked-on-mobile\" id=\"layout-columns\"><!-- wp:column {\"width\":\"25%\"} -->\n<div class=\"wp-block-column\" style=\"flex-basis:25%\"><!-- wp:paragraph -->\n<p>Quarter</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:column -->\n\n<!-- wp:column {\"width\":\"75%\",\"presentation\":{\"lg\":{\"alignSelf\":\"end\"},\"base\":{\"alignSelf\":\"center\"}}} -->\n<div class=\"wp-block-column\" style=\"flex-basis:75%\"><!-- wp:paragraph -->\n<p>Three quarters</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:column --></div>\n<!-- /wp:columns -->\n\n<!-- wp:spacer {\"height\":\"37px\",\"presentation\":{\"md\":{\"height\":8},\"xl\":{\"height\":\"reset\"}},\"anchor\":\"layout-spacer\"} -->\n<div style=\"height:37px\" aria-hidden=\"true\" id=\"layout-spacer\" class=\"wp-block-spacer\"></div>\n<!-- /wp:spacer -->\n\n<!-- wp:separator {\"presentation\":{\"base\":{\"width\":\"1/2\",\"marginInline\":\"auto\",\"opacity\":\"50\"}},\"anchor\":\"layout-separator\"} -->\n<hr class=\"wp-block-separator has-alpha-channel-opacity\" id=\"layout-separator\"/>\n<!-- /wp:separator -->"
+}

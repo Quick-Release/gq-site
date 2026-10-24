@@ -1,0 +1,28 @@
+{
+  "sourceCommit": "4db8b85ea01d3a690322f02bf9c07b5f39f0c1cd",
+  "test": "tests/browser/navigation-presentation.spec.mjs",
+  "fixture": "tests/fixtures/wordpress/navigation-presentation.php",
+  "capture": "After real Gutenberg save/reload, before live theme and child override changes",
+  "capturedAt": "2026-10-24T00:43:45.686Z",
+  "request": {
+    "method": "GET",
+    "url": "http://127.0.0.1:8180/?rest_route=%2Fwp%2Fv2%2Fpages%2F497&context=view",
+    "authenticated": false,
+    "status": 200
+  },
+  "pageUrl": "http://127.0.0.1:8180/navigation-presentation-80-2/",
+  "navigationReference": 496,
+  "fixtureCleanup": "The disposable entities are removed in the test finally block; replay the committed saved input, not these transient URLs.",
+  "coverage": [
+    "getquick-design/navigation",
+    "core/navigation",
+    "core/navigation-link",
+    "core/navigation-submenu",
+    "core/page-list",
+    "core/page-list-item",
+    "getquick-design/social-links"
+  ],
+  "limitations": [
+    "This composition does not contain a language switcher; separate real Polylang evidence covers language delivery."
+  ]
+}

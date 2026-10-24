@@ -13,17 +13,17 @@
     "test": "vp test --passWithNoTests"
   },
   "dependencies": {
-    "@getquick/content": "0.3.1",
+    "@getquick/content": "0.3.2",
     "astro": "^7.2.9"
   },
   "devDependencies": {
     "@alchemy.run/frontend-frameworks": "catalog:",
     "@astrojs/check": "^0.9.10",
     "@effect/platform-node": "catalog:",
-    "@tailwindcss/vite": "^4.3.3",
+    "@tailwindcss/vite": "4.3.3",
     "@types/node": "^24.0.0",
     "effect": "catalog:",
-    "tailwindcss": "^4.3.3",
+    "tailwindcss": "4.3.3",
     "typescript": "^6.0.3",
     "vite-plus": "^0.3.0"
   },
