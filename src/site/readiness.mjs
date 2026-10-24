@@ -80,6 +80,8 @@ export function schemaQuery(languages = []) {
       __typename
       ... on Page {
         id
+        databaseId
+        getquickBlocksJson
         title
         content
         blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)
@@ -123,6 +125,8 @@ export function schemaQuery(languages = []) {
       __typename
       ... on Page {
         id
+        databaseId
+        getquickBlocksJson
         title
         content
         blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)
@@ -130,6 +134,7 @@ export function schemaQuery(languages = []) {
       }
     }
     designTokens @skip(if: true) {
+      theme
       spacingSizes {
         slug
         size
@@ -150,6 +155,8 @@ export function schemaQuery(languages = []) {
     }
     postBy(uri: "/") @skip(if: true) {
       id
+      databaseId
+      getquickBlocksJson
       title
       excerpt
       content
@@ -168,6 +175,8 @@ export function schemaQuery(languages = []) {
     }
     pageBy(uri: "/") @skip(if: true) {
       id
+      databaseId
+      getquickBlocksJson
       title
       content
       blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)

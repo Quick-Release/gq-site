@@ -3,6 +3,29 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## 0.23.2 — 2026-10-24
+
+### Fixed
+
+- Adopt the `@getquick/content` / `getquick/gq-content` 0.3.2 pair through
+  the normal managed keys. Existing package-runtime Sites upgrade the root
+  blueprint, run `gq sync`, then install and commit both dependency locks.
+- Validate the published runtime's `databaseId`, `getquickBlocksJson` and
+  resolved `theme` fields in the skipped GraphQL schema probe, so the Site
+  check catches a CMS that cannot serve the pinned runtime's queries.
+- New content Sites compose the resolved publication theme, scoped Preflight
+  and canonical presentation CSS across body and selected chrome, with exact
+  Tailwind 4.3.3 pins. Shared navigation, Carousel, Hero and Cover video
+  initializers follow the layout's cleanup/remount lifecycle. Post/Site
+  contexts and Query preloads use existing publication loaders.
+- Remove superseded starter Container spacing/caps and Hero viewport/breakout
+  appearance. These defaults deliberately change appearance; they are not a
+  compatibility resolver. Existing create-once Site layouts/styles require
+  deliberate adoption; sync updates managed pins and adapters only. See
+  [presentation adoption](docs/guides/content-pair-migration.md#031-to-032-getquicksite-0232)
+  for the paired release and Site-owned file steps. Immutable producer and
+  explicitly supporting inputs retain separate provenance and bounded checks.
+
 ## 0.23.1 — 2026-10-23
 
 ### Fixed

@@ -232,7 +232,23 @@ and coverage limits above. Root `pnpm check` previously passed 768 tests at
 that implementation commit; the dependency-independent root suite was not rerun
 for this archive-only verification.
 
-Published managed CMS/npm pins remain `0.3.1`; Tailwind pins are exactly `4.3.3`.
+The `0.23.2` release adopts the published `0.3.2` pair from source/tag
+`698b98965b8138d25e273d9cdafe84f8397ca66d`, independently verifying the npm
+archive SHA-256 `18df1f27ca3284338e611c611bef1f22707b9578f5145be670b7be50ab6b0373`
+and public CMS ZIP SHA-256
+`89706f3f1796e78d20bbe34ea6205834709052b9fa3446b58ae102dfc169d774`.
+The normal npm lock holds the published SRI, and both managed fragments and
+full skeletons pin `0.3.2`. No content archive override is used for release
+checks: `pnpm check` passes 768 tests, generated frontend checks pass 15+15
+with zero Astro diagnostics, and presentation checks pass all 22 production
+groups. The broader consent smoke passes 32 monolingual and 56 bilingual
+shared checks, plus generated routes/records/third-party probes. The
+paired-package smoke also verifies the published npm lock integrity, CMS ZIP
+identity, managed keys, crontab, migrations and actual package route delivery.
+The schema probe now checks the published runtime's `databaseId`, `getquickBlocksJson`
+and `theme` fields; its existing coverage guard exposed the missing fields.
+The earlier accepted preview evidence retained published `0.3.1` pins and is
+recorded separately above. Tailwind pins are exactly `4.3.3`.
 Commerce generation and gq-design #12 Actions package access remain separately
 owned prerequisites, outside these consumer checks.
 

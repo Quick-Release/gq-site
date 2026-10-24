@@ -69,7 +69,7 @@ the registry) and the npm package `@getquick/content`
 `gq new` writes `"contentRuntime": "package"` in `gq.ops.json`, and on such a
 Site `gq sync` manages:
 
-- **The pins**, each a managed key set to the same exact version (0.3.1):
+- **The pins**, each a managed key set to the same exact version (0.3.2):
   `require.getquick/gq-content` in `apps/cms/composer.json` and
   `dependencies.@getquick/content` in `apps/frontend/package.json`.
   `gq sync --check` fails while the two disagree, naming both. To upgrade,

@@ -48,9 +48,14 @@ import {
   visit,
 } from "./frontend-runtime-lib.mjs";
 
-// The pair Quick-Release/gq-content published as v0.3.1 (source cbf2925), as
-// its immutable release manifest records it. A new pin brings its own hashes.
+// Immutable published pairs: v0.3.1 (source cbf2925) and v0.3.2 (source
+// 698b989). A new pin brings its release receipt's own npm/ZIP hashes.
 const PUBLISHED = {
+  "0.3.2": {
+    integrity:
+      "sha512-1EErw67A+On/M1AZDlk0DOMcBsRkJU6wK7t4b93BHayBn9y32s2IZKxsCf/jfxe/DfBlnhRYk66z4msarOsdCA==",
+    zipSha256: "89706f3f1796e78d20bbe34ea6205834709052b9fa3446b58ae102dfc169d774",
+  },
   "0.3.1": {
     integrity:
       "sha512-g5MMkL6NvUMo+BJ5f4T94WAcNGdFNDneMpoSK76s2cvbgW+Lyb0nFab2uig2BW+eDh9gcMqDafeJyJZ0oWL3rA==",
