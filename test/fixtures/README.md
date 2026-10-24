@@ -129,6 +129,26 @@ the HTTP server is a stub. The CPT variant is not adopted as loader evidence.
 - `query-composition/post-public.json`: `74af8206e68cddc5a2488f7a460ccf5f99ac435bbd8608a28729f17205af782b`
 - `query-composition/post-saved.html`: `b353c7430aa9a2edcb9cabacc46581b015f23fa3cc3b4eb65e4028335a8e158f`
 
+`presentation/navigation/` preserves all seven files unchanged from gq-design
+`802c9a198471497760328e585aadbd5726d8c660`,
+`tests/fixtures/producer/navigation-presentation/`. The embedded provenance names
+the source checkout `4db8b85`, real Gutenberg save/reload and anonymous public
+HTTP 200 capture. `nodes.json` is the exact public `getquickBlocks` array;
+`rendered.html` is the same response's `content.rendered`. The other files retain
+the full public response and saved page/navigation-reference source. All six
+payload hashes in the unchanged `SHA256SUMS` verify. Transient IDs and URLs are
+historical and are not fetched by the consumer proof. The actual composition
+includes custom/native menus, reference children, page lists and Social Links;
+it contains no language switcher. Language-switcher/browser acceptance remains
+separate.
+
+The two captured deliveries differ: neutral native-navigation children omit
+`Private draft`, resolve News to `/public-navigation-destination-80/`, and include
+the dynamic branch. WordPress `rendered.html` retains `Private draft` at
+`/stale-draft` and News at `/stale-public`, and omits that branch. The consumer
+checks each delivery as captured; it does not reconstruct or filter the public
+body HTML. Neutral filtering/resolution proof is not HTML parity evidence.
+
 | Fixture                                                    | Origin                                                                                                                 | Used by                                                                                                                                             |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `content-site/`                                            | The expected eighteen CI Worker, Frontend deploy, consent and release-step files for `manifests/content-site.v1.json`. | [`sync/deploy-files.test.mjs`](../sync/deploy-files.test.mjs) compares rendered files and lock hashes with this baseline.                           |

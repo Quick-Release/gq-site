@@ -39,6 +39,10 @@ const typographyDocument = JSON.parse(
 const queryDocument = JSON.parse(
   readFileSync(new URL("query-composition/post-public.json", fixture), "utf8"),
 );
+const navigationDocument = JSON.parse(
+  readFileSync(new URL("navigation/nodes.json", fixture), "utf8"),
+);
+const navigationHtml = readFileSync(new URL("navigation/rendered.html", fixture), "utf8");
 const installed = join(frontend, "node_modules/@getquick/content");
 const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8"));
 const { resolveDesignTheme } = await import(
@@ -645,6 +649,117 @@ try {
   }
   console.log(
     "✓ refreshed real Query producer order, publication preloads, recursive content, transparent references and styled links",
+  );
+  cms.entries.set("/navigation/", { id: "80", title: "Navigation", content: navigationHtml });
+  cms.answers.SiteChrome = () => ({
+    generalSettings: { siteIcon: null, siteLogo: null },
+    menuItems: { nodes: [] },
+    header: { title: "Navigation", blocksJson: JSON.stringify(navigationDocument) },
+    footer: null,
+  });
+  const navigationRefresh = await runGq(site, ["frontend", "refresh", "--url", origin, "--json"], {
+    FRONTEND_REFRESH_TOKEN: token,
+  });
+  assert.equal(navigationRefresh.code, 0, navigationRefresh.stdout + navigationRefresh.stderr);
+  await page.setViewportSize({ width: 640, height: 900 });
+  assert.equal((await page.goto(`${origin}/navigation/`)).status(), 200);
+  const primary = page
+    .locator("header")
+    .getByRole("navigation", { name: "Primary navigation", exact: true });
+  const open = primary.getByRole("button", { name: "Open Primary navigation", exact: true });
+  await open.click();
+  assert.equal(await open.getAttribute("aria-expanded"), "true", "mobile navigation opens");
+  const close = primary.getByRole("button", { name: "Close navigation", exact: true });
+  assert.equal(
+    await close.evaluate((element) => element === element.ownerDocument.activeElement),
+    true,
+  );
+  await close.press("Escape");
+  assert.equal(await open.getAttribute("aria-expanded"), "false");
+  assert.equal(
+    await open.evaluate((element) => element === element.ownerDocument.activeElement),
+    true,
+  );
+  for (const region of ["header.gqd-content", ".prose-wp"]) {
+    const root = page.locator(region);
+    const custom = root.locator(".wp-block-getquick-design-navigation");
+    const native = root.locator(".wp-block-navigation");
+    assert.deepEqual(await custom.locator("a").allTextContents(), ["Products", "Shop", "Contact"]);
+    const neutral = region === "header.gqd-content";
+    assert.deepEqual(
+      await native.locator("a").allTextContents(),
+      neutral
+        ? ["News", "About", "Team", "Navigation child 80", "Dynamic branch", "Navigation child 80"]
+        : ["News", "About", "Team", "Private draft", "Navigation child 80"],
+    );
+    assert.equal(
+      await native
+        .getByRole("link", { name: "News", exact: true, includeHidden: true })
+        .getAttribute("href"),
+      neutral ? "/public-navigation-destination-80/" : "/stale-public",
+    );
+    assert.equal(await native.locator('a[href*="draft"]').count(), neutral ? 0 : 1);
+    assert.equal(
+      await root
+        .getByRole("link", { name: "Instagram", exact: true, includeHidden: true })
+        .getAttribute("href"),
+      "https://instagram.com/example",
+    );
+    for (const direction of ["ltr", "rtl"]) {
+      await page.locator("html").evaluate((element, value) => {
+        element.dir = value;
+      }, direction);
+      for (const width of [
+        639, 640, 641, 767, 768, 769, 1023, 1024, 1025, 1279, 1280, 1281, 1535, 1536, 1537,
+      ]) {
+        await page.setViewportSize({ width, height: 900 });
+        assert.equal(
+          await root.locator(".wp-block-getquick-design-social-links").isVisible(),
+          width >= 768,
+          "saved social display:none restores at md",
+        );
+        for (const nav of [custom, native]) {
+          const list = nav
+            .locator(".gqd-navigation__list, .wp-block-navigation__container")
+            .first();
+          const style = await list.evaluate((element) => {
+            const css = element.ownerDocument.defaultView.getComputedStyle(element);
+            return {
+              direction: css.flexDirection,
+              gap: css.gap,
+              justify: css.justifyContent,
+              align: css.alignItems,
+              text: css.textAlign,
+              color: css.color,
+            };
+          });
+          assert.deepEqual(
+            style,
+            width >= 1024
+              ? {
+                  direction: "row",
+                  gap: "32px",
+                  justify: "space-between",
+                  align: "center",
+                  text: "start",
+                  color: "rgb(18, 52, 86)",
+                }
+              : {
+                  direction: "column",
+                  gap: "16px",
+                  justify: "flex-start",
+                  align: "stretch",
+                  text: "end",
+                  color: "rgb(18, 52, 86)",
+                },
+            `${region} native/custom authored navigation at ${width} ${direction}`,
+          );
+        }
+      }
+    }
+  }
+  console.log(
+    "✓ actual saved/public navigation composition, responsive styles, RTL, mobile open/Escape and focus return",
   );
 } finally {
   await browser?.close();

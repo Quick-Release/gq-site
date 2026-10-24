@@ -1,6 +1,6 @@
 ---
 import type { Alternate, DesignBlock, DesignTheme, SiteChrome, SiteLanguage } from "@getquick/content";
-import { designCarouselStyle, designThemeStyleSheet, presentationStyleSheet, resolveDesignTheme, videoHeroStyleSheet } from "@getquick/content";
+import { designCarouselStyle, designThemeStyleSheet, navigationStyleSheet, presentationStyleSheet, resolveDesignTheme, videoHeroStyleSheet } from "@getquick/content";
 import { consentPage } from "@getquick/content/consent/astro";
 import { content } from "../lib/content";
 import { copyFor } from "../lib/copy";
@@ -103,6 +103,7 @@ const consent = configuration
     <style is:inline set:html={designThemeStyleSheet(theme)} />
     <style is:inline set:html={videoHeroStyleSheet()} />
     <style is:inline set:html={designCarouselStyle()} />
+    <style is:inline set:html={navigationStyleSheet(theme)} />
     <style is:inline set:html={presentationStyleSheet(theme)} />
     {consent && <Fragment set:html={consent.head} />}
   </head>
@@ -154,15 +155,17 @@ const consent = configuration
       // Applies the visitor's decisions, loads each catalog service only after
       // its grant, and records decisions at /gq/consent.
       import { startConsent } from "@getquick/content/consent/client";
-      import { mountDesignCarousels, mountVideoHero } from "@getquick/content/design/client";
+      import { mountDesignCarousels, mountDesignNavigation, mountVideoHero } from "@getquick/content/design/client";
       startConsent();
       let unmountPresentation = () => {};
       const mountPresentation = () => {
         unmountPresentation();
         const unmountCarousels = mountDesignCarousels();
+        const unmountNavigation = mountDesignNavigation();
         const cleanups = [...document.querySelectorAll<HTMLElement>(".wp-block-getquick-design-video-hero")].map(mountVideoHero);
         unmountPresentation = () => {
           unmountCarousels();
+          unmountNavigation();
           cleanups.forEach((cleanup) => cleanup());
         };
       };

@@ -117,6 +117,10 @@ uses its synchronous `resolvePost` callback. The Site does not select items
 again or fetch from inside the renderer. Other post types require a separately
 authorized loader.
 
+Navigation uses `navigationStyleSheet(theme)` and `mountDesignNavigation` from
+the public content facade. The shared lifecycle owns mobile panels, submenus
+and keyboard focus for both saved HTML and neutral chrome.
+
 ## Checks
 
 `pnpm check` (`astro check`), `pnpm lint` (`vp lint`) and `pnpm test`

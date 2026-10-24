@@ -171,10 +171,15 @@ and the refreshed standard Post Query fixture through the existing publication
 loader. Query checks include ordered repetition, recursive Post Content,
 transparent references and responsive Grid/Heading/Button CSS. Carousel controls
 use a clearly labelled supporting visibility variant of the captured input.
-Report these cases separately from pending navigation, complete native Columns
-structural defaults, typography computed-style parity, Hero YouTube/consent and
-contextual Featured Image/branding checks; the bounded proof does not establish
-full catalog or fleet acceptance.
+The actual saved navigation capture also checks mobile open/Escape/focus return,
+ordered links and native descendants, Social Links visibility, and authored
+styles at every default breakpoint edge in LTR/RTL. Its body HTML and neutral
+tree differ upstream and are asserted independently, as the fixture provenance
+records. Report these cases separately from pending language-switcher and
+submenu interaction coverage, complete native Columns structural defaults,
+typography computed-style parity, Hero YouTube/consent and contextual Featured
+Image/branding checks; the bounded proof does not establish full catalog or
+fleet acceptance.
 
 Staged preview success does not establish that the currently published content
 version supports the new exports. Advance the managed CMS/npm pair only after
