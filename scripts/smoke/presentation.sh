@@ -22,3 +22,4 @@ use_this_checkout "$repo" "$parent/acme"
 cd acme
 CI=1 pnpm install --filter @acme/frontend... --filter @acme/ci... --filter . >/dev/null
 node "$repo/scripts/smoke/presentation.mjs" "$parent/acme" "$document"
+node "$repo/scripts/smoke/presentation-hero.mjs" "$parent/acme"

@@ -70,6 +70,19 @@ part of the captured document. Its embedded provenance identifies the capture.
 
 - `layout-delivery.json`: `682377d90e6d87554d31dd80062733a00a7054594fbca23fe7ec05131aec51f4`
 
+The original layout snapshot remains preserved. `layout-current-delivery.json`
+is unchanged from gq-design `893ea2d4aba9ceaf8de4e83e71c679b34bb9c098`,
+`tests/fixtures/layout-presentation-saved.json`: six actual saved/reopened roots,
+real public HTML/nodes, Row context and a narrow nested Grid with Base gap/row-gap,
+md gap and xl reset. `native-columns-delivery.json` is unchanged from gq-design
+`3a5d6be`, `tests/fixtures/native-columns-structural-saved.json`. It captures four
+actual native Columns groups: default stacking/vertical alignment, unequal
+nonstacking columns, equal three-column growth and neutral width/alignment
+overrides. Neither capture requires WordPress core CSS in the consumer proof.
+
+- `layout-current-delivery.json`: `13bec5f6a2b8a427f919c35ca90d0ec192b5b876e4dcf184608a696f6c7d5630`
+- `native-columns-delivery.json`: `adf20a3ca0ffe09581e0544e61237a561121e9d52edb7bcb1e83e4029daab501`
+
 `hero-saved.html` and `hero-youtube.html` are unchanged snapshots of gq-design
 `4e6f3dd`, `tests/fixtures/video-hero-{presentation,youtube}.html`. They are real
 Gutenberg saved documents with half-width, 64 spacing-unit height, nested links
@@ -79,6 +92,21 @@ files establish saved-input provenance, not a live REST capture or consent proof
 
 - `hero-saved.html`: `ceb2ddc6360274c5ab97e18836f3755df641fc720a5e2aefe931ff01b9c92239`
 - `hero-youtube.html`: `dbdf5b59fb89f673f8f780fbedae4360e60a76a31a6cdfd5461fde2d7440b4f4`
+
+`hero-saved-public.json` is unchanged from gq-design
+`e696635af5fdb4f841debe78f9372ebbf07b6bf0`,
+`packages/design-contract/fixtures/blocks/video-hero-saved.json`. It contains
+the real registered anonymous REST dispatcher output for the two unchanged
+`4e6f3dd` saved documents above, refreshed at canonical source `374904a` with
+source-derived paragraph inline attributes. Its adjacent upstream
+`video-hero-saved.md` records exact capture and cleanup; this is registered
+`rest_do_request` evidence, not an external HTTP request. The first document has
+a poster and an empty self-hosted URL, so it supplies no saved streaming-video
+playback evidence. The separate Hero consumer proof declares YouTube in the
+generated Site configuration and tests both saved body HTML and the actual
+public YouTube node, without inventing nested link content.
+
+- `hero-saved-public.json`: `0fc5b229f2e67658fb2844098bfa56eea3891b658747990d678a399b377a9cc2`
 
 `carousel-public.json` is unchanged from gq-design `3232d3c`,
 `packages/design-contract/fixtures/blocks/carousel-presentation.json`. It is the
@@ -111,6 +139,17 @@ typography and dynamic-layout acceptance are not established by those semantic
 checks.
 
 - `typography-delivery.json`: `55916b46bbfed0bb4ee64bd89a0ff9c39ab5f4e8fe8039db0099dc3a94a32d77`
+
+`typography-inline-delivery.json` is unchanged from gq-design
+`57f5ba68b1bee247fc453389699d39fa6ab79e33`,
+`tests/fixtures/typography-presentation-delivery.json`. It refreshes the same real
+capture with source-derived Heading/Paragraph `attributes.content`, rich links,
+strong text and `span.inline-label`, preserving quoted `>` titles. Both actual
+theme cases retain the same layout HTTP 422 limitation documented above; they
+do not supply a valid published dynamic layout. The original `b11b763` capture
+remains preserved separately.
+
+- `typography-inline-delivery.json`: `de1acd7589c1ef52d95bf212f21e20e18be4cb243d45d5f6dbd49d80593b7921`
 
 `presentation/query-composition/post-{public.json,saved.html}` are unchanged from
 gq-design `6b5f746`, `tests/fixtures/query-composition/`. They replace `627d5e6`

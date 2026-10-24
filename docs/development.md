@@ -175,11 +175,23 @@ The actual saved navigation capture also checks mobile open/Escape/focus return,
 ordered links and native descendants, Social Links visibility, and authored
 styles at every default breakpoint edge in LTR/RTL. Its body HTML and neutral
 tree differ upstream and are asserted independently, as the fixture provenance
-records. Report these cases separately from pending language-switcher and
-submenu interaction coverage, complete native Columns structural defaults,
-typography computed-style parity, Hero YouTube/consent and contextual Featured
-Image/branding checks; the bounded proof does not establish full catalog or
-fleet acceptance.
+records. Ordinary native/custom body menus also open and close through the
+configured package's existing HTML-delivery enhancement and the same initializer.
+Additional actual captures exercise native Columns without core CSS
+at 781/782/783px (stacking, unequal/equal growth and native/neutral alignment),
+the latest layout's narrow parent and gap-reset chronology, and source-derived
+inline Heading/Paragraph content with computed typography at both captured
+themes' thresholds.
+
+The script also runs a separate Hero production build that temporarily declares
+YouTube in the disposable Site configuration, restoring that source afterwards.
+It checks saved HTML and registered REST dispatcher nodes through consent grant,
+reduced motion, responsive iframe geometry and withdrawal, with all player
+requests fulfilled locally. The saved self-hosted case has an empty video URL;
+it does not establish streaming-video playback. Report these cases separately
+from pending language-switcher/submenu interactions, dynamic typography layout
+and contextual Featured Image/branding checks; the bounded proof does not
+establish full catalog or fleet acceptance.
 
 Staged preview success does not establish that the currently published content
 version supports the new exports. Advance the managed CMS/npm pair only after

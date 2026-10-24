@@ -9,6 +9,11 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import {
+  proveInlineTypography,
+  proveLayout,
+  proveNativeColumns,
+} from "./presentation-families.mjs";
+import {
   buildFrontend,
   freePort,
   localWorker,
@@ -545,6 +550,13 @@ try {
     "rgb(1, 2, 3)",
     "the fixture's navigation background is implemented",
   );
+  assert.equal(
+    await carousel
+      .getByRole("button", { name: "Go to slide 1", exact: true })
+      .evaluate((element) => element.ownerDocument.defaultView.getComputedStyle(element).color),
+    "rgb(4, 5, 6)",
+    "authored indicator color survives scoped Preflight",
+  );
   const queryLoads = [];
   const entryAnswer = cms.answers.EntryByUri;
   cms.answers.EntryByUri = ({ uri }) => {
@@ -761,6 +773,49 @@ try {
   console.log(
     "✓ actual saved/public navigation composition, responsive styles, RTL, mobile open/Escape and focus return",
   );
+  await page.setViewportSize({ width: 640, height: 900 });
+  const savedMenus = page.locator(".prose-wp [data-gqd-navigation]");
+  assert.equal(
+    await savedMenus.count(),
+    2,
+    "published HTML delivery enhances the two saved landmarks",
+  );
+  for (const menu of await savedMenus.all()) {
+    const open = menu.locator(":scope > [data-gqd-navigation-open]");
+    await open.click();
+    assert.equal(await open.getAttribute("aria-expanded"), "true");
+    await menu.locator("[data-gqd-navigation-close]").press("Escape");
+    assert.equal(await open.getAttribute("aria-expanded"), "false");
+    assert.equal(
+      await open.evaluate((element) => element === element.ownerDocument.activeElement),
+      true,
+    );
+  }
+  console.log("✓ ordinary saved native/custom navigation mounts through configured HTML delivery");
+  const publish = async ({
+    route,
+    title,
+    html,
+    nodes,
+    tokens = themeDocument.deliveries[0].tokens,
+  }) => {
+    cms.entries.set(route, { id: title, title, content: html });
+    cms.answers.DesignPresets = () => ({ designTokens: { ...tokens, spacingSizes: [] } });
+    cms.answers.SiteChrome = () => ({
+      generalSettings: { siteIcon: null, siteLogo: null },
+      menuItems: { nodes: [] },
+      header: { title, blocksJson: JSON.stringify(nodes) },
+      footer: null,
+    });
+    const refreshed = await runGq(site, ["frontend", "refresh", "--url", origin, "--json"], {
+      FRONTEND_REFRESH_TOKEN: token,
+    });
+    assert.equal(refreshed.code, 0, refreshed.stdout + refreshed.stderr);
+    assert.equal((await page.goto(`${origin}${route}`)).status(), 200);
+  };
+  await proveNativeColumns({ page, publish });
+  await proveLayout({ page, publish });
+  await proveInlineTypography({ page, publish });
 } finally {
   await browser?.close();
   await stopWorker(worker);
