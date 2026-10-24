@@ -1,5 +1,5 @@
 ---
-import type { Alternate, DesignBlock, DesignTheme, SiteChrome, SiteLanguage } from "@getquick/content";
+import type { Alternate, DesignBlock, DesignPostContext, DesignTheme, SiteChrome, SiteLanguage, WordPressSettings } from "@getquick/content";
 import { designCarouselStyle, designThemeStyleSheet, navigationStyleSheet, presentationStyleSheet, resolveDesignTheme, videoHeroStyleSheet } from "@getquick/content";
 import { consentPage } from "@getquick/content/consent/astro";
 import { content } from "../lib/content";
@@ -17,6 +17,12 @@ interface Props {
   alternates?: Alternate[];
   /** The resolved theme delivered with the publication. */
   theme?: DesignTheme;
+  /** Authorized current post, already loaded by the page. */
+  post?: DesignPostContext;
+  /** A home response's Site settings; null means that response had none. */
+  siteSettings?: WordPressSettings | null;
+  /** The Site chooses the surface used by canonical Branding logo selection. */
+  colorScheme?: "light" | "dark";
 }
 
 const runtime = content();
@@ -31,6 +37,12 @@ const chrome =
     ? Astro.props.chrome
     : await runtime.pageChrome(Astro.site?.origin);
 const theme = resolveDesignTheme(Astro.props.theme ?? (await runtime.designPresets())?.theme);
+const siteHome = Astro.props.siteSettings === undefined && (chrome?.header || chrome?.footer)
+  ? await runtime.publishedHome(Astro.site?.origin, language)
+  : null;
+const siteSettings = Astro.props.siteSettings !== undefined
+  ? Astro.props.siteSettings
+  : siteHome?.kind === "found" ? siteHome.content.home.settings : null;
 // Chrome that can't be served leaves the menu, logo and icon out of this
 // response only; it doesn't mean the site has none, so the page is still served.
 const { menuItems, siteIcon, siteLogo } = chrome ?? {
@@ -45,12 +57,18 @@ const { menuItems, siteIcon, siteLogo } = chrome ?? {
 // was published; a block that needs code (a dynamic or Site block) needs a
 // renderer in `blocks` (see @getquick/content's "Header and footer patterns").
 const preloadedPosts = await runtime.preloadDesignQueryPosts(
-  [...(chrome?.header?.blocks ?? []), ...(chrome?.footer?.blocks ?? [])],
+  [...(chrome?.header?.blocks ?? []), ...(chrome?.footer?.blocks ?? []), ...(Astro.props.post?.blocks ?? [])],
   Astro.site?.origin,
 );
 const patternOptions = {
   siteOrigin: Astro.site?.origin,
   home: language.home,
+  post: Astro.props.post,
+  colorScheme: Astro.props.colorScheme ?? "light",
+  textContext: siteSettings ? { site: {
+    ...siteSettings,
+    url: new URL(language.home, Astro.site ?? Astro.url).href,
+  } } : undefined,
   resolvePost: preloadedPosts.resolvePost,
   onUnrendered: (block: DesignBlock) => console.warn(`No renderer for ${block.name}`),
 };
@@ -155,16 +173,18 @@ const consent = configuration
       // Applies the visitor's decisions, loads each catalog service only after
       // its grant, and records decisions at /gq/consent.
       import { startConsent } from "@getquick/content/consent/client";
-      import { mountDesignCarousels, mountDesignNavigation, mountVideoHero } from "@getquick/content/design/client";
+      import { mountDesignCarousels, mountDesignCoverVideos, mountDesignNavigation, mountVideoHero } from "@getquick/content/design/client";
       startConsent();
       let unmountPresentation = () => {};
       const mountPresentation = () => {
         unmountPresentation();
         const unmountCarousels = mountDesignCarousels();
+        const unmountCoverVideos = mountDesignCoverVideos();
         const unmountNavigation = mountDesignNavigation();
         const cleanups = [...document.querySelectorAll<HTMLElement>(".wp-block-getquick-design-video-hero")].map(mountVideoHero);
         unmountPresentation = () => {
           unmountCarousels();
+          unmountCoverVideos();
           unmountNavigation();
           cleanups.forEach((cleanup) => cleanup());
         };

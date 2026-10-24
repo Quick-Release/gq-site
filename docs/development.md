@@ -183,19 +183,41 @@ the latest layout's narrow parent and gap-reset chronology, and source-derived
 inline Heading/Paragraph content with computed typography at both captured
 themes' thresholds.
 
+The conditional language proof uses real Free Polylang EN/FR captures, serving
+the exact captured flag PNGs at their original URLs. It independently checks
+neutral layout current state and native body current state, names/flags-only
+accessibility, dropdown controls, RTL spacing and scriptless native select
+navigation. A separate null-flag native capture checks accessible names without
+invented assets. These cases do not claim Pro or broad HTML/neutral parity.
+Supporting Site/Post context cases use existing publication loaders and public
+home settings for recursive post content, Featured Image and primary/dark/title
+Branding fallback; they do not establish a valid saved dynamic Design layout.
+Supporting Cover cases check omission/aspect/source-shell height boundaries and
+real WebM playback with reduced-motion pause/resume and cleanup/remount. The
+WebM is generated test media, not a new CMS Cover-video capture. Lifecycle event
+checks exercise cleanup/remount; they do not establish browser back-forward
+cache behavior.
+
 The script also runs a separate Hero production build that temporarily declares
 YouTube in the disposable Site configuration, restoring that source afterwards.
 It checks saved HTML and registered REST dispatcher nodes through consent grant,
 reduced motion, responsive iframe geometry and withdrawal, with all player
 requests fulfilled locally. The saved self-hosted case has an empty video URL;
 it does not establish streaming-video playback. Report these cases separately
-from pending language-switcher/submenu interactions, dynamic typography layout
-and contextual Featured Image/branding checks; the bounded proof does not
+from pending submenu interactions and valid saved dynamic typography layout
+delivery; the bounded proof does not
 establish full catalog or fleet acceptance.
 
 Staged preview success does not establish that the currently published content
 version supports the new exports. Advance the managed CMS/npm pair only after
 the coordinated version is published, then rerun without the local override.
+The bounded final candidate uses immutable content preview10 from runtime commit
+`52bbd6db056adc99915eaa18525a85f9c231d42a`, bundled Design commit
+`634f58c8e42c8a1e7f8334e937126b472387d405` (Design 0.9/wire 2). Archive SHA-256:
+`14d1f7675af9d7e8e4102de529a286e913be442501d8f634bca111ab7d845edd`.
+Published managed CMS/npm pins remain `0.3.1`; Tailwind pins are exactly `4.3.3`.
+Commerce generation and gq-design #12 Actions package access remain separately
+owned prerequisites, outside these consumer checks.
 
 ## Releasing
 

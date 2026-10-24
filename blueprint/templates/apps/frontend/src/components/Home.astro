@@ -1,5 +1,5 @@
 ---
-import { blockPresetStyles, type HomeDelivery, type SiteLanguage } from "@getquick/content";
+import { blockPresetStyles, designPostContext, type HomeDelivery, type SiteLanguage } from "@getquick/content";
 import Layout from "../layouts/Layout.astro";
 import { content as siteContent } from "../lib/content";
 import { copyFor } from "../lib/copy";
@@ -21,9 +21,16 @@ const alternates = home.kind === "found" ? home.content.alternates : [];
 const { vars, colorRules } = blockPresetStyles(content?.spacingSizes ?? [], content?.colors ?? []);
 const siteTitle = content?.page.title || content?.settings.title || "{{Project}}";
 const isVideoHeroPage = content?.page.hasVideoHero ?? false;
+const post = content?.page.databaseId !== undefined ? designPostContext({
+  id: content.page.databaseId,
+  title: content.page.title,
+  uri: language.home,
+  databaseId: content.page.databaseId,
+  designBlocks: content.page.designBlocks,
+}) ?? undefined : undefined;
 ---
 
-<Layout title={siteTitle} description={content?.settings.description} chrome={chrome} language={language} alternates={alternates} theme={content?.theme}>
+<Layout title={siteTitle} description={content?.settings.description} chrome={chrome} language={language} alternates={alternates} theme={content?.theme} post={post} siteSettings={content?.settings ?? null}>
   {content?.page.content ? (
     <>
       <style is:global set:html={colorRules} />

@@ -188,6 +188,41 @@ the dynamic branch. WordPress `rendered.html` retains `Private draft` at
 checks each delivery as captured; it does not reconstruct or filter the public
 body HTML. Neutral filtering/resolution proof is not HTML parity evidence.
 
+`presentation/language-navigation-flags/` is unchanged from gq-design
+`ed0afd9c3f4e7307a3204aa9bf846c3db96429e7`,
+`tests/fixtures/producer/language-navigation-flags/`. It retains the complete
+actual WordPress 7.0/Polylang Free 3.8.10 capture, provenance, notices and all 16
+verified payload/asset hashes. Explicit EN/FR layout nodes and ordinary post
+REST nodes remain separate; their current metadata is not asserted equivalent.
+The original DTO URLs are retained. The two captured PNG assets may be served
+at their original URLs by test transport, without rewriting DTO values. The
+capture covers names+flags, flags-only and dropdown modes. Preview9 production
+checks decode both exact PNGs at their original URLs, preserve resolved home
+links and independently check neutral-layout and native-body current metadata.
+Preview10 additionally restores native-body select navigation through the shared
+initializer, after configured delivery removes the captured inline controller.
+The starter adds no replacement language policy or controller. Both list modes
+and the neutral dropdown retain accessible names and keyboard focus; the
+separate native null-flag capture below verifies names without invented images.
+
+`presentation/language-navigation-a11y/` is unchanged from gq-design
+`2e7e447fb27dfc8d9b750d96b6aabed177363cc2`,
+`tests/fixtures/producer/language-navigation-a11y/`. All 14 captured payload
+hashes verify. This separate real native rendering capture follows the owning
+`e2cc4dc` missing-name fix: flags-only/null-flag links gain accessible names
+without changed URLs, options or current metadata. It supplies no bitmap assets;
+`ed0afd9` above remains the PNG authority. Older captures remain historical.
+
+`presentation/cover-motion.webm` is a locally generated supporting playback
+resource, not captured CMS media or a saved-editor document. SHA-256:
+`edadb262415c87d3c11051cd037f60cde1926bf7810afc4cf68702244d2f1f6c`.
+It was generated with `ffmpeg -f lavfi -i color=c=red:s=160x90:r=12 -t 1 -an
+-c:v libvpx -b:v 20k -metadata creation_time=1970-01-01T00:00:00Z
+test/fixtures/presentation/cover-motion.webm`. Test transport serves its exact
+bytes to supporting neutral and ordinary published Cover inputs. This checks
+the shared motion lifecycle through the actual starter, without claiming a new
+CMS Cover-video capture.
+
 | Fixture                                                    | Origin                                                                                                                 | Used by                                                                                                                                             |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `content-site/`                                            | The expected eighteen CI Worker, Frontend deploy, consent and release-step files for `manifests/content-site.v1.json`. | [`sync/deploy-files.test.mjs`](../sync/deploy-files.test.mjs) compares rendered files and lock hashes with this baseline.                           |

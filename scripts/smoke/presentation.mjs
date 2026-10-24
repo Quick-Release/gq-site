@@ -3,15 +3,20 @@
 // No parser or reference renderer substitutes for its public route and CSS.
 // Usage: node scripts/smoke/presentation.mjs <generated Site> [rendered document]
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import {
   proveInlineTypography,
+  proveBranding,
+  proveCoverBoundaries,
+  proveCoverMotion,
+  proveLanguageNavigation,
   proveLayout,
   proveNativeColumns,
+  provePostContext,
 } from "./presentation-families.mjs";
 import {
   buildFrontend,
@@ -25,6 +30,7 @@ import {
 assert.ok(process.argv[2], "Pass a generated Site");
 const site = resolve(process.argv[2]);
 const frontend = join(site, "apps/frontend");
+const surfaceRoute = join(frontend, "src/pages/presentation-surface-dark.astro");
 const fixture = new URL("../../test/fixtures/presentation/", import.meta.url);
 const saved = readFileSync(
   process.argv[3] ? resolve(process.argv[3]) : new URL("container-rendered.html", fixture),
@@ -67,9 +73,17 @@ const local = localWorker({
 const cms = stubCms([]);
 let worker;
 let browser;
+let surfaceRouteCreated = false;
 try {
   await cms.start();
   const origin = `http://127.0.0.1:${await freePort()}`;
+  // Supporting Site-owned surface fixture; it imports the actual starter Layout.
+  writeFileSync(
+    surfaceRoute,
+    '---\nimport Layout from "../layouts/Layout.astro";\n---\n<Layout colorScheme="dark"><main>Surface context fixture</main></Layout>\n',
+    { flag: "wx" },
+  );
+  surfaceRouteCreated = true;
   buildFrontend(frontend, origin, `http://127.0.0.1:${cms.port}/graphql`);
   // The supported settings arrive only after production CSS has been built.
   cms.entries.set("/presentation/", {
@@ -93,7 +107,7 @@ try {
       status: "publish",
       isRestricted: false,
       modifiedGmt: "2026-10-24T00:00:00",
-      featuredImage: null,
+      featuredImage: cms.entries.get(uri)?.featuredImage ?? null,
     },
     designTokens: { colors: [], spacingSizes: [] },
   });
@@ -484,6 +498,19 @@ try {
   await page.setViewportSize({ width: 640, height: 900 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await carousel.getByRole("link").focus();
+  for (const key of ["ArrowRight", "Home", "End"]) {
+    const link = carousel.getByRole("link");
+    await link.press(key);
+    assert.equal(
+      await slides.nth(0).isVisible(),
+      true,
+      "foreground keys cannot hide their focused slide",
+    );
+    assert.equal(
+      await link.evaluate((element) => element === element.ownerDocument.activeElement),
+      true,
+    );
+  }
   await page.waitForTimeout(3200);
   assert.equal(
     await slides.nth(0).isVisible(),
@@ -798,8 +825,9 @@ try {
     html,
     nodes,
     tokens = themeDocument.deliveries[0].tokens,
+    record = {},
   }) => {
-    cms.entries.set(route, { id: title, title, content: html });
+    cms.entries.set(route, { id: title, title, content: html, ...record });
     cms.answers.DesignPresets = () => ({ designTokens: { ...tokens, spacingSizes: [] } });
     cms.answers.SiteChrome = () => ({
       generalSettings: { siteIcon: null, siteLogo: null },
@@ -816,7 +844,13 @@ try {
   await proveNativeColumns({ page, publish });
   await proveLayout({ page, publish });
   await proveInlineTypography({ page, publish });
+  await provePostContext({ page, publish });
+  await proveBranding({ page, publish });
+  await proveCoverBoundaries({ page, publish });
+  await proveCoverMotion({ page, publish });
+  await proveLanguageNavigation({ page, publish });
 } finally {
+  if (surfaceRouteCreated) rmSync(surfaceRoute);
   await browser?.close();
   await stopWorker(worker);
   await cms.stop();

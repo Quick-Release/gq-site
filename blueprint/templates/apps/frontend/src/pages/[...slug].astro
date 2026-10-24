@@ -1,5 +1,5 @@
 ---
-import { blockPresetStyles, formatDate, responseStatus, routeOf } from "@getquick/content";
+import { blockPresetStyles, designPostContext, formatDate, responseStatus, routeOf } from "@getquick/content";
 import Home from "../components/Home.astro";
 import Layout from "../layouts/Layout.astro";
 import { content } from "../lib/content";
@@ -47,7 +47,7 @@ const title =
 {home ? (
   <Home home={home} language={language} placeholder={placeholder} />
 ) : (
-<Layout title={title} chrome={chrome} language={language} alternates={alternates} theme={entry?.theme}>
+<Layout title={title} chrome={chrome} language={language} alternates={alternates} theme={entry?.theme} post={entry ? designPostContext(entry) ?? undefined : undefined}>
   {entry ? (
     entry.hasVideoHero ? (
       <>
