@@ -35,7 +35,9 @@ fix the configured endpoint instead. Transport failures do not expose raw errors
 
 The form submitter is needed only by a Site with
 [headless Gravity Forms](forms.md) whose Access policy also covers Gravity
-Forms' submissions path. Gravity Forms needs no WordPress credential there.
+Forms' submissions path. That path needs no WordPress credential: the CMS's
+REST gate lets anonymous submissions through and nothing else
+([The CMS's REST gate](forms.md#the-cmss-rest-gate)).
 Scope the service token to that path alone. The Frontend's deploy reads it
 from the Sigillo environment it runs with and binds it as Worker secrets, and
 `gq ci deploy` forwards it to CI. The deploy refuses half a pair.

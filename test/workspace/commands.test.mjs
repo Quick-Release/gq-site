@@ -925,6 +925,32 @@ test("gq doctor checks a Site's forms wiring: its route, its runtime opt-in and 
   assert.match(withKeys.stdout, /✓ Sigillo staging has Turnstile's keys/u);
 });
 
+test("gq doctor fails a Site with forms whose CMS REST gate still closes submissions", async () => {
+  const GATE = "apps/cms/web/app/mu-plugins/content-api.php";
+  const wired = {
+    [FORMS_ROUTE]: "// managed\n",
+    "apps/frontend/src/lib/content.ts": "createContentRuntime({ forms: true });\n",
+  };
+  const before = await formsSite({
+    files: { ...wired, [GATE]: "<?php add_filter('rest_authentication_errors', $closed);\n" },
+  });
+  const closed = await before.run(["doctor"], { exec: machine() });
+  assert.equal(closed.code, 1);
+  assert.match(
+    closed.stdout,
+    /✗ apps\/cms\/web\/app\/mu-plugins\/content-api\.php closes the REST API to anonymous form submissions, so every post fails with 401: add the submissions exception \(docs\/guides\/forms\.md#the-cmss-rest-gate\)/u,
+  );
+
+  const template = await readFile(
+    new URL(`../../blueprint/templates/${GATE}`, import.meta.url),
+    "utf8",
+  );
+  const after = await formsSite({ files: { ...wired, [GATE]: template } });
+  const open = await after.run(["doctor"], { exec: machine() });
+  assert.equal(open.code, 0, open.stdout);
+  assert.match(open.stdout, /✓ the CMS's REST gate lets form submissions through/u);
+});
+
 test("gq doctor has no forms section for a Site without forms", async () => {
   const result = await (await healthySite()).run(["doctor"], { exec: machine() });
   assert.doesNotMatch(result.stdout, /Forms:/u);

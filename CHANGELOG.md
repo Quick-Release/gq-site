@@ -3,6 +3,28 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## 0.24.1 — 2026-10-26
+
+### Fixed
+
+- **Form submissions reach Gravity Forms.** The CMS's `content-api.php`
+  closed the whole REST API to anonymous callers, so every post from the
+  `/gq/forms/` route failed with `401 rest_auth_required`. Its gate now lets
+  an anonymous request through only when it is a `POST`, without a method
+  override, to exactly `/gf/v2/forms/<id>/submissions`, while gq-content's
+  forms module reports Gravity Forms active. The REST index, reading forms or
+  entries and every other route stay closed
+  ([The CMS's REST gate](docs/guides/forms.md#the-cmss-rest-gate)).
+  `content-api.php` is created once, so `gq sync` doesn't change an existing
+  Site's copy: a Site with `forms` adds the exception by hand, and
+  `gq doctor` fails one whose copy still closes submissions.
+
+### Added
+
+- `scripts/smoke/cms-rest-gate.sh`, run in CI: the generated `content-api.php`
+  on a real WordPress over HTTP, with stand-ins for Gravity Forms' routes and
+  gq-content's forms module.
+
 ## 0.24.0 — 2026-10-26
 
 ### Added

@@ -35,9 +35,22 @@ add_filter('xmlrpc_enabled', '__return_false');
 /**
  * Do not expose the REST API to anonymous callers. Authenticated WordPress
  * users remain able to use the dashboard and editorial tooling.
+ *
+ * One exception: a Gravity Forms submission, the one REST call a Site's
+ * Frontend makes (gq-platform ADR 0009). It is a POST, without a method
+ * override, to exactly /gf/v2/forms/<id>/submissions, while gq-content's
+ * forms module has Gravity Forms active. Gravity Forms checks the form, its
+ * fields and its spam controls itself; reading forms or entries stays closed.
  */
 add_filter('rest_authentication_errors', static function ($result) {
     if (!empty($result) || is_user_logged_in()) {
+        return $result;
+    }
+
+    $forms = function_exists('GetQuick\\Content\\Forms\\active') && \GetQuick\Content\Forms\active();
+    $post = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !isset($_GET['_method']) && !isset($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']);
+    $route = $GLOBALS['wp']->query_vars['rest_route'] ?? '';
+    if ($forms && $post && is_string($route) && preg_match('#^/gf/v2/forms/[1-9][0-9]*/submissions$#D', untrailingslashit($route)) === 1) {
         return $result;
     }
 

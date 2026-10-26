@@ -346,6 +346,16 @@ async function checkForms({ context, env, exec, sigilloReady, report }) {
     );
   }
 
+  // content-api.php is the Site's once created: one from before 0.24.1 closes
+  // the REST API to the form route's anonymous submissions too.
+  const gate = join(root, CMS_PATH, "web/app/mu-plugins/content-api.php");
+  const gateSource = existsSync(gate) ? readFileSync(gate, "utf8") : "";
+  if (gateSource.includes("rest_authentication_errors") && !gateSource.includes("/gf/v2/forms/")) {
+    report.fail(
+      `${CMS_PATH}/web/app/mu-plugins/content-api.php closes the REST API to anonymous form submissions, so every post fails with 401: add the submissions exception (docs/guides/forms.md#the-cmss-rest-gate)`,
+    );
+  } else report.ok("the CMS's REST gate lets form submissions through");
+
   if (!formSpamControls(context.config).includes("turnstile")) return;
   if (!sigilloReady || !context.config.sigillo?.environments?.[SECRETS_ENVIRONMENT]) {
     return report.skip(`Turnstile's keys not checked: no Sigillo ${SECRETS_ENVIRONMENT}`);
