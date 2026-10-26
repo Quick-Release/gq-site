@@ -174,7 +174,9 @@ request passes only when all of these hold:
 Everything else stays `401 rest_auth_required`, including the REST index,
 reading a form, its entries and the submission route's validation endpoint.
 Gravity Forms then checks the form itself: whether it exists and is active, its
-fields, its honeypot and its own spam checks.
+fields, its honeypot and its own spam checks. The exception admits any form's
+id, not only the forms published content references: gq-content has no cheap
+check for that yet, and narrowing the gate to it is a gq-content follow-up.
 
 `content-api.php` is created once with the CMS, so `gq sync` doesn't update an
 existing Site's copy, and `pnpm doctor` fails a Site with `forms` whose copy

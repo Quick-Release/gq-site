@@ -926,13 +926,16 @@ test("gq doctor checks a Site's forms wiring: its route, its runtime opt-in and 
 });
 
 test("gq doctor fails a Site with forms whose CMS REST gate still closes submissions", async () => {
-  const GATE = "apps/cms/web/app/mu-plugins/content-api.php";
+  const CONTENT_API = "apps/cms/web/app/mu-plugins/content-api.php";
   const wired = {
     [FORMS_ROUTE]: "// managed\n",
     "apps/frontend/src/lib/content.ts": "createContentRuntime({ forms: true });\n",
   };
   const before = await formsSite({
-    files: { ...wired, [GATE]: "<?php add_filter('rest_authentication_errors', $closed);\n" },
+    files: {
+      ...wired,
+      [CONTENT_API]: "<?php add_filter('rest_authentication_errors', $closed);\n",
+    },
   });
   const closed = await before.run(["doctor"], { exec: machine() });
   assert.equal(closed.code, 1);
@@ -942,13 +945,29 @@ test("gq doctor fails a Site with forms whose CMS REST gate still closes submiss
   );
 
   const template = await readFile(
-    new URL(`../../blueprint/templates/${GATE}`, import.meta.url),
+    new URL(`../../blueprint/templates/${CONTENT_API}`, import.meta.url),
     "utf8",
   );
-  const after = await formsSite({ files: { ...wired, [GATE]: template } });
+  const after = await formsSite({ files: { ...wired, [CONTENT_API]: template } });
   const open = await after.run(["doctor"], { exec: machine() });
   assert.equal(open.code, 0, open.stdout);
   assert.match(open.stdout, /✓ the CMS's REST gate lets form submissions through/u);
+
+  // A mention of the route isn't the exception.
+  const mentioned = await formsSite({
+    files: {
+      ...wired,
+      [CONTENT_API]:
+        "<?php // TODO /gf/v2/forms/\nadd_filter('rest_authentication_errors', $closed);\n",
+    },
+  });
+  assert.equal((await mentioned.run(["doctor"], { exec: machine() })).code, 1);
+
+  const missing = await (await formsSite({ files: wired })).run(["doctor"], { exec: machine() });
+  assert.match(
+    missing.stdout,
+    /· apps\/cms\/web\/app\/mu-plugins\/content-api\.php not found: its REST gate isn't checked/u,
+  );
 });
 
 test("gq doctor has no forms section for a Site without forms", async () => {

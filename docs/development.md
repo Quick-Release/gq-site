@@ -136,7 +136,7 @@ wiring proof also installs the CI Worker's dependencies for Wrangler's local
 workerd runtime. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
 three generated-site proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
 `frontend-check.sh`, `content-pair.sh`, `consent.sh`, `cms-rest-gate.sh` and `ci-composer.sh` on every push; the
-real-WordPress Polylang proof needs PHP and downloads, and the live gate is the
+real-WordPress Polylang proof, which also needs PHP and downloads, runs locally, and the live gate is the
 gq-smoke wizard ([A new content Site, end to end](guides/provisioning.md#a-new-content-site-end-to-end)).
 
 For blueprint source roles, ownership mappings, and deliberate dotless source

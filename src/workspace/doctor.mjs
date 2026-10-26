@@ -169,6 +169,10 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
   return healthy ? 0 : 1;
 }
 
+// The route pattern of content-api.php's submissions exception, as the
+// template and docs/guides/forms.md write it.
+const SUBMISSIONS_ROUTE_PATTERN = "'#^/gf/v2/forms/[1-9][0-9]*/submissions$#D'";
+
 function createReport(io) {
   let healthy = true;
   return {
@@ -347,12 +351,18 @@ async function checkForms({ context, env, exec, sigilloReady, report }) {
   }
 
   // content-api.php is the Site's once created: one from before 0.24.1 closes
-  // the REST API to the form route's anonymous submissions too.
-  const gate = join(root, CMS_PATH, "web/app/mu-plugins/content-api.php");
-  const gateSource = existsSync(gate) ? readFileSync(gate, "utf8") : "";
-  if (gateSource.includes("rest_authentication_errors") && !gateSource.includes("/gf/v2/forms/")) {
+  // the REST API to the form route's anonymous submissions too. The
+  // exception is recognised by the route pattern the template and the forms
+  // guide give it.
+  const contentApi = `${CMS_PATH}/web/app/mu-plugins/content-api.php`;
+  const gate = readText(join(root, contentApi));
+  if (gate === null) report.skip(`${contentApi} not found: its REST gate isn't checked`);
+  else if (
+    gate.includes("rest_authentication_errors") &&
+    !gate.includes(SUBMISSIONS_ROUTE_PATTERN)
+  ) {
     report.fail(
-      `${CMS_PATH}/web/app/mu-plugins/content-api.php closes the REST API to anonymous form submissions, so every post fails with 401: add the submissions exception (docs/guides/forms.md#the-cmss-rest-gate)`,
+      `${contentApi} closes the REST API to anonymous form submissions, so every post fails with 401: add the submissions exception (docs/guides/forms.md#the-cmss-rest-gate)`,
     );
   } else report.ok("the CMS's REST gate lets form submissions through");
 

@@ -8,7 +8,7 @@
 // scripts/smoke/cms-rest-gate.sh.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -110,4 +110,14 @@ test("without gq-content's forms module, or with Gravity Forms inactive, submiss
   const cases = [SUBMISSION, { method: "GET", route: "/" }];
   assert.deepEqual(await answers(cases, "absent"), [CLOSED, CLOSED]);
   assert.deepEqual(await answers(cases, "inactive"), [CLOSED, CLOSED]);
+});
+
+test("the forms guide's exception for existing Sites is the template's, line for line", async () => {
+  const guide = await readFile("docs/guides/forms.md", "utf8");
+  const section = guide.slice(guide.indexOf("## The CMS's REST gate"));
+  const snippet = section.match(/```php\n([\s\S]*?)```/u)[1];
+  const template = await readFile(`blueprint/templates/${MU_PLUGIN}`, "utf8");
+  for (const line of snippet.trimEnd().split("\n")) {
+    assert.ok(template.includes(`    ${line}`.trimEnd()), line);
+  }
 });
