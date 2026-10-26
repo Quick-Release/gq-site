@@ -18,73 +18,28 @@
 //
 //   node scripts/smoke/cms-polylang.mjs <generated site directory> <download cache>
 
-import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { checker, freePort, run } from "./frontend-runtime-lib.mjs";
+import { realWordPress } from "./wordpress-lib.mjs";
 
 const site = resolve(process.argv[2] ?? ".");
 const cache = resolve(process.argv[3] ?? ".");
-const work = mkdtempSync(join(tmpdir(), "gq-cms-polylang-"));
-const wordpress = join(work, "wordpress");
-const bin = join(work, "bin");
 
 const results = checker();
 const { check } = results;
 
-function setUpWordPress() {
-  const unzip = (archive, into) => {
-    const result = spawnSync("unzip", ["-q", "-o", join(cache, archive), "-d", into]);
-    if (result.status !== 0) throw new Error(`unzip ${archive} failed`);
-  };
-  unzip(`wordpress-${process.env.WORDPRESS_VERSION}.zip`, work);
-  const plugins = join(wordpress, "wp-content/plugins");
-  for (const plugin of [
-    "sqlite-database-integration.zip",
+const { env, wp, serve, install, remove } = realWordPress({
+  name: "gq-cms-polylang",
+  cache,
+  version: process.env.WORDPRESS_VERSION,
+  plugins: [
     "wp-graphql.zip",
     "polylang.zip",
     `gq-polylang-graphql-${process.env.POLYLANG_GRAPHQL_VERSION}.zip`,
-  ]) {
-    unzip(plugin, plugins);
-  }
-  // WordPress over HTTP: files as they are, every other path through
-  // WordPress (pretty permalinks, /graphql).
-  writeFileSync(
-    join(work, "router.php"),
-    `<?php $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-if ($path !== '/' && is_file($_SERVER['DOCUMENT_ROOT'] . $path)) { return false; }
-$_SERVER['SCRIPT_NAME'] = '/index.php';
-require $_SERVER['DOCUMENT_ROOT'] . '/index.php';\n`,
-  );
-  const sqlite = join(plugins, "sqlite-database-integration");
-  writeFileSync(
-    join(wordpress, "wp-content/db.php"),
-    readFileSync(join(sqlite, "db.copy"), "utf8")
-      .replaceAll("{SQLITE_IMPLEMENTATION_FOLDER_PATH}", sqlite)
-      .replaceAll("{SQLITE_PLUGIN}", "sqlite-database-integration/load.php"),
-  );
-  // `wp` on PATH for polylang.sh, as the deploy has it.
-  mkdirSync(bin);
-  writeFileSync(
-    join(bin, "wp"),
-    `#!/bin/sh\nexec php -d display_errors=stderr -d error_reporting=${32767 & ~8192 & ~16384} -d memory_limit=512M ${JSON.stringify(join(cache, "wp-cli.phar"))} --path=${JSON.stringify(wordpress)} "$@"\n`,
-  );
-  chmodSync(join(bin, "wp"), 0o755);
-}
-
-const env = () => ({
-  ...process.env,
-  PATH: `${bin}:${process.env.PATH}`,
-  WP_CLI_CACHE_DIR: join(work, "wp-cli-cache"),
+  ],
 });
-
-async function wp(args) {
-  const result = await run(join(bin, "wp"), args, { env: env() });
-  if (result.code !== 0) throw new Error(`wp ${args.join(" ")} failed:\n${result.stderr}`);
-  return result.stdout.trim();
-}
 
 /** Runs PHP in WordPress with WP-CLI; resolves to what it echoes, as JSON. */
 async function php(code) {
@@ -124,57 +79,11 @@ async function page(title, slug, language) {
   return id;
 }
 
-/** WordPress over HTTP (PHP's built-in server); resolves to the server. */
-async function serveWordPress(port) {
-  const server = spawn(
-    "php",
-    [
-      "-d",
-      "display_errors=stderr",
-      "-S",
-      `127.0.0.1:${port}`,
-      "-t",
-      wordpress,
-      join(work, "router.php"),
-    ],
-    { stdio: "ignore" },
-  );
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    try {
-      await fetch(`http://127.0.0.1:${port}/wp-includes/version.php`);
-      return server;
-    } catch {
-      await new Promise((done) => setTimeout(done, 100));
-    }
-  }
-  server.kill();
-  throw new Error("PHP's built-in server didn't start");
-}
-
 let server;
 try {
-  setUpWordPress();
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
-  await wp([
-    "config",
-    "create",
-    "--dbname=wordpress",
-    "--dbuser=wordpress",
-    "--dbpass=wordpress",
-    "--skip-check",
-  ]);
-  await wp([
-    "core",
-    "install",
-    `--url=${origin}`,
-    "--title=Sítio de teste",
-    "--admin_user=editor",
-    "--admin_password=editor-password",
-    "--admin_email=editor@example.test",
-    "--skip-email",
-  ]);
-  await wp(["rewrite", "structure", "/%postname%/"]);
+  await install(origin, "Sítio de teste");
   await wp(["plugin", "activate", "wp-graphql", "polylang", "gq-polylang-graphql"]);
 
   // A monolingual Site's content: pages without a language.
@@ -237,7 +146,7 @@ try {
   ]);
   await wp(["rewrite", "flush", "--hard"]);
 
-  server = await serveWordPress(port);
+  server = await serve(port);
   const graphql = async (query) => {
     const response = await fetch(`${origin}/graphql`, {
       method: "POST",
@@ -307,7 +216,7 @@ try {
   );
 } finally {
   server?.kill();
-  rmSync(work, { recursive: true, force: true });
+  remove();
 }
 
 if (results.failures > 0) {

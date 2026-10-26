@@ -48,7 +48,9 @@ The Site must be on the content package pair (`"contentRuntime": "package"`,
    `package.json`, run `pnpm install`, then `pnpm exec gq sync`. Sync pins
    `getquick/gq-content` and `@getquick/content` to exactly `0.4.0`. Then
    `pnpm install` again, and in `apps/cms` run
-   `composer update getquick/gq-content`.
+   `composer update getquick/gq-content`. A Site whose CMS was created before
+   `@getquick/site` 0.24.1 also opens its REST gate to submissions
+   ([The CMS's REST gate](#the-cmss-rest-gate)).
 2. **Install Gravity Forms in the CMS** (`apps/cms/composer.json`, from the
    registry the Site already uses for it) and add `gravityforms` to
    `gq.ops.json` `wordpress.plugins`, so the CMS deploy activates it.
@@ -156,10 +158,48 @@ readiness fails. After adding them, run `pnpm ci:deploy` so that CI releases
 pass them on too. Turnstile's script loads only when a visitor starts filling
 in a form, never with the page (CONSENT-1 CN-R3).
 
+## The CMS's REST gate
+
+The CMS's `web/app/mu-plugins/content-api.php` closes the REST API to anonymous
+callers. It makes one exception, for the form route's submissions: an anonymous
+request passes only when all of these hold:
+
+- its method is `POST`, with no method override (`?_method=` or
+  `X-HTTP-Method-Override`);
+- its route is exactly `/gf/v2/forms/<id>/submissions` (`<id>` a positive
+  integer; a trailing slash is ignored);
+- gq-content's forms module reports Gravity Forms active
+  (`GetQuick\Content\Forms\active()`, from gq-content 0.4.0).
+
+Everything else stays `401 rest_auth_required`, including the REST index,
+reading a form, its entries and the submission route's validation endpoint.
+Gravity Forms then checks the form itself: whether it exists and is active, its
+fields, its honeypot and its own spam checks. The exception admits any form's
+id, not only the forms published content references: gq-content has no cheap
+check for that yet, and narrowing the gate to it is a gq-content follow-up.
+
+`content-api.php` is created once with the CMS, so `gq sync` doesn't update an
+existing Site's copy, and `pnpm doctor` fails a Site with `forms` whose copy
+still closes submissions. In the existing `rest_authentication_errors` filter,
+after the `is_user_logged_in()` check, add:
+
+```php
+$forms = function_exists('GetQuick\\Content\\Forms\\active') && \GetQuick\Content\Forms\active();
+$post = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !isset($_GET['_method']) && !isset($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']);
+$route = $GLOBALS['wp']->query_vars['rest_route'] ?? '';
+if ($forms && $post && is_string($route) && preg_match('#^/gf/v2/forms/[1-9][0-9]*/submissions$#D', untrailingslashit($route)) === 1) {
+    return $result;
+}
+```
+
+Then deploy the CMS. Without it, every submission fails with a 401 and the
+form route answers that the form couldn't be sent.
+
 ## CMS behind Cloudflare Access
 
-Gravity Forms' submissions endpoint
-(`POST /wp-json/gf/v2/forms/<id>/submissions`) needs no credential. If the
+The form route posts to Gravity Forms' submissions endpoint
+(`POST /wp-json/gf/v2/forms/<id>/submissions`) without a WordPress
+credential; [the CMS's REST gate](#the-cmss-rest-gate) lets it through. If the
 CMS's Cloudflare Access policy also covers that path, give the Frontend its own
 service token for it alone, `GQ_FORMS_ACCESS_CLIENT_ID` and
 `GQ_FORMS_ACCESS_CLIENT_SECRET`. Never reuse the GraphQL reader's
@@ -172,7 +212,7 @@ needs neither.
 
 | Command                                         | What it checks                                                                                                                                                                                                                                                          |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm doctor`                                   | The form route exists (else run `gq sync`). `src/lib/content.ts` passes `forms` (warns if not). With Turnstile, Sigillo staging has both keys.                                                                                                                          |
+| `pnpm doctor`                                   | The form route exists (else run `gq sync`). `src/lib/content.ts` passes `forms` (warns if not). The CMS's `content-api.php` lets submissions through. With Turnstile, Sigillo staging has both keys.                                                                    |
 | `pnpm site:check:local`                         | With DDEV running, `ddev wp gq-forms status --format=json` must report Gravity Forms active, and every form that published content references free of diagnostics. A CMS without `wp gq-forms` has gq-content older than 0.4.0.                                         |
 | `pnpm site:check`                               | The production CMS's WPGraphQL has `getquickForms` (Gravity Forms active, with gq-content 0.4.0). Every form that published content references can be sent (`formsReadiness`). With Turnstile, both keys are present. An Access pair for the submissions path is whole. |
 | `wp gq-forms status [--format=json]` on the CMS | Gravity Forms' state, and each referenced form with its diagnostics and the pages that reference it, in every language. Exits 1 while any form has a diagnostic.                                                                                                        |

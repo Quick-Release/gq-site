@@ -77,6 +77,27 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: scripts/smoke/content-pair.sh
 
+  # A generated site's CMS REST gate (content-api.php) on a real WordPress
+  # over HTTP: anonymous Gravity Forms submissions pass while the forms
+  # module is active; reading forms, entries or anything else stays 401
+  # (gq-platform ADR 0009). Public downloads only; no account.
+  cms-rest-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: pdo_sqlite
+          coverage: none
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: scripts/smoke/cms-rest-gate.sh
+
   # A generated site's consent UI, routes and records (CONSENT-1, LEGAL-1):
   # its Frontend served in workerd with a local D1 publication store and
   # Consent database passes gq-content's shared acceptance suite in Chromium, records
