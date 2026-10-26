@@ -2,14 +2,13 @@
 // `forms` is optional and validated; while a Site declares it, gq sync writes
 // and keeps the managed /gq/forms/ route adapter, binding @getquick/content's
 // createFormsServer; without it, gq sync writes none, and removes one it wrote
-// once the key goes. The pair it binds is pinned at 0.4.0, the first with forms.
+// once the key goes. gq.ops.json's `forms` is validated in
+// test/manifest/schema-and-migrations.test.mjs.
 import assert from "node:assert/strict";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
-import { CONTENT_PAIR } from "../../src/sync/content-pair.mjs";
-import { createFixtureSite } from "../support/fixture-site.mjs";
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
 const ROUTE = "apps/frontend/src/pages/gq/forms/[...rest].ts";
@@ -35,26 +34,6 @@ async function declareForms(root, forms) {
   }
   await writeFile(join(root, "gq.ops.json"), `${JSON.stringify(ops, null, 2)}\n`);
 }
-
-test("the managed pins are exactly @getquick/content and getquick/gq-content 0.4.0", async () => {
-  assert.deepEqual(CONTENT_PAIR, {
-    composer: "getquick/gq-content",
-    npm: "@getquick/content",
-    version: "0.4.0",
-  });
-  const { root } = await siteWithForms();
-  assert.equal(
-    (await readJson(root, "apps/cms/composer.json")).require["getquick/gq-content"],
-    "0.4.0",
-  );
-  assert.equal(
-    (await readJson(root, "apps/frontend/package.json")).dependencies["@getquick/content"],
-    "0.4.0",
-  );
-  // gq-site itself resolves the forms readiness from the same release.
-  const own = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"));
-  assert.equal(own.dependencies["@getquick/content"], "0.4.0");
-});
 
 test("a Site without forms gets no form route from gq new or gq sync", async () => {
   const { root, run } = await newSite();
@@ -143,60 +122,4 @@ test("an edited form route stops gq sync while the Site has forms; a deleted one
   await rm(join(root, ROUTE));
   assert.equal((await run(["sync"])).code, 0);
   assert.match(await readSite(root, ROUTE), /createFormsServer/u);
-});
-
-// --- gq.ops.json `forms` -----------------------------------------------------------
-
-const SITE = {
-  schemaVersion: 1,
-  project: "fixture",
-  variant: "content",
-  contentRuntime: "package",
-  wordpress: { plugins: ["gravityforms"] },
-};
-
-async function validate(ops) {
-  const fixture = await createFixtureSite({ ops });
-  return fixture.run(["context", "show"]);
-}
-
-test("forms names its provider and the spam controls the Site relies on", async () => {
-  for (const forms of [
-    { provider: "gravityforms" },
-    { provider: "gravityforms", spam: [] },
-    { provider: "gravityforms", spam: ["honeypot"] },
-    { provider: "gravityforms", spam: ["honeypot", "turnstile"] },
-    { provider: "gravityforms", spam: ["turnstile"] },
-  ]) {
-    const result = await validate({ ...SITE, forms });
-    assert.equal(result.code, 0, `${JSON.stringify(forms)}: ${result.stderr}`);
-  }
-  for (const [ops, problem] of [
-    [{ ...SITE, forms: {} }, 'forms.provider must be "gravityforms"'],
-    [{ ...SITE, forms: { provider: "wpforms" } }, 'forms.provider must be "gravityforms"'],
-    [
-      { ...SITE, forms: { provider: "gravityforms", spam: ["recaptcha"] } },
-      'forms.spam[0] must be "honeypot" or "turnstile"',
-    ],
-    [
-      { ...SITE, forms: { provider: "gravityforms", spam: ["honeypot", "honeypot"] } },
-      "forms.spam repeats a control",
-    ],
-    [
-      { ...SITE, forms: { provider: "gravityforms", turnstile: true } },
-      "forms.turnstile is not a known key",
-    ],
-    [
-      { ...SITE, wordpress: { plugins: [] }, forms: FORMS },
-      "forms needs gravityforms in wordpress.plugins, so the CMS deploy activates it",
-    ],
-    [
-      { ...SITE, contentRuntime: undefined, forms: FORMS },
-      'forms needs a content Site on the package pair (variant "content", contentRuntime "package")',
-    ],
-  ]) {
-    const result = await validate(ops);
-    assert.equal(result.code, 1, JSON.stringify(ops));
-    assert.equal(result.stderr, `gq: gq.ops.json is invalid: ${problem}.\n`);
-  }
 });

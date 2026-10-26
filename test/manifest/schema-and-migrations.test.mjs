@@ -268,6 +268,61 @@ test("consent.retentionDays is a whole number of days from 1 to the Runtime's 18
   }
 });
 
+const FORMS_DECLARED = { provider: "gravityforms", spam: ["honeypot"] };
+const FORMS_SITE = {
+  schemaVersion: 1,
+  project: "fixture",
+  variant: "content",
+  contentRuntime: "package",
+  wordpress: { plugins: ["gravityforms"] },
+};
+
+async function validateForms(ops) {
+  const fixture = await createFixtureSite({ ops });
+  return fixture.run(["context", "show"]);
+}
+
+test("forms names its provider and the spam controls the Site relies on", async () => {
+  for (const forms of [
+    { provider: "gravityforms" },
+    { provider: "gravityforms", spam: [] },
+    { provider: "gravityforms", spam: ["honeypot"] },
+    { provider: "gravityforms", spam: ["honeypot", "turnstile"] },
+    { provider: "gravityforms", spam: ["turnstile"] },
+  ]) {
+    const result = await validateForms({ ...FORMS_SITE, forms });
+    assert.equal(result.code, 0, `${JSON.stringify(forms)}: ${result.stderr}`);
+  }
+  for (const [ops, problem] of [
+    [{ ...FORMS_SITE, forms: {} }, 'forms.provider must be "gravityforms"'],
+    [{ ...FORMS_SITE, forms: { provider: "wpforms" } }, 'forms.provider must be "gravityforms"'],
+    [
+      { ...FORMS_SITE, forms: { provider: "gravityforms", spam: ["recaptcha"] } },
+      'forms.spam[0] must be "honeypot" or "turnstile"',
+    ],
+    [
+      { ...FORMS_SITE, forms: { provider: "gravityforms", spam: ["honeypot", "honeypot"] } },
+      "forms.spam repeats a control",
+    ],
+    [
+      { ...FORMS_SITE, forms: { provider: "gravityforms", turnstile: true } },
+      "forms.turnstile is not a known key",
+    ],
+    [
+      { ...FORMS_SITE, wordpress: { plugins: [] }, forms: FORMS_DECLARED },
+      "forms needs gravityforms in wordpress.plugins, so the CMS deploy activates it",
+    ],
+    [
+      { ...FORMS_SITE, contentRuntime: undefined, forms: FORMS_DECLARED },
+      'forms needs a content Site on the package pair (variant "content", contentRuntime "package")',
+    ],
+  ]) {
+    const result = await validateForms(ops);
+    assert.equal(result.code, 1, JSON.stringify(ops));
+    assert.equal(result.stderr, `gq: gq.ops.json is invalid: ${problem}.\n`);
+  }
+});
+
 test("the published JSON Schema is the one generated from the zod schema", async () => {
   const published = await readFile(
     new URL("../../schema/gq.ops.schema.json", import.meta.url),

@@ -338,7 +338,7 @@ async function checkForms({ context, env, exec, sigilloReady, report }) {
 
   const runtime = join(root, FRONTEND_PATH, "src/lib/content.ts");
   const source = existsSync(runtime) ? readFileSync(runtime, "utf8") : "";
-  if (/\bforms\s*:/u.test(source))
+  if (/\bforms\s*:\s*(?:true|Boolean\()/u.test(source))
     report.ok("src/lib/content.ts passes forms to the content runtime");
   else {
     report.warn(

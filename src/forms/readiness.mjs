@@ -155,12 +155,12 @@ async function fieldsCheck(fetch, graphqlUrl, ops) {
   }
   const statusCommand = "wp gq-forms status on the CMS lists them";
   const readiness = formsReadiness(descriptors, { spam: formSpamControls(ops) });
-  const on = (id) => [...(referencedBy.get(id) ?? [])].join(", ");
+  const pagesOf = (id) => [...(referencedBy.get(id) ?? [])].join(", ");
   const failing = readiness.forms.filter((form) => !form.ok);
   if (failing.length > 0) {
     const problems = failing.map(
       (form) =>
-        `form ${form.id} (${form.title}) on ${on(form.id)}: ${[...new Set(form.diagnostics.map(({ code }) => code))].join(", ")}`,
+        `form ${form.id} (${form.title}) on ${pagesOf(form.id)}: ${[...new Set(form.diagnostics.map(({ code }) => code))].join(", ")}`,
     );
     return notReady(
       name,
@@ -168,19 +168,19 @@ async function fieldsCheck(fetch, graphqlUrl, ops) {
       `remove or replace those fields and settings in Gravity Forms (${statusCommand}), or take the form off the page`,
     );
   }
-  const partial = complete ? "" : ` (the first ${MAX_PAGES * 100} entries; ${statusCommand} all)`;
+  const coverage = complete ? "" : ` (the first ${MAX_PAGES * 100} entries; ${statusCommand} all)`;
   if (readiness.forms.length === 0) {
-    return ok(name, `no published content references a form yet${partial}`);
+    return ok(name, `no published content references a form yet${coverage}`);
   }
   const listed = readiness.forms.map((form) => `form ${form.id} (${form.title})`).join(", ");
   if (readiness.warnings.length > 0) {
     return warn(
       name,
-      `${listed} can be sent${partial}, but ${readiness.warnings.join(" ")}`,
+      `${listed} can be sent${coverage}, but ${readiness.warnings.join(" ")}`,
       "enable the anti-spam honeypot in each form's settings, or drop honeypot from gq.ops.json forms.spam",
     );
   }
-  return ok(name, `${listed} can be sent${partial}`);
+  return ok(name, `${listed} can be sent${coverage}`);
 }
 
 /** Whether the Site's spam controls have what they need, by Sigillo's names. */

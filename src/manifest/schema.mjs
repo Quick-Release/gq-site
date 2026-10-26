@@ -36,9 +36,6 @@ export const MAX_CONSENT_RETENTION_DAYS = 1826;
 // Turnstile is verified server-side when the Site chooses it.
 export const FORM_PROVIDERS = ["gravityforms"];
 export const FORM_SPAM_CONTROLS = ["honeypot", "turnstile"];
-// The WordPress plugin each provider is, as gq.ops.json wordpress.plugins
-// names it: the CMS deploy activates it.
-export const FORM_PROVIDER_PLUGINS = { gravityforms: "gravityforms" };
 
 // Where `$schema` points from a site root, through the site's own install.
 export const SCHEMA_URL = "./node_modules/@getquick/site/schema/gq.ops.schema.json";
@@ -353,9 +350,9 @@ function checkForms({ forms, variant, contentRuntime, wordpress }, context) {
   if (variant !== "content" || contentRuntime !== "package") {
     issue('needs a content Site on the package pair (variant "content", contentRuntime "package")');
   }
-  const plugin = FORM_PROVIDER_PLUGINS[forms.provider];
-  if (!wordpress?.plugins.includes(plugin)) {
-    issue(`needs ${plugin} in wordpress.plugins, so the CMS deploy activates it`);
+  // A provider is named as its plugin's slug, which the CMS deploy activates.
+  if (!wordpress?.plugins.includes(forms.provider)) {
+    issue(`needs ${forms.provider} in wordpress.plugins, so the CMS deploy activates it`);
   }
 }
 

@@ -105,8 +105,9 @@ import {
   renderGravityForm,
 } from "@getquick/content/forms/astro";
 
-// In the page's frontmatter: `entry` is the delivered page, `chrome` its
-// language's chrome, `lang` the page's BCP 47 language (pt-PT).
+// In the page's frontmatter: `entry` is the delivered entry (on the home
+// page, the delivered `page`), whose `forms` are its forms' descriptors,
+// `chrome` its language's chrome, `lang` the page's BCP 47 language (pt-PT).
 const workers = await import("cloudflare:workers").catch(() => null);
 const siteKey = (workers?.env as { TURNSTILE_SITE_KEY?: string } | undefined)?.TURNSTILE_SITE_KEY;
 const formBlock = (block) => {

@@ -12,6 +12,7 @@ import cmsKeys from "../../blueprint/templates/fragments/cms-composer.keys.json"
 import frontendKeys from "../../blueprint/templates/fragments/frontend-package.keys.json" with { type: "json" };
 import cmsTemplate from "../../blueprint/templates/apps/cms/composer.json" with { type: "json" };
 import frontendTemplate from "../../blueprint/templates/apps/frontend/package.json" with { type: "json" };
+import ownPackage from "../../package.json" with { type: "json" };
 import { CONTENT_PAIR } from "../../src/sync/content-pair.mjs";
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
@@ -42,6 +43,8 @@ test("both halves of the pair are pinned to the same exact version", () => {
   // (and gq packages reads the CMS's from its template's require).
   assert.equal(cmsTemplate.require[CONTENT_PAIR.composer], CONTENT_PAIR.version);
   assert.equal(frontendTemplate.dependencies[CONTENT_PAIR.npm], CONTENT_PAIR.version);
+  // gq-site's own readiness (consent, forms) resolves the same release.
+  assert.equal(ownPackage.dependencies[CONTENT_PAIR.npm], CONTENT_PAIR.version);
 });
 
 test("gq new wires a Site to the pinned pair: keys, routes, migrations and identity", async () => {

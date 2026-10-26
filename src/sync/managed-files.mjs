@@ -179,10 +179,10 @@ export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
 
 // Writes what `plan` creates or updates, and removes what it removes, the
 // lock last. Refuses a plan with an edited file: nothing is written then.
-// What a whole managed file or
-// symlink replaces is removed first, so a write never goes through a symlink
-// the site left there; a file gq manages only part of is a regular file (or
-// missing), written in place so it keeps its mode.
+// What a whole managed file or symlink replaces is removed first, so a write
+// never goes through a symlink the site left there; a file gq manages only
+// part of is a regular file (or missing), written in place so it keeps its
+// mode.
 export async function applyManagedFiles(root, plan) {
   if (plan.files.some(({ status }) => status === "edited")) {
     throw new Error("Refusing to write managed files over local edits.");
