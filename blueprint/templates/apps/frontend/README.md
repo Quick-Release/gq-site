@@ -35,7 +35,10 @@ configures it and composes the pages:
   (`pnpm frontend:refresh`) to the runtime. `src/pages/gq/consent.ts` and
   `src/pages/gq/consent/[...rest].ts`, also managed, hand visitors' consent
   decisions and the CMS's authenticated reads of them to the package's
-  consent server. `/gq/` is reserved for them.
+  consent server. While `gq.ops.json` declares `forms`,
+  `src/pages/gq/forms/[...rest].ts`, also managed, hands form posts to the
+  package's forms server (`@getquick/site`'s docs/guides/forms.md).
+  `/gq/` is reserved for them.
 - Consent (CONSENT-1, LEGAL-1): `src/lib/content.ts` turns on the runtime's
   `consent` option (third-party embeds become placeholders at delivery; GQ
   Config's legal pages and GA4 toggle reach the chrome) and lists the catalog

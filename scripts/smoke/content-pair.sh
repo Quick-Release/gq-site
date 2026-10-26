@@ -7,7 +7,9 @@
 # pins, the CMS plugin's scheduler command and identity against its published
 # ZIP, the publication migrations infra/frontend.run.ts resolves, and the
 # Frontend built by Alchemy's Astro Cloudflare build, served in workerd with
-# a local D1 store migrated from them, through its /gq routes.
+# a local D1 store migrated from them, through its /gq routes. The Site
+# declares headless forms (gq.ops.json `forms`), so its managed /gq/forms/
+# route is built and answered too.
 #
 # The site installs @getquick/site from this checkout, not npm
 # (this-checkout.sh). Generation stays offline and secret-free; only
@@ -31,6 +33,14 @@ cd "$parent"
 node "$repo/bin/gq.mjs" new acme --project acme --variant content >/dev/null
 use_this_checkout "$repo" "$parent/acme"
 cd acme
+node -e '
+const fs = require("node:fs");
+const ops = JSON.parse(fs.readFileSync("gq.ops.json", "utf8"));
+ops.wordpress.plugins.push("gravityforms");
+ops.forms = { provider: "gravityforms", spam: ["honeypot"] };
+fs.writeFileSync("gq.ops.json", JSON.stringify(ops, null, 2) + "\n");
+'
+node "$repo/bin/gq.mjs" sync >/dev/null
 CI=1 pnpm install --filter @acme/frontend... --filter @acme/ci... --filter . >/dev/null
 
 node "$repo/scripts/smoke/content-pair.mjs" "$parent/acme"

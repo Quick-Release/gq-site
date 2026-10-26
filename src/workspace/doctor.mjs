@@ -8,7 +8,9 @@
 // Sigillo's variable names and the Artifacts namespace's jurisdiction, with
 // ARTIFACTS_API_TOKEN from the environment or Sigillo `staging`, and the
 // consent databases' jurisdiction (ADR 0019), with CLOUDFLARE_API_TOKEN
-// from either.
+// from either. A Site that declares `forms` (gq-platform ADR 0009) has the
+// managed form route, a content runtime that reads form descriptors, and,
+// when it chose Turnstile, Turnstile's keys in Sigillo staging.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -22,7 +24,8 @@ import {
   consentDatabaseName,
   listConsentDatabases,
 } from "../frontend/consent.mjs";
-import { artifactsJurisdiction, MANIFEST_FILENAME } from "../manifest/schema.mjs";
+import { FORMS_ROUTE, TURNSTILE_KEYS } from "../forms/readiness.mjs";
+import { artifactsJurisdiction, formSpamControls, MANIFEST_FILENAME } from "../manifest/schema.mjs";
 import { localMediaReadiness } from "../media/readiness.mjs";
 import {
   hasReleaseConfig,
@@ -142,6 +145,11 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
     io.out("\nConsent records (D1):");
     const token = await stagingToken("CLOUDFLARE_API_TOKEN", { context, env, exec, sigilloReady });
     await checkConsentJurisdiction({ config: context.config, token, fetch, report });
+  }
+
+  if (context.config.forms) {
+    io.out("\nForms:");
+    await checkForms({ context, env, exec, sigilloReady, report });
   }
 
   io.out("\nLocal WordPress:");
@@ -317,6 +325,45 @@ async function stagingToken(name, { context, env, exec, sigilloReady }) {
     return (await secrets.get(name)) || null;
   } catch {
     return null;
+  }
+}
+
+// The Site's side of headless forms: what gq sync and src/lib/content.ts
+// wire, and Turnstile's keys when the Site chose it. Whether the CMS's forms
+// can be sent is gq site check's (--local runs wp gq-forms status).
+async function checkForms({ context, env, exec, sigilloReady, report }) {
+  const root = context.projectRoot;
+  if (existsSync(join(root, FORMS_ROUTE))) report.ok(`${FORMS_ROUTE} handles form posts`);
+  else report.fail(`${FORMS_ROUTE} is missing — run: gq sync`);
+
+  const runtime = join(root, FRONTEND_PATH, "src/lib/content.ts");
+  const source = existsSync(runtime) ? readFileSync(runtime, "utf8") : "";
+  if (/\bforms\s*:\s*(?:true|Boolean\()/u.test(source))
+    report.ok("src/lib/content.ts passes forms to the content runtime");
+  else {
+    report.warn(
+      `${FRONTEND_PATH}/src/lib/content.ts doesn't pass forms to createContentRuntime: pages carry no form descriptors, so forms don't render and posts are refused (docs/guides/forms.md)`,
+    );
+  }
+
+  if (!formSpamControls(context.config).includes("turnstile")) return;
+  if (!sigilloReady || !context.config.sigillo?.environments?.[SECRETS_ENVIRONMENT]) {
+    return report.skip(`Turnstile's keys not checked: no Sigillo ${SECRETS_ENVIRONMENT}`);
+  }
+  let names;
+  try {
+    const secrets = await sigilloSecrets({ context, env, exec }, SECRETS_ENVIRONMENT);
+    names = new Set((await secrets.list()).split(/\r?\n/u).map((name) => name.trim()));
+  } catch {
+    // Sigillo stderr is untrusted output and might contain secret values.
+    return report.fail(`could not list Sigillo ${SECRETS_ENVIRONMENT} variable names`);
+  }
+  const missing = TURNSTILE_KEYS.filter((name) => !names.has(name));
+  if (missing.length === 0) report.ok(`Sigillo ${SECRETS_ENVIRONMENT} has Turnstile's keys`);
+  else {
+    report.fail(
+      `gq.ops.json forms.spam chooses Turnstile, but Sigillo ${SECRETS_ENVIRONMENT} lacks ${missing.join(" and ")} (docs/guides/forms.md)`,
+    );
   }
 }
 

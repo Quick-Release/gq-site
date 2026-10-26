@@ -34,5 +34,11 @@ export type Bindings = CiBindings & {
   GQ_PREVIEW_CMS_APPLICATION_PASSWORD?: string;
   GQ_PREVIEW_ACCESS_CLIENT_ID?: string;
   GQ_PREVIEW_ACCESS_CLIENT_SECRET?: string;
+  // Headless forms: Turnstile's keys when the Site chose it, and the optional
+  // Access service token for the CMS's submissions path.
+  TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_SITE_KEY?: string;
+  GQ_FORMS_ACCESS_CLIENT_ID?: string;
+  GQ_FORMS_ACCESS_CLIENT_SECRET?: string;
   MIRROR_WORKFLOW: Workflow<MirrorParams>;
 };

@@ -21,7 +21,12 @@
 //              token), gq frontend refresh prepares the Site and its pages are
 //              then served from the store, and gq frontend events check is
 //              accepted with this Site's identity while another Site's event
-//              is refused.
+//              is refused;
+//   forms      the managed /gq/forms/ route (the Site declares `forms`)
+//              answers through the package: a post is checked against the
+//              form's descriptor as the store holds it with its page, and a
+//              form its page doesn't reference is refused. No post reaches
+//              the CMS.
 //
 // Nothing reaches Cloudflare: no account, token or remote resource is used.
 //
@@ -33,6 +38,8 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
+import { CONTACT_FORM } from "@getquick/content/forms/testing";
 
 import { retryCrontab } from "../../src/ploi/events.mjs";
 import { CONTENT_PAIR } from "../../src/sync/content-pair.mjs";
@@ -48,9 +55,15 @@ import {
   visit,
 } from "./frontend-runtime-lib.mjs";
 
-// Immutable published pairs: v0.3.1 (source cbf2925) and v0.3.2 (source
-// 698b989). A new pin brings its release receipt's own npm/ZIP hashes.
+// Immutable published pairs: v0.3.1 (source cbf2925), v0.3.2 (source
+// 698b989) and v0.4.0 (source 61f51f4). A new pin brings its release
+// receipt's own npm/ZIP hashes.
 const PUBLISHED = {
+  "0.4.0": {
+    integrity:
+      "sha512-YSKKFoilWBpu/Mm3lP2Y9asFitsArYrk0djlpyN9RDC/fCLZdspqnZbjC98mNuc8DlY3g0MQhbdmVYMSWg1Rmg==",
+    zipSha256: "1d177a9f1508e501b2c495881748a51d89e1a88d3f03d868f6eb0a2e858a85fc",
+  },
   "0.3.2": {
     integrity:
       "sha512-1EErw67A+On/M1AZDlk0DOMcBsRkJU6wK7t4b93BHayBn9y32s2IZKxsCf/jfxe/DfBlnhRYk66z4msarOsdCA==",
@@ -210,7 +223,13 @@ check(
 );
 
 // --- Routes ---
-const cms = stubCms([["/about/", { id: "page-64", title: "About", content: "We make things." }]]);
+const cms = stubCms([
+  ["/about/", { id: "page-64", title: "About", content: "We make things." }],
+  [
+    "/contact/",
+    { id: "page-65", title: "Contact", content: "Write to us.", forms: [CONTACT_FORM] },
+  ],
+]);
 const local = localWorker({
   site,
   work,
@@ -278,6 +297,47 @@ try {
     events.code === 0 && events.json?.accepted === true && events.json.answer?.site === ops.project,
     JSON.stringify(events.json) + events.stderr,
   );
+  // --- Forms ---
+  const post = (path, body) =>
+    fetch(`${siteUrl}${path}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+        Origin: siteUrl,
+      },
+      body: new URLSearchParams(body),
+    });
+  const formGet = await fetch(`${siteUrl}/gq/forms/1`);
+  check(
+    "/gq/forms/1 answers through the package: POST only",
+    formGet.status === 405 && formGet.headers.get("allow") === "POST",
+    `HTTP ${formGet.status}`,
+  );
+  const requests = cms.requests;
+  const empty = await post("/gq/forms/1", { gq_source: "/contact/" });
+  const emptyAnswer = await empty.json().catch(() => null);
+  check(
+    "a post missing required fields is checked against the descriptor stored with its page",
+    empty.status === 422 &&
+      emptyAnswer?.status === "invalid" &&
+      Object.keys(emptyAnswer.errors ?? {}).length > 0,
+    `HTTP ${empty.status} ${JSON.stringify(emptyAnswer)}`,
+  );
+  const elsewhere = await post("/gq/forms/1", { gq_source: "/about/" });
+  check(
+    "a form its page doesn't reference is refused",
+    elsewhere.status === 502,
+    `HTTP ${elsewhere.status}`,
+  );
+  check("neither post reached the CMS", cms.requests === requests, `${cms.requests - requests}`);
+  const notForm = await fetch(`${siteUrl}/gq/forms/contact`, { method: "POST" });
+  check(
+    "anything else under /gq/forms/ is a 404",
+    notForm.status === 404,
+    `HTTP ${notForm.status}`,
+  );
+
   const other = await deliverEvent(port, eventKey, {
     site: "beta",
     id: randomUUID(),
@@ -300,5 +360,5 @@ if (results.failures > 0) {
   process.exit(1);
 }
 console.log(
-  `The generated Site wires ${CONTENT_PAIR.composer} and ${CONTENT_PAIR.npm} ${version}: keys, crontab, migrations and routes.`,
+  `The generated Site wires ${CONTENT_PAIR.composer} and ${CONTENT_PAIR.npm} ${version}: keys, crontab, migrations, routes and forms.`,
 );

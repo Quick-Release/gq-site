@@ -30,6 +30,12 @@ export const DEFAULT_ARTIFACTS_JURISDICTION = "eu";
 // force, and the consent Runtime's default (CN-R10; @getquick/content's
 // MAX_RETENTION_DAYS): 5 years.
 export const MAX_CONSENT_RETENTION_DAYS = 1826;
+// Headless forms (gq-platform ADR 0009): the form providers a Site can choose,
+// and the spam controls it can rely on. @getquick/content's forms handler
+// applies a form's own Gravity Forms honeypot whenever the form enables it;
+// Turnstile is verified server-side when the Site chooses it.
+export const FORM_PROVIDERS = ["gravityforms"];
+export const FORM_SPAM_CONTROLS = ["honeypot", "turnstile"];
 
 // Where `$schema` points from a site root, through the site's own install.
 export const SCHEMA_URL = "./node_modules/@getquick/site/schema/gq.ops.schema.json";
@@ -236,6 +242,31 @@ export const manifestSchema = z
           ),
       })
       .optional(),
+    forms: z
+      .strictObject({
+        provider: z
+          .enum(FORM_PROVIDERS)
+          .describe(
+            'The form plugin the CMS runs: "gravityforms". wordpress.plugins must list it.',
+          ),
+        spam: z
+          .array(z.enum(FORM_SPAM_CONTROLS))
+          .refine((controls) => new Set(controls).size === controls.length, "repeats a control")
+          .optional()
+          .describe(
+            'The spam controls the Site relies on: "honeypot" (Gravity Forms\' own, on each ' +
+              'form that enables it) and "turnstile" (Cloudflare Turnstile, verified by the ' +
+              "Frontend; needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY in Sigillo). Left " +
+              "out, none beyond what each form enables.",
+          ),
+      })
+      .optional()
+      .describe(
+        "Headless forms (gq-platform ADR 0009): gq sync manages the Frontend's /gq/forms/ " +
+          "route, which posts each form to the CMS, and gq site check and gq doctor check " +
+          'the forms published content references. Needs contentRuntime "package". Left out, ' +
+          "the Site has no form endpoint.",
+      ),
     ci: z
       .strictObject({
         worker: z.string().optional(),
@@ -308,7 +339,27 @@ export const manifestSchema = z
         "Written by gq offboard: the Site is offboarded, and gq refuses whatever would expose it again.",
       ),
   })
+  .superRefine(checkForms)
   .meta({ title: "gq.ops.json", description: "A GETQUICK site's manifest (schema v1)." });
+
+// forms: on a content Site with the package pair, whose CMS deploy activates
+// the provider's plugin.
+function checkForms({ forms, variant, contentRuntime, wordpress }, context) {
+  if (forms === undefined) return;
+  const issue = (message) => context.addIssue({ code: "custom", path: ["forms"], message });
+  if (variant !== "content" || contentRuntime !== "package") {
+    issue('needs a content Site on the package pair (variant "content", contentRuntime "package")');
+  }
+  // A provider is named as its plugin's slug, which the CMS deploy activates.
+  if (!wordpress?.plugins.includes(forms.provider)) {
+    issue(`needs ${forms.provider} in wordpress.plugins, so the CMS deploy activates it`);
+  }
+}
+
+/** The spam controls gq.ops.json `forms` declares; empty without forms. */
+export function formSpamControls(ops) {
+  return ops.forms?.spam ?? [];
+}
 
 // wordpress.languages: beside the default language, each locale and slug
 // once, and the plugins Polylang's configuration needs.

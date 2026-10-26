@@ -12,6 +12,7 @@ const manifest = ops as {
   domains?: { admin: string; frontend: string };
   media?: { domain: string };
   wordpress?: { locale?: string; languages?: Array<{ locale: string; slug: string }> };
+  forms?: { provider: string };
 };
 
 // The CMS's DDEV project, which local development reads. Its own constant, so
@@ -70,6 +71,11 @@ export function content() {
         (host): host is string => Boolean(host),
       ),
     },
+    // Headless Gravity Forms (docs/guides/forms.md): with gq.ops.json
+    // `forms`, each page is stored with the descriptors of the forms it
+    // references, which its gravityforms/form blocks render and the managed
+    // /gq/forms/ route validates posts against.
+    forms: Boolean(manifest.forms),
   });
 }
 

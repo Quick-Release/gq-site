@@ -12,6 +12,7 @@ import cmsKeys from "../../blueprint/templates/fragments/cms-composer.keys.json"
 import frontendKeys from "../../blueprint/templates/fragments/frontend-package.keys.json" with { type: "json" };
 import cmsTemplate from "../../blueprint/templates/apps/cms/composer.json" with { type: "json" };
 import frontendTemplate from "../../blueprint/templates/apps/frontend/package.json" with { type: "json" };
+import ownPackage from "../../package.json" with { type: "json" };
 import { CONTENT_PAIR } from "../../src/sync/content-pair.mjs";
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
@@ -35,13 +36,15 @@ async function writeSiteFile(root, path, content) {
 }
 
 test("both halves of the pair are pinned to the same exact version", () => {
-  assert.equal(CONTENT_PAIR.version, "0.3.2");
+  assert.equal(CONTENT_PAIR.version, "0.4.0");
   assert.deepEqual(cmsKeys, { require: { [CONTENT_PAIR.composer]: CONTENT_PAIR.version } });
   assert.deepEqual(frontendKeys, { dependencies: { [CONTENT_PAIR.npm]: CONTENT_PAIR.version } });
   // The skeletons start with the same pins, where their formatters keep them
   // (and gq packages reads the CMS's from its template's require).
   assert.equal(cmsTemplate.require[CONTENT_PAIR.composer], CONTENT_PAIR.version);
   assert.equal(frontendTemplate.dependencies[CONTENT_PAIR.npm], CONTENT_PAIR.version);
+  // gq-site's own readiness (consent, forms) resolves the same release.
+  assert.equal(ownPackage.dependencies[CONTENT_PAIR.npm], CONTENT_PAIR.version);
 });
 
 test("gq new wires a Site to the pinned pair: keys, routes, migrations and identity", async () => {
@@ -49,13 +52,13 @@ test("gq new wires a Site to the pinned pair: keys, routes, migrations and ident
 
   const ops = await readJson(root, "gq.ops.json");
   assert.equal(ops.contentRuntime, "package");
-  assert.equal((await readJson(root, COMPOSER)).require["getquick/gq-content"], "0.3.2");
-  assert.equal((await readJson(root, FRONTEND_PACKAGE)).dependencies["@getquick/content"], "0.3.2");
+  assert.equal((await readJson(root, COMPOSER)).require["getquick/gq-content"], "0.4.0");
+  assert.equal((await readJson(root, FRONTEND_PACKAGE)).dependencies["@getquick/content"], "0.4.0");
 
   const lock = await readJson(root, "gq.lock.json");
-  assert.deepEqual(lock.keys[COMPOSER], { "require.getquick/gq-content": hash('"0.3.2"') });
+  assert.deepEqual(lock.keys[COMPOSER], { "require.getquick/gq-content": hash('"0.4.0"') });
   assert.deepEqual(lock.keys[FRONTEND_PACKAGE], {
-    "dependencies.@getquick/content": hash('"0.3.2"'),
+    "dependencies.@getquick/content": hash('"0.4.0"'),
   });
   // The route adapters are managed: gq sync keeps them in step.
   for (const route of ROUTES) {
@@ -126,11 +129,11 @@ test("gq sync restores a half of the pair a Site dropped", async () => {
   const check = await run(["sync", "--check"]);
   assert.equal(check.code, 1);
   assert.match(check.stdout, /apps\/frontend\/package\.json: pending/u);
-  assert.match(check.stdout, /getquick\/gq-content 0\.3\.2.*@getquick\/content is missing/u);
+  assert.match(check.stdout, /getquick\/gq-content 0\.4\.0.*@getquick\/content is missing/u);
 
   const sync = await run(["sync"]);
   assert.equal(sync.code, 0, sync.stderr);
-  assert.equal((await readJson(root, FRONTEND_PACKAGE)).dependencies["@getquick/content"], "0.3.2");
+  assert.equal((await readJson(root, FRONTEND_PACKAGE)).dependencies["@getquick/content"], "0.4.0");
 });
 
 test("gq sync names a pinned file a Site deleted, and how to get it back", async () => {
@@ -145,7 +148,7 @@ test("gq sync names a pinned file a Site deleted, and how to get it back", async
   );
   const recreated = await run(["sync", "--recreate", COMPOSER]);
   assert.equal(recreated.code, 0, recreated.stderr);
-  assert.equal((await readJson(root, COMPOSER)).require["getquick/gq-content"], "0.3.2");
+  assert.equal((await readJson(root, COMPOSER)).require["getquick/gq-content"], "0.4.0");
 });
 
 test("gq sync --check fails, naming both, when a Site's halves disagree", async () => {
@@ -153,13 +156,13 @@ test("gq sync --check fails, naming both, when a Site's halves disagree", async 
   const text = await readSite(root, COMPOSER);
   await writeFile(
     join(root, COMPOSER),
-    text.replace('"getquick/gq-content": "0.3.2"', '"getquick/gq-content": "0.4.0"'),
+    text.replace('"getquick/gq-content": "0.4.0"', '"getquick/gq-content": "0.3.2"'),
   );
   const before = await snapshot(root);
 
   const check = await run(["sync", "--check"]);
   assert.equal(check.code, 1);
-  assert.match(check.stdout, /getquick\/gq-content 0\.4\.0.*@getquick\/content 0\.3\.2.*disagree/u);
+  assert.match(check.stdout, /getquick\/gq-content 0\.3\.2.*@getquick\/content 0\.4\.0.*disagree/u);
   const sync = await run(["sync"]);
   assert.equal(sync.code, 1);
   assert.deepEqual(await snapshot(root), before);
@@ -173,7 +176,7 @@ test("a Site generated before the pair keeps its copied runtime through gq sync"
   delete ops.contentRuntime;
   await writeFile(join(root, "gq.ops.json"), `${JSON.stringify(ops, null, 2)}\n`);
   const composer = (await readSite(root, COMPOSER)).replace(
-    /,\n {4}"getquick\/gq-content": "0\.3\.2"/u,
+    /,\n {4}"getquick\/gq-content": "0\.4\.0"/u,
     "",
   );
   await writeFile(join(root, COMPOSER), composer);
@@ -210,12 +213,12 @@ test("an older Site opts in to the pair once it deletes its copied routes", asyn
   // its own route handlers and no lib/content.ts, @getquick/content 0.1.0 for
   // consent and no CMS pin; then it sets contentRuntime "package".
   const composer = (await readSite(root, COMPOSER)).replace(
-    /,\n {4}"getquick\/gq-content": "0\.3\.2"/u,
+    /,\n {4}"getquick\/gq-content": "0\.4\.0"/u,
     "",
   );
   await writeFile(join(root, COMPOSER), composer);
   const frontend = (await readSite(root, FRONTEND_PACKAGE)).replace(
-    '"@getquick/content": "0.3.2"',
+    '"@getquick/content": "0.4.0"',
     '"@getquick/content": "0.1.0"',
   );
   await writeFile(join(root, FRONTEND_PACKAGE), frontend);
@@ -243,10 +246,10 @@ test("an older Site opts in to the pair once it deletes its copied routes", asyn
   // Deleted routes are regenerated, and a pin already at the blueprint's
   // version is taken over as it stands.
   for (const route of ROUTES) await rm(join(root, route));
-  await writeFile(join(root, FRONTEND_PACKAGE), frontend.replace('"0.1.0"', '"0.3.2"'));
+  await writeFile(join(root, FRONTEND_PACKAGE), frontend.replace('"0.1.0"', '"0.4.0"'));
   const sync = await run(["sync", "--recreate", "apps/frontend/src/lib/content.ts"]);
   assert.equal(sync.code, 0, sync.stdout + sync.stderr);
-  assert.equal((await readJson(root, COMPOSER)).require["getquick/gq-content"], "0.3.2");
+  assert.equal((await readJson(root, COMPOSER)).require["getquick/gq-content"], "0.4.0");
   for (const route of ROUTES) {
     assert.match(await readSite(root, route), /from "\.\.\/\.\.\/lib\/content"/u, route);
   }
@@ -255,7 +258,7 @@ test("an older Site opts in to the pair once it deletes its copied routes", asyn
   assert.match(await readSite(root, "apps/frontend/src/lib/content.ts"), /createContentRuntime\(/u);
   const synced = await readJson(root, "gq.lock.json");
   assert.deepEqual(synced.keys[FRONTEND_PACKAGE], {
-    "dependencies.@getquick/content": hash('"0.3.2"'),
+    "dependencies.@getquick/content": hash('"0.4.0"'),
   });
   const check = await run(["sync", "--check"]);
   assert.equal(check.code, 0, check.stdout + check.stderr);

@@ -264,6 +264,34 @@
       },
       "additionalProperties": false
     },
+    "forms": {
+      "description": "Headless forms (gq-platform ADR 0009): gq sync manages the Frontend's /gq/forms/ route, which posts each form to the CMS, and gq site check and gq doctor check the forms published content references. Needs contentRuntime \"package\". Left out, the Site has no form endpoint.",
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "gravityforms"
+          ],
+          "description": "The form plugin the CMS runs: \"gravityforms\". wordpress.plugins must list it."
+        },
+        "spam": {
+          "description": "The spam controls the Site relies on: \"honeypot\" (Gravity Forms' own, on each form that enables it) and \"turnstile\" (Cloudflare Turnstile, verified by the Frontend; needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY in Sigillo). Left out, none beyond what each form enables.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "honeypot",
+              "turnstile"
+            ]
+          }
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "additionalProperties": false
+    },
     "ci": {
       "type": "object",
       "properties": {

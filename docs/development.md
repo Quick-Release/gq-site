@@ -252,6 +252,23 @@ recorded separately above. Tailwind pins are exactly `4.3.3`.
 Commerce generation and gq-design #12 Actions package access remain separately
 owned prerequisites, outside these consumer checks.
 
+The `0.24.0` release adopts the published `0.4.0` pair (headless Gravity
+Forms, gq-platform ADR 0009) from source/tag
+`61f51f4f98e7974e1447fd7cb45a0135c847a1c7`, independently verifying the npm
+archive SHA-256 `0dd95243e83a74ba918c44c3fdb4cf4289e8f48eeb56711b3a89f3664af19482`
+(SRI `sha512-YSKKFoil…Rmg==`, as in the npm lock) and public CMS ZIP SHA-256
+`1d177a9f1508e501b2c495881748a51d89e1a88d3f03d868f6eb0a2e858a85fc`, the
+archive Composer serves for `getquick/gq-content` `0.4.0`. No content archive
+override is used for release checks: the root suite passes 787 tests,
+`frontend-check.sh` passes, including its forms leg (a Site declaring
+`forms` with Turnstile syncs the form route and passes Astro check with zero
+diagnostics, tests, lint and format), and the paired-package smoke passes all
+33 checks. The forms checks run the synced route in workerd: GET is a 405, a
+post missing required fields is checked against the descriptor stored with its
+page, a form its page doesn't reference is refused, neither post reaches the
+CMS, and other paths under `/gq/forms/` are 404s. No run has used a real
+Gravity Forms install; that is the first adopting Site's work.
+
 ## Releasing
 
 1. Bump `version` in `package.json`, add its section to `CHANGELOG.md`, and

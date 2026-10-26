@@ -53,9 +53,13 @@ for each that fails. What a Site that isn't ready looks like:
 | `legal-pages`       | GQ Config's Legal Contract lacks a required legal page or the data controller, or GQ Config predates it (0.4.3)              | pages render; their legal links are incomplete           |
 | `consent-runtime`   | GQ Config's GA4 toggle is on (with an ID) and a homepage has no consent Runtime                                              | nothing loads GA4 without the Runtime                    |
 | `third-party-hosts` | a homepage loads from a host outside the Site, or the consent Runtime blocked an unknown host                                | that host is contacted before any consent                |
+| `gravity-forms`     | a Site with `forms`: the CMS's WPGraphQL has no `getquickForms` (Gravity Forms inactive, or gq-content before 0.4.0)         | no form renders; every post is refused                   |
+| `form-fields`       | a Site with `forms`: a form published content references has an unsupported field or setting                                 | that form is a status message, not a form                |
+| `spam-controls`     | a Site with `forms` chose Turnstile, and Sigillo lacks `TURNSTILE_SECRET_KEY` or `TURNSTILE_SITE_KEY`                        | every post is refused                                    |
 | media checks        | `gq media check --upload` isn't ready (see [Independent media](#independent-media))                                          | uploads go down with the CMS                             |
 
-The consent and legal checks are [the consent guide](consent.md)'s. Warnings
+The consent and legal checks are [the consent guide](consent.md)'s; the form
+checks are [the forms guide](forms.md#readiness)'s. Warnings
 don't block readiness: a legal page without a translation
 (`missing_translation`), events waiting on a failed refresh
 (`delivery-delays`, which `wp gq-events delays` details), a front page
@@ -65,7 +69,8 @@ every language's), or no shared design presets stored yet.
 `gq site check --local` (`pnpm site:check:local`) asks the same of this
 machine's CMS: DDEV running is only its first check; WordPress must be
 installed, with WPGraphQL and the GETQUICK fields, and uploads must stay on
-disk. It says nothing about production.
+disk. On a Site with `forms`, `wp gq-forms status` must find Gravity Forms
+active and every referenced form supported. It says nothing about production.
 
 The checks read only, except the media upload probe, which deletes what it
 uploads. None of them resets a CMS, runs a production migration extension

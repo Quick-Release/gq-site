@@ -43,4 +43,6 @@ its code.
 
 For provider token precedence, see the [manifest and environment reference](../reference/manifest.md).
 For the optional, separate CMS GraphQL and automation identities, see
-[Cloudflare Access for the CMS](cms-access.md).
+[Cloudflare Access for the CMS](cms-access.md). A Site with headless forms
+that chose Turnstile keeps `TURNSTILE_SECRET_KEY` and `TURNSTILE_SITE_KEY` in
+staging; see [Headless Gravity Forms](forms.md#turnstile).

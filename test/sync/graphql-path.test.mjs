@@ -67,7 +67,13 @@ const CONSENT_RUNTIME = {
     'export const consentMigrationsDirectory = "/fixture/consent-migrations/";\n',
 };
 
-async function generatedDeploy({ graphqlPath, durable = true, consent = false, ops = {} } = {}) {
+async function generatedDeploy({
+  graphqlPath,
+  durable = true,
+  consent = false,
+  ops = {},
+  files = {},
+} = {}) {
   const fixture = await createFixtureSite({
     ops: { ...OPS, wordpress: { plugins: [], ...(graphqlPath ? { graphqlPath } : {}) }, ...ops },
     files: {
@@ -75,6 +81,7 @@ async function generatedDeploy({ graphqlPath, durable = true, consent = false, o
       "apps/frontend/README.md": "Site-owned Frontend\n",
       ...(durable ? { "apps/frontend/migrations/0001.sql": "-- fixture\n" } : {}),
       ...(consent ? CONSENT_RUNTIME : {}),
+      ...files,
     },
   });
   const synced = await fixture.run(["sync"]);
@@ -371,4 +378,79 @@ test("managed deploy rejects malformed preview and partial secrets before Alchem
     assert.equal(result.stdout, "");
     assert.match(result.stderr, /preview.cmsUrl/u);
   }
+});
+
+// --- headless forms (gq.ops.json `forms`) ------------------------------------
+
+const FORMS_OPS = {
+  contentRuntime: "package",
+  wordpress: { plugins: ["gravityforms"] },
+  forms: { provider: "gravityforms", spam: ["honeypot", "turnstile"] },
+};
+const TURNSTILE_KEYS = { TURNSTILE_SECRET_KEY: "turnstile-secret", TURNSTILE_SITE_KEY: "site-key" };
+// The files whose keys gq sync manages on a Site with the package pair.
+const PAIR_FILES = { "apps/frontend/package.json": "{}\n", "apps/cms/composer.json": "{}\n" };
+
+test("a Site with forms binds its rate limiter, and Turnstile's keys when it chose Turnstile", async () => {
+  const turnstile = await generatedDeploy({ ops: FORMS_OPS, files: PAIR_FILES });
+  const { env } = turnstile.website({
+    ...TURNSTILE_KEYS,
+    GQ_FORMS_ACCESS_CLIENT_ID: "forms-id",
+    GQ_FORMS_ACCESS_CLIENT_SECRET: "forms-secret",
+  });
+  assert.deepEqual(env.TURNSTILE_SECRET_KEY, { redacted: "turnstile-secret" });
+  // The site key is public: the Site's renderer reads it as a plain binding.
+  assert.equal(env.TURNSTILE_SITE_KEY, "site-key");
+  assert.deepEqual(env.GQ_FORMS_ACCESS_CLIENT_ID, { redacted: "forms-id" });
+  assert.deepEqual(env.GQ_FORMS_ACCESS_CLIENT_SECRET, { redacted: "forms-secret" });
+  assert.equal(env.FORMS_RATE_LIMITER.rateLimit, "FORMS_RATE_LIMITER");
+  assert.deepEqual(env.FORMS_RATE_LIMITER.simple, { limit: 10, period: 60 });
+  assert.ok(Number.isInteger(env.FORMS_RATE_LIMITER.namespaceId));
+
+  const honeypot = await generatedDeploy({
+    ops: { ...FORMS_OPS, forms: { provider: "gravityforms", spam: ["honeypot"] } },
+    files: PAIR_FILES,
+  });
+  const honeypotEnv = honeypot.website(TURNSTILE_KEYS).env;
+  assert.equal(honeypotEnv.TURNSTILE_SECRET_KEY, undefined);
+  assert.equal(honeypotEnv.TURNSTILE_SITE_KEY, undefined);
+  assert.equal(honeypotEnv.FORMS_RATE_LIMITER.rateLimit, "FORMS_RATE_LIMITER");
+
+  // Without forms, nothing of them is bound, whatever the environment holds.
+  const none = (await generatedDeploy()).website({
+    ...TURNSTILE_KEYS,
+    GQ_FORMS_ACCESS_CLIENT_ID: "forms-id",
+    GQ_FORMS_ACCESS_CLIENT_SECRET: "forms-secret",
+  }).env;
+  for (const key of [
+    "FORMS_RATE_LIMITER",
+    "TURNSTILE_SECRET_KEY",
+    "TURNSTILE_SITE_KEY",
+    "GQ_FORMS_ACCESS_CLIENT_ID",
+  ]) {
+    assert.equal(none[key], undefined, key);
+  }
+});
+
+test("the Frontend deploy refuses Turnstile without its keys and a partial Access pair", async () => {
+  const deploy = await generatedDeploy({ ops: FORMS_OPS, files: PAIR_FILES });
+  const missing = deploy.scriptResult({ TURNSTILE_SITE_KEY: "site-key" });
+  assert.equal(missing.status, 1);
+  assert.equal(missing.stdout, "");
+  assert.match(missing.stderr, /chooses Turnstile, but TURNSTILE_SECRET_KEY isn't set/u);
+
+  const partial = deploy.scriptResult({
+    ...TURNSTILE_KEYS,
+    GQ_FORMS_ACCESS_CLIENT_ID: "forms-id",
+  });
+  assert.equal(partial.status, 1);
+  assert.match(partial.stderr, /must be set together/u);
+  assert.doesNotMatch(partial.stderr, /forms-id|turnstile-secret/u);
+
+  assert.equal(deploy.script(TURNSTILE_KEYS).url, "https://cms.example.test/wp/graphql");
+  const honeypot = await generatedDeploy({
+    ops: { ...FORMS_OPS, forms: { provider: "gravityforms", spam: ["honeypot"] } },
+    files: PAIR_FILES,
+  });
+  assert.equal(honeypot.script().url, "https://cms.example.test/wp/graphql");
 });

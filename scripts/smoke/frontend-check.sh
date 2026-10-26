@@ -5,7 +5,10 @@
 # runs the Frontend's tests (the rendered-route tests in src/routes.test.ts),
 # `astro check` against the package's types, lint and format,
 # then lists a second language in its gq.ops.json (wordpress.languages) and
-# runs the tests and `astro check` again, as a bilingual Site.
+# runs the tests and `astro check` again, as a bilingual Site. Last it
+# declares headless forms (gq.ops.json `forms`, Turnstile included), syncs the
+# managed /gq/forms/ route and checks the Frontend again, so the route adapter
+# type-checks against the pinned package's forms exports.
 #
 # The site isn't named Acme, the name the tests' stub CMS uses, so a test that
 # expects the stub's name where the site renders its own fails here.
@@ -53,3 +56,20 @@ fs.writeFileSync(path, JSON.stringify(ops, null, 2) + "\n");
 '
 pnpm test
 pnpm check
+
+# The same Site with headless Gravity Forms: gq sync writes the managed form
+# route, which must type-check, lint and format as the Site's own code does.
+node -e '
+const fs = require("node:fs");
+const path = "../../gq.ops.json";
+const ops = JSON.parse(fs.readFileSync(path, "utf8"));
+ops.wordpress.plugins.push("gravityforms");
+ops.forms = { provider: "gravityforms", spam: ["honeypot", "turnstile"] };
+fs.writeFileSync(path, JSON.stringify(ops, null, 2) + "\n");
+'
+(cd ../.. && pnpm exec gq sync >/dev/null)
+test -f "src/pages/gq/forms/[...rest].ts"
+pnpm test
+pnpm check
+pnpm lint
+pnpm exec vp fmt --check .

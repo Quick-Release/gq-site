@@ -56,7 +56,8 @@ step (`scripts/ci-release.mjs`) and the tests of the CI Worker and release
 step (`scripts/ci.test.mjs`), and the CMS deploy script Ploi runs
 (`deploy/ploi/admin.sh`, with `deploy/ploi/polylang.sh` for a bilingual
 site's languages). On a Site on the content package pair, the Frontend's
-`/gq/events`, `/gq/refresh` and `/gq/consent` routes are fully generated too.
+`/gq/events`, `/gq/refresh` and `/gq/consent` routes are fully generated too,
+and so is `/gq/forms/` while `gq.ops.json` declares `forms`.
 
 ## The content runtime
 
@@ -69,7 +70,7 @@ the registry) and the npm package `@getquick/content`
 `gq new` writes `"contentRuntime": "package"` in `gq.ops.json`, and on such a
 Site `gq sync` manages:
 
-- **The pins**, each a managed key set to the same exact version (0.3.2):
+- **The pins**, each a managed key set to the same exact version (0.4.0):
   `require.getquick/gq-content` in `apps/cms/composer.json` and
   `dependencies.@getquick/content` in `apps/frontend/package.json`.
   `gq sync --check` fails while the two disagree, naming both. To upgrade,
@@ -79,7 +80,10 @@ Site `gq sync` manages:
   `refresh.ts`, which hand each request to the package's `handleEvent` and
   `handleRefresh`, and `gq/consent.ts` and `gq/consent/[...rest].ts`, which
   hand the consent records and their reads to its `createConsentServer`
-  ([Consent and legal pages](consent.md)).
+  ([Consent and legal pages](consent.md)). On a Site whose `gq.ops.json`
+  declares `forms`, `gq/forms/[...rest].ts` hands form posts to its
+  `createFormsServer`; without `forms` there is none, and `gq sync` removes
+  one it wrote and the Site hasn't edited ([Headless Gravity Forms](forms.md)).
 
 The Site configures the runtime in `apps/frontend/src/lib/content.ts`
 (created once): its identity is `gq.ops.json`'s `project`, its languages are

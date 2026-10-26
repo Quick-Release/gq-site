@@ -7,7 +7,7 @@ plugin `getquick/gq-content` and the npm package `@getquick/content`, pinned
 to one version
 ([ADR 0020](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
 This guide moves an existing Site onto the pair at the blueprint's pin,
-0.3.2. Nothing moves it
+0.4.0. Nothing moves it
 for you: until its `gq.ops.json` says `"contentRuntime": "package"`, `gq sync`
 leaves the copy alone.
 
@@ -72,7 +72,7 @@ same PHP namespace, so WordPress stops if both load.
 
 1. If `apps/frontend/package.json` already depends on `@getquick/content` (a
    Site that adopted consent added 0.1.0 by hand), set it to exactly the
-   blueprint's pin (`0.3.2`) or remove it. gq sync takes over a pin that
+   blueprint's pin (`0.4.0`) or remove it. gq sync takes over a pin that
    already matches; a different one is the Site's own, and gq sync stops on
    it as a local edit.
 2. Run:
@@ -181,7 +181,7 @@ front page and the site chrome are stored, so a script can wait on it.
 Then check:
 
 - `gq frontend events check`: the Frontend accepts the CMS's signed events.
-- `wp gq-events version` on the CMS prints the pinned version (`0.3.2`), and `wp gq-events status`
+- `wp gq-events version` on the CMS prints the pinned version (`0.4.0`), and `wp gq-events status`
   shows no stuck deliveries.
 - `pnpm doctor` and `pnpm site:check`.
 
@@ -308,6 +308,20 @@ and reduced-motion behavior. Supporting contexts and media tests are not new
 CMS editor captures or proof of every dynamic layout. Release the CMS and
 Frontend together through the Site's normal workflow; a blueprint upgrade
 does not deploy either half.
+
+### 0.3.2 to 0.4.0 (`@getquick/site` 0.24.0)
+
+Upgrade the root `@getquick/site` pin to `0.24.0`, run `pnpm install`, then
+`pnpm exec gq sync`. Sync updates both managed content keys to exactly
+`0.4.0`. Run `pnpm install` again and, in `apps/cms`,
+`composer update getquick/gq-content`. Review and commit `gq.lock.json`,
+`pnpm-lock.yaml` and `apps/cms/composer.lock`, then check
+`pnpm exec gq sync --check`.
+
+0.4.0 adds headless Gravity Forms, and nothing changes for a Site that
+doesn't opt in: no migration, no new binding and no new route. Its CMS
+module stays dormant without Gravity Forms. To use forms, follow
+[Headless Gravity Forms](forms.md). Release the CMS and the Frontend together.
 
 ## Rolling back
 
