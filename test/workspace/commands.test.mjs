@@ -869,3 +869,63 @@ test("gq setup and gq doctor take no options of their own beyond --no-ddev", asy
     assert.match(result.stderr, /Usage: gq (setup \[--no-ddev\]|doctor)/u);
   }
 });
+
+// --- gq doctor: headless forms -------------------------------------------------
+
+const FORMS_ROUTE = "apps/frontend/src/pages/gq/forms/[...rest].ts";
+const STAGE_NAMES =
+  "sigillo secrets --api-url https://secrets.example.test --project PROJECT1 --env stage";
+
+function formsSite({ spam = ["honeypot"], files = {} } = {}) {
+  return healthySite(files, {
+    ...OPS,
+    contentRuntime: "package",
+    wordpress: { plugins: ["gravityforms"] },
+    forms: { provider: "gravityforms", spam },
+    sigillo: { ...OPS.sigillo, environments: { local: "dev", staging: "stage" } },
+  });
+}
+
+test("gq doctor checks a Site's forms wiring: its route, its runtime opt-in and Turnstile's keys", async () => {
+  const wired = {
+    [FORMS_ROUTE]: "// managed\n",
+    "apps/frontend/src/lib/content.ts": "createContentRuntime({ forms: true });\n",
+  };
+  const honeypot = await (await formsSite({ files: wired })).run(["doctor"], { exec: machine() });
+  assert.equal(honeypot.code, 0, honeypot.stdout);
+  assert.match(
+    honeypot.stdout,
+    /\nForms:\n {2}✓ apps\/frontend\/src\/pages\/gq\/forms\/\[\.\.\.rest\]\.ts handles form posts\n {2}✓ src\/lib\/content\.ts passes forms to the content runtime\n/u,
+  );
+
+  const unwired = await (await formsSite()).run(["doctor"], { exec: machine() });
+  assert.equal(unwired.code, 1);
+  assert.match(
+    unwired.stdout,
+    /✗ apps\/frontend\/src\/pages\/gq\/forms\/\[\.\.\.rest\]\.ts is missing — run: gq sync/u,
+  );
+  assert.match(
+    unwired.stdout,
+    /⚠ apps\/frontend\/src\/lib\/content\.ts doesn't pass forms to createContentRuntime/u,
+  );
+
+  const turnstile = await formsSite({ spam: ["honeypot", "turnstile"], files: wired });
+  const without = await turnstile.run(["doctor"], {
+    exec: machine({ stdout: { [STAGE_NAMES]: "TURNSTILE_SITE_KEY\n" } }),
+  });
+  assert.equal(without.code, 1);
+  assert.match(
+    without.stdout,
+    /✗ gq\.ops\.json forms\.spam chooses Turnstile, but Sigillo staging lacks TURNSTILE_SECRET_KEY/u,
+  );
+  const withKeys = await turnstile.run(["doctor"], {
+    exec: machine({ stdout: { [STAGE_NAMES]: "TURNSTILE_SITE_KEY\nTURNSTILE_SECRET_KEY\n" } }),
+  });
+  assert.equal(withKeys.code, 0, withKeys.stdout);
+  assert.match(withKeys.stdout, /✓ Sigillo staging has Turnstile's keys/u);
+});
+
+test("gq doctor has no forms section for a Site without forms", async () => {
+  const result = await (await healthySite()).run(["doctor"], { exec: machine() });
+  assert.doesNotMatch(result.stdout, /Forms:/u);
+});

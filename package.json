@@ -1,6 +1,6 @@
 {
   "name": "@getquick/site",
-  "version": "0.23.2",
+  "version": "0.24.0",
   "description": "Shared tooling for GETQUICK sites: the gq CLI",
   "license": "MIT",
   "type": "module",
@@ -31,13 +31,13 @@
     "format": "vp fmt --write .",
     "format:check": "vp fmt --check .",
     "lint": "vp lint .",
-    "test": "node --test \"test/*.test.mjs\" \"test/{ci,cli,cloudflare,cms,db,frontend,manifest,media,offboard,ops,packages,ploi,release,scope,sigillo,site,skills,sync,workspace}/*.test.mjs\"",
+    "test": "node --test \"test/*.test.mjs\" \"test/{ci,cli,cloudflare,cms,db,forms,frontend,manifest,media,offboard,ops,packages,ploi,release,scope,sigillo,site,skills,sync,workspace}/*.test.mjs\"",
     "schema": "node scripts/generate-schema.mjs",
     "release:publish": "node scripts/publish.mjs"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
-    "@getquick/content": "0.3.2",
+    "@getquick/content": "0.4.0",
     "aws4fetch": "1.0.20",
     "zod": "^4.6.5"
   },

@@ -25,6 +25,10 @@
 //             optional service it switches on (GA4) has the consent Runtime
 //             to gate it; and the public pages load nothing from a
 //             third-party host (live, or blocked by the Runtime).
+//   forms     a Site that declares `forms` (gq-platform ADR 0009): Gravity
+//             Forms is active on the CMS, every form published content
+//             references can be sent, and Turnstile, when chosen, has its
+//             keys (src/forms/readiness.mjs).
 //   media     `gq media check --upload`: an upload through the CMS lands on
 //             the media host and is served without it.
 //
@@ -41,6 +45,7 @@ import { siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
 import { productionMediaReadiness } from "../media/readiness.mjs";
 import { cmsFetch } from "../cms/access.mjs";
 import { CMS_CONSENT_READ_TOKEN, CONSENT_READ_TOKEN } from "../frontend/consent.mjs";
+import { siteFormsReadiness } from "../forms/readiness.mjs";
 import { EVENT_SECRET, inspectCmsEvents } from "../ploi/events.mjs";
 
 const TIMEOUT = 30_000;
@@ -827,6 +832,7 @@ export async function siteReadiness({ ops, env, fetch, origin, upload = true, no
     })),
     ...(await cmsDeliveryReadiness({ ops, env, fetch })),
     ...(await consentReadiness({ ops, env, fetch, origin: frontend, languages })),
+    ...(await siteFormsReadiness({ ops, env, fetch })),
   ];
   const media = await productionMediaReadiness({ ops, env, fetch, upload, now });
   return result([...checks, ...media.checks.map((check) => ({ area: "media", ...check }))]);

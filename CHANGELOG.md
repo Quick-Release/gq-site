@@ -3,6 +3,45 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## 0.24.0 — 2026-10-26
+
+### Added
+
+- **Headless Gravity Forms**
+  ([gq-platform ADR 0009](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0009-headless-gravity-forms.md)).
+  The optional `gq.ops.json` key `forms` (`provider: "gravityforms"`, `spam`:
+  `"honeypot"` and/or `"turnstile"`) needs `contentRuntime: "package"` and
+  `gravityforms` in `wordpress.plugins`. With it, `gq sync` manages
+  `apps/frontend/src/pages/gq/forms/[...rest].ts`, which hands
+  `POST /gq/forms/<id>` to `@getquick/content/forms/server`'s
+  `createFormsServer`, using the descriptor published with the posting page.
+  Without the key, sync writes no form route, and it removes one it wrote that
+  the Site hasn't edited. The managed route holds no form logic. New Sites'
+  `src/lib/content.ts` passes `forms: Boolean(manifest.forms)`; existing Sites
+  add `forms: true` themselves. Rendering the `gravityforms/form` block stays
+  Site-owned: see [Headless Gravity Forms](docs/guides/forms.md).
+- The Frontend deploy binds `FORMS_RATE_LIMITER` on a Site with forms. When
+  the Site chose Turnstile, it also binds `TURNSTILE_SECRET_KEY` (a secret) and
+  `TURNSTILE_SITE_KEY` (plain) from Sigillo staging, and refuses to deploy
+  without them. An optional `GQ_FORMS_ACCESS_CLIENT_ID` and
+  `GQ_FORMS_ACCESS_CLIENT_SECRET` pair serves a CMS whose submissions path is
+  behind Cloudflare Access; half a pair is refused. CI forwards all four.
+- Readiness adds a `forms` area to `gq site check`. `gravity-forms` checks
+  that the CMS's WPGraphQL has gq-content's `getquickForms`. `form-fields`
+  checks every form that published content references with `formsReadiness`.
+  `spam-controls` checks Turnstile's keys, and `cms-access` checks the Access
+  pair. `gq site check --local` runs `wp gq-forms status --format=json` in
+  DDEV. `gq doctor` checks the form route, the runtime opt-in and Turnstile's
+  keys in Sigillo staging.
+
+### Changed
+
+- Pin `@getquick/content` and `getquick/gq-content` to the 0.4.0 pair, which
+  adds the forms capability. Nothing changes for a Site that doesn't opt in.
+  Existing package-runtime Sites upgrade `@getquick/site`, run `gq sync`,
+  install both halves, and commit both lockfiles
+  ([0.3.2 to 0.4.0](docs/guides/content-pair-migration.md#032-to-040-getquicksite-0240)).
+
 ## 0.23.2 — 2026-10-24
 
 ### Fixed

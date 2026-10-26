@@ -92,6 +92,31 @@ if (!consentToken && consentRecords) {
   );
 }
 
+// A Site with headless forms (gq.ops.json `forms`) that chose Turnstile
+// needs both of its keys from Sigillo staging: without them the form
+// endpoint refuses every post, so the deploy stops here instead. The Access
+// service token for the CMS's submissions path is optional, both or neither.
+if (ops.forms?.spam?.includes("turnstile")) {
+  const missing = ["TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY"].filter(
+    (name) => !process.env[name]?.trim(),
+  );
+  if (missing.length > 0) {
+    console.error(
+      `gq.ops.json forms.spam chooses Turnstile, but ${missing.join(" and ")} ${missing.length === 1 ? "isn't" : "aren't"} set: add ${missing.length === 1 ? "it" : "them"} to Sigillo staging (@getquick/site docs/guides/forms.md).`,
+    );
+    process.exit(1);
+  }
+}
+if (
+  Boolean(process.env.GQ_FORMS_ACCESS_CLIENT_ID?.trim()) !==
+  Boolean(process.env.GQ_FORMS_ACCESS_CLIENT_SECRET?.trim())
+) {
+  console.error(
+    "GQ_FORMS_ACCESS_CLIENT_ID and GQ_FORMS_ACCESS_CLIENT_SECRET must be set together.",
+  );
+  process.exit(1);
+}
+
 const result = spawnSync(
   alchemy,
   [

@@ -12,7 +12,10 @@
 // (the lock records it as created once it exists, whoever wrote it), unless
 // gq sync --recreate asks for it. One of an app skeleton (its `app`, the
 // app's directory) is written only with its app: while that directory is
-// missing, so an app the site already has never gains skeleton files.
+// missing, so an app the site already has never gains skeleton files. A
+// fully generated file with a `manifestKey` exists only while gq.ops.json
+// has that key: without it, gq sync writes none, and removes one it wrote
+// that the site hasn't edited since.
 import { createHash } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -146,6 +149,9 @@ export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
       ...ownership.fullyGenerated
         .filter(applies)
         .map((entry) => planGeneratedFile(root, lock, manifest, entry)),
+      ...ownership.fullyGenerated
+        .filter((entry) => !applies(entry) && entry.manifestKey !== undefined)
+        .map((entry) => planRetiredFile(root, lock, entry)),
       ...ownership.generatedSections.filter(applies).map((entry) => planSection(root, lock, entry)),
     ])),
     ...keyed.filter(({ path }) => !writing.has(path)),
@@ -171,8 +177,9 @@ export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
   return { files, lock: { path: LOCK_FILENAME, status, content } };
 }
 
-// Writes what `plan` creates or updates, the lock last. Refuses a plan with
-// an edited file: nothing is written then. What a whole managed file or
+// Writes what `plan` creates or updates, and removes what it removes, the
+// lock last. Refuses a plan with an edited file: nothing is written then.
+// What a whole managed file or
 // symlink replaces is removed first, so a write never goes through a symlink
 // the site left there; a file gq manages only part of is a regular file (or
 // missing), written in place so it keeps its mode.
@@ -184,6 +191,10 @@ export async function applyManagedFiles(root, plan) {
   for (const { path: file, status, write } of [...plan.files, { path: LOCK_FILENAME, ...lock }]) {
     if (status === "unchanged") continue;
     const path = join(root, file);
+    if (status === "remove") {
+      await rm(path, { force: true });
+      continue;
+    }
     await mkdir(dirname(path), { recursive: true });
     if (write.replace) await rm(path, { force: true });
     if (write.symlink !== undefined) await symlink(write.symlink, path);
@@ -196,9 +207,29 @@ export async function applyManagedFiles(root, plan) {
 
 // Whether an ownership entry applies to the Site: one marked with a
 // `contentRuntime` applies only to a Site whose gq.ops.json names that
-// runtime (ADR 0020), so a Site generated before keeps what it copied.
+// runtime (ADR 0020), so a Site generated before keeps what it copied; one
+// marked with a `manifestKey` only while gq.ops.json has that key (`forms`).
 function appliesTo(entry, manifest) {
-  return entry.contentRuntime === undefined || entry.contentRuntime === manifest.contentRuntime;
+  return (
+    (entry.contentRuntime === undefined || entry.contentRuntime === manifest.contentRuntime) &&
+    (entry.manifestKey === undefined || manifest[entry.manifestKey] !== undefined)
+  );
+}
+
+// A fully generated file whose `manifestKey` gq.ops.json no longer has: gq
+// sync removes it while it is as gq last wrote it, and otherwise leaves it,
+// the site's now. Either way the lock stops recording it.
+async function planRetiredFile(root, lock, { path }) {
+  const written = lock?.files[path];
+  const current = written === undefined ? undefined : await readEntry(join(root, path));
+  const status = current !== undefined && hashEntry(current) === written ? "remove" : undefined;
+  return {
+    path,
+    status,
+    current: current && displayEntry(current),
+    content: Buffer.alloc(0),
+    record: {},
+  };
 }
 
 // A fully generated file or symlink, rendered whole from its template.

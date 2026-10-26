@@ -75,6 +75,12 @@
       "contentRuntime": "package"
     },
     {
+      "path": "apps/frontend/src/pages/gq/forms/[...rest].ts",
+      "template": "templates/apps/frontend/src/pages/gq/forms/[...rest].ts",
+      "contentRuntime": "package",
+      "manifestKey": "forms"
+    },
+    {
       "path": "apps/frontend/src/pages/gq/events.ts",
       "template": "templates/apps/frontend/src/pages/gq/events.ts",
       "contentRuntime": "package"

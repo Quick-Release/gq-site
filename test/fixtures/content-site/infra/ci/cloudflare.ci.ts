@@ -30,6 +30,10 @@ const frontendSecrets = [
   "GQ_PREVIEW_ACCESS_CLIENT_SECRET",
   "GQ_AUTH_GRAPHQL_CLIENT_ID",
   "GQ_AUTH_GRAPHQL_CLIENT_SECRET",
+  "TURNSTILE_SECRET_KEY",
+  "TURNSTILE_SITE_KEY",
+  "GQ_FORMS_ACCESS_CLIENT_ID",
+  "GQ_FORMS_ACCESS_CLIENT_SECRET",
 ] as const;
 
 // Cost: containers bill memory for every second they run, and each step

@@ -20,6 +20,7 @@ const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), 
   contentRuntime?: "package";
   preview?: { cmsUrl: string; audience: string };
   wordpress?: { graphqlPath?: "/graphql" | "/wp/graphql" };
+  forms?: { provider: string; spam?: string[] };
   offboarded?: { phase: string };
 };
 const previewEnv = previewBindings(ops, process.env, Redacted.make);
@@ -86,6 +87,49 @@ const cmsSecrets: Record<string, Redacted.Redacted<string>> = graphqlClientId &&
     }
   : {};
 
+// Headless forms (gq.ops.json `forms`; the managed /gq/forms/ route). A Site
+// that chose Turnstile gets its keys from Sigillo staging: the secret as a
+// Worker secret the form endpoint verifies with, the site key as a plain
+// binding the Site's renderer reads (it is public). A CMS whose submissions
+// path is behind Cloudflare Access gets its own service token, never the
+// GraphQL reader's. deploy-frontend.mjs refuses a deploy without them.
+const turnstile = ops.forms?.spam?.includes("turnstile") ?? false;
+const turnstileSecret = process.env.TURNSTILE_SECRET_KEY?.trim();
+const turnstileSiteKey = process.env.TURNSTILE_SITE_KEY?.trim();
+const formsAccessId = process.env.GQ_FORMS_ACCESS_CLIENT_ID?.trim();
+const formsAccessSecret = process.env.GQ_FORMS_ACCESS_CLIENT_SECRET?.trim();
+if (Boolean(formsAccessId) !== Boolean(formsAccessSecret)) {
+  throw new Error(
+    "GQ_FORMS_ACCESS_CLIENT_ID and GQ_FORMS_ACCESS_CLIENT_SECRET must be set together.",
+  );
+}
+const formsSecrets: Record<string, Redacted.Redacted<string> | string> = {
+  ...(turnstile && turnstileSecret ? { TURNSTILE_SECRET_KEY: Redacted.make(turnstileSecret) } : {}),
+  ...(turnstile && turnstileSiteKey ? { TURNSTILE_SITE_KEY: turnstileSiteKey } : {}),
+  ...(formsAccessId && formsAccessSecret
+    ? {
+        GQ_FORMS_ACCESS_CLIENT_ID: Redacted.make(formsAccessId),
+        GQ_FORMS_ACCESS_CLIENT_SECRET: Redacted.make(formsAccessSecret),
+      }
+    : {}),
+};
+
+// The form endpoint's rate limit, per client IP for one request (never
+// stored): a visitor sends a form a few times at most. Its namespace is a
+// 32-bit FNV-1a hash of the Worker's name, as the consent endpoint's is
+// (infra/consent.ts), so each Site and stage counts on its own.
+const FORMS_RATE_LIMIT = { limit: 10, period: 60 } as const;
+function formsRateLimiter(worker: string) {
+  let hash = 0x811c9dc5;
+  for (const character of `${worker}:forms`) {
+    hash = Math.imul(hash ^ character.charCodeAt(0), 0x01000193) >>> 0;
+  }
+  return Cloudflare.RateLimit("FORMS_RATE_LIMITER", {
+    namespaceId: (hash % 2_000_000_000) + 1,
+    simple: FORMS_RATE_LIMIT,
+  });
+}
+
 // The Site's last-known-good published content. One database per Site and
 // stage, separate from the Worker, so a redeploy or restart keeps it; Alchemy
 // applies the Frontend's migrations, in order, before the Worker is updated.
@@ -148,6 +192,7 @@ export const Website = Cloudflare.Website.Astro(
               ...(eventSecret ? { PUBLICATION_EVENT_SECRET: Redacted.make(eventSecret) } : {}),
             }
           : cmsSecrets),
+        ...(ops.forms ? { FORMS_RATE_LIMITER: formsRateLimiter(name), ...formsSecrets } : {}),
       },
     };
   }),

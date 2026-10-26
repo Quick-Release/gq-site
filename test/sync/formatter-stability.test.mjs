@@ -26,7 +26,11 @@ function manifest(project) {
     schemaVersion: 1,
     project,
     variant: "content",
+    contentRuntime: "package",
     domains: { admin: `cms.${project}.test`, frontend: `www.${project}.test` },
+    // So the files gq writes only for a Site with forms are checked too.
+    wordpress: { plugins: ["gravityforms"] },
+    forms: { provider: "gravityforms", spam: ["honeypot", "turnstile"] },
     artifacts: { namespace: project, repo: project },
     ci: { worker: `${project}-ci`, backupBucket: `${project}-ci-backups` },
     cloudflare: { accountId: "0123456789abcdef0123456789abcdef", zoneName: `${project}.test` },

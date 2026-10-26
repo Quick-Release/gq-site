@@ -91,6 +91,8 @@ export function stubCms(entries) {
                     isRestricted: false,
                     modifiedGmt: modifiedGmt(entry),
                     featuredImage: null,
+                    // gq-content's forms module, for an entry with forms.
+                    ...(entry.forms ? { getquickForms: JSON.stringify(entry.forms) } : {}),
                   }
                 : null,
               designTokens: brand,
