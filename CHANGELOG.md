@@ -17,16 +17,17 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   Frontend deploy (`infra/frontend.run.ts`, Astro and TanStack) keeps its
   Custom Domain on `frontendTarget` and adds the route
   `<domains.frontend>/*` on the zone.
-- `gq cloudflare custom-hostname [--dry-run]` sets the zone's fallback
-  origin to `frontendTarget` (it keeps an existing one) and creates the
-  custom hostname: TXT ownership pre-validation and a DV certificate that
+- `gq cloudflare custom-hostname [--dry-run]` creates the custom
+  hostname: TXT ownership pre-validation and a DV certificate that
   delegated DCV renews. It then prints the DNS records the client adds:
   the ownership TXT, the `_acme-challenge` CNAME and the traffic CNAME.
   `gq cloudflare custom-hostname status [--json]` checks the fallback
   origin, the hostname, its certificate, the route, the client's CNAME and
   their CAA records (`letsencrypt.org`, `pki.goog`, `ssl.com` must be
-  allowed), and exits 1 until all are right. Cloudflare for SaaS must
-  first be enabled on the zone in the dashboard. See
+  allowed), and exits 1 until all are right. Enabling Cloudflare for SaaS
+  and setting the fallback origin are done once per zone, by hand, and
+  never to a Site's own Frontend host: both commands say when the fallback
+  origin is missing or is this Site's. See
   [A Frontend on the client's own domain](docs/guides/provisioning.md#a-frontend-on-the-clients-own-domain).
 
 ### Changed

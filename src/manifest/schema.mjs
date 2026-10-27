@@ -160,8 +160,8 @@ export const manifestSchema = z
           .describe(
             "Set only when domains.frontend is a hostname outside the Cloudflare zone, served " +
               "through Cloudflare for SaaS: the production Frontend's hostname inside the zone " +
-              "(cloudflare.zoneName). It is the Worker's Custom Domain, the zone's fallback " +
-              "origin and what domains.frontend's DNS points at (a CNAME). " +
+              "(cloudflare.zoneName). It is the Worker's Custom Domain and what " +
+              "domains.frontend's DNS points at (a CNAME). " +
               "Left out, domains.frontend is in the zone.",
           ),
         docs: hostname.optional(),

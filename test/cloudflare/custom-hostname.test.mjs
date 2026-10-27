@@ -29,6 +29,9 @@ const PERMISSION_GROUPS = [
   "Workers Routes Read",
 ].map((name, index) => ({ id: `group-${index}`, name }));
 
+// The zone's own fallback origin, which serves no Site.
+const FALLBACK = Object.freeze({ origin: "saas-fallback.example.test", status: "active" });
+
 const OWNERSHIP = {
   type: "txt",
   name: "_cf-custom-hostname.www.client.example",
@@ -98,11 +101,7 @@ function fakeCloudflare({
       state.hostnames.push(created);
       return ok({ id: created.id, hostname: created.hostname });
     }
-    if (path === "/custom_hostnames/fallback_origin") {
-      if (method === "PUT") {
-        state.fallback = { origin: data.origin, status: "pending_deployment" };
-        return ok(state.fallback);
-      }
+    if (method === "GET" && path === "/custom_hostnames/fallback_origin") {
       return state.fallback
         ? ok(state.fallback)
         : json(
@@ -141,17 +140,18 @@ test("gq.ops.json domains.frontendTarget names the Frontend's host in the zone, 
   );
 });
 
-test("cloudflare custom-hostname sets the fallback origin, creates the custom hostname and prints the client's records", async () => {
+test("cloudflare custom-hostname creates the custom hostname and prints the client's records", async () => {
   const fixture = await site();
-  const { fetch, state } = fakeCloudflare();
+  const { fetch, state } = fakeCloudflare({ fallback: FALLBACK });
 
   const result = await fixture.run(["cloudflare", "custom-hostname"], { env: ENV, fetch });
 
   assert.equal(result.code, 0, result.stderr);
-  assert.deepEqual(state.fallback, {
-    origin: "fixture.example.test",
-    status: "pending_deployment",
-  });
+  assert.deepEqual(state.fallback, FALLBACK);
+  assert.match(
+    result.stdout,
+    /✓ the zone's fallback origin is saas-fallback\.example\.test \(active\)/u,
+  );
   assert.deepEqual(state.created, [
     {
       hostname: "www.client.example",
@@ -181,10 +181,10 @@ test("cloudflare custom-hostname sets the fallback origin, creates the custom ho
   );
 });
 
-test("cloudflare custom-hostname keeps the zone's fallback origin and an existing custom hostname", async () => {
+test("cloudflare custom-hostname keeps an existing custom hostname", async () => {
   const fixture = await site();
   const { fetch, state } = fakeCloudflare({
-    fallback: { origin: "other.example.test", status: "active" },
+    fallback: FALLBACK,
     hostnames: [
       {
         hostname: "www.client.example",
@@ -198,9 +198,39 @@ test("cloudflare custom-hostname keeps the zone's fallback origin and an existin
   const result = await fixture.run(["cloudflare", "custom-hostname"], { env: ENV, fetch });
 
   assert.equal(result.code, 0, result.stderr);
-  assert.equal(state.fallback.origin, "other.example.test");
   assert.deepEqual(state.created, []);
-  assert.match(result.stdout, /fallback origin is other\.example\.test, kept/u);
+  assert.match(result.stdout, /✓ the custom hostname www\.client\.example exists \(active/u);
+});
+
+test("cloudflare custom-hostname never sets the zone's fallback origin, and says when it lacks one", async () => {
+  const fixture = await site();
+  const { fetch, state } = fakeCloudflare();
+
+  const result = await fixture.run(["cloudflare", "custom-hostname"], { env: ENV, fetch });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(state.fallback, null);
+  assert.equal(state.created.length, 1);
+  assert.match(
+    result.stdout,
+    /! the zone has no fallback origin: set one once for the zone, by hand/u,
+  );
+  assert.match(result.stdout, /Next: set the zone's fallback origin; /u);
+});
+
+test("cloudflare custom-hostname warns when the fallback origin is this Site's own Frontend", async () => {
+  const fixture = await site();
+  const { fetch } = fakeCloudflare({
+    fallback: { origin: "fixture.example.test", status: "active" },
+  });
+
+  const result = await fixture.run(["cloudflare", "custom-hostname"], { env: ENV, fetch });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(
+    result.stdout,
+    /! the zone's fallback origin is fixture\.example\.test, this Site's Frontend: every custom hostname without a route would show it/u,
+  );
 });
 
 test("cloudflare custom-hostname --dry-run changes nothing", async () => {
@@ -213,10 +243,9 @@ test("cloudflare custom-hostname --dry-run changes nothing", async () => {
   });
 
   assert.equal(result.code, 0, result.stderr);
-  assert.equal(state.fallback, null);
   assert.deepEqual(state.created, []);
   assert.deepEqual(state.deleted, ["temporary"]);
-  assert.match(result.stdout, /\+ set the zone's fallback origin to fixture\.example\.test/u);
+  assert.match(result.stdout, /\+ create the custom hostname www\.client\.example/u);
   assert.match(result.stdout, /Dry run: nothing changed\./u);
 });
 
@@ -247,7 +276,7 @@ test("cloudflare custom-hostname needs domains.frontendTarget", async () => {
 });
 
 const ACTIVE = {
-  fallback: { origin: "fixture.example.test", status: "active" },
+  fallback: FALLBACK,
   hostnames: [
     {
       hostname: "www.client.example",
@@ -333,6 +362,25 @@ test("cloudflare custom-hostname status names what the client and the deploy sti
     /✗ client\.example's CAA records \(0 issue "harica\.gr"\) don't allow 0 issue "letsencrypt\.org", 0 issue "pki\.goog", 0 issue "ssl\.com"/u,
   );
   assert.match(result.stdout, /Not ready yet\./u);
+});
+
+test("cloudflare custom-hostname status fails while the fallback origin is this Site's own Frontend", async () => {
+  const fixture = await site();
+  const { fetch } = fakeCloudflare({
+    ...ACTIVE,
+    fallback: { origin: "fixture.example.test", status: "active" },
+  });
+
+  const result = await fixture.run(["cloudflare", "custom-hostname", "status"], {
+    env: ENV,
+    fetch,
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stdout,
+    /✗ the zone's fallback origin is fixture\.example\.test, this Site's Frontend/u,
+  );
 });
 
 test("cloudflare custom-hostname status reads the CAA records closest to the hostname", async () => {

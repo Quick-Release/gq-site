@@ -302,14 +302,12 @@ What each part does:
   custom hostname's requests
   ([Workers as your fallback origin](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/start/advanced-settings/worker-as-origin/)).
   The deploy token already has Workers Routes Write on the zone.
-- **`gq cloudflare custom-hostname`** sets the zone's fallback origin to
-  `frontendTarget` when the zone has none. A Worker Custom Domain is a
-  proxied `AAAA 100::` record, the originless kind Cloudflare expects there.
-  It keeps a fallback origin another Site already set, since the route
-  serves this hostname either way. It then creates the custom hostname: a DV
+- **`gq cloudflare custom-hostname`** creates the custom hostname: a DV
   certificate validated by TXT, minimum TLS 1.2, and a TXT ownership record
-  so the hostname can go active before its traffic moves. Finally it prints
-  the client's records. It uses a 1-hour token with Zone Read and SSL and
+  so the hostname can go active before its traffic moves. It then prints
+  the client's records. It never sets the zone's fallback origin (see
+  below): it says when the zone has none, or when it is this Site's own
+  Frontend. It uses a 1-hour token with Zone Read and SSL and
   Certificates Write on the zone, deleted afterwards, and `--dry-run` only
   prints the plan.
 - **`gq cloudflare custom-hostname status`** reads the same state and the
@@ -318,13 +316,25 @@ What each part does:
   certificate, the route, the CNAME and the CAA records are all right.
   `--json` prints the checks and the records.
 
-Before the first run, someone with dashboard access enables Cloudflare for
-SaaS on the zone: SSL/TLS → Custom Hostnames → Enable. The API has no call
-for it. Outside Enterprise it asks for a payment method. Free, Pro and
-Business zones include 100 custom hostnames and charge $0.10 a month for each
-one beyond that. Only Enterprise can choose the certificate authority
-([plans](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/plans/)).
-Until it is enabled, the command fails and says so.
+**Once per zone, by hand.** Two settings are shared by every custom
+hostname on the zone, so no Site's command makes them.
+
+1. Someone with dashboard access enables Cloudflare for SaaS on the zone:
+   SSL/TLS → Custom Hostnames → Enable. The API has no call for it. Outside
+   Enterprise it asks for a payment method. Free, Pro and Business zones
+   include 100 custom hostnames and charge $0.10 a month for each one beyond
+   that. Only Enterprise can choose the certificate authority
+   ([plans](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/plans/)).
+   Until it is enabled, the command fails and says so.
+2. They set the zone's **fallback origin**. Cloudflare needs one, a proxied
+   `A`, `AAAA` or `CNAME` record in the zone, before a custom hostname can
+   go active. A custom hostname without a route of its own (not deployed
+   yet, or cut by `gq offboard`) is served from it. So it must be a host
+   that serves no Site, never a Site's `frontendTarget`: that would show
+   that Site on every such hostname. On `bnq.pt` it is GETQUICK's
+   banquinha.pt service, through a proxied record in `bnq.pt` that points at
+   it. Wait until the dashboard shows it **Active**. The routes still decide
+   where each Site's custom hostname goes.
 
 The client adds these records at their DNS. `gq cloudflare custom-hostname`
 (or its `status`) prints them with real values:
@@ -371,8 +381,8 @@ choice.
 
 `gq offboard` removes the route and records it, and `--restore` adds it back.
 The custom hostname stays on the zone through the cut, so a restore needs
-nothing from the client. `gq offboard --archive` lists deleting it (and the
-fallback origin, if nothing else uses it) as a step done by hand
+nothing from the client. `gq offboard --archive` lists deleting it as a step done
+by hand; the zone's fallback origin stays
 ([Offboarding](offboarding.md)).
 
 ## Independent media

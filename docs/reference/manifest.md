@@ -55,8 +55,7 @@ Worker; see [The Site's retention](../guides/consent.md#the-sites-retention).
 `domains.frontend` is the production Frontend's public hostname. When it is
 outside the Cloudflare zone (the client's own DNS), `domains.frontendTarget`
 names the Frontend's hostname in `cloudflare.zoneName`. That hostname is the
-Worker's Custom Domain, the zone's fallback origin and the CNAME target of
-the public one, which is served as a Cloudflare for SaaS custom hostname. It
+Worker's Custom Domain and the CNAME target of the public one, which is served as a Cloudflare for SaaS custom hostname. It
 must be in the zone, and `domains.frontend` must not be. See
 [A Frontend on the client's own domain](../guides/provisioning.md#a-frontend-on-the-clients-own-domain).
 `forms` turns on headless Gravity Forms: `provider` is `"gravityforms"`, and

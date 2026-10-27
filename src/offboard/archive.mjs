@@ -836,7 +836,7 @@ function deletionItems(site, { configPath }) {
       ? [
           manual(
             "Frontend",
-            `delete the custom hostname ${ops.domains.frontend} (Cloudflare for SaaS) in the dashboard (SSL/TLS → Custom Hostnames), and the zone's fallback origin if nothing else uses it; ask the client to remove its DNS records for ${ops.domains.frontend}`,
+            `delete the custom hostname ${ops.domains.frontend} (Cloudflare for SaaS) in the dashboard (SSL/TLS → Custom Hostnames); ask the client to remove its DNS records for ${ops.domains.frontend}`,
           ),
         ]
       : []),

@@ -4,16 +4,17 @@
 // domains.frontendTarget (in cloudflare.zoneId). With the account's
 // token-manager token and a 1-hour token that is deleted right after:
 //
-//   1. set the zone's fallback origin to domains.frontendTarget, unless the
-//      zone already has one (it serves every custom hostname on the zone)
-//   2. create the custom hostname domains.frontend: TXT ownership
+//   1. create the custom hostname domains.frontend: TXT ownership
 //      pre-validation and a DV certificate validated by TXT, which delegated
 //      DCV answers from then on
-//   3. print the DNS records the client adds at their DNS
+//   2. print the DNS records the client adds at their DNS
 //
-// The Worker route that hands the custom hostname's requests to the
-// Frontend is the production deploy's (infra/frontend.run.ts). Enabling
-// Cloudflare for SaaS on the zone is a dashboard step: the API has none.
+// The zone's fallback origin is shared by every custom hostname on the zone,
+// so it is set once for the zone, by hand, and never to a Site's own host:
+// this checks it and says when it is missing. The Worker route that hands the
+// custom hostname's requests to the Frontend is the production deploy's
+// (infra/frontend.run.ts). Enabling Cloudflare for SaaS on the zone is a dashboard step: the API has
+// none.
 //
 // `status` reads the same state and the client's DNS (CNAME and CAA, over
 // DNS over HTTPS), changes nothing, and exits 1 until the hostname, its
@@ -36,6 +37,25 @@ const DNS_TYPES = { CNAME: 5, CAA: 257 };
 
 const provisionPermissions = ["Zone Read", "SSL and Certificates Write"];
 const statusPermissions = ["Zone Read", "SSL and Certificates Read", "Workers Routes Read"];
+
+// The zone's fallback origin serves every custom hostname without a route
+// of its own, so it is the zone's, never one Site's Frontend.
+const FALLBACK_SETUP =
+  "set one once for the zone, by hand: a proxied record in the zone for a host that serves no Site (SSL/TLS → Custom Hostnames → Fallback Origin)";
+
+// A fallback origin on a Site's own Frontend host would show that Site for
+// every custom hostname without a route of its own.
+function ownsFallback(fallback, target) {
+  return fallback?.origin?.toLowerCase() === target.toLowerCase();
+}
+
+function fallbackLine(fallback, target) {
+  if (!fallback) return `! the zone has no fallback origin: ${FALLBACK_SETUP}`;
+  if (ownsFallback(fallback, target)) {
+    return `! the zone's fallback origin is ${target}, this Site's Frontend: every custom hostname without a route would show it; ${FALLBACK_SETUP}`;
+  }
+  return `✓ the zone's fallback origin is ${fallback.origin} (${fallback.status})`;
+}
 
 function saasHint(zone) {
   return `Is Cloudflare for SaaS enabled on ${zone}? It is a dashboard step: the zone's SSL/TLS → Custom Hostnames → Enable (it asks for a payment method; 100 custom hostnames are included).`;
@@ -191,11 +211,7 @@ async function provision({ context, parsed, fetch, io, interactive }) {
       const before = await inspect(zone, site);
       ui.note(
         [
-          before.fallback
-            ? before.fallback.origin === target
-              ? `✓ the zone's fallback origin is ${target}`
-              : `✓ the zone's fallback origin is ${before.fallback.origin}, kept: it serves every custom hostname on the zone, and the Frontend's route serves ${hostname}`
-            : `+ set the zone's fallback origin to ${target}`,
+          fallbackLine(before.fallback, target),
           before.customHostname
             ? `✓ the custom hostname ${hostname} exists (${before.customHostname.status}, certificate ${before.customHostname.ssl?.status ?? "none"})`
             : `+ create the custom hostname ${hostname} (TXT ownership, DV certificate validated by TXT, TLS 1.2+)`,
@@ -205,10 +221,6 @@ async function provision({ context, parsed, fetch, io, interactive }) {
       );
       if (parsed.dryRun) return { ...before, dryRun: true };
 
-      if (!before.fallback) {
-        await zone("PUT", "/custom_hostnames/fallback_origin", { origin: target });
-        ui.success(`Fallback origin set to ${target}`);
-      }
       if (!before.customHostname) {
         await zone("POST", "/custom_hostnames", {
           hostname,
@@ -235,7 +247,7 @@ async function provision({ context, parsed, fetch, io, interactive }) {
   ui.outro(
     outcome.dryRun
       ? "Dry run: nothing changed."
-      : "Next: the client adds these records; deploy the production Frontend; gq cloudflare custom-hostname status.",
+      : `Next: ${outcome.fallback && !ownsFallback(outcome.fallback, target) ? "" : "set the zone's fallback origin; "}the client adds these records; deploy the production Frontend; gq cloudflare custom-hostname status.`,
   );
   return 0;
 }
@@ -317,10 +329,11 @@ async function status({ context, parsed, fetch, io }) {
   const checks = [
     {
       name: "fallback-origin",
-      ok: fallback?.status === "active",
-      detail: fallback
-        ? `the zone's fallback origin ${fallback.origin} is ${fallback.status}${fallback.errors?.length ? `: ${fallback.errors.join("; ")}` : ""}`
-        : "the zone has no fallback origin: run gq cloudflare custom-hostname",
+      ok: fallback?.status === "active" && !ownsFallback(fallback, target),
+      detail:
+        !fallback || ownsFallback(fallback, target)
+          ? fallbackLine(fallback, target).slice(2)
+          : `the zone's fallback origin ${fallback.origin} is ${fallback.status}${fallback.errors?.length ? `: ${fallback.errors.join("; ")}` : ""}`,
     },
     {
       name: "custom-hostname",
