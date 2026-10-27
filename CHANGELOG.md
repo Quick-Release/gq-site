@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.25.0 — 2026-10-27
 
 ### Added
 
@@ -30,8 +30,25 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   origin is missing or is this Site's. See
   [A Frontend on the client's own domain](docs/guides/provisioning.md#a-frontend-on-the-clients-own-domain).
 
+- **TanStack Start Frontends**
+  ([#130](https://github.com/Quick-Release/gq-site/pull/130)). The new
+  optional `gq.ops.json` key `framework` (`"astro"` or `"tanstack"`) picks
+  the Frontend's framework, separately from `variant`. Left out, it is
+  `"astro"`, so existing Sites keep Astro. A TanStack content Frontend
+  needs `contentRuntime: "package"`. `gq sync` manages its `/gq` route
+  adapters (events, refresh, consent and, with `forms`, forms), and the
+  production deploy uses Alchemy's `Cloudflare.Website.Vite`, with the
+  same Stack, D1 and consent identities as Astro. `gq doctor` and
+  `gq site check` give advice that fits the framework.
+  `scripts/smoke/tanstack-check.mjs` builds and runs a generated TanStack
+  Frontend in workerd, in CI. See
+  [Frontend frameworks](docs/reference/frontend-frameworks.md).
+
 ### Changed
 
+- `gq new` creates TanStack Start Frontends by default. `--framework astro`
+  still creates the Astro skeleton. Existing Sites aren't migrated: changing
+  `framework` means replacing the Site's own app.
 - `gq offboard` removes a custom hostname's route and records it in
   `offboarded.cut.workerRoutes`, and `--restore` adds it back. The custom
   hostname itself stays on the zone. `gq offboard --archive` deletes DNS
