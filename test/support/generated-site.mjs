@@ -16,11 +16,15 @@ export async function readSite(root, path) {
 }
 
 // A site gq new generated, as its files are right after.
+// Existing skeleton tests explicitly exercise the supported Astro framework.
 export async function newSite() {
   const parent = await temporaryDirectory();
-  const created = await runGq(["new", "acme", "--project", "acme", "--variant", "content"], {
-    cwd: parent,
-  });
+  const created = await runGq(
+    ["new", "acme", "--project", "acme", "--variant", "content", "--framework", "astro"],
+    {
+      cwd: parent,
+    },
+  );
   assert.equal(created.code, 0, created.stderr);
   const root = join(parent, "acme");
   return { root, run: (argv) => runGq(argv, { cwd: root }) };

@@ -2187,3 +2187,56 @@ test("a resumed archive deletes the Artifacts repository only while its refs are
   assert.equal(resumed.code, 0, resumed.stderr);
   assert.ok(account.state.log.includes("artifacts repo fixture/fixture deleted"));
 });
+
+test("Start consent databases are exported and verified before they are deleted", async () => {
+  const { fixture, account } = await cutSite({
+    ops: { ...OPS, framework: "tanstack" },
+    state: {
+      d1: [
+        { uuid: "d1-fixture", name: "fixture-fe-publications" },
+        { uuid: "d1-consent", name: "fixture-fe-consent" },
+        { uuid: "d1-other", name: "other-fe-consent" },
+      ],
+    },
+  });
+  const plan = await fixture.run(["offboard", "--archive", "--dry-run"], { env: ENV, ...account });
+  assert.equal(plan.code, 0, plan.stderr);
+  assert.match(plan.stdout, /consent.sql ← the D1 store fixture-fe-consent/u);
+  assert.match(plan.stdout, /delete the D1 store fixture-fe-consent/u);
+  assert.doesNotMatch(plan.stdout, /other-fe-consent/u);
+  const result = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
+  assert.equal(result.code, 0, result.stderr);
+  assert.ok(!account.state.d1.some(({ uuid }) => uuid === "d1-consent"));
+  assert.ok(account.state.d1.some(({ uuid }) => uuid === "d1-other"));
+});
+
+test("resuming an old archive refuses a newly discovered unarchived consent store", async () => {
+  const { fixture, account } = await cutSite();
+  const fetch = intercepting(account, ({ method, url }) => {
+    if (method === "DELETE" && url.endsWith("/workers/scripts/fixture-ci")) {
+      return new Response(JSON.stringify({ success: false, errors: [{ message: "stop" }] }), {
+        status: 500,
+      });
+    }
+  });
+  const first = await fixture.run(["offboard", "--archive", "--yes"], {
+    env: ENV,
+    fetch,
+    exec: account.exec,
+  });
+  assert.equal(first.code, 1);
+  assert.ok((await readOps(fixture)).offboarded.archive);
+  await rewriteOps(fixture, (ops) => {
+    ops.framework = "tanstack";
+  });
+  account.state.d1.push({ uuid: "d1-new-consent", name: "fixture-fe-consent" });
+  const before = [...account.state.log];
+  const resumed = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
+  assert.equal(resumed.code, 1);
+  assert.match(
+    resumed.stderr,
+    /recorded archive does not contain consent store fixture-fe-consent/u,
+  );
+  assert.deepEqual(account.state.log, before);
+  assert.ok(account.state.d1.some(({ uuid }) => uuid === "d1-new-consent"));
+});

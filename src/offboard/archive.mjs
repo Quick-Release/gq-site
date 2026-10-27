@@ -29,6 +29,7 @@ import { text } from "node:stream/consumers";
 import { isArtifactsOnly } from "../ci/git-artifacts.mjs";
 import { webhookUrl } from "../ci/github-setup.mjs";
 import { updateManifest } from "../manifest/manifest.mjs";
+import { frontendFramework } from "../manifest/schema.mjs";
 import { VERSION } from "../version.mjs";
 import {
   artifactsRepositoryName,
@@ -102,6 +103,16 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
   const database = (await ploi.databases()).find(({ name }) => name === ops.ploi.database);
   const d1 = await cloudflare.d1(d1Name);
   const { stages, unclear, unbound } = await frontendStages(cloudflare, ops.project, workers);
+  // Consent stores have a separate lifecycle and must be kept in the archive
+  // before deletion, including every discovered publication-backed stage.
+  const consentStores = [];
+  if (frontendFramework(ops) === "tanstack") {
+    for (const stage of [undefined, ...stages.map(({ stage }) => stage)]) {
+      const name = `${ops.project}-fe-consent${stage ? `-${stage}` : ""}`;
+      const store = await cloudflare.d1(name);
+      if (store) consentStores.push({ path: `consent${stage ? `-${stage}` : ""}.sql`, store });
+    }
+  }
   const artifacts = await cloudflare.artifactsRepository(
     ops.artifacts.namespace,
     ops.artifacts.repo,
@@ -112,6 +123,14 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
     [database, `the database ${ops.ploi.database}`],
     [frontendExists, `the Frontend Worker ${frontend}`],
     [d1, `the D1 store ${d1Name}`],
+    ...(frontendFramework(ops) === "tanstack"
+      ? [
+          [
+            consentStores.some(({ path }) => path === "consent.sql"),
+            `the D1 store ${ops.project}-fe-consent`,
+          ],
+        ]
+      : []),
     ...(mediaOwn ? [[mediaExists, `the media bucket ${ops.media.bucket}`]] : []),
     ...(artifactsOnly
       ? [[artifacts, `the Artifacts repository ${artifactsRepositoryName(ops)}`]]
@@ -129,6 +148,7 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
       mediaOwn,
       artifactsOnly,
       artifactsExists: Boolean(artifacts),
+      consentStores,
     }),
     ploi: {
       site,
@@ -145,6 +165,7 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
       exists: frontendExists,
       d1,
       d1Name,
+      consentStores,
       // Its other stages: their Workers, and their D1 stores by stage.
       stages: stages.map(({ worker }) => worker),
       unclear,
@@ -222,7 +243,7 @@ function isOwn(ops, role, name) {
 // another's is in its GitHub repository (`head`: its HEAD commit).
 async function inspectContents(
   providers,
-  { now, gone, wholeBackups, mediaOwn, artifactsOnly, artifactsExists },
+  { now, gone, wholeBackups, mediaOwn, artifactsOnly, artifactsExists, consentStores },
 ) {
   const { ops, cloudflare, github } = providers;
   const recorded = ops.offboarded?.archive;
@@ -233,6 +254,21 @@ async function inspectContents(
       throw new Error(
         `r2://${recorded.bucket}/${recorded.prefix}manifest.json ${manifest ? "doesn't match" : "is missing, unlike"} gq.ops.json offboarded.archive: stopping before anything else is deleted.`,
       );
+    }
+    if (consentStores.length) {
+      const contents = JSON.parse(
+        await (await bucket.get(`${recorded.prefix}manifest.json`)).text(),
+      );
+      for (const { path, store } of consentStores) {
+        if (
+          !contents.files.some((file) => file.path === path) ||
+          !contents.sources.frontend.consentStores?.some(({ id }) => id === store.uuid)
+        ) {
+          throw new Error(
+            `The recorded archive does not contain consent store ${store.name}; stopping before anything else is deleted.`,
+          );
+        }
+      }
     }
     if (!artifactsOnly) return { recorded };
     const contents = JSON.parse(
@@ -360,6 +396,7 @@ function archiveItems(site, { configPath, now, session }) {
   // Production's D1 store, then each other stage's.
   const stores = [
     { path: "publications.sql", store: site.frontend.d1 },
+    ...(site.frontend.consentStores ?? []),
     ...site.frontend.stores.map(({ stage, d1 }) => ({
       path: `publications-${stage}.sql`,
       store: d1,
@@ -565,6 +602,14 @@ function manifestOf(site, { files, refs }, date) {
       frontend: {
         worker: frontend.worker,
         domain: ops.domains.frontend,
+        ...(frontend.consentStores?.length
+          ? {
+              consentStores: frontend.consentStores.map(({ store }) => ({
+                name: store.name,
+                id: store.uuid,
+              })),
+            }
+          : {}),
         d1: frontend.d1 ? { name: frontend.d1.name, id: frontend.d1.uuid } : null,
         stages: frontend.stores.map(({ stage, d1 }) => ({
           worker: `${frontend.worker}-${stage}`,
@@ -729,6 +774,11 @@ function deletionItems(site, { configPath }) {
           ),
         )
       : done("Frontend", `the D1 store ${frontend.d1Name} is deleted`),
+    ...(frontend.consentStores ?? []).map(({ store }) =>
+      todo("Frontend", `delete the D1 store ${store.name} (${store.uuid})`, (p) =>
+        p.cloudflare.deleteD1(store.uuid),
+      ),
+    ),
     // Its other stages, each tied to the project by its publication store.
     ...frontend.stages.map((worker) =>
       todo("Frontend", `delete the Worker ${worker}`, (p) => p.cloudflare.deleteWorker(worker)),

@@ -224,7 +224,11 @@ export async function runFrontendCommand({ context, parsed, env, fetch, exec, io
 async function generateSecrets({ context, parsed, env, exec, io, interactive }) {
   const secrets = await sigilloSecrets({ context, env, exec }, SECRETS_ENVIRONMENT);
   const listed = await secrets.list();
-  const plan = Object.keys(FRONTEND_SECRETS).map((name) => {
+  const frontendSecrets =
+    context.config.framework === "tanstack"
+      ? { ...FRONTEND_SECRETS, CONSENT_READ_TOKEN: "the CMS consent-read bearer token" }
+      : FRONTEND_SECRETS;
+  const plan = Object.keys(frontendSecrets).map((name) => {
     const stored = new RegExp(`\\b${name}\\b`, "u").test(listed);
     const value = context.env[name]?.trim();
     if (!stored) return { name, action: "generate" };
@@ -242,7 +246,7 @@ async function generateSecrets({ context, parsed, env, exec, io, interactive }) 
         action === "keep"
           ? `✓ ${name} in Sigillo ${secrets.name}`
           : action === "generate"
-            ? `+ generate ${name} (${FRONTEND_SECRETS[name]}), store it in Sigillo ${secrets.name}`
+            ? `+ generate ${name} (${frontendSecrets[name]}), store it in Sigillo ${secrets.name}`
             : `~ ${name} is shorter than ${MINIMUM_SECRET_LENGTH} characters, which the Frontend refuses: generate a new one`,
       )
       .join("\n"),

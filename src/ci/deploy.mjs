@@ -41,6 +41,7 @@ export const githubWorkerSecrets = Object.freeze({
 // secret like `pnpm deploy:frontend` does. A site without a publication store
 // has neither, and its CI deploys without them.
 export const optionalWorkerSecrets = Object.freeze({
+  CONSENT_READ_TOKEN: "CONSENT_READ_TOKEN",
   FRONTEND_REFRESH_TOKEN: "FRONTEND_REFRESH_TOKEN",
   PUBLICATION_EVENT_SECRET: "PUBLICATION_EVENT_SECRET",
   GQ_AUTH_GRAPHQL_CLIENT_ID: "GQ_AUTH_GRAPHQL_CLIENT_ID",

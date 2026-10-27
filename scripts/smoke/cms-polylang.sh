@@ -46,7 +46,7 @@ else
 fi
 
 cd "$parent"
-node "$repo/bin/gq.mjs" new acme --project acme --variant content --locale pt_PT_ao90 >/dev/null
+node "$repo/bin/gq.mjs" new acme --project acme --variant content --framework astro --locale pt_PT_ao90 >/dev/null
 cd acme
 # shellcheck disable=SC2016 # JavaScript, not shell
 node -e '

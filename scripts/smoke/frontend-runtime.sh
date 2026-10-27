@@ -27,7 +27,7 @@ else
 fi
 
 cd "$parent"
-node "$repo/bin/gq.mjs" new acme --project acme --variant content >/dev/null
+node "$repo/bin/gq.mjs" new acme --project acme --variant content --framework astro >/dev/null
 use_this_checkout "$repo" "$parent/acme"
 cd acme
 CI=1 pnpm install --filter @acme/frontend... --filter @acme/ci... --filter . >/dev/null

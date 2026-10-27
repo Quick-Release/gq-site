@@ -71,11 +71,14 @@ test("adds the Frontend's refresh token and event secret when the secret store h
   const withThem = JSON.parse(
     secretsPayload({
       ...STORE,
+      CONSENT_READ_TOKEN: "value-of-consent",
       FRONTEND_REFRESH_TOKEN: "value-of-refresh",
       PUBLICATION_EVENT_SECRET: "value-of-events",
     }),
   );
 
+  assert.equal(without.CONSENT_READ_TOKEN, undefined);
+  assert.equal(withThem.CONSENT_READ_TOKEN, "value-of-consent");
   assert.equal(without.FRONTEND_REFRESH_TOKEN, undefined);
   assert.equal(without.PUBLICATION_EVENT_SECRET, undefined);
   assert.equal(withThem.FRONTEND_REFRESH_TOKEN, "value-of-refresh");

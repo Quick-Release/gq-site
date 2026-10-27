@@ -250,7 +250,18 @@ test("gq new --locale sets the site's main language for the CMS deploy and the F
   const parent = await temporaryDirectory();
 
   const result = await runGq(
-    ["new", "acme", "--project", "acme", "--variant", "content", "--locale", "pt_PT_ao90"],
+    [
+      "new",
+      "acme",
+      "--project",
+      "acme",
+      "--variant",
+      "content",
+      "--locale",
+      "pt_PT_ao90",
+      "--framework",
+      "astro",
+    ],
     { cwd: parent },
   );
 
@@ -302,7 +313,7 @@ test("outside a terminal, gq new names every value it is missing and writes noth
     assert.equal(
       result.stderr,
       `gq: gq new is missing ${missing}; pass them, or run it in a terminal to be asked. ` +
-        "Usage: gq new <dir> --project <name> --variant content [--locale <locale>]\n",
+        "Usage: gq new <dir> --project <name> --variant content [--locale <locale>] [--framework astro|tanstack]\n",
     );
     assert.deepEqual(result.exec.calls, []);
   }

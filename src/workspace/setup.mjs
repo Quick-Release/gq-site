@@ -79,8 +79,8 @@ function printNextSteps(io) {
 Next steps:
   pnpm run doctor        — verify the workspace
   pnpm cms:dev           — start local WordPress with DDEV
-  pnpm frontend:dev      — start the Astro frontend
-  pnpm check             — run Astro's type check
+  pnpm frontend:dev      — start the frontend
+  pnpm check             — run the frontend type check
   pnpm deploy:frontend   — deploy the Cloudflare Worker with Alchemy
 `);
 }

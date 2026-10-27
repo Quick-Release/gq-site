@@ -367,13 +367,14 @@ export async function frontendReadiness({
   fetch,
   now = Date.now,
   languages = [],
+  framework = "astro",
 }) {
   const checks = [];
   const add = (area, check) => checks.push({ area, ...check });
-  const answer = await checkEvents({ origin, project, env, fetch, add });
+  const answer = await checkEvents({ origin, project, env, fetch, add, framework });
   await checkRefreshToken({ origin, env, fetch, add });
   if (answer) {
-    add("frontend", storeCheck(answer, languages));
+    add("frontend", storeCheck(answer, languages, framework));
     add("delivery", reconciliationCheck(answer.reconciliation, now));
     add("delivery", delaysCheck(answer.store));
   } else {
@@ -389,7 +390,7 @@ export async function frontendReadiness({
   return checks;
 }
 
-async function checkEvents({ origin, project, env, fetch, add }) {
+async function checkEvents({ origin, project, env, fetch, add, framework }) {
   const name = "frontend-events";
   const secret = env[EVENT_SECRET]?.trim();
   if (!secret) {
@@ -434,7 +435,9 @@ async function checkEvents({ origin, project, env, fetch, add }) {
     status === 401
       ? `redeploy the Frontend with Sigillo staging's ${EVENT_SECRET} (pnpm deploy:frontend), and pnpm ci:deploy so CI releases bind it too`
       : status === 403 && /store/u.test(reason)
-        ? "deploy the Frontend with apps/frontend/migrations, which makes infra/frontend.run.ts declare and bind its publication store"
+        ? framework === "tanstack"
+          ? "install the pinned @getquick/content package and deploy the managed infra/frontend.run.ts with PUBLICATION_DB"
+          : "deploy the Frontend with apps/frontend/migrations, which makes infra/frontend.run.ts declare and bind its publication store"
         : status === 403
           ? `run pnpm frontend:secrets, then pnpm ci:deploy and deploy the Frontend, so the Worker has ${EVENT_SECRET}`
           : status === 404
@@ -509,13 +512,15 @@ const PREPARE = "prepare the Site: pnpm frontend:refresh (a whole-Site refresh),
  * The store, as the signed check reports it: a prepared Site holds its front
  * page and chrome, and a bilingual Site every other language's too.
  */
-function storeCheck(answer, languages) {
+function storeCheck(answer, languages, framework) {
   const name = "publication-store";
   if (!("store" in answer)) {
     return notReady(
       name,
       "the Frontend's check doesn't report its store: it predates gq site check",
-      "adopt src/lib/events.ts and src/lib/publications.ts from a newly generated site, and deploy",
+      framework === "tanstack"
+        ? "update the pinned @getquick/content Runtime and deploy the managed event route"
+        : "adopt src/lib/events.ts and src/lib/publications.ts from a newly generated site, and deploy",
     );
   }
   const { store } = answer;
@@ -531,7 +536,9 @@ function storeCheck(answer, languages) {
     return notReady(
       name,
       "the Frontend's check doesn't report each language's front page and chrome: it predates bilingual Sites",
-      "adopt src/lib/delivery.ts and src/lib/events.ts from a newly generated site, and deploy",
+      framework === "tanstack"
+        ? "update the pinned @getquick/content Runtime and deploy the managed event route"
+        : "adopt src/lib/delivery.ts and src/lib/events.ts from a newly generated site, and deploy",
     );
   }
   const shared = { home: "front page", chrome: "site chrome" };
@@ -791,6 +798,7 @@ export async function siteReadiness({ ops, env, fetch, origin, upload = true, no
     ...(await frontendReadiness({
       origin: frontend,
       project: ops.project,
+      framework: ops.framework ?? "astro",
       env,
       fetch,
       now,

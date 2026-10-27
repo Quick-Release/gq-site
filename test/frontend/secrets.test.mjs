@@ -20,9 +20,9 @@ const OPS = Object.freeze({
 
 const SIGILLO_BIN = "node_modules/.bin/sigillo";
 
-function site() {
+function site(framework) {
   return createFixtureSite({
-    ops: OPS,
+    ops: { ...OPS, ...(framework ? { framework } : {}) },
     files: {
       "package.json": `${JSON.stringify({ devDependencies: { sigillo: "0.13.0" } })}\n`,
       [SIGILLO_BIN]: "#!/bin/sh\n",
@@ -108,4 +108,18 @@ test("frontend secrets --dry-run only reports the plan", async () => {
   assert.match(result.stdout, /\+ generate PUBLICATION_EVENT_SECRET/u);
   assert.match(result.stdout, /Dry run: nothing changed\./u);
   assert.deepEqual(secrets, {});
+});
+
+test("Start prepares a separate consent-read token without changing existing credentials", async () => {
+  const fixture = await site("tanstack");
+  const { exec, secrets } = fakeSigillo({
+    FRONTEND_REFRESH_TOKEN: "existing-refresh",
+    PUBLICATION_EVENT_SECRET: "existing-events",
+  });
+  const result = await fixture.run(["frontend", "secrets"], { exec });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(secrets.FRONTEND_REFRESH_TOKEN, "existing-refresh");
+  assert.equal(secrets.PUBLICATION_EVENT_SECRET, "existing-events");
+  assert.match(secrets.CONSENT_READ_TOKEN, /^[0-9a-f]{64}$/u);
+  assert.ok(!result.stdout.includes(secrets.CONSENT_READ_TOKEN));
 });

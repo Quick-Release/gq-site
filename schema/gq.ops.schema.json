@@ -20,6 +20,13 @@
         "commerce"
       ]
     },
+    "framework": {
+      "type": "string",
+      "enum": [
+        "astro",
+        "tanstack"
+      ]
+    },
     "domains": {
       "type": "object",
       "properties": {

@@ -33,24 +33,29 @@ function manifest(project) {
 }
 
 // The shortest name, and one well past any real site's.
-for (const project of ["a", "abcdefghij-abcdefghij-abcdefghij-abcdefg"]) {
-  test(`fully generated files are formatter-stable for a ${project.length}-character project name`, async () => {
-    const fixture = await createFixtureSite({ ops: manifest(project) });
-    const result = await fixture.run(["sync"]);
-    assert.equal(result.code, 0, result.stderr);
-    // The site's vite.config.ts imports vite-plus; use this package's.
-    await mkdir(fixture.path("node_modules"));
-    await symlink(join(repo, "node_modules/vite-plus"), fixture.path("node_modules/vite-plus"));
+for (const framework of ["astro", "tanstack"]) {
+  for (const project of ["a", "abcdefghij-abcdefghij-abcdefghij-abcdefg"]) {
+    test(`fully generated ${framework} files are formatter-stable for a ${project.length}-character project name`, async () => {
+      const fixture = await createFixtureSite({ ops: { ...manifest(project), framework } });
+      const result = await fixture.run(["sync"]);
+      assert.equal(result.code, 0, result.stderr);
+      // The site's vite.config.ts imports vite-plus; use this package's.
+      await mkdir(fixture.path("node_modules"));
+      await symlink(join(repo, "node_modules/vite-plus"), fixture.path("node_modules/vite-plus"));
 
-    const paths = ownership.fullyGenerated
-      .filter(({ template }) => template !== undefined)
-      .map(({ path }) => path)
-      .filter((path) => FORMATTED.test(path));
-    const check = spawnSync(join(repo, "node_modules/.bin/vp"), ["fmt", "--check", ...paths], {
-      cwd: fixture.root,
-      encoding: "utf8",
+      const paths = ownership.fullyGenerated
+        .filter(
+          ({ template, framework: selected }) =>
+            template !== undefined && (!selected || selected === framework),
+        )
+        .map(({ path }) => path)
+        .filter((path) => FORMATTED.test(path));
+      const check = spawnSync(join(repo, "node_modules/.bin/vp"), ["fmt", "--check", ...paths], {
+        cwd: fixture.root,
+        encoding: "utf8",
+      });
+
+      assert.equal(check.status, 0, `${check.stdout}${check.stderr}`);
     });
-
-    assert.equal(check.status, 0, `${check.stdout}${check.stderr}`);
-  });
+  }
 }

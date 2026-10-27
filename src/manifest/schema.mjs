@@ -10,6 +10,11 @@ import { z } from "zod";
 
 export const MANIFEST_FILENAME = "gq.ops.json";
 export const SCHEMA_VERSION = 1;
+export const FRAMEWORKS = ["astro", "tanstack"];
+export function frontendFramework(manifest) {
+  return manifest.framework ?? "astro";
+}
+
 export const VARIANTS = ["content", "commerce"];
 export const WORDPRESS_GRAPHQL_PATHS = ["/graphql", "/wp/graphql"];
 // An offboarded Site's phases (ADR 0011): its access cut (`gq offboard`,
@@ -118,6 +123,7 @@ export const manifestSchema = z
     schemaVersion: z.literal(SCHEMA_VERSION),
     project: name,
     variant: z.enum(VARIANTS),
+    framework: z.enum(FRAMEWORKS).optional(),
     domains: z
       .strictObject({ admin: hostname, frontend: hostname, docs: hostname.optional() })
       .optional(),
