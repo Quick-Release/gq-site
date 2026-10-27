@@ -1,0 +1,105 @@
+{
+  "sourceCommit": "b6047058685300843c3388d3b0ae553c75a9ba36",
+  "capturedAt": "2026-10-24T01:01:40.597Z",
+  "command": "GETQUICK_CMS_DIR=$PWD/.ci/wordpress GETQUICK_WP_CLI=$PWD/.ci/wp GETQUICK_POLYLANG_CAPTURE_FLAGS=1 GETQUICK_POLYLANG_CAPTURE_DIR=$OUTPUT node scripts/polylang-test.mjs",
+  "fixture": "tests/polylang/fixture.php capture-language",
+  "runner": "scripts/polylang-test.mjs",
+  "wordpress": "7.0",
+  "polylang": "3.8.10",
+  "edition": "free",
+  "flagCodes": {
+    "en": "gb",
+    "fr": "fr"
+  },
+  "flagAssets": {
+    "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/gb.png": {
+      "file": "flag-gb.png",
+      "sha256": "0258a377207160921b4def95e08bde2b05f202a1d441850d49502f768e72307d",
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 394
+    },
+    "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/fr.png": {
+      "file": "flag-fr.png",
+      "sha256": "b7d183dce188ef91df5ddcd9ff5378e1b64ce515ccb048ed2a1f32d4fd0a0a3e",
+      "status": 200,
+      "contentType": "image/png",
+      "bytes": 271
+    }
+  },
+  "multilanguageEnabled": true,
+  "registered": true,
+  "registeredAttributes": {
+    "dropdown": {
+      "type": "boolean",
+      "default": 0
+    },
+    "show_names": {
+      "type": "boolean",
+      "default": 1
+    },
+    "show_flags": {
+      "type": "boolean",
+      "default": 0
+    },
+    "force_home": {
+      "type": "boolean",
+      "default": 0
+    },
+    "hide_current": {
+      "type": "boolean",
+      "default": 0
+    },
+    "hide_if_no_translation": {
+      "type": "boolean",
+      "default": 0
+    },
+    "className": {
+      "type": "string",
+      "default": ""
+    },
+    "lock": {
+      "type": "object"
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "presentation": {
+      "type": "object"
+    },
+    "style": {
+      "type": "object"
+    }
+  },
+  "requests": {
+    "en": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8180/?rest_route=/wp/v2/pages/768&context=view&lang=en",
+      "authenticated": false,
+      "status": 200,
+      "pageUrl": "http://127.0.0.1:8180/gqd-pll-mlay769p-capture-language-en/",
+      "layoutUrl": "http://127.0.0.1:8180/?rest_route=/getquick-design/v1/layouts/single-post&lang=en"
+    },
+    "fr": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8180/?rest_route=/wp/v2/pages/769&context=view&lang=fr",
+      "authenticated": false,
+      "status": 200,
+      "pageUrl": "http://127.0.0.1:8180/fr/gqd-pll-mlay769p-capture-language-fr/",
+      "layoutUrl": "http://127.0.0.1:8180/?rest_route=/getquick-design/v1/layouts/single-post&lang=fr"
+    }
+  },
+  "variants": [
+    "list names and flags",
+    "flags-only list",
+    "dropdown with hide_current retaining selected option"
+  ],
+  "cleanup": "Owned published translations are removed by the existing runner finally block; captured loopback URLs are transient.",
+  "neutralSource": "*-nodes.json is filtered without rewriting from the explicitly language-resolved public *-layout.json response; *-post-nodes.json records ordinary post REST serialization separately.",
+  "limitations": [
+    "Polylang Free only; no licensed Pro evidence",
+    "Neutral links and WordPress rendered markup are independent captured deliveries; no broad markup parity claim",
+    "Ordinary post REST getquickBlocks does not supply explicit layout language context; its observed current metadata is captured separately, not asserted equivalent to the language-resolved layout",
+    "Consumer keyboard/rendering acceptance is separate"
+  ]
+}

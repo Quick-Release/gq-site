@@ -33,6 +33,15 @@ managed files, its own deploy steps move into deploy extensions, and anything
 the generated sections repeat is removed from the site's own content.
 _Avoid_: onboarding (that is adding a site to the fleet)
 
+**Content Runtime**:
+The Runtime a content Site delivers published content with: gq-content's
+`getquick/gq-content` CMS plugin and `@getquick/content` Frontend package,
+pinned together at one version. A Site whose `gq.ops.json` has
+`contentRuntime: "package"` (every Site `gq new` generates) runs it; a Site
+generated before keeps its copy of the runtime, site-owned
+([ADR 0020](docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+_Avoid_: content skeleton (the skeleton is the Site's starting files)
+
 **Deploy extension**:
 A site-owned step that the generated CMS deploy runs after activating the
 site's plugins, such as activating its theme.
@@ -161,6 +170,16 @@ A visit's read of an entry the publication store has never held, the only CMS
 read a visit makes: a published entry is stored and served, a confirmed
 missing one is a 404, and a failed read is a 503.
 _Avoid_: cache miss (it isn't a fallback for stored entries)
+
+**Consent database**:
+A Site's record of its visitors' consent decisions, one D1 database per
+stage, created in the EU and apart from the publication store: the only
+store a visitor's request writes, and only through the consent Runtime's
+record endpoint
+([ADR 0019](docs/adr/0019-record-visitors-consent-in-a-separate-eu-database.md)).
+It exists only for a Frontend with the consent Runtime, and its retention
+purge runs in a Worker of its own.
+_Avoid_: consent cache, cookie store
 
 ### Releases
 

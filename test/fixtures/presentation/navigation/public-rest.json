@@ -1,0 +1,392 @@
+{
+  "id": 497,
+  "date": "2026-10-24T00:43:40",
+  "date_gmt": "2026-10-24T00:43:40",
+  "guid": {
+    "rendered": "http://127.0.0.1:8180/navigation-presentation-80-2/"
+  },
+  "modified": "2026-10-24T00:43:43",
+  "modified_gmt": "2026-10-24T00:43:43",
+  "slug": "navigation-presentation-80-2",
+  "status": "publish",
+  "type": "page",
+  "link": "http://127.0.0.1:8180/navigation-presentation-80-2/",
+  "title": {
+    "rendered": "Navigation presentation 80"
+  },
+  "content": {
+    "rendered": "<div class=\"gqd-content\"><div style=\"--gqd-base-flexDirection:column;--gqd-base-flexWrap:nowrap;--gqd-base-justifyContent:flex-start;--gqd-base-alignItems:stretch;--gqd-base-textAlign:end;--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 4);--gqd-base-color:#123456;--gqd-base-backgroundColor:#f0f0f0;--gqd-lg-flexDirection:row;--gqd-lg-justifyContent:space-between;--gqd-lg-alignItems:center;--gqd-lg-textAlign:start;--gqd-lg-gap:calc(var(--gqd-spacing, 0.25rem) * 8)\" class=\"wp-block-getquick-design-navigation gqd-navigation gqd-navigation--transparent gqd-presentation\" id=\"gqd-navigation-menu-1\" data-getquick-navigation=\"true\" data-navigation-breakpoint=\"64rem\" data-menu-open=\"false\" data-navigation-state=\"closed\" data-navigation-location=\"primary\" data-navigation-label=\"Primary navigation\"><nav class=\"gqd-navigation__landmark\" aria-label=\"Primary navigation\" data-menu-open=\"false\" data-navigation-state=\"closed\"><button class=\"gqd-navigation__toggle\" type=\"button\" aria-controls=\"gqd-navigation-menu-1-contents\" aria-expanded=\"false\" aria-haspopup=\"dialog\"><span class=\"screen-reader-text\" data-navigation-open-label=\"Open menu\" data-navigation-close-label=\"Close menu\">Open menu</span><span aria-hidden=\"true\">☰</span></button><div class=\"gqd-navigation__menu\" id=\"gqd-navigation-menu-1-contents\"><ul class=\"gqd-navigation__list\"><li class=\"gqd-navigation__item\"><div class=\"gqd-navigation__submenu-row\"><a class=\"gqd-navigation__link\" href=\"/products\">Products</a><button class=\"gqd-navigation__submenu-toggle\" type=\"button\" aria-label=\"Products\" aria-controls=\"gqd-navigation-menu-1-submenu-0-ab03255864da\" aria-expanded=\"true\" aria-haspopup=\"true\"><span aria-hidden=\"true\">⌄</span></button></div><ul class=\"gqd-navigation__submenu\" id=\"gqd-navigation-menu-1-submenu-0-ab03255864da\"><li class=\"gqd-navigation__item\"><a class=\"gqd-navigation__link\" href=\"/shop\">Shop</a></li></ul></li><li class=\"gqd-navigation__item\"><a class=\"gqd-navigation__link\" href=\"/navigation-presentation-80-2/\">Contact</a></li></ul></div></nav></div>\n\n<nav style=\"--gqd-base-flexDirection:column;--gqd-base-flexWrap:nowrap;--gqd-base-justifyContent:flex-start;--gqd-base-alignItems:stretch;--gqd-base-textAlign:end;--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 4);--gqd-base-color:#123456;--gqd-base-backgroundColor:#f0f0f0;--gqd-lg-flexDirection:row;--gqd-lg-justifyContent:space-between;--gqd-lg-alignItems:center;--gqd-lg-textAlign:start;--gqd-lg-gap:calc(var(--gqd-spacing, 0.25rem) * 8)\" class=\"is-responsive wp-block-navigation is-layout-flex wp-block-navigation-is-layout-flex gqd-presentation\" aria-label=\"Navigation presentation 80\" \n\t\t data-wp-interactive=\"core/navigation\" data-wp-context='{\"overlayOpenedBy\":{\"click\":false,\"hover\":false,\"focus\":false},\"type\":\"overlay\",\"roleAttribute\":\"\",\"ariaLabel\":\"Menu\"}'><button aria-haspopup=\"dialog\" aria-label=\"Open menu\" class=\"wp-block-navigation__responsive-container-open\" \n\t\t\t\tdata-wp-on--click=\"actions.openMenuOnClick\"\n\t\t\t\tdata-wp-on--keydown=\"actions.handleMenuKeydown\"\n\t\t\t><svg width=\"24\" height=\"24\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M4 7.5h16v1.5H4z\"></path><path d=\"M4 15h16v1.5H4z\"></path></svg></button>\n\t\t\t\t<div class=\"wp-block-navigation__responsive-container\"  id=\"modal-2\" \n\t\t\t\tdata-wp-class--has-modal-open=\"state.isMenuOpen\"\n\t\t\t\tdata-wp-class--is-menu-open=\"state.isMenuOpen\"\n\t\t\t\tdata-wp-watch=\"callbacks.initMenu\"\n\t\t\t\tdata-wp-on--keydown=\"actions.handleMenuKeydown\"\n\t\t\t\tdata-wp-on--focusout=\"actions.handleMenuFocusout\"\n\t\t\t\ttabindex=\"-1\"\n\t\t\t>\n\t\t\t\t\t<div class=\"wp-block-navigation__responsive-close\" tabindex=\"-1\">\n\t\t\t\t\t\t<div class=\"wp-block-navigation__responsive-dialog\" \n\t\t\t\tdata-wp-bind--aria-modal=\"state.ariaModal\"\n\t\t\t\tdata-wp-bind--aria-label=\"state.ariaLabel\"\n\t\t\t\tdata-wp-bind--role=\"state.roleAttribute\"\n\t\t\t>\n\t\t\t\t\t\t\t<button aria-label=\"Close menu\" class=\"wp-block-navigation__responsive-container-close\" \n\t\t\t\tdata-wp-on--click=\"actions.closeMenuOnClick\"\n\t\t\t><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" aria-hidden=\"true\" focusable=\"false\"><path d=\"m13.06 12 6.47-6.47-1.06-1.06L12 10.94 5.53 4.47 4.47 5.53 10.94 12l-6.47 6.47 1.06 1.06L12 13.06l6.47 6.47 1.06-1.06L13.06 12Z\"></path></svg></button>\n\t\t\t\t\t\t\t<div class=\"wp-block-navigation__responsive-container-content\" \n\t\t\t\tdata-wp-watch=\"callbacks.focusFirstElement\"\n\t\t\t id=\"modal-2-content\">\n\t\t\t\t\t\t\t\t<ul class=\"wp-block-navigation__container is-responsive wp-block-navigation\"><li style=\"--gqd-base-paddingInline:calc(var(--gqd-spacing, 0.25rem) * 4)\" class=\"wp-block-navigation-item wp-block-navigation-link gqd-presentation\"><a class=\"wp-block-navigation-item__content\"  href=\"/stale-public\"><span class=\"wp-block-navigation-item__label\">News</span></a></li><li data-wp-context=\"{ &quot;submenuOpenedBy&quot;: { &quot;click&quot;: false, &quot;hover&quot;: false, &quot;focus&quot;: false }, &quot;type&quot;: &quot;submenu&quot;, &quot;modal&quot;: null, &quot;previousFocus&quot;: null }\" data-wp-interactive=\"core/navigation\" data-wp-on--focusout=\"actions.handleMenuFocusout\" data-wp-on--keydown=\"actions.handleMenuKeydown\" data-wp-on--pointerenter=\"actions.openMenuOnHover\" data-wp-on--pointerleave=\"actions.closeMenuOnHover\" data-wp-watch=\"callbacks.initMenu\" tabindex=\"-1\" style=\"--gqd-base-textAlign:end\" class=\"wp-block-navigation-item has-child open-on-hover-click wp-block-navigation-submenu gqd-presentation\"><a class=\"wp-block-navigation-item__content\" href=\"/about\"><span class=\"wp-block-navigation-item__label\">About</span></a><button data-wp-bind--aria-expanded=\"state.isMenuOpen\" data-wp-on--click=\"actions.toggleMenuOnClick\" aria-label=\"About submenu\" class=\"wp-block-navigation__submenu-icon wp-block-navigation-submenu__toggle\" ><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" fill=\"none\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M1.50002 4L6.00002 8L10.5 4\" stroke-width=\"1.5\"></path></svg></button><ul data-wp-on--focus=\"actions.openMenuOnFocus\" class=\"wp-block-navigation__submenu-container wp-block-navigation-submenu\"><li class=\"wp-block-navigation-item wp-block-navigation-link gqd-presentation\"><a class=\"wp-block-navigation-item__content\"  href=\"/team\"><span class=\"wp-block-navigation-item__label\">Team</span></a></li></ul></li><li class=\"wp-block-navigation-item wp-block-navigation-link gqd-presentation\"><a class=\"wp-block-navigation-item__content\"  href=\"/stale-draft\"><span class=\"wp-block-navigation-item__label\">Private draft</span></a></li><ul style=\"--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 2);--gqd-base-flexDirection:column\" class=\"wp-block-page-list gqd-presentation\"><li class=\"wp-block-pages-list__item wp-block-navigation-item open-on-hover-click\"><a class=\"wp-block-pages-list__item__link wp-block-navigation-item__content\" href=\"http://127.0.0.1:8180/navigation-presentation-80-2/navigation-child-80/\">Navigation child 80</a></li></ul></ul>\n\t\t\t\t\t\t\t\t\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t</div>\n\t\t\t\t</div></nav>\n\n<ul style=\"--gqd-base-flexDirection:column;--gqd-base-flexWrap:nowrap;--gqd-base-justifyContent:flex-start;--gqd-base-alignItems:stretch;--gqd-base-textAlign:end;--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 4);--gqd-base-color:#123456;--gqd-base-backgroundColor:#f0f0f0;--gqd-base-display:none;--gqd-lg-flexDirection:row;--gqd-lg-justifyContent:space-between;--gqd-lg-alignItems:center;--gqd-lg-textAlign:start;--gqd-lg-gap:calc(var(--gqd-spacing, 0.25rem) * 8);--gqd-md-display:flex\" class=\"wp-block-getquick-design-social-links is-layout-flex wp-block-getquick-design-social-links-is-layout-flex gqd-presentation\"><li><a href=\"https://instagram.com/example\" aria-label=\"Instagram\"><svg aria-hidden=\"true\" focusable=\"false\" width=\"24\" height=\"24\" viewbox=\"0 0 24 24\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M12,4.622c2.403,0,2.688,0.009,3.637,0.052c0.877,0.04,1.354,0.187,1.671,0.31c0.42,0.163,0.72,0.358,1.035,0.673 c0.315,0.315,0.51,0.615,0.673,1.035c0.123,0.317,0.27,0.794,0.31,1.671c0.043,0.949,0.052,1.234,0.052,3.637 s-0.009,2.688-0.052,3.637c-0.04,0.877-0.187,1.354-0.31,1.671c-0.163,0.42-0.358,0.72-0.673,1.035 c-0.315,0.315-0.615,0.51-1.035,0.673c-0.317,0.123-0.794,0.27-1.671,0.31c-0.949,0.043-1.233,0.052-3.637,0.052 s-2.688-0.009-3.637-0.052c-0.877-0.04-1.354-0.187-1.671-0.31c-0.42-0.163-0.72-0.358-1.035-0.673 c-0.315-0.315-0.51-0.615-0.673-1.035c-0.123-0.317-0.27-0.794-0.31-1.671C4.631,14.688,4.622,14.403,4.622,12 s0.009-2.688,0.052-3.637c0.04-0.877,0.187-1.354,0.31-1.671c0.163-0.42,0.358-0.72,0.673-1.035 c0.315-0.315,0.615-0.51,1.035-0.673c0.317-0.123,0.794-0.27,1.671-0.31C9.312,4.631,9.597,4.622,12,4.622 M12,3 C9.556,3,9.249,3.01,8.289,3.054C7.331,3.098,6.677,3.25,6.105,3.472C5.513,3.702,5.011,4.01,4.511,4.511 c-0.5,0.5-0.808,1.002-1.038,1.594C3.25,6.677,3.098,7.331,3.054,8.289C3.01,9.249,3,9.556,3,12c0,2.444,0.01,2.751,0.054,3.711 c0.044,0.958,0.196,1.612,0.418,2.185c0.23,0.592,0.538,1.094,1.038,1.594c0.5,0.5,1.002,0.808,1.594,1.038 c0.572,0.222,1.227,0.375,2.185,0.418C9.249,20.99,9.556,21,12,21s2.751-0.01,3.711-0.054c0.958-0.044,1.612-0.196,2.185-0.418 c0.592-0.23,1.094-0.538,1.594-1.038c0.5-0.5,0.808-1.002,1.038-1.594c0.222-0.572,0.375-1.227,0.418-2.185 C20.99,14.751,21,14.444,21,12s-0.01-2.751-0.054-3.711c-0.044-0.958-0.196-1.612-0.418-2.185c-0.23-0.592-0.538-1.094-1.038-1.594 c-0.5-0.5-1.002-0.808-1.594-1.038c-0.572-0.222-1.227-0.375-2.185-0.418C14.751,3.01,14.444,3,12,3L12,3z M12,7.378 c-2.552,0-4.622,2.069-4.622,4.622S9.448,16.622,12,16.622s4.622-2.069,4.622-4.622S14.552,7.378,12,7.378z M12,15 c-1.657,0-3-1.343-3-3s1.343-3,3-3s3,1.343,3,3S13.657,15,12,15z M16.804,6.116c-0.596,0-1.08,0.484-1.08,1.08 s0.484,1.08,1.08,1.08c0.596,0,1.08-0.484,1.08-1.08S17.401,6.116,16.804,6.116z\"></path></svg></a></li></ul></div>",
+    "protected": false
+  },
+  "excerpt": {
+    "rendered": "",
+    "protected": false
+  },
+  "author": 0,
+  "featured_media": 0,
+  "parent": 0,
+  "menu_order": 0,
+  "comment_status": "closed",
+  "ping_status": "closed",
+  "template": "",
+  "meta": {
+    "footnotes": ""
+  },
+  "class_list": [
+    "post-497",
+    "page",
+    "type-page",
+    "status-publish",
+    "hentry"
+  ],
+  "getquickBlocks": [
+    {
+      "name": "getquick-design/navigation",
+      "attributes": {
+        "items": [
+          {
+            "id": "menu-item:491",
+            "label": "Products",
+            "url": "/products",
+            "children": [
+              {
+                "id": "menu-item:492",
+                "label": "Shop",
+                "url": "/shop",
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "menu-item:493",
+            "label": "Contact",
+            "url": "/navigation-presentation-80-2/",
+            "children": []
+          }
+        ],
+        "label": "Primary navigation",
+        "location": "primary",
+        "presentation": {
+          "base": {
+            "flexDirection": "column",
+            "flexWrap": "nowrap",
+            "justifyContent": "start",
+            "alignItems": "stretch",
+            "textAlign": "end",
+            "gap": 4,
+            "color": {
+              "literal": "#123456"
+            },
+            "backgroundColor": {
+              "literal": "#f0f0f0"
+            }
+          },
+          "lg": {
+            "flexDirection": "row",
+            "justifyContent": "between",
+            "alignItems": "center",
+            "textAlign": "start",
+            "gap": 8
+          }
+        }
+      },
+      "content": null,
+      "children": [],
+      "supported": true,
+      "dataRequirements": [
+        "navigation"
+      ]
+    },
+    {
+      "name": "core/navigation",
+      "attributes": {
+        "items": [
+          {
+            "id": "navigation-item:ffa98945b3869da7",
+            "label": "News",
+            "url": "/public-navigation-destination-80/",
+            "children": [],
+            "presentation": {
+              "base": {
+                "paddingInline": 4
+              }
+            }
+          },
+          {
+            "id": "navigation-item:41c43870062c2332",
+            "label": "About",
+            "url": "/about",
+            "children": [
+              {
+                "id": "navigation-item:8631fafaf6ab0128",
+                "label": "Team",
+                "url": "/team",
+                "children": []
+              }
+            ],
+            "presentation": {
+              "base": {
+                "textAlign": "end"
+              }
+            }
+          },
+          {
+            "id": "navigation-item:509782d3b9a4378c",
+            "label": "Navigation child 80",
+            "url": "/navigation-presentation-80-2/navigation-child-80/",
+            "children": []
+          },
+          {
+            "id": "navigation-item:e0a906db63977c4c",
+            "label": "Dynamic branch",
+            "url": "/navigation-presentation-80-2/",
+            "children": [
+              {
+                "id": "navigation-item:ec26efd89633c279",
+                "label": "Navigation child 80",
+                "url": "/navigation-presentation-80-2/navigation-child-80/",
+                "children": []
+              }
+            ]
+          }
+        ],
+        "label": "Navigation presentation 80",
+        "presentation": {
+          "base": {
+            "flexDirection": "column",
+            "flexWrap": "nowrap",
+            "justifyContent": "start",
+            "alignItems": "stretch",
+            "textAlign": "end",
+            "gap": 4,
+            "color": {
+              "literal": "#123456"
+            },
+            "backgroundColor": {
+              "literal": "#f0f0f0"
+            }
+          },
+          "lg": {
+            "flexDirection": "row",
+            "justifyContent": "between",
+            "alignItems": "center",
+            "textAlign": "start",
+            "gap": 8
+          }
+        },
+        "ref": 496
+      },
+      "content": null,
+      "children": [
+        {
+          "name": "core/navigation-link",
+          "attributes": {
+            "id": 494,
+            "kind": "post-type",
+            "label": "News",
+            "presentation": {
+              "base": {
+                "paddingInline": 4
+              }
+            },
+            "type": "page",
+            "url": "/public-navigation-destination-80/"
+          },
+          "content": null,
+          "children": [],
+          "supported": true,
+          "dataRequirements": [
+            "navigation"
+          ]
+        },
+        {
+          "name": "core/navigation-submenu",
+          "attributes": {
+            "label": "About",
+            "presentation": {
+              "base": {
+                "textAlign": "end"
+              }
+            },
+            "url": "/about"
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/navigation-link",
+              "attributes": {
+                "label": "Team",
+                "url": "/team"
+              },
+              "content": null,
+              "children": [],
+              "supported": true,
+              "dataRequirements": [
+                "navigation"
+              ]
+            }
+          ],
+          "supported": true,
+          "dataRequirements": [
+            "navigation"
+          ]
+        },
+        {
+          "name": "core/page-list",
+          "attributes": {
+            "parentPageID": 497,
+            "presentation": {
+              "base": {
+                "gap": 2,
+                "flexDirection": "column"
+              }
+            },
+            "items": [
+              {
+                "id": "navigation-item:509782d3b9a4378c",
+                "label": "Navigation child 80",
+                "url": "/navigation-presentation-80-2/navigation-child-80/",
+                "children": []
+              }
+            ]
+          },
+          "content": null,
+          "children": [],
+          "supported": true,
+          "dataRequirements": [
+            "navigation"
+          ]
+        },
+        {
+          "name": "core/page-list-item",
+          "attributes": {
+            "hasChildren": true,
+            "id": 497,
+            "label": "Dynamic branch",
+            "link": "/navigation-presentation-80-2/"
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/page-list-item",
+              "attributes": {
+                "label": "Navigation child 80",
+                "link": "/navigation-presentation-80-2/navigation-child-80/"
+              },
+              "content": null,
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true,
+          "dataRequirements": [
+            "navigation"
+          ]
+        }
+      ],
+      "supported": true,
+      "dataRequirements": [
+        "navigation"
+      ]
+    },
+    {
+      "name": "getquick-design/social-links",
+      "attributes": {
+        "links": [
+          {
+            "service": "instagram",
+            "label": "Instagram",
+            "url": "https://instagram.com/example",
+            "iconUrl": null,
+            "iconSvg": "<svg aria-hidden=\"true\" focusable=\"false\" width=\"24\" height=\"24\" viewbox=\"0 0 24 24\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M12,4.622c2.403,0,2.688,0.009,3.637,0.052c0.877,0.04,1.354,0.187,1.671,0.31c0.42,0.163,0.72,0.358,1.035,0.673 c0.315,0.315,0.51,0.615,0.673,1.035c0.123,0.317,0.27,0.794,0.31,1.671c0.043,0.949,0.052,1.234,0.052,3.637 s-0.009,2.688-0.052,3.637c-0.04,0.877-0.187,1.354-0.31,1.671c-0.163,0.42-0.358,0.72-0.673,1.035 c-0.315,0.315-0.615,0.51-1.035,0.673c-0.317,0.123-0.794,0.27-1.671,0.31c-0.949,0.043-1.233,0.052-3.637,0.052 s-2.688-0.009-3.637-0.052c-0.877-0.04-1.354-0.187-1.671-0.31c-0.42-0.163-0.72-0.358-1.035-0.673 c-0.315-0.315-0.51-0.615-0.673-1.035c-0.123-0.317-0.27-0.794-0.31-1.671C4.631,14.688,4.622,14.403,4.622,12 s0.009-2.688,0.052-3.637c0.04-0.877,0.187-1.354,0.31-1.671c0.163-0.42,0.358-0.72,0.673-1.035 c0.315-0.315,0.615-0.51,1.035-0.673c0.317-0.123,0.794-0.27,1.671-0.31C9.312,4.631,9.597,4.622,12,4.622 M12,3 C9.556,3,9.249,3.01,8.289,3.054C7.331,3.098,6.677,3.25,6.105,3.472C5.513,3.702,5.011,4.01,4.511,4.511 c-0.5,0.5-0.808,1.002-1.038,1.594C3.25,6.677,3.098,7.331,3.054,8.289C3.01,9.249,3,9.556,3,12c0,2.444,0.01,2.751,0.054,3.711 c0.044,0.958,0.196,1.612,0.418,2.185c0.23,0.592,0.538,1.094,1.038,1.594c0.5,0.5,1.002,0.808,1.594,1.038 c0.572,0.222,1.227,0.375,2.185,0.418C9.249,20.99,9.556,21,12,21s2.751-0.01,3.711-0.054c0.958-0.044,1.612-0.196,2.185-0.418 c0.592-0.23,1.094-0.538,1.594-1.038c0.5-0.5,0.808-1.002,1.038-1.594c0.222-0.572,0.375-1.227,0.418-2.185 C20.99,14.751,21,14.444,21,12s-0.01-2.751-0.054-3.711c-0.044-0.958-0.196-1.612-0.418-2.185c-0.23-0.592-0.538-1.094-1.038-1.594 c-0.5-0.5-1.002-0.808-1.594-1.038c-0.572-0.222-1.227-0.375-2.185-0.418C14.751,3.01,14.444,3,12,3L12,3z M12,7.378 c-2.552,0-4.622,2.069-4.622,4.622S9.448,16.622,12,16.622s4.622-2.069,4.622-4.622S14.552,7.378,12,7.378z M12,15 c-1.657,0-3-1.343-3-3s1.343-3,3-3s3,1.343,3,3S13.657,15,12,15z M16.804,6.116c-0.596,0-1.08,0.484-1.08,1.08 s0.484,1.08,1.08,1.08c0.596,0,1.08-0.484,1.08-1.08S17.401,6.116,16.804,6.116z\"></path></svg>"
+          }
+        ],
+        "presentation": {
+          "base": {
+            "flexDirection": "column",
+            "flexWrap": "nowrap",
+            "justifyContent": "start",
+            "alignItems": "stretch",
+            "textAlign": "end",
+            "gap": 4,
+            "color": {
+              "literal": "#123456"
+            },
+            "backgroundColor": {
+              "literal": "#f0f0f0"
+            },
+            "display": "none"
+          },
+          "lg": {
+            "flexDirection": "row",
+            "justifyContent": "between",
+            "alignItems": "center",
+            "textAlign": "start",
+            "gap": 8
+          },
+          "md": {
+            "display": "flex"
+          }
+        }
+      },
+      "content": null,
+      "children": [],
+      "supported": true,
+      "dataRequirements": [
+        "site"
+      ]
+    }
+  ],
+  "_links": {
+    "self": [
+      {
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/pages/497",
+        "targetHints": {
+          "allow": [
+            "GET"
+          ]
+        }
+      }
+    ],
+    "collection": [
+      {
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/pages"
+      }
+    ],
+    "about": [
+      {
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/types/page"
+      }
+    ],
+    "replies": [
+      {
+        "embeddable": true,
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/comments?post=497"
+      }
+    ],
+    "version-history": [
+      {
+        "count": 1,
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/pages/497/revisions"
+      }
+    ],
+    "predecessor-version": [
+      {
+        "id": 500,
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/pages/497/revisions/500"
+      }
+    ],
+    "wp:attachment": [
+      {
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/media?parent=497"
+      }
+    ],
+    "curies": [
+      {
+        "name": "wp",
+        "href": "https://api.w.org/{rel}",
+        "templated": true
+      }
+    ]
+  }
+}

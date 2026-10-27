@@ -3,7 +3,408 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.24.1 — 2026-10-26
+
+### Fixed
+
+- **Form submissions reach Gravity Forms.** The CMS's `content-api.php`
+  closed the whole REST API to anonymous callers, so every post from the
+  `/gq/forms/` route failed with `401 rest_auth_required`. Its gate now lets
+  an anonymous request through only when it is a `POST`, without a method
+  override, to exactly `/gf/v2/forms/<id>/submissions`, while gq-content's
+  forms module reports Gravity Forms active. The REST index, reading forms or
+  entries and every other route stay closed
+  ([The CMS's REST gate](docs/guides/forms.md#the-cmss-rest-gate)).
+  `content-api.php` is created once, so `gq sync` doesn't change an existing
+  Site's copy: a Site with `forms` adds the exception by hand, and
+  `gq doctor` fails one whose copy still closes submissions.
+
+### Added
+
+- `scripts/smoke/cms-rest-gate.sh`, run in CI: the generated `content-api.php`
+  on a real WordPress over HTTP, with stand-ins for Gravity Forms' routes and
+  gq-content's forms module.
+
+## 0.24.0 — 2026-10-26
+
+### Added
+
+- **Headless Gravity Forms**
+  ([gq-platform ADR 0009](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0009-headless-gravity-forms.md)).
+  The optional `gq.ops.json` key `forms` (`provider: "gravityforms"`, `spam`:
+  `"honeypot"` and/or `"turnstile"`) needs `contentRuntime: "package"` and
+  `gravityforms` in `wordpress.plugins`. With it, `gq sync` manages
+  `apps/frontend/src/pages/gq/forms/[...rest].ts`, which hands
+  `POST /gq/forms/<id>` to `@getquick/content/forms/server`'s
+  `createFormsServer`, using the descriptor published with the posting page.
+  Without the key, sync writes no form route, and it removes one it wrote that
+  the Site hasn't edited. The managed route holds no form logic. New Sites'
+  `src/lib/content.ts` passes `forms: Boolean(manifest.forms)`; existing Sites
+  add `forms: true` themselves. Rendering the `gravityforms/form` block stays
+  Site-owned: see [Headless Gravity Forms](docs/guides/forms.md).
+- The Frontend deploy binds `FORMS_RATE_LIMITER` on a Site with forms. When
+  the Site chose Turnstile, it also binds `TURNSTILE_SECRET_KEY` (a secret) and
+  `TURNSTILE_SITE_KEY` (plain) from Sigillo staging, and refuses to deploy
+  without them. An optional `GQ_FORMS_ACCESS_CLIENT_ID` and
+  `GQ_FORMS_ACCESS_CLIENT_SECRET` pair serves a CMS whose submissions path is
+  behind Cloudflare Access; half a pair is refused. CI forwards all four.
+- Readiness adds a `forms` area to `gq site check`. `gravity-forms` checks
+  that the CMS's WPGraphQL has gq-content's `getquickForms`. `form-fields`
+  checks every form that published content references with `formsReadiness`.
+  `spam-controls` checks Turnstile's keys, and `cms-access` checks the Access
+  pair. `gq site check --local` runs `wp gq-forms status --format=json` in
+  DDEV. `gq doctor` checks the form route, the runtime opt-in and Turnstile's
+  keys in Sigillo staging.
+
+### Changed
+
+- Pin `@getquick/content` and `getquick/gq-content` to the 0.4.0 pair, which
+  adds the forms capability. Nothing changes for a Site that doesn't opt in.
+  Existing package-runtime Sites upgrade `@getquick/site`, run `gq sync`,
+  install both halves, and commit both lockfiles
+  ([0.3.2 to 0.4.0](docs/guides/content-pair-migration.md#032-to-040-getquicksite-0240)).
+
+## 0.23.2 — 2026-10-24
+
+### Fixed
+
+- Adopt the `@getquick/content` / `getquick/gq-content` 0.3.2 pair through
+  the normal managed keys. Existing package-runtime Sites upgrade the root
+  blueprint, run `gq sync`, then install and commit both dependency locks.
+- Validate the published runtime's `databaseId`, `getquickBlocksJson` and
+  resolved `theme` fields in the skipped GraphQL schema probe, so the Site
+  check catches a CMS that cannot serve the pinned runtime's queries.
+- New content Sites compose the resolved publication theme, scoped Preflight
+  and canonical presentation CSS across body and selected chrome, with exact
+  Tailwind 4.3.3 pins. Shared navigation, Carousel, Hero and Cover video
+  initializers follow the layout's cleanup/remount lifecycle. Post/Site
+  contexts and Query preloads use existing publication loaders.
+- Remove superseded starter Container spacing/caps and Hero viewport/breakout
+  appearance. These defaults deliberately change appearance; they are not a
+  compatibility resolver. Existing create-once Site layouts/styles require
+  deliberate adoption; sync updates managed pins and adapters only. See
+  [presentation adoption](docs/guides/content-pair-migration.md#031-to-032-getquicksite-0232)
+  for the paired release and Site-owned file steps. Immutable producer and
+  explicitly supporting inputs retain separate provenance and bounded checks.
+
+## 0.23.1 — 2026-10-23
+
+### Fixed
+
+- Pin `@getquick/content` and `getquick/gq-content` to the published 0.3.1
+  pair ([runtime release](https://github.com/Quick-Release/gq-content/releases/tag/v0.3.1),
+  source `cbf2925`). CMS-selected Grid blocks retain their responsive column
+  classes; the runtime supplies shared styles for chrome and content.
+- New Sites render `designGridStyle()` from `@getquick/content` once in the
+  layout's document head. Existing Sites must add the same head style manually:
+  `Layout.astro` is create-once and sync does not edit it. See
+  [Grid adoption](docs/guides/content-pair-migration.md#030-to-031-getquicksite-0231).
+  Sync updates both managed pins; install both dependencies and commit lockfiles
+  before releasing the CMS and Frontend together. No CMS resave or data migration
+  is required. Site per-block renderers and configured column counts remain in force.
+
+## 0.23.0 — 2026-10-23
+
+### Added
+
+- **Optional trusted private Site preview bindings** ([#122](https://github.com/Quick-Release/gq-site/pull/122)).
+  The manifest accepts HTTPS `preview.cmsUrl` and `preview.audience`, and the
+  new `@getquick/site/preview-bindings` export validates them before deployment.
+  Configured previews require a dedicated trusted Site CMS username/application
+  password pair; an optional Access service pair adds gateway authentication.
+  Managed Frontend deployment binds private credentials as Redacted Worker
+  secrets outside explicit `Website.env`; CI forwards them to the release step.
+  Partial, malformed or orphaned configuration fails closed. Sites without
+  preview configuration or secrets keep their existing behavior.
+- **Preview trust and adoption guidance** documents the dedicated low-privilege
+  CMS identity, private Sigillo/CI injection, rotation and pending human review
+  and public-delivery acceptance. Alchemy merges bindings before building:
+  build code and dependencies can read credentials and must be trusted not to
+  serialize or log them. This is not build-process isolation.
+
+Existing Sites: after publication, upgrade the exact `@getquick/site` pin,
+install and run `gq sync`, reviewing all intervening managed changes. Add the
+Site-owned server routes/helper and optional manifest configuration separately;
+arrange the dedicated CMS identity, private credentials and any Access policy
+before a separately authorized deployment. See
+[private draft preview configuration](docs/reference/manifest.md#draft-preview-bindings).
+This release prepares blueprint plumbing; it does not establish live preview,
+human review or public-delivery acceptance (Design issues 66/67).
+
+## 0.22.0 — 2026-10-23
+
+### Changed
+
+- **New Sites pin the gq-content 0.3.0 pair** (was 0.2.0): `getquick/gq-content`
+  and `@getquick/content` exactly `0.3.0`
+  ([Quick-Release/gq-content v0.3.0](https://github.com/Quick-Release/gq-content/releases/tag/v0.3.0),
+  tag at `a84d4db`), in the managed keys, the CMS and Frontend skeletons, and
+  `@getquick/site`'s own dependency. 0.3.0 serves the header and footer
+  editors select in GQ Design's Header & Footer with the site chrome, as
+  `SiteChrome.header` and `.footer` (`{ title, blocks }` or null), and
+  renders them with `content.renderDesignPattern`
+  ([gq-content ADR 0006](https://github.com/Quick-Release/gq-content/blob/v0.3.0/docs/adr/0006-serve-cms-selected-header-and-footer-patterns-with-site-chrome.md)).
+  There is no new D1 migration. The content-pair smoke checks 0.3.0's
+  published integrity and ZIP.
+- **The content skeleton's layout renders the selected header and footer**
+  (`apps/frontend/src/layouts/Layout.astro`, created once). Each region
+  renders through `renderDesignPattern`, and the layout keeps its own header
+  (logo and primary menu) when the chrome serves none; the language switcher
+  and the consent footer stay. A Site block without saved HTML needs a
+  renderer the Site passes in `blocks`; until then it renders nothing and is
+  logged. The skeleton's stubbed WordPress answers `header` and `footer`, and
+  a rendered-route test proves a selected pattern replaces the Site's own.
+  Patterns need GQ Design 0.4.1 or newer on the CMS (`getquick/gq-design` is
+  required at `*@stable`, so a Site's `composer.lock` decides).
+- The readiness schema test leaves out 0.3.0's entry query by `nodeByUri`,
+  which runs only on a Site that configures `collections`. `gq site check`
+  doesn't require `designPattern`: a CMS without it still serves the chrome.
+
+Existing Sites on the pair: upgrade `@getquick/site`, run `gq sync`, update
+both lockfiles, then follow
+[0.2.0 to 0.3.0](docs/guides/content-pair-migration.md#020-to-030-getquicksite-0220):
+GQ Design 0.4.1+, port the layout's header and footer by hand, add
+`header: null, footer: null` to chrome stubs, and refresh the whole Site
+after the release.
+
+## 0.21.0 — 2026-10-22
+
+### Added
+
+- **Offboarding archives and deletes the consent records**
+  ([#114](https://github.com/Quick-Release/gq-site/issues/114); ADR 0019,
+  ADR 0011). `gq offboard --archive` now finds each stage's consent database
+  (`<project>-fe-consent[-<stage>]`) and purge Worker
+  (`<project>-consent-purge[-<stage>]`): production's by name, another
+  stage's when the stage is tied to the project by its `PUBLICATION_DB`
+  binding, and its purge Worker only when it binds that stage's database
+  as `CONSENT_DB`. The archive exports each database beside
+  `publications*.sql` (`consent.sql`, `consent-<stage>.sql`), and
+  `manifest.json` records them under `sources.frontend[.stages[]].consent`.
+  Once the archive is verified, each purge Worker and then each consent
+  database is deleted, before the Frontend's Workers and stores, and a rerun
+  picks up where a failed one stopped. A look-alike named for a stage
+  nothing ties to the project is listed for the operator and left alone. A
+  Site without a consent Runtime offboards exactly as before.
+  - The archive then holds visitors' consent records, personal data: the
+    [consent guide](docs/guides/consent.md) and the
+    [offboarding guide](docs/guides/offboarding.md) say so, and that
+    CONSENT-1's retention (CN-R10) governs how long the archive keeps them.
+  - `consentDatabaseName` and offboarding share one source for the consent
+    names (`src/offboard/names.mjs`).
+- **A Site's consent retention, from `gq.ops.json`**
+  ([#115](https://github.com/Quick-Release/gq-site/issues/115); CN-R10,
+  ADR 0019). The new optional `consent.retentionDays` (a whole number of
+  days from 1 to 1826, validated by the schema and `gq doctor`) is how long a
+  consent record is kept after its decision stops being in force. When it is
+  set, the Frontend's deploy (`infra/consent.ts`, `infra/frontend.run.ts`)
+  binds it as the plain variable `CONSENT_RETENTION_DAYS` to the Frontend
+  and the purge Worker from that one value. The managed purge entry
+  (`apps/frontend/workers/consent-purge.ts`) and the content skeleton's
+  managed `/gq/consent` routes pass it to `createConsentServer` as
+  `retentionDays`, so the purge deletes by the retention the read endpoints'
+  `check()` reports. Left out, nothing is bound and both keep the consent
+  Runtime's default (1826 days). A Site whose consent routes are its own adds
+  the same `retentionDays` line ([consent guide](docs/guides/consent.md#the-sites-retention)).
+
+### Fixed
+
+- **The content skeleton's `src/lib/content.ts` is formatter-stable for any
+  project name** ([#113](https://github.com/Quick-Release/gq-site/issues/113)).
+  For a name of four characters or fewer (e.g. `acme`), the line building the
+  CMS's DDEV GraphQL URL fit in 100 columns, so `vp fmt --check` failed in
+  `apps/frontend` and a new Site's pre-commit hook rewrote the file on its
+  first commit. The DDEV project name is now its own constant. The
+  formatter-stability test now also checks the create-once files `gq new`
+  renders, for 1-, 4- and 40-character names. (`.astro` files aren't
+  formatted by `vp fmt` or the pre-commit hook.) Existing Sites can keep their
+  file; `vp fmt --write` fixes it once.
+
+## 0.20.1 — 2026-10-22
+
+### Added
+
+- **New content Sites compose the consent Runtime**
+  ([#110](https://github.com/Quick-Release/gq-site/issues/110); CONSENT-1
+  and LEGAL-1 under Platform ADR 0008, **Proposed**). The content skeleton
+  composes `@getquick/content` 0.2.0's consent UI, routes and runtime option
+  at its documented seams, and copies none of its logic:
+  - `src/lib/content.ts` passes `consent: { services: [], cmsSettings: true, firstPartyHosts }`
+    to `createContentRuntime`: published bodies' third-party embeds become
+    placeholders at delivery, and each language's chrome carries GQ Config's
+    Legal Contract and GA4 toggle. The Site's Frontend and media domains are
+    first party.
+  - `src/layouts/Layout.astro` renders `consentPage()`: its configuration
+    and styles in `<head>`, the banner and preferences dialog first in
+    `<body>`, the legal links and **Cookie settings** in a new `<footer>`,
+    and `startConsent()` in a script. With no optional service there is no
+    banner; GQ Config's GA4 toggle adds it.
+  - `src/pages/gq/consent.ts` and `src/pages/gq/consent/[...rest].ts` are
+    new **managed** route adapters (on a Site with
+    `"contentRuntime": "package"`, as `gq/events.ts` and `gq/refresh.ts`):
+    `createConsentServer({ siteId: project, bindings }).handle()`, else 404.
+    The provisioned consent database is now written and read.
+  - The Frontend's stub CMS answers `ConsentSettings`, and its tests assert
+    the composition through Astro's Container API.
+
+  `gq sync` adds the two routes to a 0.20.0 Site and never touches its
+  layout or `lib/content.ts`; [Consent and legal pages](docs/guides/consent.md#adopting-it-on-an-existing-site)
+  gives the exact change to make by hand.
+
+- **`scripts/smoke/consent.sh`** (CI's `consent` job): a generated Site's
+  Frontend, built by Alchemy and served in workerd with a local D1
+  publication store and consent database, passes gq-content's
+  `runConsentAcceptance` in Chromium on representative routes, records a
+  decision at `POST /gq/consent` and reads it back with the bearer, and is
+  ready by `gq site check`'s consent part with GA4 on; monolingual and
+  bilingual. `scripts/smoke/acceptance.sh` runs it too. `playwright` is a
+  development dependency.
+
+## 0.20.0 — 2026-10-22
+
+### Changed
+
+- **New content Sites run the Content Runtime from the gq-content package
+  pair** ([ADR 0020](docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md);
+  [#77](https://github.com/Quick-Release/gq-site/issues/77)). `gq new` no
+  longer copies the runtime into a Site. It writes
+  `"contentRuntime": "package"` in `gq.ops.json`, and the Site requires the
+  CMS plugin `getquick/gq-content` and the Frontend package
+  `@getquick/content`, both exactly `0.2.0`
+  ([Quick-Release/gq-content v0.2.0](https://github.com/Quick-Release/gq-content/releases/tag/v0.2.0)).
+  On such a Site, `gq sync` manages:
+  - the two pins, as managed keys in `apps/cms/composer.json` and
+    `apps/frontend/package.json`. `gq sync --check` fails while they
+    disagree, naming both;
+  - the route adapters `apps/frontend/src/pages/gq/events.ts` and
+    `refresh.ts`, which hand requests to the package's `handleEvent` and
+    `handleRefresh`.
+    The Frontend skeleton configures the runtime in `src/lib/content.ts`
+    (create-once) and its pages import the package's delivery and HTML
+    helpers (#2 in gq-content). The CMS skeleton defines `GQ_CONTENT_SITE_ID`
+    as the project. The copied delivery, store, events, reconciliation,
+    WPGraphQL client, HTML helpers, their tests, the five SQL migrations and the
+    CMS's three event mu-plugins are gone from the skeletons. The generated
+    Frontend keeps its rendered-route test of what the Site composes.
+- **The publication store's migrations come from the installed package.**
+  `infra/frontend.run.ts` and `infra/scripts/deploy-frontend.mjs` take them
+  from a Site's own `apps/frontend/migrations` when it has them, and
+  otherwise, on a Site on the pair, from `@getquick/content/migrations`
+  installed in `apps/frontend`. An older Site that installs the package for
+  consent alone gets no store from it. Installing the package is what switches durable delivery
+  on.
+- **`blueprint/packages.json`** catalogues `getquick/gq-content`
+  (`manual`): its pin moves only with `@getquick/content`'s.
+- **ADRs 0003–0010 and 0013** are superseded in part: their runtime
+  decisions by gq-content's ADR 0002; their provisioning parts stay.
+- **Proofs.** `scripts/smoke/content-pair.sh` (CI's `content-pair` job,
+  replacing `frontend-runtime`) proves that a generated Site wires the
+  pinned pair: its pins and their published integrity, the crontab's
+  command against the CMS plugin's published ZIP (by SHA-256), the
+  migrations the deploy resolves, and the Frontend served in workerd with a
+  local D1 store through its `/gq` routes, `gq frontend refresh` and
+  `gq frontend events check`. The runtime-behaviour proofs moved to
+  gq-content with the runtime: `frontend-runtime.sh`,
+  `frontend-languages.mjs` and `cms-events.sh` are removed, and
+  `cms-polylang.sh` keeps only the Polylang provisioning half.
+  `test/site/schema.test.mjs` now checks `gq site check`'s schema fields
+  against the pinned package's queries.
+- `@getquick/site` depends on `@getquick/content` 0.2.0 exactly (was
+  0.1.0), the version new Sites pin. 0.2.0 adds the content extension a
+  Site uses to carry its own fields
+  ([gq-content ADR 0004](https://github.com/Quick-Release/gq-content/blob/v0.2.0/docs/adr/0004-carry-a-sites-own-content-as-a-typed-extension.md));
+  its D1 migrations are byte-identical to 0.1.0's.
+- **Moving an existing Site onto the pair** has its guide,
+  [docs/guides/content-pair-migration.md](docs/guides/content-pair-migration.md):
+  set `contentRuntime`, delete the copied runtime (its `/gq` routes first,
+  which `gq sync` otherwise stops on as local edits, and
+  `apps/frontend/migrations`, which the deploy otherwise keeps using), run
+  `gq sync --recreate apps/frontend/src/lib/content.ts`, define
+  `GQ_CONTENT_SITE_ID` in the CMS, carry the Site's own fields through the
+  package's `extension`, and refresh the whole Site after the release.
+
+Existing Sites: nothing changes. A Site without `contentRuntime` keeps its
+copied runtime, and `gq sync` neither adds the pair nor rewrites or deletes
+its copies; it only stops recording the dropped create-once files in
+`gq.lock.json`. Moving an existing Site onto the pair is a separate
+migration.
+
+## 0.19.1 — 2026-10-22
+
+### Added
+
+- **Consent records, provisioned in the EU** ([ADR 0019](docs/adr/0019-record-visitors-consent-in-a-separate-eu-database.md);
+  gq-platform ADR 0008, Proposed). A Frontend with the consent Runtime
+  (`@getquick/content` exporting `./consent/migrations`) deploys with its own
+  consent database, `<project>-fe-consent[-<stage>]`, created with
+  `jurisdiction: "eu"` and migrated from the Runtime, bound as `CONSENT_DB`
+  beside `CONSENT_RATE_LIMITER` and the `CONSENT_READ_TOKEN` secret, and a
+  daily purge Worker, `<project>-consent-purge[-<stage>]`, that calls the
+  Runtime's `purge()`. New managed files: `infra/consent.ts` and
+  `apps/frontend/workers/consent-purge.ts`. A Frontend without the Runtime
+  deploys as before.
+- **`gq frontend secrets`** generates `CONSENT_READ_TOKEN`; CI releases and
+  `pnpm deploy:frontend` bind it; **`gq ploi events`** writes it to the CMS's
+  `.env` as `GETQUICK_CONSENT_READ_TOKEN`, with `GETQUICK_FRONTEND_URL`.
+- **`gq doctor`** fails on a consent database outside `eu`.
+- **`gq site check`** gains a _Consent and legal pages_ part: `legal-pages`
+  (GQ Config's Legal Contract: a missing required page or an incomplete
+  controller isn't ready; an untranslated page warns), `consent-runtime`
+  (GA4 on in GQ Config without the consent Runtime isn't ready) and
+  `third-party-hosts` (a homepage loading from a host outside the Site, or an
+  embed the Runtime blocked, isn't ready). `cms-events` also compares the
+  CMS's consent read token with Sigillo's.
+
+### Changed
+
+- The CMS skeleton requires `getquick/gq-config` 0.4.3 (the Legal Contract
+  and Consent tab).
+- `@getquick/site` depends on `@getquick/content` 0.1.0 exactly: readiness's
+  third-party scan is gq-content's own `scanConsentHtml`.
+- New Sites' `pnpm-workspace.yaml` lets `@getquick/content` and
+  `@quick-release/storefront` install the day they are released, as
+  `@getquick/site` already could.
+
+### Tested with
+
+`getquick/gq-config` 0.4.3, `@getquick/content` and `getquick/gq-content`
+0.1.0 (tag `v0.1.0`, `51a9f3e`) and `@quick-release/storefront` 0.2.1, with
+their integrities in the [consent guide](docs/guides/consent.md#tested-platform-release-combination).
+The skeletons don't pin gq-content or the storefront yet (#77, #89).
+
+Existing Sites: upgrade the exact pin and run `gq sync`; nothing changes for
+a Frontend without the consent Runtime. A Site's pnpm may hold back
+`@getquick/content`, now a dependency of `@getquick/site`, for its minimum
+release age: add `"@getquick/content"` to `minimumReleaseAgeExclude` in its
+`pnpm-workspace.yaml`. A Site whose GQ Config predates
+0.4.3, has unassigned legal pages or loads third-party hosts is no longer
+ready under `gq site check`. Adoption: [consent guide](docs/guides/consent.md).
+
+## 0.19.0 — 2026-10-21
+
+### Added
+
+- **`gq release package <composer-package>`** (`pnpm release:package`, a new
+  managed script): a fast CMS redeploy of one GETQUICK Composer package. From
+  a clean tree it runs `composer update <package>` in `apps/cms` with the
+  registry login, syncs and checks the current `VERSION` as `release prepare`
+  does, commits the lock (`Update <package> to <version>`, with the commit of
+  a `dev-*` version), and deploys that commit with `gq ploi release`. No tag,
+  push or version bump; push the commit afterwards. An offboarded Site
+  refuses it like `release push`.
+
+### Documented
+
+- **A Site on a branch.** A Site may require a GETQUICK package from a branch,
+  such as `"getquick/gq-design": "dev-main as 0.5.99"` (the alias keeps
+  getquick-theme's `<1.0` constraint satisfiable). `gq sync`, the release
+  commands, `gq ploi release` and package discovery never rewrite the
+  requirement or reject a lock that pins a branch commit; tests now hold
+  that. The registry must serve the branch's archive for the server's
+  `composer install`.
+
+Existing Sites: upgrade the exact pin and run `gq sync`, which adds the
+`release:package` script to `package.json` (and updates `gq.lock.json`).
 
 ## 0.18.3 — 2026-10-18
 

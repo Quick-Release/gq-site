@@ -1,0 +1,209 @@
+{
+  "provenance": {
+    "wordpress": "7.0",
+    "test": "tests/browser/native-columns-structure.spec.mjs",
+    "seam": "Actual Gutenberg native block creation/save/reload, public REST and WordPress HTML; canonical stylesheet geometry verified without WordPress core CSS at native mobile boundary and RTL."
+  },
+  "invalid": [],
+  "document": "<!-- wp:columns {\"verticalAlignment\":\"center\",\"anchor\":\"native-stacked\"} -->\n<div class=\"wp-block-columns are-vertically-aligned-center\" id=\"native-stacked\"><!-- wp:column -->\n<div class=\"wp-block-column\"><!-- wp:paragraph -->\n<p>Column content</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:column -->\n\n<!-- wp:column {\"verticalAlignment\":\"bottom\"} -->\n<div class=\"wp-block-column is-vertically-aligned-bottom\"><!-- wp:paragraph -->\n<p>Column content</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:column --></div>\n<!-- /wp:columns -->\n\n<!-- wp:columns {\"verticalAlignment\":\"top\",\"isStackedOnMobile\":false,\"anchor\":\"native-unequal\"} -->\n<div class=\"wp-block-columns are-vertically-aligned-top is-not-stacked-on-mobile\" id=\"native-unequal\"><!-- wp:column {\"width\":\"25%\"} -->\n<div class=\"wp-block-column\" style=\"flex-basis:25%\"><!-- wp:paragraph -->\n<p>Column content</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:column -->\n\n<!-- wp:column {\"verticalAlignment\":\"center\",\"width\":\"75%\"} -->\n<div class=\"wp-block-column is-vertically-aligned-center\" style=\"flex-basis:75%\"><!-- wp:paragraph -->\n<p>Column content</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:column --></div>\n<!-- /wp:columns -->\n\n<!-- wp:columns {\"isStackedOnMobile\":false,\"anchor\":\"native-equal\"} -->\n<div class=\"wp-block-columns is-not-stacked-on-mobile\" id=\"native-equal\"><!-- wp:column -->\n<div class=\"wp-block-column\"><!-- wp:paragraph -->\n<p>Column content</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:column -->\n\n<!-- wp:column -->\n<div class=\"wp-block-column\"><!-- wp:paragraph -->\n<p>Column content</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:column -->\n\n<!-- wp:column -->\n<div class=\"wp-block-column\"><!-- wp:paragraph -->\n<p>Column content</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:column --></div>\n<!-- /wp:columns -->\n\n<!-- wp:columns {\"verticalAlignment\":\"bottom\",\"presentation\":{\"base\":{\"alignItems\":\"center\"}},\"anchor\":\"native-overrides\"} -->\n<div class=\"wp-block-columns are-vertically-aligned-bottom\" id=\"native-overrides\"><!-- wp:column {\"verticalAlignment\":\"bottom\",\"width\":\"75%\",\"presentation\":{\"base\":{\"width\":\"1/4\",\"alignSelf\":\"center\"}}} -->\n<div class=\"wp-block-column is-vertically-aligned-bottom\" style=\"flex-basis:75%\"><!-- wp:paragraph -->\n<p>Column content</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:column -->\n\n<!-- wp:column -->\n<div class=\"wp-block-column\"><!-- wp:paragraph -->\n<p>Column content</p>\n<!-- /wp:paragraph --></div>\n<!-- /wp:column --></div>\n<!-- /wp:columns -->",
+  "html": "\n<div style=\"--gqd-columns-wrap:wrap;--gqd-columns-align:center\" class=\"wp-block-columns are-vertically-aligned-center is-layout-flex wp-container-core-columns-is-layout-7387b849 wp-block-columns-is-layout-flex gqd-presentation\" id=\"native-stacked\">\n<div style=\"--gqd-column-align:auto\" class=\"wp-block-column is-layout-flow wp-block-column-is-layout-flow gqd-presentation\">\n<p class=\"wp-block-paragraph\">Column content</p>\n</div>\n\n\n\n<div style=\"--gqd-column-align:flex-end\" class=\"wp-block-column is-vertically-aligned-bottom is-layout-flow wp-block-column-is-layout-flow gqd-presentation\">\n<p class=\"wp-block-paragraph\">Column content</p>\n</div>\n</div>\n\n\n\n<div style=\"--gqd-columns-wrap:nowrap;--gqd-columns-align:flex-start\" class=\"wp-block-columns are-vertically-aligned-top is-not-stacked-on-mobile is-layout-flex wp-container-core-columns-is-layout-7387b849 wp-block-columns-is-layout-flex gqd-presentation\" id=\"native-unequal\">\n<div class=\"wp-block-column is-layout-flow wp-block-column-is-layout-flow gqd-presentation\" style=\"flex-basis:25%;--gqd-column-align:auto\">\n<p class=\"wp-block-paragraph\">Column content</p>\n</div>\n\n\n\n<div class=\"wp-block-column is-vertically-aligned-center is-layout-flow wp-block-column-is-layout-flow gqd-presentation\" style=\"flex-basis:75%;--gqd-column-align:center\">\n<p class=\"wp-block-paragraph\">Column content</p>\n</div>\n</div>\n\n\n\n<div style=\"--gqd-columns-wrap:nowrap;--gqd-columns-align:normal\" class=\"wp-block-columns is-not-stacked-on-mobile is-layout-flex wp-container-core-columns-is-layout-7387b849 wp-block-columns-is-layout-flex gqd-presentation\" id=\"native-equal\">\n<div style=\"--gqd-column-align:auto\" class=\"wp-block-column is-layout-flow wp-block-column-is-layout-flow gqd-presentation\">\n<p class=\"wp-block-paragraph\">Column content</p>\n</div>\n\n\n\n<div style=\"--gqd-column-align:auto\" class=\"wp-block-column is-layout-flow wp-block-column-is-layout-flow gqd-presentation\">\n<p class=\"wp-block-paragraph\">Column content</p>\n</div>\n\n\n\n<div style=\"--gqd-column-align:auto\" class=\"wp-block-column is-layout-flow wp-block-column-is-layout-flow gqd-presentation\">\n<p class=\"wp-block-paragraph\">Column content</p>\n</div>\n</div>\n\n\n\n<div style=\"--gqd-columns-wrap:wrap;--gqd-columns-align:flex-end;--gqd-base-alignItems:center\" class=\"wp-block-columns are-vertically-aligned-bottom is-layout-flex wp-container-core-columns-is-layout-7387b849 wp-block-columns-is-layout-flex gqd-presentation\" id=\"native-overrides\">\n<div class=\"wp-block-column is-vertically-aligned-bottom is-layout-flow wp-block-column-is-layout-flow gqd-presentation\" style=\"flex-basis:75%;--gqd-column-align:flex-end;--gqd-base-width:25.00000000%;--gqd-base-alignSelf:center\">\n<p class=\"wp-block-paragraph\">Column content</p>\n</div>\n\n\n\n<div style=\"--gqd-column-align:auto\" class=\"wp-block-column is-layout-flow wp-block-column-is-layout-flow gqd-presentation\">\n<p class=\"wp-block-paragraph\">Column content</p>\n</div>\n</div>\n",
+  "nodes": [
+    {
+      "name": "core/columns",
+      "attributes": {
+        "verticalAlignment": "center"
+      },
+      "content": null,
+      "children": [
+        {
+          "name": "core/column",
+          "attributes": {},
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Column content</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        },
+        {
+          "name": "core/column",
+          "attributes": {
+            "verticalAlignment": "bottom"
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Column content</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        }
+      ],
+      "supported": true
+    },
+    {
+      "name": "core/columns",
+      "attributes": {
+        "isStackedOnMobile": false,
+        "verticalAlignment": "top"
+      },
+      "content": null,
+      "children": [
+        {
+          "name": "core/column",
+          "attributes": {
+            "width": "25%"
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Column content</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        },
+        {
+          "name": "core/column",
+          "attributes": {
+            "verticalAlignment": "center",
+            "width": "75%"
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Column content</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        }
+      ],
+      "supported": true
+    },
+    {
+      "name": "core/columns",
+      "attributes": {
+        "isStackedOnMobile": false
+      },
+      "content": null,
+      "children": [
+        {
+          "name": "core/column",
+          "attributes": {},
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Column content</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        },
+        {
+          "name": "core/column",
+          "attributes": {},
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Column content</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        },
+        {
+          "name": "core/column",
+          "attributes": {},
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Column content</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        }
+      ],
+      "supported": true
+    },
+    {
+      "name": "core/columns",
+      "attributes": {
+        "presentation": {
+          "base": {
+            "alignItems": "center"
+          }
+        },
+        "verticalAlignment": "bottom"
+      },
+      "content": null,
+      "children": [
+        {
+          "name": "core/column",
+          "attributes": {
+            "presentation": {
+              "base": {
+                "width": "1/4",
+                "alignSelf": "center"
+              }
+            },
+            "verticalAlignment": "bottom",
+            "width": "75%"
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Column content</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        },
+        {
+          "name": "core/column",
+          "attributes": {},
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>Column content</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        }
+      ],
+      "supported": true
+    }
+  ]
+}

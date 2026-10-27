@@ -1,14 +1,14 @@
 ---
+import { responseStatus } from "@getquick/content";
 import Home from "../components/Home.astro";
-import { publishedHome } from "../lib/delivery";
-import { defaultLanguage } from "../lib/site-language";
-import { responseStatus } from "../lib/wordpress";
+import { content } from "../lib/content";
 
 // Served from the publication store, last-known-good and without an age
 // limit; a visit never reads the CMS. A Site that hasn't been refreshed yet,
 // or whose store can't be read, is a 503. The other languages' homes (/en/)
 // are served by [...slug].astro.
-const home = await publishedHome(Astro.site?.origin, defaultLanguage);
+const runtime = content();
+const home = await runtime.publishedHome(Astro.site?.origin, runtime.defaultLanguage);
 // Local development without a CMS keeps a friendly placeholder. Anywhere else
 // a front page that can't be served is a 503, not a page that looks served.
 const placeholder = home.kind === "unavailable" && import.meta.env.DEV;
@@ -19,4 +19,4 @@ Astro.response.status = placeholder ? 200 : responseStatus(home);
 Astro.response.headers.set("Cache-Control", "no-cache");
 ---
 
-<Home home={home} language={defaultLanguage} placeholder={placeholder} />
+<Home home={home} language={runtime.defaultLanguage} placeholder={placeholder} />

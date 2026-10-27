@@ -19,6 +19,7 @@ export const GUARDED_COMMANDS = new Set([
   "ploi events",
   "ploi media",
   "ploi release",
+  "release package",
   "release push",
   "release tag",
   "frontend refresh",

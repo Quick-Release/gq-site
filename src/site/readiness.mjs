@@ -20,6 +20,15 @@
 //             the retry crontab (Ploi), and the CMS's scheduler has had the
 //             Frontend reconcile with WordPress recently, which also proves
 //             the CMS sends signed events the Frontend accepts.
+//   consent   CONSENT-1 and LEGAL-1 (ADR 0019): GQ Config's Legal Contract
+//             names every required legal page and the data controller; an
+//             optional service it switches on (GA4) has the consent Runtime
+//             to gate it; and the public pages load nothing from a
+//             third-party host (live, or blocked by the Runtime).
+//   forms     a Site that declares `forms` (gq-platform ADR 0009): Gravity
+//             Forms is active on the CMS, every form published content
+//             references can be sent, and Turnstile, when chosen, has its
+//             keys (src/forms/readiness.mjs).
 //   media     `gq media check --upload`: an upload through the CMS lands on
 //             the media host and is served without it.
 //
@@ -29,10 +38,14 @@
 // not-ready, warn, skipped. The Site is "ready" only when nothing is
 // not-ready.
 
+import { scanConsentHtml } from "@getquick/content/consent/testing";
+
 import { RECONCILIATION_STALE_MS, sendCheckEvent } from "../frontend/commands.mjs";
 import { siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
 import { productionMediaReadiness } from "../media/readiness.mjs";
 import { cmsFetch } from "../cms/access.mjs";
+import { CMS_CONSENT_READ_TOKEN, CONSENT_READ_TOKEN } from "../frontend/consent.mjs";
+import { siteFormsReadiness } from "../forms/readiness.mjs";
 import { EVENT_SECRET, inspectCmsEvents } from "../ploi/events.mjs";
 
 const TIMEOUT = 30_000;
@@ -72,6 +85,8 @@ export function schemaQuery(languages = []) {
       __typename
       ... on Page {
         id
+        databaseId
+        getquickBlocksJson
         title
         content
         blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)
@@ -115,6 +130,8 @@ export function schemaQuery(languages = []) {
       __typename
       ... on Page {
         id
+        databaseId
+        getquickBlocksJson
         title
         content
         blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)
@@ -122,6 +139,7 @@ export function schemaQuery(languages = []) {
       }
     }
     designTokens @skip(if: true) {
+      theme
       spacingSizes {
         slug
         size
@@ -142,6 +160,8 @@ export function schemaQuery(languages = []) {
     }
     postBy(uri: "/") @skip(if: true) {
       id
+      databaseId
+      getquickBlocksJson
       title
       excerpt
       content
@@ -160,6 +180,8 @@ export function schemaQuery(languages = []) {
     }
     pageBy(uri: "/") @skip(if: true) {
       id
+      databaseId
+      getquickBlocksJson
       title
       content
       blocks(attributes: true, htmlContent: true, dynamicContent: true, postTemplate: false)
@@ -371,7 +393,7 @@ export async function frontendReadiness({
 }) {
   const checks = [];
   const add = (area, check) => checks.push({ area, ...check });
-  const answer = await checkEvents({ origin, project, env, fetch, add, framework });
+  const answer = await checkEvents({ origin, project, env, fetch, add });
   await checkRefreshToken({ origin, env, fetch, add });
   if (answer) {
     add("frontend", storeCheck(answer, languages, framework));
@@ -390,7 +412,7 @@ export async function frontendReadiness({
   return checks;
 }
 
-async function checkEvents({ origin, project, env, fetch, add, framework }) {
+async function checkEvents({ origin, project, env, fetch, add }) {
   const name = "frontend-events";
   const secret = env[EVENT_SECRET]?.trim();
   if (!secret) {
@@ -435,9 +457,7 @@ async function checkEvents({ origin, project, env, fetch, add, framework }) {
     status === 401
       ? `redeploy the Frontend with Sigillo staging's ${EVENT_SECRET} (pnpm deploy:frontend), and pnpm ci:deploy so CI releases bind it too`
       : status === 403 && /store/u.test(reason)
-        ? framework === "tanstack"
-          ? "install the pinned @getquick/content package and deploy the managed infra/frontend.run.ts with PUBLICATION_DB"
-          : "deploy the Frontend with apps/frontend/migrations, which makes infra/frontend.run.ts declare and bind its publication store"
+        ? "deploy the Frontend with its publication migrations (@getquick/content installed in apps/frontend, or a Site's own apps/frontend/migrations), which makes infra/frontend.run.ts declare and bind its publication store"
         : status === 403
           ? `run pnpm frontend:secrets, then pnpm ci:deploy and deploy the Frontend, so the Worker has ${EVENT_SECRET}`
           : status === 404
@@ -731,9 +751,17 @@ export async function cmsDeliveryReadiness({ ops, env, fetch }) {
       },
     ];
   }
+  // Sigillo's consent read token, when it has one, must be the CMS's too.
+  const consentToken = env[CONSENT_READ_TOKEN]?.trim() || undefined;
   let inspected;
   try {
-    inspected = await inspectCmsEvents({ ops, token: env.PLOI_API_TOKEN, secret, fetch });
+    inspected = await inspectCmsEvents({
+      ops,
+      token: env.PLOI_API_TOKEN,
+      secret,
+      consentToken,
+      fetch,
+    });
   } catch (error) {
     return [
       {
@@ -744,8 +772,9 @@ export async function cmsDeliveryReadiness({ ops, env, fetch }) {
   }
   const { changed, crontab, existing } = inspected;
   const problems = [
-    changed.length > 0 &&
-      `the CMS's .env has a missing or different ${EVENT_SECRET} (values not shown)`,
+    ...changed.map(
+      (name) => `the CMS's .env has a missing or different ${name} (values not shown)`,
+    ),
     !existing && `the server has no crontab running ${crontab.command} as ${crontab.user}`,
     existing &&
       existing.frequency !== crontab.frequency &&
@@ -755,7 +784,10 @@ export async function cmsDeliveryReadiness({ ops, env, fetch }) {
     {
       area: "delivery",
       ...(problems.length === 0
-        ? ok(name, `the CMS's .env has ${EVENT_SECRET}, and its every-minute retry crontab is set`)
+        ? ok(
+            name,
+            `the CMS's .env has ${consentToken ? `${EVENT_SECRET} and ${CMS_CONSENT_READ_TOKEN}` : EVENT_SECRET}, and its every-minute retry crontab is set`,
+          )
         : notReady(name, problems.join("; "), action)),
     },
   ];
@@ -805,9 +837,263 @@ export async function siteReadiness({ ops, env, fetch, origin, upload = true, no
       languages,
     })),
     ...(await cmsDeliveryReadiness({ ops, env, fetch })),
+    ...(await consentReadiness({ ops, env, fetch, origin: frontend, languages })),
+    ...(await siteFormsReadiness({ ops, env, fetch })),
   ];
   const media = await productionMediaReadiness({ ops, env, fetch, upload, now });
   return result([...checks, ...media.checks.map((check) => ({ area: "media", ...check }))]);
+}
+
+// --- consent and legal pages ---------------------------------------------------
+
+/**
+ * The first GQ Config release with the Legal Contract: a minimum, not the
+ * CMS skeleton's pin, which may move past it.
+ */
+const GQ_CONFIG_LEGAL = "getquick/gq-config 0.4.3";
+
+/**
+ * What readiness asks GQ Config's public GraphQL (anonymous, as a Frontend
+ * reads it): its GA4 toggle, and each language's Legal Contract, the
+ * default's as `legal` and every other's as `legal_<CODE>`. The Contract's
+ * `missingRequired` is GQ Config's own readiness result for required roles.
+ */
+export function consentQuery(languages = []) {
+  const contract = /* GraphQL */ `
+    {
+      language
+      controller {
+        name
+        privacyEmail
+      }
+      roles {
+        role
+        isFallback
+      }
+      missingRequired
+    }
+  `;
+  const others = languages
+    .filter(({ isDefault }) => !isDefault)
+    .map(
+      ({ code, slug }) => `
+    legal_${code}: getquickLegal(language: "${slug}") ${contract}`,
+    )
+    .join("");
+  return /* GraphQL */ `
+  query GqSiteConsent {
+    googleAnalytics {
+      enabled
+      measurementId
+    }
+    legal: getquickLegal ${contract}${others}
+  }`;
+}
+
+/**
+ * CONSENT-1 and LEGAL-1 readiness (ADR 0019): GQ Config's Legal Contract per
+ * language, whether an optional service GQ Config switches on has the consent
+ * Runtime to gate it, and whether each language's homepage loads anything
+ * from a third-party host. Missing configuration fails readiness, never a
+ * visitor's page (CN-R14, LG-R6).
+ */
+export async function consentReadiness({ ops, env, fetch, origin, languages = [] }) {
+  const add = (check) => ({ area: "consent", ...check });
+  const settings = await consentSettings({ ops, env, fetch, languages });
+  const pages = await publicPages({ origin, fetch, languages });
+  return [
+    add(legalCheck(settings, languages)),
+    add(runtimeCheck(settings, pages)),
+    add(hostsCheck(pages, ops, origin)),
+  ];
+}
+
+async function consentSettings({ ops, env, fetch, languages }) {
+  const graphqlUrl = wordpressGraphqlUrl(ops);
+  const cms = cmsFetch({ env, origin: new URL(graphqlUrl).origin, fetch });
+  try {
+    const response = await postGraphql(cms, graphqlUrl, consentQuery(languages));
+    const answer = await response.json().catch(() => null);
+    if (!answer) return { error: `HTTP ${response.status} without a GraphQL answer` };
+    if (answer.errors?.length) {
+      const message = String(answer.errors[0]?.message ?? answer.errors[0]);
+      return /getquickLegal|googleAnalytics|GetQuick/u.test(message)
+        ? { outdated: message }
+        : { error: message };
+    }
+    return { data: answer.data ?? {} };
+  } catch (error) {
+    return { error: messageOf(error) };
+  }
+}
+
+/** Each language's homepage HTML, as fetched without JavaScript; null when it can't be read. */
+async function publicPages({ origin, fetch, languages }) {
+  const homes = languages.length > 0 ? languages.map(({ home }) => home) : ["/"];
+  const pages = [];
+  for (const home of homes) {
+    const url = new URL(home, origin);
+    try {
+      const response = await fetch(url.href, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(TIMEOUT),
+      });
+      pages.push({ url, html: response.ok ? await response.text() : null });
+    } catch {
+      pages.push({ url, html: null });
+    }
+  }
+  return pages;
+}
+
+function legalCheck(settings, languages) {
+  const name = "legal-pages";
+  const assign = "assign them in the CMS under GETQUICK → Legal (GQ Config), then check again";
+  if (settings.outdated) {
+    return notReady(
+      name,
+      `GQ Config has no Legal Contract (${settings.outdated}): the legal pages and controller can't be confirmed`,
+      `update the CMS to ${GQ_CONFIG_LEGAL} or later (apps/cms/composer.json), then ${RELEASE_CMS}`,
+    );
+  }
+  if (settings.error) {
+    return notReady(
+      name,
+      `GQ Config's Legal Contract couldn't be read: ${settings.error}`,
+      "retry",
+    );
+  }
+  const contracts = [
+    ["", settings.data.legal],
+    ...languages
+      .filter(({ isDefault }) => !isDefault)
+      .map(({ code, slug }) => [slug, settings.data[`legal_${code}`]]),
+  ];
+  const failures = [];
+  const missing = new Set();
+  const translations = [];
+  for (const [slug, contract] of contracts) {
+    for (const role of contract?.missingRequired ?? []) missing.add(role);
+    for (const role of contract?.roles ?? []) {
+      if (slug && role.isFallback) translations.push(`${role.role} (${slug})`);
+    }
+  }
+  if (missing.size > 0) failures.push(`missing_required: ${[...missing].join(", ")}`);
+  const controller = settings.data.legal?.controller;
+  if (!controller?.name?.trim() || !controller?.privacyEmail?.trim()) {
+    failures.push("controller_incomplete: the data controller's name and privacy email");
+  }
+  if (failures.length > 0) {
+    return notReady(name, `GQ Config's Legal Contract lacks ${failures.join("; ")}`, assign);
+  }
+  if (translations.length > 0) {
+    return warn(
+      name,
+      `missing_translation: ${translations.join(", ")} link to the default language's page`,
+      "translate those pages and link the translations in Polylang",
+    );
+  }
+  return ok(
+    name,
+    `GQ Config assigns every required legal page${languages.length > 0 ? " in every language" : ""}, and names the data controller`,
+  );
+}
+
+const CONSENT_CONFIG =
+  /<script\b[^>]*\bid\s*=\s*["']?gq-consent-config["']?[^>]*>([\s\S]*?)<\/script>/iu;
+
+/** The consent Runtime's configuration a page renders (its active services), or null without one. */
+function runtimeOf(html) {
+  const match = CONSENT_CONFIG.exec(html ?? "");
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]).configuration ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function runtimeCheck(settings, pages) {
+  const name = "consent-runtime";
+  const analytics = settings.data?.googleAnalytics;
+  const ga4 = Boolean(analytics?.enabled && analytics?.measurementId);
+  const read = pages.filter(({ html }) => html !== null);
+  const without = read.filter(({ html }) => runtimeOf(html) === null);
+  const services = [...new Set(read.flatMap(({ html }) => runtimeOf(html)?.services ?? []))].sort();
+  if (ga4 && (read.length === 0 || without.length > 0)) {
+    return notReady(
+      name,
+      `GA4 (GQ Config's analytics toggle) is on, but ${read.length === 0 ? "no public page could be read" : `${without.map(({ url }) => url.href).join(", ")} has no consent Runtime`} to hold it until visitors consent`,
+      "turn the toggle off, or wire the consent Runtime into the Frontend (docs/guides/consent.md)",
+    );
+  }
+  if (without.length < read.length) {
+    return ok(
+      name,
+      `the consent Runtime gates the active services: ${services.join(", ") || "none"}`,
+    );
+  }
+  if (!settings.data) {
+    return skipped(name, "unknown until GQ Config's analytics settings can be read");
+  }
+  return ok(
+    name,
+    "no optional service is switched on in GQ Config, so no consent Runtime is needed",
+  );
+}
+
+/**
+ * The hosts a page loads from before any consent (live), and those the
+ * consent Runtime blocked, by gq-content's own scan (CN-R1, CN-R13). HTML
+ * comments load nothing, so they are left out first.
+ */
+export function scanThirdPartyHosts(html, firstParty) {
+  const scan = scanConsentHtml(html.replace(/<!--[\s\S]*?-->/gu, ""), firstParty);
+  return {
+    live: [
+      ...new Set(
+        scan.liveThirdParty.map(({ url }) => new URL(url, firstParty.siteOrigin).hostname),
+      ),
+    ].sort(),
+    blocked: [...new Set(scan.blocked.map(({ host }) => host))].sort(),
+  };
+}
+
+function hostsCheck(pages, ops, origin) {
+  const name = "third-party-hosts";
+  // The Site's own hosts: its Frontend, its CMS and its media domain.
+  const firstParty = {
+    siteOrigin: origin.href,
+    firstPartyHosts: [ops.domains?.frontend, ops.domains?.admin, ops.media?.domain].filter(Boolean),
+  };
+  const read = pages.filter(({ html }) => html !== null);
+  if (read.length === 0) {
+    return notReady(
+      name,
+      "no public page could be read to look for third-party hosts",
+      "deploy and prepare the Frontend, then check again",
+    );
+  }
+  const found = [];
+  for (const { url, html } of read) {
+    const { live, blocked } = scanThirdPartyHosts(html, firstParty);
+    const hosts = [
+      ...live,
+      ...blocked.map((host) => `${host} (blocked by the consent Runtime: unknown or inactive)`),
+    ];
+    if (hosts.length > 0) found.push(`${url.href}: ${hosts.join(", ")}`);
+  }
+  if (found.length > 0) {
+    return notReady(
+      name,
+      `public pages load from hosts outside the Site, before any consent: ${found.join("; ")}`,
+      "self-host or proxy them through the Site, or load a catalog service through the consent Runtime; remove embeds the catalog doesn't know (docs/guides/consent.md)",
+    );
+  }
+  return ok(
+    name,
+    `${read.map(({ url }) => url.href).join(", ")} load${read.length === 1 ? "s" : ""} nothing from a third-party host`,
+  );
 }
 
 export function result(checks) {

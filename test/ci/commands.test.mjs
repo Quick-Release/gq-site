@@ -66,23 +66,23 @@ test("maps secret-store secrets to the CI Worker's names", () => {
   assert.equal(payload.COMPOSER_AUTH, "value-of-COMPOSER_AUTH");
 });
 
-test("adds the Frontend's refresh token and event secret when the secret store has them", () => {
+test("adds the Frontend's refresh token, event secret and consent read token when the secret store has them", () => {
   const without = JSON.parse(secretsPayload(STORE));
   const withThem = JSON.parse(
     secretsPayload({
       ...STORE,
-      CONSENT_READ_TOKEN: "value-of-consent",
       FRONTEND_REFRESH_TOKEN: "value-of-refresh",
       PUBLICATION_EVENT_SECRET: "value-of-events",
+      CONSENT_READ_TOKEN: "value-of-consent-reads",
     }),
   );
 
-  assert.equal(without.CONSENT_READ_TOKEN, undefined);
-  assert.equal(withThem.CONSENT_READ_TOKEN, "value-of-consent");
   assert.equal(without.FRONTEND_REFRESH_TOKEN, undefined);
   assert.equal(without.PUBLICATION_EVENT_SECRET, undefined);
   assert.equal(withThem.FRONTEND_REFRESH_TOKEN, "value-of-refresh");
   assert.equal(withThem.PUBLICATION_EVENT_SECRET, "value-of-events");
+  assert.equal(without.CONSENT_READ_TOKEN, undefined);
+  assert.equal(withThem.CONSENT_READ_TOKEN, "value-of-consent-reads");
 });
 
 test("refuses to deploy with missing secrets", () => {
@@ -524,5 +524,20 @@ test("git artifacts leaves other hosts, store and erase to git", async () => {
     });
     assert.equal(result.code, 0, result.stderr);
     assert.equal(result.stdout, "");
+  }
+});
+
+test("passes private preview pairs from the secret store to the CI Worker", () => {
+  const preview = {
+    GQ_PREVIEW_CMS_USERNAME: "site-preview",
+    GQ_PREVIEW_CMS_APPLICATION_PASSWORD: "private-password",
+    GQ_PREVIEW_ACCESS_CLIENT_ID: "preview-access-id",
+    GQ_PREVIEW_ACCESS_CLIENT_SECRET: "private-access-secret",
+  };
+  const without = JSON.parse(secretsPayload(STORE));
+  const withPreview = JSON.parse(secretsPayload({ ...STORE, ...preview }));
+  for (const [name, value] of Object.entries(preview)) {
+    assert.equal(without[name], undefined);
+    assert.equal(withPreview[name], value);
   }
 });

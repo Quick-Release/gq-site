@@ -18,6 +18,7 @@ import {
   bundleOf,
   changes,
   CROWDED_HOOKS,
+  consentBinding,
   CROWDED_TOKENS,
   DUMP,
   ENV,
@@ -721,6 +722,221 @@ test("offboard --archive deletes no Worker or D1 store named like a stage that n
     state.buckets["offboarded-clients"][`fixture/${today()}/manifest.json`].body,
   );
   assert.deepEqual(manifest.sources.frontend.stages, []);
+});
+
+// --- the consent records (ADR 0019) -----------------------------------------
+
+// An account whose Frontend has a consent Runtime in production and on its
+// staging stage: a consent database and a purge Worker for each, besides
+// `extra` (more state, merged).
+function consentState(extra = {}) {
+  const exposed = fakeAccount().state;
+  return {
+    ...extra,
+    workers: [
+      ...exposed.workers,
+      "fixture-fe-staging",
+      "fixture-consent-purge",
+      "fixture-consent-purge-staging",
+      ...(extra.workers ?? []),
+    ],
+    subdomains: {
+      ...exposed.subdomains,
+      "fixture-fe-staging": { enabled: true, previews_enabled: true },
+    },
+    d1: [
+      ...exposed.d1,
+      { uuid: "d1-staging", name: "fixture-fe-publications-staging" },
+      { uuid: "d1-consent", name: "fixture-fe-consent" },
+      { uuid: "d1-consent-staging", name: "fixture-fe-consent-staging" },
+      ...(extra.d1 ?? []),
+    ],
+    d1Exports: {
+      "d1-staging": "-- staging\n",
+      "d1-consent": "-- consent\n",
+      "d1-consent-staging": "-- consent staging\n",
+    },
+    bindings: {
+      "fixture-fe-staging": publicationBinding("d1-staging"),
+      "fixture-consent-purge": consentBinding("d1-consent"),
+      "fixture-consent-purge-staging": consentBinding("d1-consent-staging"),
+      ...extra.bindings,
+    },
+  };
+}
+
+// `expected` are among `lines`, in this order.
+function assertInOrder(lines, expected) {
+  const at = expected.map((line) => lines.indexOf(line));
+  expected.forEach((line, index) => assert.ok(at[index] >= 0, `${line}\n${lines.join("\n")}`));
+  assert.deepEqual(
+    at,
+    [...at].sort((a, b) => a - b),
+    lines.join("\n"),
+  );
+}
+
+test("offboard --archive --dry-run plans each stage's consent export, then its purge Worker's and consent database's deletion", async () => {
+  const { fixture, account } = await cutSite({ state: consentState() });
+
+  const result = await fixture.run(["offboard", "--archive", "--dry-run"], {
+    env: ENV,
+    ...account,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const prefix = `r2://offboarded-clients/fixture/${today()}/`;
+  const lines = planLines(result.stdout);
+  assertInOrder(lines, [
+    `  - Archive: ${prefix}publications-staging.sql ← the D1 store fixture-fe-publications-staging`,
+    `  - Archive: ${prefix}consent.sql ← the consent database fixture-fe-consent`,
+    `  - Archive: ${prefix}consent-staging.sql ← the consent database fixture-fe-consent-staging`,
+    `  - Archive: ${prefix}backups/ ← the 2 database backups in r2://fixture-releases/db/`,
+    "  - Verify: re-read every archived file against manifest.json, and count uploads.zip's entries against fixture-media; nothing is deleted unless all match, then gq.ops.json records the archive",
+    "  - Ploi: delete the system user fixture (78)",
+    "  - Frontend: delete the consent purge Worker fixture-consent-purge",
+    "  - Frontend: delete the consent purge Worker fixture-consent-purge-staging",
+    "  - Frontend: delete the consent database fixture-fe-consent (d1-consent)",
+    "  - Frontend: delete the consent database fixture-fe-consent-staging (d1-consent-staging)",
+    "  - Frontend: delete the Worker fixture-fe",
+    "  - Frontend: delete the Worker fixture-fe-staging",
+  ]);
+  assert.ok(
+    !lines.some((line) => line.startsWith("  ! ") && line.includes("consent")),
+    "the purge Workers aren't taken for Frontend stages",
+  );
+  assert.deepEqual(account.state.log, []);
+});
+
+test("offboard --archive --yes archives each consent database, then deletes its purge Worker and it before the Frontend", async () => {
+  const { fixture, account } = await cutSite({ state: consentState() });
+  const { state } = account;
+
+  const result = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
+
+  assert.equal(result.code, 0, result.stderr);
+  const prefix = `fixture/${today()}/`;
+  const archived = state.buckets["offboarded-clients"];
+  assert.equal(archived[`${prefix}consent.sql`].body.toString(), "-- consent\n");
+  assert.equal(archived[`${prefix}consent-staging.sql`].body.toString(), "-- consent staging\n");
+  const manifest = JSON.parse(archived[`${prefix}manifest.json`].body);
+  for (const path of ["consent.sql", "consent-staging.sql"]) {
+    const file = manifest.files.find((entry) => entry.path === path);
+    assert.ok(file, path);
+    assert.equal(file.sha256, sha256(archived[`${prefix}${path}`].body));
+  }
+  assert.deepEqual(manifest.sources.frontend.consent, {
+    d1: { name: "fixture-fe-consent", id: "d1-consent" },
+    purgeWorker: "fixture-consent-purge",
+  });
+  assert.deepEqual(manifest.sources.frontend.stages, [
+    {
+      worker: "fixture-fe-staging",
+      d1: { name: "fixture-fe-publications-staging", id: "d1-staging" },
+      consent: {
+        d1: { name: "fixture-fe-consent-staging", id: "d1-consent-staging" },
+        purgeWorker: "fixture-consent-purge-staging",
+      },
+    },
+  ]);
+  const frontend = state.log.slice(state.log.indexOf("ploi system user 78 deleted") + 1);
+  assert.deepEqual(frontend.slice(0, 6), [
+    "worker fixture-consent-purge deleted",
+    "worker fixture-consent-purge-staging deleted",
+    "d1 d1-consent deleted",
+    "d1 d1-consent-staging deleted",
+    "worker fixture-fe deleted",
+    "d1 d1-fixture deleted",
+  ]);
+  assert.deepEqual(state.workers, ["other-fe"]);
+  assert.deepEqual(
+    state.d1.map(({ uuid }) => uuid),
+    ["d1-other"],
+  );
+});
+
+test("offboard --archive deletes no consent database or purge Worker that nothing ties to one of the project's stages", async () => {
+  const { fixture, account } = await cutSite({
+    state: consentState({
+      // A stage whose Frontend is gone, a purge Worker named for staging that
+      // binds no consent database of it, and one named like no stage at all.
+      workers: ["fixture-consent-purge-old", "fixture-consent-purge-shop-x"],
+      d1: [{ uuid: "d1-consent-old", name: "fixture-fe-consent-old" }],
+      bindings: {
+        "fixture-consent-purge-staging": [],
+        "fixture-consent-purge-old": consentBinding("d1-consent-old"),
+      },
+    }),
+  });
+  const { state } = account;
+
+  const result = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
+
+  assert.equal(result.code, 0, result.stderr);
+  const lines = planLines(result.stdout);
+  for (const expected of [
+    "  ! Frontend: the consent database fixture-fe-consent-old is named like one of fixture's stages' consent databases, but no fixture-fe-<stage> Worker ties its stage to fixture; check it by hand",
+    "  ! Frontend: the Worker fixture-consent-purge-old is named like one of fixture's stages' consent purge Workers, but no fixture-fe-<stage> Worker ties its stage to fixture; check it by hand",
+    "  ! Frontend: the Worker fixture-consent-purge-shop-x is named like one of fixture's stages' consent purge Workers, but no fixture-fe-<stage> Worker ties its stage to fixture; check it by hand",
+    "  ! Frontend: the Worker fixture-consent-purge-staging is named like the staging stage's consent purge Worker, but no CONSENT_DB binding to fixture-fe-consent-staging ties it to fixture; check it by hand",
+  ]) {
+    assert.ok(lines.includes(expected), `${expected}\n${lines.join("\n")}`);
+  }
+  assert.ok(!lines.some((line) => line.includes("consent-old.sql")), "a look-alike isn't archived");
+  assert.deepEqual(state.workers.sort(), [
+    "fixture-consent-purge-old",
+    "fixture-consent-purge-shop-x",
+    "fixture-consent-purge-staging",
+    "other-fe",
+  ]);
+  assert.deepEqual(state.d1.map(({ uuid }) => uuid).sort(), ["d1-consent-old", "d1-other"]);
+});
+
+test("offboard --archive after a failed consent deletion resumes where it stopped", async () => {
+  const { fixture, account } = await cutSite({ state: consentState() });
+  const failing = intercepting(account, ({ method, url }) => {
+    if (method === "DELETE" && url.endsWith("/d1/database/d1-consent-staging")) {
+      return new Response(JSON.stringify({ success: false, errors: [{ message: "boom" }] }), {
+        status: 500,
+      });
+    }
+  });
+  const first = await fixture.run(["offboard", "--archive", "--yes"], {
+    env: ENV,
+    fetch: failing,
+    exec: account.exec,
+  });
+  assert.equal(first.code, 1);
+  assert.deepEqual(account.state.log.slice(-3), [
+    "worker fixture-consent-purge deleted",
+    "worker fixture-consent-purge-staging deleted",
+    "d1 d1-consent deleted",
+  ]);
+  const archived = snapshot(account.state.buckets["offboarded-clients"]);
+
+  account.state.log.length = 0;
+  account.fetch.requests.length = 0;
+  const rerun = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
+
+  assert.equal(rerun.code, 0, rerun.stderr);
+  const lines = planLines(rerun.stdout);
+  for (const expected of [
+    "  ✓ Frontend: the consent purge Worker fixture-consent-purge-staging is deleted",
+    "  - Frontend: delete the consent database fixture-fe-consent-staging (d1-consent-staging)",
+  ]) {
+    assert.ok(lines.includes(expected), `${expected}\n${lines.join("\n")}`);
+  }
+  assert.deepEqual(snapshot(account.state.buckets["offboarded-clients"]), archived);
+  assert.deepEqual(account.state.log.slice(0, 3), [
+    "d1 d1-consent-staging deleted",
+    "worker fixture-fe deleted",
+    "d1 d1-fixture deleted",
+  ]);
+  assert.deepEqual(account.state.workers, ["other-fe"]);
+  assert.deepEqual(
+    account.state.d1.map(({ uuid }) => uuid),
+    ["d1-other"],
+  );
 });
 
 // --- verification ------------------------------------------------------------
@@ -2186,57 +2402,4 @@ test("a resumed archive deletes the Artifacts repository only while its refs are
   const resumed = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
   assert.equal(resumed.code, 0, resumed.stderr);
   assert.ok(account.state.log.includes("artifacts repo fixture/fixture deleted"));
-});
-
-test("Start consent databases are exported and verified before they are deleted", async () => {
-  const { fixture, account } = await cutSite({
-    ops: { ...OPS, framework: "tanstack" },
-    state: {
-      d1: [
-        { uuid: "d1-fixture", name: "fixture-fe-publications" },
-        { uuid: "d1-consent", name: "fixture-fe-consent" },
-        { uuid: "d1-other", name: "other-fe-consent" },
-      ],
-    },
-  });
-  const plan = await fixture.run(["offboard", "--archive", "--dry-run"], { env: ENV, ...account });
-  assert.equal(plan.code, 0, plan.stderr);
-  assert.match(plan.stdout, /consent.sql ← the D1 store fixture-fe-consent/u);
-  assert.match(plan.stdout, /delete the D1 store fixture-fe-consent/u);
-  assert.doesNotMatch(plan.stdout, /other-fe-consent/u);
-  const result = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
-  assert.equal(result.code, 0, result.stderr);
-  assert.ok(!account.state.d1.some(({ uuid }) => uuid === "d1-consent"));
-  assert.ok(account.state.d1.some(({ uuid }) => uuid === "d1-other"));
-});
-
-test("resuming an old archive refuses a newly discovered unarchived consent store", async () => {
-  const { fixture, account } = await cutSite();
-  const fetch = intercepting(account, ({ method, url }) => {
-    if (method === "DELETE" && url.endsWith("/workers/scripts/fixture-ci")) {
-      return new Response(JSON.stringify({ success: false, errors: [{ message: "stop" }] }), {
-        status: 500,
-      });
-    }
-  });
-  const first = await fixture.run(["offboard", "--archive", "--yes"], {
-    env: ENV,
-    fetch,
-    exec: account.exec,
-  });
-  assert.equal(first.code, 1);
-  assert.ok((await readOps(fixture)).offboarded.archive);
-  await rewriteOps(fixture, (ops) => {
-    ops.framework = "tanstack";
-  });
-  account.state.d1.push({ uuid: "d1-new-consent", name: "fixture-fe-consent" });
-  const before = [...account.state.log];
-  const resumed = await fixture.run(["offboard", "--archive", "--yes"], { env: ENV, ...account });
-  assert.equal(resumed.code, 1);
-  assert.match(
-    resumed.stderr,
-    /recorded archive does not contain consent store fixture-fe-consent/u,
-  );
-  assert.deepEqual(account.state.log, before);
-  assert.ok(account.state.d1.some(({ uuid }) => uuid === "d1-new-consent"));
 });

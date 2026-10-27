@@ -18,6 +18,7 @@ import { relaunchWithLocalCa } from "../db/sync.mjs";
 import { parseDotenv } from "../dotenv-text.mjs";
 import { frontendOrigin } from "../frontend/commands.mjs";
 import { siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
+import { localFormsStatus } from "../forms/readiness.mjs";
 import { localMediaReadiness } from "../media/readiness.mjs";
 import { cmsReadiness, notReady, ok, result, siteReadiness } from "./readiness.mjs";
 
@@ -32,13 +33,15 @@ const AREAS = {
   cms: "CMS",
   frontend: "Frontend",
   delivery: "Event delivery",
+  consent: "Consent and legal pages",
+  forms: "Forms",
   media: "Independent media",
 };
 
 const SUMMARIES = {
   production: {
     ready:
-      "Ready: published content is served from the publication store, refreshed by signed CMS events, retried and reconciled by the CMS's scheduler, and uploads are hosted independently of the CMS.",
+      "Ready: published content is served from the publication store, refreshed by signed CMS events, retried and reconciled by the CMS's scheduler, and uploads are hosted independently of the CMS. Every required legal page is assigned, and public pages load nothing from a third party before consent.",
     "not-ready":
       "Not ready: the resilience guarantee doesn't hold until the ✗ checks pass. Fix them in order; each says what to run.",
   },
@@ -88,7 +91,8 @@ export async function runSiteCommand({ argv, context, parsed, env, fetch, exec, 
 
 // This machine's CMS: DDEV running is only the start; WordPress must be
 // installed with WPGraphQL and the GETQUICK fields the Frontend reads, and
-// uploads must stay on disk.
+// uploads must stay on disk. A Site with `forms` also has Gravity Forms
+// active and only forms the Frontend can send (wp gq-forms status).
 async function localReadiness({ context, env, fetch, exec }) {
   const cmsRoot = join(context.projectRoot, CMS_PATH);
   const cmsEnv = await readIfPresent(join(cmsRoot, ".env"));
@@ -126,6 +130,13 @@ async function localReadiness({ context, env, fetch, exec }) {
         languages: siteLanguages(context.config),
       })),
     );
+    if (context.config.forms) {
+      const status = await exec("ddev", ["wp", "gq-forms", "status", "--format=json"], {
+        cwd: cmsRoot,
+        env,
+      });
+      checks.push(...localFormsStatus(status).map((check) => ({ area: "forms", ...check })));
+    }
   }
   const media = localMediaReadiness({ ops: context.config, cmsEnv });
   return result([...checks, ...media.checks.map((check) => ({ area: "media", ...check }))]);

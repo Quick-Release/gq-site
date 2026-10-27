@@ -5,7 +5,9 @@
 // create-once files created, and gq.lock.json updated. With --check every
 // pending change is reported (exit 1) and nothing written. A managed file,
 // section or key edited since gq last wrote it stops sync with a diff, and
-// nothing is written. `--recreate <path>` writes a create-once file again.
+// nothing is written. On a Site with the content package pair, --check also
+// fails while the pair's two pins disagree. `--recreate <path>` writes a
+// create-once file again.
 // `--manifest` limits sync to the manifest. Needs no network and no secrets.
 import { rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -25,6 +27,7 @@ import {
 } from "../manifest/legacy-release-config.mjs";
 import { SCHEMA_VERSION, VARIANTS } from "../manifest/schema.mjs";
 import { locateProjectConfig } from "../ops/project-context.mjs";
+import { contentPairProblem } from "./content-pair.mjs";
 import { unifiedDiff } from "./diff.mjs";
 import { applyManagedFiles, LOCK_FILENAME, planManagedFiles } from "./managed-files.mjs";
 
@@ -83,8 +86,12 @@ export async function runSyncCommand(args, { cwd, io }) {
     ? undefined
     : await planManagedFiles(root, manifest, { recreate: options.recreate });
   const files = plan ? [...plan.files, plan.lock] : [];
-  const pendingFiles = files.filter(({ status }) => status === "create" || status === "update");
+  const pendingFiles = files.filter(({ status }) =>
+    ["create", "update", "remove"].includes(status),
+  );
   const editedFiles = files.filter(({ status }) => status === "edited");
+  // The pair's two halves as the Site declares them now (ADR 0020).
+  const pairProblem = plan ? await contentPairProblem(root, manifest) : undefined;
 
   // Report, write nothing: with --check, or when writing would discard an edit.
   if (options.check || editedFiles.length > 0) {
@@ -98,6 +105,7 @@ export async function runSyncCommand(args, { cwd, io }) {
     if (plan) {
       reportManagedFiles(io, pendingFiles, { check: true, quiet: editedFiles.length > 0 });
     }
+    if (pairProblem) io.out(pairProblem);
     for (const file of editedFiles) reportEdit(io, file);
     if (editedFiles.length > 0) {
       throw new Error(
@@ -105,7 +113,7 @@ export async function runSyncCommand(args, { cwd, io }) {
           "gq sync writes nothing until each is reverted, or deleted to be regenerated.",
       );
     }
-    return !manifestPending && pendingFiles.length === 0 ? 0 : 1;
+    return !manifestPending && pendingFiles.length === 0 && !pairProblem ? 0 : 1;
   }
 
   if (!manifestPending) reportUpToDate(io);
@@ -132,13 +140,11 @@ function reportUpToDate(io) {
 // `scope` names the part of an existing file gq manages.
 function reportManagedFiles(io, pending, { check, quiet = false }) {
   if (pending.length === 0 && !quiet) io.out("Managed files: up to date.");
+  const done = { create: "created", update: "updated", remove: "removed" };
   for (const { path, status, scope } of pending) {
     if (check)
       io.out(`${path}: pending, gq sync would ${status} ${scope ? `its ${scope}` : "it"}.`);
-    else
-      io.out(
-        `${path}: ${status === "create" ? "created" : "updated"}${scope ? ` (${scope})` : ""}.`,
-      );
+    else io.out(`${path}: ${done[status]}${scope ? ` (${scope})` : ""}.`);
   }
 }
 

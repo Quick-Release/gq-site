@@ -15,7 +15,7 @@ const mf = new Miniflare({
         name: "site",
         compatibilityDate: "2026-10-26",
         compatibilityFlags: ["nodejs_compat"],
-        manifest: { mainModule: "worker.js", modulesRoot: root, modules },
+        manifest: { mainModule: "server.js", modulesRoot: root, modules },
       },
     },
   ],
@@ -28,7 +28,7 @@ try {
     ["/gq/events", "GET", 405],
     ["/gq/events", "POST", 403],
     ["/gq/refresh", "GET", 405],
-    ["/gq/consent", "GET", 503],
+    ["/gq/consent", "GET", 405],
   ]) {
     const res = await worker.fetch(new Request("https://example.com" + path, { method }));
     console.log(method, path, res.status);

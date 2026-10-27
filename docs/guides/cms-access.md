@@ -14,6 +14,7 @@ Keep these optional pairs in the Site's Sigillo **production** environment:
 | --------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
 | Public-content reader | `GQ_AUTH_GRAPHQL_CLIENT_ID`, `GQ_AUTH_GRAPHQL_CLIENT_SECRET`       | Frontend server publication reads; CLI `/graphql` and `/wp/graphql` readiness probes |
 | Automation            | `GQ_AUTH_AUTOMATION_CLIENT_ID`, `GQ_AUTH_AUTOMATION_CLIENT_SECRET` | CLI REST media POST/delete probes; CMS root/login probes                             |
+| Form submitter        | `GQ_FORMS_ACCESS_CLIENT_ID`, `GQ_FORMS_ACCESS_CLIENT_SECRET`       | The Frontend's `/gq/forms/` route: `POST /wp-json/gf/v2/forms/<id>/submissions` only |
 
 They become `CF-Access-Client-Id` and `CF-Access-Client-Secret` HTTP headers,
 never WordPress login credentials. Reads remain anonymous to WordPress: the
@@ -32,10 +33,21 @@ readiness does not receive production credentials when its origin differs from
 media assets receive neither pair. Credentialed CMS calls never follow redirects;
 fix the configured endpoint instead. Transport failures do not expose raw errors.
 
+The form submitter is needed only by a Site with
+[headless Gravity Forms](forms.md) whose Access policy also covers Gravity
+Forms' submissions path. That path needs no WordPress credential: the CMS's
+REST gate lets anonymous submissions through and nothing else
+([The CMS's REST gate](forms.md#the-cmss-rest-gate)).
+Scope the service token to that path alone. The Frontend's deploy reads it
+from the Sigillo environment it runs with and binds it as Worker secrets, and
+`gq ci deploy` forwards it to CI. The deploy refuses half a pair.
+
 ## Frontend and release wiring
 
-The content Frontend skeleton reads only the GraphQL pair from private Worker
-bindings (`src/lib/runtime.ts`), only on the server, and sends it only to the
+The content Frontend reads only the GraphQL pair from private Worker
+bindings (the runtime's `bindings`, given by the skeleton's
+`src/lib/content.ts`; a copied `src/lib/runtime.ts` on a Site generated
+before the content package pair), only on the server, and sends it only to the
 configured `PUBLIC_WORDPRESS_GRAPHQL_URL`, restricted to `/graphql` or
 `/wp/graphql` on the exact HTTPS origin named by `domains.admin` when credentials
 are present. An override to another host, port or path fails before sending.

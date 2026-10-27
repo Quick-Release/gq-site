@@ -6,7 +6,11 @@
 // project (apps/cms/.ddev/config.yaml `name`) and gq.ops.json's `sigillo` and
 // `artifacts`. Missing required pieces fail it; drift only warns. Reads
 // Sigillo's variable names and the Artifacts namespace's jurisdiction, with
-// ARTIFACTS_API_TOKEN from the environment or Sigillo `staging`.
+// ARTIFACTS_API_TOKEN from the environment or Sigillo `staging`, and the
+// consent databases' jurisdiction (ADR 0019), with CLOUDFLARE_API_TOKEN
+// from either. A Site that declares `forms` (gq-platform ADR 0009) has the
+// managed form route, a content runtime that reads form descriptors, and,
+// when it chose Turnstile, Turnstile's keys in Sigillo staging.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +19,14 @@ import { CMS_PATH, commandExists, ddevStatus, phpToolchainAvailable } from "../c
 import { artifactsRemoteUrl, createArtifactsClient } from "../cloudflare/account-client.mjs";
 import { jurisdictionMismatchMessage } from "../cloudflare/ci.mjs";
 import { SECRETS_ENVIRONMENT } from "../cloudflare/tokens.mjs";
-import { artifactsJurisdiction, MANIFEST_FILENAME } from "../manifest/schema.mjs";
+import {
+  CONSENT_JURISDICTION,
+  consentDatabaseName,
+  listConsentDatabases,
+} from "../frontend/consent.mjs";
+import { frontendFramework } from "../manifest/schema.mjs";
+import { FORMS_ROUTE, TURNSTILE_KEYS } from "../forms/readiness.mjs";
+import { artifactsJurisdiction, formSpamControls, MANIFEST_FILENAME } from "../manifest/schema.mjs";
 import { localMediaReadiness } from "../media/readiness.mjs";
 import {
   hasReleaseConfig,
@@ -127,8 +138,19 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
 
   if (context.config.artifacts && context.config.cloudflare?.accountId) {
     io.out("\nCloudflare Artifacts:");
-    const token = await artifactsToken({ context, env, exec, sigilloReady });
+    const token = await stagingToken("ARTIFACTS_API_TOKEN", { context, env, exec, sigilloReady });
     await checkJurisdiction({ config: context.config, token, fetch, report });
+  }
+
+  if (context.config.cloudflare?.accountId && context.config.project) {
+    io.out("\nConsent records (D1):");
+    const token = await stagingToken("CLOUDFLARE_API_TOKEN", { context, env, exec, sigilloReady });
+    await checkConsentJurisdiction({ config: context.config, token, fetch, report });
+  }
+
+  if (context.config.forms) {
+    io.out("\nForms:");
+    await checkForms({ context, env, exec, sigilloReady, report });
   }
 
   io.out("\nLocal WordPress:");
@@ -147,6 +169,10 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
   io.out(healthy ? "\nAll required checks passed." : "\nSome required checks need attention.");
   return healthy ? 0 : 1;
 }
+
+// The route pattern of content-api.php's submissions exception, as the
+// template and docs/guides/forms.md write it.
+const SUBMISSIONS_ROUTE_PATTERN = "'#^/gf/v2/forms/[1-9][0-9]*/submissions$#D'";
 
 function createReport(io) {
   let healthy = true;
@@ -292,17 +318,113 @@ async function checkSigillo({ root, sigillo, capture, report }) {
   return true;
 }
 
-// ARTIFACTS_API_TOKEN (gq cloudflare ci's) from the environment, or from
-// Sigillo `staging` when the site maps it and Sigillo is logged in; null
-// when neither has it.
-async function artifactsToken({ context, env, exec, sigilloReady }) {
-  if (env.ARTIFACTS_API_TOKEN) return env.ARTIFACTS_API_TOKEN;
+// A Cloudflare token (ARTIFACTS_API_TOKEN, gq cloudflare ci's, or the
+// deploy's CLOUDFLARE_API_TOKEN) from the environment, or from Sigillo
+// `staging` when the site maps it and Sigillo is logged in; null when neither
+// has it.
+async function stagingToken(name, { context, env, exec, sigilloReady }) {
+  if (env[name]) return env[name];
   if (!sigilloReady || !context.config.sigillo.environments?.[SECRETS_ENVIRONMENT]) return null;
   try {
     const secrets = await sigilloSecrets({ context, env, exec }, SECRETS_ENVIRONMENT);
-    return (await secrets.get("ARTIFACTS_API_TOKEN")) || null;
+    return (await secrets.get(name)) || null;
   } catch {
     return null;
+  }
+}
+
+// The Site's side of headless forms: what gq sync and src/lib/content.ts
+// wire, and Turnstile's keys when the Site chose it. Whether the CMS's forms
+// can be sent is gq site check's (--local runs wp gq-forms status).
+async function checkForms({ context, env, exec, sigilloReady, report }) {
+  const root = context.projectRoot;
+  const route =
+    frontendFramework(context.config) === "tanstack"
+      ? "apps/frontend/src/routes/gq.forms.$.ts"
+      : FORMS_ROUTE;
+  if (existsSync(join(root, route))) report.ok(`${route} handles form posts`);
+  else report.fail(`${route} is missing — run: gq sync`);
+
+  const runtime = join(root, FRONTEND_PATH, "src/lib/content.ts");
+  const source = existsSync(runtime) ? readFileSync(runtime, "utf8") : "";
+  if (/\bforms\s*:\s*(?:true|Boolean\()/u.test(source))
+    report.ok("src/lib/content.ts passes forms to the content runtime");
+  else {
+    report.warn(
+      `${FRONTEND_PATH}/src/lib/content.ts doesn't pass forms to createContentRuntime: pages carry no form descriptors, so forms don't render and posts are refused (docs/guides/forms.md)`,
+    );
+  }
+
+  // content-api.php is the Site's once created: one from before 0.24.1 closes
+  // the REST API to the form route's anonymous submissions too. The
+  // exception is recognised by the route pattern the template and the forms
+  // guide give it.
+  const contentApi = `${CMS_PATH}/web/app/mu-plugins/content-api.php`;
+  const gate = readText(join(root, contentApi));
+  if (gate === null) report.skip(`${contentApi} not found: its REST gate isn't checked`);
+  else if (
+    gate.includes("rest_authentication_errors") &&
+    !gate.includes(SUBMISSIONS_ROUTE_PATTERN)
+  ) {
+    report.fail(
+      `${contentApi} closes the REST API to anonymous form submissions, so every post fails with 401: add the submissions exception (docs/guides/forms.md#the-cmss-rest-gate)`,
+    );
+  } else report.ok("the CMS's REST gate lets form submissions through");
+
+  if (!formSpamControls(context.config).includes("turnstile")) return;
+  if (!sigilloReady || !context.config.sigillo?.environments?.[SECRETS_ENVIRONMENT]) {
+    return report.skip(`Turnstile's keys not checked: no Sigillo ${SECRETS_ENVIRONMENT}`);
+  }
+  let names;
+  try {
+    const secrets = await sigilloSecrets({ context, env, exec }, SECRETS_ENVIRONMENT);
+    names = new Set((await secrets.list()).split(/\r?\n/u).map((name) => name.trim()));
+  } catch {
+    // Sigillo stderr is untrusted output and might contain secret values.
+    return report.fail(`could not list Sigillo ${SECRETS_ENVIRONMENT} variable names`);
+  }
+  const missing = TURNSTILE_KEYS.filter((name) => !names.has(name));
+  if (missing.length === 0) report.ok(`Sigillo ${SECRETS_ENVIRONMENT} has Turnstile's keys`);
+  else {
+    report.fail(
+      `gq.ops.json forms.spam chooses Turnstile, but Sigillo ${SECRETS_ENVIRONMENT} lacks ${missing.join(" and ")} (docs/guides/forms.md)`,
+    );
+  }
+}
+
+// Visitors' consent records must stay in the EU (CONSENT-1 CN-R8), and
+// Cloudflare can't move a D1 database: one created outside `eu` fails.
+async function checkConsentJurisdiction({ config, token, fetch, report }) {
+  if (!token) {
+    return report.skip(
+      `consent database jurisdiction not checked: no CLOUDFLARE_API_TOKEN in the environment or Sigillo ${SECRETS_ENVIRONMENT}`,
+    );
+  }
+  let databases;
+  try {
+    databases = await listConsentDatabases({
+      accountId: config.cloudflare.accountId,
+      token,
+      fetch,
+      project: config.project,
+    });
+  } catch (error) {
+    return report.warn(`could not list the consent databases: ${error.message}`);
+  }
+  if (databases.length === 0) {
+    return report.skip(
+      `no consent database yet: a Frontend deploy creates it in ${CONSENT_JURISDICTION} (${consentDatabaseName(config.project)})`,
+    );
+  }
+  for (const { name, jurisdiction } of databases) {
+    if (jurisdiction === CONSENT_JURISDICTION) {
+      report.ok(`consent database ${name} is in the ${CONSENT_JURISDICTION} jurisdiction`);
+      continue;
+    }
+    report.fail(
+      `consent database ${name} is in the ${jurisdiction} jurisdiction, not ${CONSENT_JURISDICTION}: Cloudflare can't move it. ` +
+        "Export its records (wrangler d1 export), delete it, redeploy the Frontend to create it in eu, and import them (docs/guides/consent.md)",
+    );
   }
 }
 

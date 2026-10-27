@@ -21,12 +21,24 @@ export type Bindings = CiBindings & {
   GITHUB_REPOSITORY: string;
   ARTIFACTS_NAMESPACE: string;
   ARTIFACTS_REPO: string;
-  // The Frontend's refresh token and publication-event secret, when the site
-  // has a publication store; the release step passes them to its deploy.
+  // The Frontend's refresh token, publication-event secret and consent read
+  // token, when the site has them; the release step passes them to its deploy.
   FRONTEND_REFRESH_TOKEN?: string;
   PUBLICATION_EVENT_SECRET?: string;
+  CONSENT_READ_TOKEN?: string;
   // Optional read-only CMS edge identity; never the automation service.
   GQ_AUTH_GRAPHQL_CLIENT_ID?: string;
   GQ_AUTH_GRAPHQL_CLIENT_SECRET?: string;
+  // Dedicated trusted Site CMS identity and optional preview gateway identity.
+  GQ_PREVIEW_CMS_USERNAME?: string;
+  GQ_PREVIEW_CMS_APPLICATION_PASSWORD?: string;
+  GQ_PREVIEW_ACCESS_CLIENT_ID?: string;
+  GQ_PREVIEW_ACCESS_CLIENT_SECRET?: string;
+  // Headless forms: Turnstile's keys when the Site chose it, and the optional
+  // Access service token for the CMS's submissions path.
+  TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_SITE_KEY?: string;
+  GQ_FORMS_ACCESS_CLIENT_ID?: string;
+  GQ_FORMS_ACCESS_CLIENT_SECRET?: string;
   MIRROR_WORKFLOW: Workflow<MirrorParams>;
 };

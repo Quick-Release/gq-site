@@ -1,26 +1,27 @@
 // The public routes, rendered through Astro's Container API against a stubbed
-// WordPress: what a visitor gets, and which HTTP status, when content is
-// published, confirmed missing, or WordPress fails. These are the live reads
-// of local development (`astro dev`, no publication store) and of an entry's
-// cold lookup; the deployed Frontend serves from its store (homepage.test.ts,
-// entries.test.ts).
+// WordPress: the page a visitor gets, and its HTTP status, when content is
+// published, confirmed missing, or WordPress fails. Delivery itself (the
+// publication store, events, refresh, retries) is @getquick/content's and is
+// tested there; these test what this Site composes from what it delivers:
+// the pages, their words, metadata and chrome.
 import { experimental_AstroContainer as AstroContainer } from "astro/container";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { scanConsentHtml } from "@getquick/content/consent/testing";
 import Entry from "./pages/[...slug].astro";
 import Home from "./pages/index.astro";
 import {
+  chrome,
+  consentSettings,
   data,
   httpError,
   queries,
   stubWordPress,
   timeout,
   tokens,
-  type Answer,
 } from "./test/wordpress-stub";
 
 // The monolingual Site this file describes: the site's gq.ops.json without
-// wordpress.languages. languages.test.ts and language-updates.test.ts cover
-// the bilingual Site.
+// wordpress.languages.
 vi.mock("../../../gq.ops.json", async (importOriginal) => {
   const { default: ops } = await importOriginal<{
     default: { wordpress: { languages?: unknown } };
@@ -88,6 +89,48 @@ describe("entries read live in local development", () => {
     expect(html).toContain('src="https://media.example/logo.svg"');
   });
 
+  test("the header and footer GQ Design selects replace the site's own", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const block = (name: string, content: string | null) => ({
+      name,
+      attributes: {},
+      content,
+      children: [],
+    });
+    const fetchMock = stubWordPress({
+      entry: () => data({ postBy: null, pageBy: about, designTokens: tokens }),
+      chrome: () =>
+        data({
+          ...chrome,
+          header: {
+            title: "Main header",
+            blocksJson: JSON.stringify([
+              block("core/paragraph", '<p class="brand">Acme header</p>'),
+              block("acme/navigation", null),
+            ]),
+          },
+          footer: {
+            title: "Main footer",
+            blocksJson: JSON.stringify([block("core/paragraph", "<p>© Acme</p>")]),
+          },
+        }),
+    });
+
+    const { status, html } = await render("/about/");
+
+    expect(status).toBe(200);
+    const header = /<header\b[^>]*>([\s\S]*?)<\/header>/.exec(html)?.[1] ?? "";
+    expect(header).toMatch(/<p\b[^>]*\bclass="[^"]*\bbrand\b[^"]*"[^>]*>Acme header<\/p>/);
+    expect(header).not.toContain("About us");
+    expect(header).not.toContain("logo.svg");
+    expect(/<footer\b[^>]*>([\s\S]*?)<\/footer>/.exec(html)?.[1]).toMatch(/<p\b[^>]*>© Acme<\/p>/);
+    // A Site block renders only through the Site's renderer.
+    expect(warn).toHaveBeenCalledWith("No renderer for acme/navigation");
+    expect(
+      JSON.parse(queries(fetchMock, "SiteChrome")[0]![1].body as string).variables,
+    ).toMatchObject({ template: "page" });
+  });
+
   test("an entry WordPress confirms isn't published is a 404", async () => {
     stubWordPress({ entry: () => data({ postBy: null, pageBy: null, designTokens: tokens }) });
 
@@ -110,74 +153,6 @@ describe("entries read live in local development", () => {
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining("/about/ is unavailable (timeout)"),
     );
-  });
-
-  test.each([
-    ["a WordPress HTTP error", () => httpError(403)],
-    [
-      "a GraphQL error",
-      () =>
-        ({
-          ok: true,
-          json: async () => ({ errors: [{ message: "Internal server error" }] }),
-        }) as Answer,
-    ],
-    [
-      "a GraphQL error next to partial data",
-      () =>
-        ({
-          ok: true,
-          json: async () => ({
-            data: { postBy: null, pageBy: null, designTokens: tokens },
-            errors: [{ message: "Cannot return null for designTokens" }],
-          }),
-        }) as Answer,
-    ],
-    ["an unreachable WordPress", () => Promise.reject(new TypeError("fetch failed"))],
-    [
-      "an answer that isn't JSON",
-      () => ({ ok: true, json: async () => JSON.parse("<html>") }) as Answer,
-    ],
-    ["missing design tokens", () => data({ postBy: null, pageBy: null, designTokens: null })],
-    [
-      "an entry without its required id",
-      () => data({ postBy: null, pageBy: { ...about, id: undefined }, designTokens: tokens }),
-    ],
-    ["no postBy field at all", () => data({ pageBy: null, designTokens: tokens })],
-  ])("%s is a 503 for an entry, not a 404", async (_case, entry) => {
-    stubWordPress({ entry });
-
-    const { status, html } = await render("/about/");
-
-    expect(status).toBe(503);
-    expect(html).not.toContain("Nothing here.");
-  });
-
-  test("an entry whose blocks WordPress fails to return still renders, without them", async () => {
-    const fetchMock = stubWordPress({
-      entry: ({ withBlocks }) =>
-        withBlocks === false
-          ? data({ postBy: null, pageBy: about, designTokens: tokens })
-          : httpError(502),
-    });
-
-    const { status, html } = await render("/about/");
-
-    expect(status).toBe(200);
-    expect(html).toContain("<p>We make things.</p>");
-    expect(queries(fetchMock, "EntryByUri")).toHaveLength(2);
-  });
-
-  test("an entry whose recovery without blocks fails too is a 503, not a 404", async () => {
-    const fetchMock = stubWordPress({
-      entry: ({ withBlocks }) => (withBlocks === false ? timeout() : httpError(502)),
-    });
-
-    const { status, html } = await render("/about/");
-
-    expect(status).toBe(503);
-    expect(html).not.toContain("Nothing here.");
-    expect(queries(fetchMock, "EntryByUri")).toHaveLength(2);
   });
 
   test("a published entry is still served when the site chrome can't be read", async () => {
@@ -215,7 +190,7 @@ describe("entries read live in local development", () => {
 
     expect(status).toBe(200);
     expect(html).toContain("September 30, 2026");
-    expect(html).not.toContain("featured-image");
+    expect(html).not.toMatch(/<img\b[^>]*\bclass="[^"]*\bfeatured-image\b/);
   });
 });
 
@@ -235,8 +210,6 @@ test("a built Frontend without a publication store is a 503 for an entry, and re
   );
 });
 
-// The front page's CMS failures, refresh and outages are in homepage.test.ts:
-// a built Frontend serves it from the publication store only.
 test("a built Frontend without a publication store is a 503 for the front page, and reads no CMS", async () => {
   const fetchMock = stubWordPress({
     home: () =>
@@ -306,4 +279,98 @@ test("local development with no front page set is a 404 that says how to set one
 
   expect(status).toBe(404);
   expect(html).toContain("The front page is almost ready.");
+});
+
+// CONSENT-1 and LEGAL-1: the consent Runtime's UI, composed by the layout from
+// @getquick/content/consent/astro, on every page. What the UI does (the
+// banner, the decisions, the records) is the Runtime's, tested in gq-content
+// and by its shared acceptance suite in a browser.
+describe("the consent UI", () => {
+  const youtube =
+    '<figure class="wp-block-embed is-provider-youtube"><div class="wp-block-embed__wrapper"><iframe title="Video" width="560" height="315" src="https://www.youtube.com/embed/abcdefghijk?feature=oembed" allowfullscreen></iframe></div></figure>';
+
+  beforeEach(() => {
+    vi.stubEnv("DEV", true);
+  });
+
+  /** The page's footer: the legal links and the Cookie settings control. */
+  function footer(html: string) {
+    return /<footer\b[^>]*>([\s\S]*?)<\/footer>/.exec(html)?.[1] ?? "";
+  }
+
+  test("every page carries the Runtime's configuration, the legal links and Cookie settings", async () => {
+    stubWordPress({
+      home: () =>
+        data({
+          generalSettings: { title: "Acme", description: "" },
+          nodeByUri: frontPage,
+          designTokens: tokens,
+        }),
+      entry: () => data({ postBy: null, pageBy: about, designTokens: tokens }),
+    });
+
+    for (const path of ["/", "/about/", "/gone/"]) {
+      const { html } = await render(path);
+
+      expect(html, path).toMatch(/<script type="application\/json" id="gq-consent-config">/);
+      expect(footer(html), path).toMatch(
+        /<a href="\/privacy\/" data-gq-legal-role="privacy_policy">Privacy policy<\/a>/,
+      );
+      expect(footer(html), path).toMatch(
+        /<a href="\/cookies\/" data-gq-legal-role="cookie_policy">Cookie policy<\/a>/,
+      );
+      // "Cookie settings", in the page's language.
+      expect(footer(html), path).toMatch(/<button[^>]*data-gq-consent-open[^>]*>[^<]+</);
+      expect(html, path).toMatch(/<dialog id="gq-consent-preferences"/);
+    }
+  });
+
+  test("a published YouTube embed is served without its live source", async () => {
+    stubWordPress({
+      entry: () =>
+        data({
+          postBy: null,
+          pageBy: { ...about, content: `<p>We make things.</p>${youtube}` },
+          designTokens: tokens,
+        }),
+    });
+
+    const { status, html } = await render("/about/");
+
+    expect(status).toBe(200);
+    expect(html).toContain("<p>We make things.</p>");
+    const scan = scanConsentHtml(html, {
+      siteOrigin: "https://acme.example",
+      firstPartyHosts: ["media.example"],
+    });
+    expect(scan.liveThirdParty).toEqual([]);
+    // No catalog service is declared yet, so the embed stays blocked.
+    expect(scan.blocked).toEqual([{ host: "www.youtube.com", tag: "iframe" }]);
+  });
+
+  test("with no optional service there is no banner, and Cookie settings stays", async () => {
+    stubWordPress({ entry: () => data({ postBy: null, pageBy: about, designTokens: tokens }) });
+
+    const { html } = await render("/about/");
+
+    expect(html).not.toContain('id="gq-consent-banner"');
+    expect(footer(html)).toContain("data-gq-consent-open");
+  });
+
+  test("GA4 switched on in GQ Config asks first, in a banner before the page", async () => {
+    stubWordPress({
+      entry: () => data({ postBy: null, pageBy: about, designTokens: tokens }),
+      consent: () => consentSettings({ enabled: true, measurementId: "G-TEST1234" }),
+    });
+
+    const { html } = await render("/about/");
+
+    const banner = /<section id="gq-consent-banner"[^>]*>/.exec(html)?.[0];
+    expect(banner).toBeDefined();
+    expect(banner).not.toContain("hidden");
+    expect(html.indexOf('id="gq-consent-banner"')).toBeLessThan(html.indexOf("<header"));
+    expect(html).toContain('"services":["consent","ga4"]');
+    // The tag itself loads only after a grant, from the Runtime's client.
+    expect(html).not.toContain("googletagmanager.com");
+  });
 });

@@ -19,6 +19,7 @@ import {
   SCHEMA_VERSION,
   VARIANTS,
 } from "../manifest/schema.mjs";
+import { CONTENT_RUNTIME_PACKAGE } from "./content-pair.mjs";
 import { applyManagedFiles, planManagedFiles } from "./managed-files.mjs";
 
 export const NEW_USAGE = [
@@ -102,6 +103,8 @@ export async function runNewCommand(args, { cwd, env, exec, stdin, io, interacti
     project,
     variant,
     framework: options.framework ?? "tanstack",
+    // A new Site runs the content runtime from its pinned package pair.
+    contentRuntime: CONTENT_RUNTIME_PACKAGE,
     wordpress: { plugins: CONTENT_PLUGINS, locale },
   });
   const root = resolve(cwd, directory);
@@ -257,9 +260,8 @@ function parseNewArguments(args) {
       options.directory = argument;
     } else throw new Error(`Usage: ${NEW_USAGE[0]}`);
   }
-  if (options.framework !== undefined && !FRAMEWORKS.includes(options.framework)) {
+  if (options.framework !== undefined && !FRAMEWORKS.includes(options.framework))
     throw new Error(`--framework must be ${FRAMEWORKS.join(" or ")}: ${options.framework}`);
-  }
   if (options.variant !== undefined && !VARIANTS.includes(options.variant)) {
     throw new Error(`--variant must be ${VARIANTS.join(" or ")}: ${options.variant}`);
   }

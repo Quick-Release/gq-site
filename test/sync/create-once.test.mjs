@@ -1,7 +1,7 @@
 // gq new and gq sync on create-once files: once written, they belong
 // to the site and are never restored unless --recreate asks for them.
 import assert from "node:assert/strict";
-import { lstat, rm, writeFile } from "node:fs/promises";
+import { lstat, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -113,6 +113,21 @@ test("gq sync leaves an edited or deleted create-once file alone", async () => {
   }
 });
 
+test("gq sync never overwrites a Site's custom layout", async () => {
+  const site = await newSite();
+  const layout = join(site.root, "apps/frontend/src/layouts/Layout.astro");
+  const custom =
+    "---\n// The Site's own layout, with its consent UI composed by hand.\n---\n<slot />\n";
+  await writeFile(layout, custom);
+
+  for (const argv of [["sync", "--check"], ["sync"]]) {
+    const result = await site.run(argv);
+    assert.equal(result.code, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /Layout\.astro/u);
+  }
+  assert.equal(await readFile(layout, "utf8"), custom);
+});
+
 test("gq sync --recreate restores an edited or deleted create-once file", async () => {
   const site = await newSite();
   const [glossary, readme] = await Promise.all(
@@ -206,9 +221,12 @@ test("an app the site already has gains no skeleton files, now or on a later syn
   const result = await site.run(["sync"]);
 
   assert.equal(result.code, 0, result.stderr);
+  // Only managed files, which every Site gets: the CMS dependency patch and
+  // the consent purge's entry (ADR 0019).
   assert.deepEqual(result.stdout.match(/^apps\/.*$/gmu), [
     "apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch: created.",
     "apps/cms/scripts/patch-dependencies.php: created.",
+    "apps/frontend/workers/consent-purge.ts: created.",
   ]);
   assert.doesNotMatch(result.stdout, /^deploy\/ploi\/admin\.d\/10-theme\.sh/mu);
   const files = Object.keys(await snapshot(site.root));
@@ -219,6 +237,7 @@ test("an app the site already has gains no skeleton files, now or on a later syn
       "apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch",
       "apps/cms/scripts/patch-dependencies.php",
       "apps/frontend/package.json",
+      "apps/frontend/workers/consent-purge.ts",
     ],
   );
   assert.ok(!files.includes("deploy/ploi/admin.d/10-theme.sh"));

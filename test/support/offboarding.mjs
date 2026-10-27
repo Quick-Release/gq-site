@@ -160,6 +160,9 @@ export const publicationBinding = (uuid) => [
   { type: "d1", name: "PUBLICATION_DB", database_id: uuid },
 ];
 
+// A consent purge Worker's binding to its stage's consent database `uuid`.
+export const consentBinding = (uuid) => [{ type: "d1", name: "CONSENT_DB", database_id: uuid }];
+
 // A Site with everything still exposed, unless `overrides` says otherwise.
 export function exposedState() {
   return {

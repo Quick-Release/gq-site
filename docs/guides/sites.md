@@ -15,7 +15,9 @@ gq sync --recreate README.md   # write a create-once file again
 
 `gq new` writes everything a content site needs to pass `pnpm verify`
 without network access or secrets: a v1 `gq.ops.json` whose
-`wordpress.plugins` are the CMS skeleton's, the managed files below, and
+`wordpress.plugins` are the CMS skeleton's and whose `contentRuntime` is
+`"package"` (see [The content runtime](#the-content-runtime)), the managed
+files below, and
 the create-once scaffolding, the CMS and Frontend skeletons among it. In a
 terminal it asks for the directory, project or variant its arguments lack;
 elsewhere it names them and stops. It asks for the site's main language too
@@ -53,7 +55,52 @@ configuration and script (`infra/frontend.run.ts`,
 step (`scripts/ci-release.mjs`) and the tests of the CI Worker and release
 step (`scripts/ci.test.mjs`), and the CMS deploy script Ploi runs
 (`deploy/ploi/admin.sh`, with `deploy/ploi/polylang.sh` for a bilingual
-site's languages).
+site's languages). On a Site on the content package pair, the Frontend's
+`/gq/events`, `/gq/refresh` and `/gq/consent` routes are fully generated too,
+and so is `/gq/forms/` while `gq.ops.json` declares `forms`.
+
+## The content runtime
+
+The content runtime (the Frontend's publication store and delivery, the
+CMS's publication, settings and retry events, and the WPGraphQL client and
+HTML helpers) comes from Quick-Release/gq-content as a pair released at one
+version: the CMS plugin `getquick/gq-content` (a `wordpress-muplugin` from
+the registry) and the npm package `@getquick/content`
+([ADR 0020](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+`gq new` writes `"contentRuntime": "package"` in `gq.ops.json`, and on such a
+Site `gq sync` manages:
+
+- **The pins**, each a managed key set to the same exact version (0.4.0):
+  `require.getquick/gq-content` in `apps/cms/composer.json` and
+  `dependencies.@getquick/content` in `apps/frontend/package.json`.
+  `gq sync --check` fails while the two disagree, naming both. To upgrade,
+  upgrade `@getquick/site` and run `gq sync`, then update and commit
+  `composer.lock` and `pnpm-lock.yaml`.
+- **The route adapters**, `apps/frontend/src/pages/gq/events.ts` and
+  `refresh.ts`, which hand each request to the package's `handleEvent` and
+  `handleRefresh`, and `gq/consent.ts` and `gq/consent/[...rest].ts`, which
+  hand the consent records and their reads to its `createConsentServer`
+  ([Consent and legal pages](consent.md)). On a Site whose `gq.ops.json`
+  declares `forms`, `gq/forms/[...rest].ts` hands form posts to its
+  `createFormsServer`; without `forms` there is none, and `gq sync` removes
+  one it wrote and the Site hasn't edited ([Headless Gravity Forms](forms.md)).
+
+The Site configures the runtime in `apps/frontend/src/lib/content.ts`
+(created once): its identity is `gq.ops.json`'s `project`, its languages are
+`wordpress.locale` and `wordpress.languages`, and its bindings are the
+Worker's. The CMS's `config/application.php` defines `GQ_CONTENT_SITE_ID` as
+the same `project`, so the CMS signs its events for the Site the Frontend
+serves. The pages, layout, words and styles stay the Site's, importing the
+package's helpers; the layout composes the consent Runtime's UI
+([Consent and legal pages](consent.md)). The package's README documents its configuration and
+exports.
+
+A Site generated before this has no `contentRuntime`: it keeps the runtime
+the blueprint copied into it (`apps/frontend/src/lib/*`,
+`apps/frontend/migrations`, the CMS's event mu-plugins) and its own
+`/gq` routes, and `gq sync` neither adds the pair nor rewrites or deletes
+those copies. To move one onto the pair, follow
+[Move an existing Site onto the content package pair](content-pair-migration.md).
 
 ## Generated deploy wiring
 
@@ -67,9 +114,10 @@ written as a placeholder naming its key (`"<ci.worker>"`), so a new site can
 be generated before it is provisioned; fill the value in and `gq sync`
 rewrites the files. The Frontend deploy reads `domains` and
 `cloudflare.accountId` from `gq.ops.json` when it runs. When the Frontend
-skeleton includes `apps/frontend/migrations`, the deploy also declares and
+has the publication store's migrations (installed with `@getquick/content`
+on a Site on the pair, or a Site's own `apps/frontend/migrations`), the deploy also declares and
 migrates the retained D1 publication store bound as `PUBLICATION_DB`; a
-site-owned Frontend without migrations deploys without a store.
+Frontend without them deploys without a store.
 
 The CMS deploy script activates the plugins `wordpress.plugins` lists, in
 order (each must be installed by Composer; a name must be a plugin slug),
@@ -152,7 +200,7 @@ then release.
   deploy leaves the site's language as it is.
 - **The Frontend.** `<html lang>` is the locale's language and region
   (`pt_PT_ao90` → `pt-PT`), read from `gq.ops.json` when the Frontend is
-  built (`apps/frontend/src/lib/site-language.ts`), so it follows the next
+  built (`apps/frontend/src/lib/content.ts`), so it follows the next
   release.
 - **Locally.** `gq db sync` installs the locale's language packs in DDEV
   after the import, so the local admin is in the site's language too.
@@ -216,8 +264,8 @@ run `gq sync` (it updates `deploy/ploi/admin.sh`), and release.
   publication store (`home:en`, `chrome:en`), with its own `<html lang>`,
   menu, title and tagline, `hreflang` alternates and a language switcher. A
   page without a translation in a language is a 404 there: there is no
-  fallback across languages. See the Frontend's README, "Languages". The
-  Frontend is site-owned, so an existing site adopts this from a new site's
+  fallback across languages. See the Frontend's README, "Languages". A Site
+  generated before the content package pair adopts this from a newer
   skeleton (see the changelog).
 - **Keeping each language current.** The CMS's events name the language a
   change is in, so publishing an English page refreshes only its `/en/`
@@ -228,9 +276,8 @@ run `gq sync` (it updates `deploy/ploi/admin.sh`), and release.
   language exists in Polylang and its front page, chrome and homepage are
   served
   ([ADR 0013](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0013-serve-each-language-from-its-own-shared-rows.md)).
-  The CMS's event plugins are site-owned too: adopt
-  `publication-events.php`, `settings-events.php` and
-  `delivery-retries.php` from a new site's skeleton.
+  On the content package pair this is the runtime's; a Site generated
+  before it keeps its copied event plugins.
 - **Shared slugs.** Polylang Pro's "Share slugs" module has no setting: it
   turns on by itself with language directories, so an editor can give a
   translation its original's slug. Keep translated slugs unique per
@@ -252,7 +299,9 @@ A site shares four more kinds of file with the blueprint:
   `release*` and the rest), and the ones that run the deploy wiring
   (`deploy:frontend`, `deploy:frontend:raw`, `plan:frontend`,
   `infra:check`, `ci:check`, `test:scripts`, `media:check*` and
-  `frontend:refresh`). Every other key, including
+  `frontend:refresh`). On a Site on the content package pair, the pins in
+  `apps/cms/composer.json` and `apps/frontend/package.json` are managed keys
+  too ([The content runtime](#the-content-runtime)). Every other key, including
   the site's own scripts and its dependencies, is the site's: `gq` edits
   the file as text, so those keys stay byte for byte. A managed key the site removed is added
   back after its siblings, in the file's indentation. One the blueprint
@@ -270,20 +319,22 @@ A site shares four more kinds of file with the blueprint:
   `@getquick/site` pinned to the installed version, Sigillo, Vite+) before
   the managed ones.
 - **App skeletons.** The CMS (`apps/cms`: Bedrock with the GETQUICK
-  plugins and `getquick-theme` from the registry, the content API
-  mu-plugin, DDEV config, Pint and Pest, and its env templates) and the
-  Frontend (`apps/frontend`: Astro on WPGraphQL with its own copy of the
-  block renderer, rendered-route tests, a durable homepage backed by a D1
-  publication store, and its env template). Neither carries a site's own
+  plugins, `getquick/gq-content` and `getquick-theme` from the registry, the
+  content API mu-plugin, DDEV config, Pint and Pest, and its env templates)
+  and the Frontend (`apps/frontend`: Astro on WPGraphQL, its pages composed
+  from `@getquick/content`'s delivery and HTML helpers, the runtime's
+  configuration in `src/lib/content.ts`, rendered-route tests, and its env
+  template). Neither carries a site's own
   plugins, child theme or pages. The env templates hold public configuration
   and placeholders only (`gq ploi provision` renders the server's `.env` from
   `.env.production.example`).
-  The CMS skeleton requires `getquick/gq-config ^0.4.0` and
+  The CMS skeleton requires `getquick/gq-config 0.4.3` (its Legal Contract
+  and consent read support; [consent guide](consent.md)) and
   `getquick/getquick-theme ^0.5.1`. The config package is a must-use plugin,
   not an entry in `wordpress.plugins`; its load check uses
   `GETQUICK_CONFIG_VERSION`. A CMS app is site-owned, so `gq sync` doesn't
   change its Composer requirements: a site whose CMS requires
-  `getquick/getquick-config` replaces it with `getquick/gq-config ^0.4.0`,
+  `getquick/getquick-config` replaces it with `getquick/gq-config ^0.4.3`,
   raises the theme requirement to `^0.5.1`, and updates and commits
   `composer.lock` alongside `composer.json`.
   `deploy/ploi/admin.d/10-theme.sh`, which activates `getquick-theme`,

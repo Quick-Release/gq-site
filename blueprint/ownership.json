@@ -9,6 +9,10 @@
       "template": "templates/apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch"
     },
     {
+      "path": "apps/frontend/workers/consent-purge.ts",
+      "template": "templates/apps/frontend/workers/consent-purge.ts"
+    },
+    {
       "path": ".mise.toml",
       "template": "templates/mise.toml"
     },
@@ -73,13 +77,11 @@
     },
     {
       "path": "infra/ci/cloudflare.ci.ts",
-      "template": "templates/infra/ci/cloudflare.ci.ts",
-      "framework": "astro"
+      "template": "templates/infra/ci/cloudflare.ci.ts"
     },
     {
       "path": "infra/ci/env.ts",
-      "template": "templates/infra/ci/env.ts",
-      "framework": "astro"
+      "template": "templates/infra/ci/env.ts"
     },
     {
       "path": "infra/ci/github.ts",
@@ -110,19 +112,21 @@
       "template": "templates/infra/ci/wrangler.jsonc"
     },
     {
+      "path": "infra/consent.ts",
+      "template": "templates/infra/consent.ts"
+    },
+    {
       "path": "infra/frontend.run.ts",
       "template": "templates/infra/frontend.run.ts",
       "framework": "astro"
     },
     {
       "path": "infra/package.json",
-      "template": "templates/infra/package.json",
-      "framework": "astro"
+      "template": "templates/infra/package.json"
     },
     {
       "path": "infra/scripts/deploy-frontend.mjs",
-      "template": "templates/infra/scripts/deploy-frontend.mjs",
-      "framework": "astro"
+      "template": "templates/infra/scripts/deploy-frontend.mjs"
     },
     {
       "path": "infra/tsconfig.json",
@@ -135,6 +139,37 @@
     {
       "path": "scripts/ci.test.mjs",
       "template": "templates/scripts/ci.test.mjs"
+    },
+    {
+      "path": "apps/frontend/src/pages/gq/consent.ts",
+      "template": "templates/apps/frontend/src/pages/gq/consent.ts",
+      "contentRuntime": "package",
+      "framework": "astro"
+    },
+    {
+      "path": "apps/frontend/src/pages/gq/consent/[...rest].ts",
+      "template": "templates/apps/frontend/src/pages/gq/consent/[...rest].ts",
+      "contentRuntime": "package",
+      "framework": "astro"
+    },
+    {
+      "path": "apps/frontend/src/pages/gq/forms/[...rest].ts",
+      "template": "templates/apps/frontend/src/pages/gq/forms/[...rest].ts",
+      "contentRuntime": "package",
+      "manifestKey": "forms",
+      "framework": "astro"
+    },
+    {
+      "path": "apps/frontend/src/pages/gq/events.ts",
+      "template": "templates/apps/frontend/src/pages/gq/events.ts",
+      "contentRuntime": "package",
+      "framework": "astro"
+    },
+    {
+      "path": "apps/frontend/src/pages/gq/refresh.ts",
+      "template": "templates/apps/frontend/src/pages/gq/refresh.ts",
+      "contentRuntime": "package",
+      "framework": "astro"
     },
     {
       "path": ".claude/skills",
@@ -166,29 +201,11 @@
       "framework": "tanstack"
     },
     {
-      "path": "infra/package.json",
-      "template": "templates/tanstack/infra/package.json",
-      "framework": "tanstack"
-    },
-    {
-      "path": "apps/frontend/src/worker.ts",
-      "template": "templates/tanstack/apps/frontend/src/worker.ts",
-      "framework": "tanstack"
-    },
-    {
-      "path": "infra/ci/cloudflare.ci.ts",
-      "template": "templates/tanstack/infra/ci/cloudflare.ci.ts",
-      "framework": "tanstack"
-    },
-    {
-      "path": "infra/ci/env.ts",
-      "template": "templates/tanstack/infra/ci/env.ts",
-      "framework": "tanstack"
-    },
-    {
-      "path": "infra/scripts/deploy-frontend.mjs",
-      "template": "templates/tanstack/infra/scripts/deploy-frontend.mjs",
-      "framework": "tanstack"
+      "path": "apps/frontend/src/routes/gq.forms.$.ts",
+      "template": "templates/tanstack/apps/frontend/src/routes/gq.forms.$.ts",
+      "framework": "tanstack",
+      "contentRuntime": "package",
+      "manifestKey": "forms"
     }
   ],
   "generatedSections": [
@@ -206,6 +223,16 @@
       "path": "package.json",
       "template": "templates/fragments/package.keys.json",
       "initial": "templates/package.initial.json"
+    },
+    {
+      "path": "apps/cms/composer.json",
+      "template": "templates/fragments/cms-composer.keys.json",
+      "contentRuntime": "package"
+    },
+    {
+      "path": "apps/frontend/package.json",
+      "template": "templates/fragments/frontend-package.keys.json",
+      "contentRuntime": "package"
     }
   ],
   "createOnce": [
@@ -272,14 +299,12 @@
     {
       "path": "apps/cms/composer.json",
       "template": "templates/apps/cms/composer.json",
-      "app": "apps/cms",
-      "framework": "astro"
+      "app": "apps/cms"
     },
     {
       "path": "apps/cms/config/application.php",
       "template": "templates/apps/cms/config/application.php",
-      "app": "apps/cms",
-      "framework": "astro"
+      "app": "apps/cms"
     },
     {
       "path": "apps/cms/config/environments/development.php",
@@ -327,24 +352,6 @@
       "app": "apps/cms"
     },
     {
-      "path": "apps/cms/web/app/mu-plugins/delivery-retries.php",
-      "template": "templates/apps/cms/web/app/mu-plugins/delivery-retries.php",
-      "app": "apps/cms",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/cms/web/app/mu-plugins/publication-events.php",
-      "template": "templates/apps/cms/web/app/mu-plugins/publication-events.php",
-      "app": "apps/cms",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/cms/web/app/mu-plugins/settings-events.php",
-      "template": "templates/apps/cms/web/app/mu-plugins/settings-events.php",
-      "app": "apps/cms",
-      "framework": "astro"
-    },
-    {
       "path": "apps/cms/web/app/plugins/.gitkeep",
       "template": "templates/apps/cms/web/app/plugins/gitkeep",
       "app": "apps/cms"
@@ -382,8 +389,7 @@
     {
       "path": "apps/frontend/.gitignore",
       "template": "templates/apps/frontend/gitignore",
-      "app": "apps/frontend",
-      "framework": "astro"
+      "app": "apps/frontend"
     },
     {
       "path": "apps/frontend/README.md",
@@ -398,86 +404,14 @@
       "framework": "astro"
     },
     {
-      "path": "apps/frontend/migrations/0001_publications.sql",
-      "template": "templates/apps/frontend/migrations/0001_publications.sql",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/migrations/0002_entries.sql",
-      "template": "templates/apps/frontend/migrations/0002_entries.sql",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/migrations/0003_publication_events.sql",
-      "template": "templates/apps/frontend/migrations/0003_publication_events.sql",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/migrations/0004_withdrawals.sql",
-      "template": "templates/apps/frontend/migrations/0004_withdrawals.sql",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/migrations/0005_reconciliation.sql",
-      "template": "templates/apps/frontend/migrations/0005_reconciliation.sql",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/entries.test.ts",
-      "template": "templates/apps/frontend/src/entries.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/events.test.ts",
-      "template": "templates/apps/frontend/src/events.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/reconciliation.test.ts",
-      "template": "templates/apps/frontend/src/reconciliation.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/retries.test.ts",
-      "template": "templates/apps/frontend/src/retries.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/settings.test.ts",
-      "template": "templates/apps/frontend/src/settings.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/homepage.test.ts",
-      "template": "templates/apps/frontend/src/homepage.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/language-updates.test.ts",
-      "template": "templates/apps/frontend/src/language-updates.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/languages.test.ts",
-      "template": "templates/apps/frontend/src/languages.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
       "path": "apps/frontend/src/components/Home.astro",
       "template": "templates/apps/frontend/src/components/Home.astro",
+      "app": "apps/frontend",
+      "framework": "astro"
+    },
+    {
+      "path": "apps/frontend/src/lib/content.ts",
+      "template": "templates/apps/frontend/src/lib/content.ts",
       "app": "apps/frontend",
       "framework": "astro"
     },
@@ -488,62 +422,8 @@
       "framework": "astro"
     },
     {
-      "path": "apps/frontend/src/lib/delivery.ts",
-      "template": "templates/apps/frontend/src/lib/delivery.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/events.ts",
-      "template": "templates/apps/frontend/src/lib/events.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/publications.ts",
-      "template": "templates/apps/frontend/src/lib/publications.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/reconciliation.ts",
-      "template": "templates/apps/frontend/src/lib/reconciliation.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/runtime.ts",
-      "template": "templates/apps/frontend/src/lib/runtime.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/pages/gq/refresh.ts",
-      "template": "templates/apps/frontend/src/pages/gq/refresh.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/pages/gq/events.ts",
-      "template": "templates/apps/frontend/src/pages/gq/events.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/test/sqlite-d1.ts",
-      "template": "templates/apps/frontend/src/test/sqlite-d1.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
       "path": "apps/frontend/src/test/wordpress-stub.ts",
       "template": "templates/apps/frontend/src/test/wordpress-stub.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/withdrawals.test.ts",
-      "template": "templates/apps/frontend/src/withdrawals.test.ts",
       "app": "apps/frontend",
       "framework": "astro"
     },
@@ -572,72 +452,6 @@
     {
       "path": "apps/frontend/src/layouts/Layout.astro",
       "template": "templates/apps/frontend/src/layouts/Layout.astro",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/site-language.test.ts",
-      "template": "templates/apps/frontend/src/lib/site-language.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/site-language.ts",
-      "template": "templates/apps/frontend/src/lib/site-language.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/wordpress-access.test.ts",
-      "template": "templates/apps/frontend/src/lib/wordpress-access.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/wordpress.test.ts",
-      "template": "templates/apps/frontend/src/lib/wordpress.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/wordpress.ts",
-      "template": "templates/apps/frontend/src/lib/wordpress.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/wp-block-renderer.test.ts",
-      "template": "templates/apps/frontend/src/lib/wp-block-renderer.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/wp-block-renderer.ts",
-      "template": "templates/apps/frontend/src/lib/wp-block-renderer.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/wp-block-styles.test.ts",
-      "template": "templates/apps/frontend/src/lib/wp-block-styles.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/wp-block-styles.ts",
-      "template": "templates/apps/frontend/src/lib/wp-block-styles.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/wp-container-layout.test.ts",
-      "template": "templates/apps/frontend/src/lib/wp-container-layout.test.ts",
-      "app": "apps/frontend",
-      "framework": "astro"
-    },
-    {
-      "path": "apps/frontend/src/lib/wp-container-layout.ts",
-      "template": "templates/apps/frontend/src/lib/wp-container-layout.ts",
       "app": "apps/frontend",
       "framework": "astro"
     },
@@ -737,16 +551,10 @@
       "framework": "tanstack"
     },
     {
-      "path": "apps/cms/composer.json",
-      "template": "templates/tanstack/apps/cms/composer.json",
+      "path": "apps/frontend/src/lib/content.ts",
+      "template": "templates/tanstack/apps/frontend/src/lib/content.ts",
       "framework": "tanstack",
-      "app": "apps/cms"
-    },
-    {
-      "path": "apps/cms/config/application.php",
-      "template": "templates/tanstack/apps/cms/config/application.php",
-      "framework": "tanstack",
-      "app": "apps/cms"
+      "app": "apps/frontend"
     }
   ]
 }

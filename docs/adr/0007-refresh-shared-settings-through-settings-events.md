@@ -4,6 +4,16 @@
   (a language's own menus, title and tagline send events naming it, which
   refresh only its rows; the rest refresh every language's)
 - Date: 2026-10-02
+- Superseded in part: its runtime decisions by
+  [gq-content ADR 0002](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0002-preserve-publication-delivery-and-withdrawal-through-extraction.md)
+  for Sites on the content package pair ([ADR 0020](0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+
+## Superseded in part
+
+Settings events, the shared rows, the shared design presets and ordering
+are the runtime's, and the CMS hooks are now the `getquick/gq-content`
+plugin's rather than a skeleton mu-plugin's. Nothing here stays with the
+Blueprint but the theme and design packages' pins.
 
 ## Context
 

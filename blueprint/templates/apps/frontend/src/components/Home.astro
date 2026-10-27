@@ -1,9 +1,8 @@
 ---
+import { blockPresetStyles, designPostContext, type HomeDelivery, type SiteLanguage } from "@getquick/content";
 import Layout from "../layouts/Layout.astro";
+import { content as siteContent } from "../lib/content";
 import { copyFor } from "../lib/copy";
-import type { HomeDelivery } from "../lib/delivery";
-import type { SiteLanguage } from "../lib/site-language";
-import { blockPresetStyles } from "../lib/wp-block-styles";
 
 // A language's home (/, /en/), as its page served it: the page sets the
 // response's status and headers, this renders what it was served.
@@ -15,20 +14,27 @@ interface Props {
 }
 
 const { home, language, placeholder } = Astro.props;
-const copy = copyFor(language);
+const copy = copyFor(language, siteContent().multilingual);
 const content = home.kind === "found" ? home.content.home : null;
 const chrome = home.kind === "found" ? home.content.chrome : home.kind === "missing" ? home.chrome : null;
 const alternates = home.kind === "found" ? home.content.alternates : [];
 const { vars, colorRules } = blockPresetStyles(content?.spacingSizes ?? [], content?.colors ?? []);
 const siteTitle = content?.page.title || content?.settings.title || "{{Project}}";
 const isVideoHeroPage = content?.page.hasVideoHero ?? false;
+const post = content?.page.databaseId !== undefined ? designPostContext({
+  id: content.page.databaseId,
+  title: content.page.title,
+  uri: language.home,
+  databaseId: content.page.databaseId,
+  designBlocks: content.page.designBlocks,
+}) ?? undefined : undefined;
 ---
 
-<Layout title={siteTitle} description={content?.settings.description} chrome={chrome} language={language} alternates={alternates}>
+<Layout title={siteTitle} description={content?.settings.description} chrome={chrome} language={language} alternates={alternates} theme={content?.theme} post={post} siteSettings={content?.settings ?? null}>
   {content?.page.content ? (
     <>
       <style is:global set:html={colorRules} />
-      <main class={isVideoHeroPage ? "prose-wp prose-wp--video-hero" : "prose-wp"} style={vars} set:html={content.page.content}></main>
+      <main class={isVideoHeroPage ? "gqd-content prose-wp prose-wp--video-hero" : "gqd-content prose-wp"} style={vars} set:html={content.page.content}></main>
     </>
   ) : home.kind !== "unavailable" ? (
     <main class="empty-state">

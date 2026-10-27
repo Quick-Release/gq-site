@@ -1,0 +1,2036 @@
+{
+  "contractVersion": "1.3.0",
+  "schemaVersion": 1,
+  "templates": [
+    {
+      "key": "single-post",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ]
+    },
+    {
+      "key": "page",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ]
+    },
+    {
+      "key": "front-page",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ]
+    },
+    {
+      "key": "home",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ]
+    },
+    {
+      "key": "archive",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ]
+    },
+    {
+      "key": "single",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ]
+    },
+    {
+      "key": "search",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "name": "core/group",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "tagName": "string",
+        "align": "string",
+        "className": "string",
+        "style": "object",
+        "layout": "object",
+        "presentation": "object"
+      },
+      "supports": {
+        "__experimentalOnEnter": true,
+        "__experimentalOnMerge": true,
+        "__experimentalSettings": true,
+        "align": [
+          "wide",
+          "full"
+        ],
+        "anchor": true,
+        "ariaLabel": true,
+        "html": false,
+        "background": {
+          "backgroundImage": true,
+          "backgroundSize": true,
+          "__experimentalDefaultControls": {
+            "backgroundImage": true
+          }
+        },
+        "color": {
+          "gradients": true,
+          "heading": true,
+          "button": true,
+          "link": true,
+          "__experimentalDefaultControls": {
+            "background": true,
+            "text": true
+          }
+        },
+        "shadow": true,
+        "spacing": {
+          "margin": [
+            "top",
+            "bottom"
+          ],
+          "padding": true,
+          "blockGap": true,
+          "__experimentalDefaultControls": {
+            "padding": true,
+            "blockGap": true
+          }
+        },
+        "dimensions": {
+          "minHeight": true
+        },
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "style": true,
+          "width": true,
+          "__experimentalDefaultControls": {
+            "color": true,
+            "radius": true,
+            "style": true,
+            "width": true
+          }
+        },
+        "position": {
+          "sticky": true
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontFamily": true,
+          "__experimentalFontWeight": true,
+          "__experimentalFontStyle": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "layout": {
+          "allowSizingOnChildren": true
+        },
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "allowedBlocks": true
+      },
+      "tokens": [
+        "spacing",
+        "color"
+      ],
+      "allowedChildren": [
+        "*"
+      ],
+      "rendererFixture": "core-group",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "getquick-design/container",
+      "source": "getquick-design",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "align": "string",
+        "anchor": "string",
+        "className": "string",
+        "style": "object",
+        "textColor": "string",
+        "backgroundColor": "string",
+        "visibility": "string",
+        "hideOnDesktop": "boolean",
+        "hideOnTablet": "boolean",
+        "hideOnTabletMobile": "boolean",
+        "hideOnMobile": "boolean",
+        "presentation": "object"
+      },
+      "supports": {
+        "align": [
+          "wide",
+          "full"
+        ],
+        "anchor": true,
+        "html": false,
+        "color": {
+          "background": true,
+          "text": true,
+          "__experimentalDefaultControls": {
+            "background": true,
+            "text": true
+          }
+        }
+      },
+      "tokens": [
+        "spacing",
+        "color",
+        "layout"
+      ],
+      "allowedChildren": [
+        "*"
+      ],
+      "rendererFixture": "getquick-container",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "getquick-design/grid",
+      "source": "getquick-design",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "presentation": "object",
+        "align": "string",
+        "anchor": "string",
+        "className": "string",
+        "style": "object"
+      },
+      "supports": {
+        "align": [
+          "wide",
+          "full"
+        ],
+        "anchor": true,
+        "html": false,
+        "spacing": {
+          "margin": false,
+          "padding": false,
+          "blockGap": false
+        },
+        "color": {
+          "background": true,
+          "text": true
+        }
+      },
+      "tokens": [
+        "spacing",
+        "color",
+        "layout"
+      ],
+      "allowedChildren": [
+        "getquick-design/container"
+      ],
+      "rendererFixture": "getquick-grid",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "getquick-design/social-links",
+      "source": "getquick-design",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [
+        "site"
+      ],
+      "attributes": {
+        "links": "array",
+        "align": "string",
+        "anchor": "string",
+        "className": "string",
+        "style": "object",
+        "textColor": "string",
+        "layout": "object",
+        "presentation": "object"
+      },
+      "supports": {
+        "html": false,
+        "align": [
+          "left",
+          "center",
+          "right"
+        ],
+        "anchor": true,
+        "layout": {
+          "allowSwitching": false,
+          "allowInheriting": false,
+          "default": {
+            "type": "flex"
+          }
+        },
+        "color": {
+          "text": true,
+          "background": false
+        },
+        "spacing": {
+          "blockGap": true,
+          "margin": true,
+          "padding": true
+        }
+      },
+      "tokens": [
+        "spacing",
+        "color",
+        "layout"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "getquick-social-links",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "getquick-design/video-hero",
+      "source": "getquick-design",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "videoType": "string",
+        "videoId": "number",
+        "videoUrl": "string",
+        "posterId": "number",
+        "posterUrl": "string",
+        "iframeTitle": "string",
+        "align": "string",
+        "anchor": "string",
+        "className": "string",
+        "style": "object",
+        "textColor": "string",
+        "backgroundColor": "string"
+      },
+      "supports": {
+        "align": [
+          "full"
+        ],
+        "anchor": true,
+        "html": false,
+        "color": {
+          "background": true,
+          "text": true
+        }
+      },
+      "tokens": [
+        "color"
+      ],
+      "allowedChildren": [
+        "*"
+      ],
+      "rendererFixture": "getquick-video-hero",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "getquick-design/query",
+      "source": "getquick-design",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "patternId": "number",
+        "postType": "string",
+        "perPage": "number",
+        "orderBy": "string",
+        "order": "string",
+        "offset": "number",
+        "align": "string",
+        "anchor": "string",
+        "className": "string"
+      },
+      "supports": {
+        "align": [
+          "wide",
+          "full"
+        ],
+        "anchor": true,
+        "html": false,
+        "reusable": false
+      },
+      "tokens": [],
+      "allowedChildren": [
+        "*"
+      ],
+      "rendererFixture": "getquick-query",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "getquick-design/sliders",
+      "source": "getquick-design",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "align": "string",
+        "anchor": "string",
+        "className": "string",
+        "heightPreset": "string",
+        "customHeight": "string",
+        "tabletHeightPreset": "string",
+        "tabletCustomHeight": "string",
+        "mobileHeightPreset": "string",
+        "mobileCustomHeight": "string",
+        "visibility": "string",
+        "hideOnDesktop": "boolean",
+        "hideOnTablet": "boolean",
+        "hideOnTabletMobile": "boolean",
+        "hideOnMobile": "boolean",
+        "presentation": "object"
+      },
+      "supports": {
+        "align": [
+          "wide",
+          "full"
+        ],
+        "anchor": true,
+        "html": false
+      },
+      "tokens": [],
+      "allowedChildren": [
+        "getquick-design/slider",
+        "getquick-design/carousel-navigation"
+      ],
+      "rendererFixture": "getquick-sliders",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "getquick-design/slider",
+      "source": "getquick-design",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "imageId": "number",
+        "imageUrl": "string",
+        "imageAlt": "string",
+        "linkUrl": "string",
+        "presentation": "object"
+      },
+      "supports": {
+        "html": false,
+        "reusable": false
+      },
+      "tokens": [],
+      "allowedChildren": [
+        "core/heading",
+        "core/paragraph",
+        "core/buttons"
+      ],
+      "rendererFixture": "getquick-slider",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "getquick-design/carousel-navigation",
+      "source": "getquick-design",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "visible": "boolean",
+        "showArrows": "boolean",
+        "navigationType": "string",
+        "navigationPosition": "string",
+        "autoplay": "boolean",
+        "slideDuration": "number",
+        "navigationBackgroundColor": "string",
+        "arrowColor": "string",
+        "indicatorColor": "string",
+        "presentation": "object"
+      },
+      "supports": {
+        "html": false,
+        "inserter": false,
+        "lock": false,
+        "reusable": false
+      },
+      "tokens": [],
+      "allowedChildren": [],
+      "rendererFixture": "getquick-carousel-navigation",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/heading",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "level": "number",
+        "textAlign": "string",
+        "style": "object",
+        "presentation": "object"
+      },
+      "supports": {
+        "align": [
+          "wide",
+          "full"
+        ],
+        "anchor": true,
+        "className": true,
+        "splitting": true,
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "style": true,
+          "width": true
+        },
+        "color": {
+          "gradients": true,
+          "link": true,
+          "__experimentalDefaultControls": {
+            "background": true,
+            "text": true
+          }
+        },
+        "spacing": {
+          "margin": true,
+          "padding": true,
+          "__experimentalDefaultControls": {
+            "margin": false,
+            "padding": false
+          }
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "textAlign": true,
+          "__experimentalFontFamily": true,
+          "__experimentalFontStyle": true,
+          "__experimentalFontWeight": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalWritingMode": true,
+          "fitText": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "__unstablePasteTextInline": true,
+        "__experimentalSlashInserter": true,
+        "interactivity": {
+          "clientNavigation": true
+        }
+      },
+      "tokens": [
+        "typography",
+        "spacing",
+        "color"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-heading",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/paragraph",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "align": "string",
+        "style": "object"
+      },
+      "supports": {
+        "align": [
+          "wide",
+          "full"
+        ],
+        "splitting": true,
+        "anchor": true,
+        "className": false,
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "style": true,
+          "width": true
+        },
+        "color": {
+          "gradients": true,
+          "link": true,
+          "__experimentalDefaultControls": {
+            "background": true,
+            "text": true
+          }
+        },
+        "spacing": {
+          "margin": true,
+          "padding": true,
+          "__experimentalDefaultControls": {
+            "margin": false,
+            "padding": false
+          }
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "textAlign": true,
+          "textColumns": true,
+          "textIndent": true,
+          "__experimentalFontFamily": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalFontStyle": true,
+          "__experimentalFontWeight": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalTextTransform": true,
+          "__experimentalWritingMode": true,
+          "fitText": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "__experimentalSelector": "p",
+        "__unstablePasteTextInline": true,
+        "interactivity": {
+          "clientNavigation": true
+        }
+      },
+      "tokens": [
+        "typography",
+        "spacing",
+        "color"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-paragraph",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/image",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "id": "number",
+        "url": "string",
+        "alt": "string",
+        "aspectRatio": "string",
+        "scale": "string",
+        "gqdFocalPoint": "object",
+        "presentation": "object"
+      },
+      "supports": {
+        "interactivity": true,
+        "align": [
+          "left",
+          "center",
+          "right",
+          "wide",
+          "full"
+        ],
+        "anchor": true,
+        "color": {
+          "text": false,
+          "background": false
+        },
+        "filter": {
+          "duotone": true
+        },
+        "spacing": {
+          "margin": true
+        },
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "width": true,
+          "__experimentalSkipSerialization": true,
+          "__experimentalDefaultControls": {
+            "color": true,
+            "radius": true,
+            "width": true
+          }
+        },
+        "shadow": {
+          "__experimentalSkipSerialization": true
+        }
+      },
+      "tokens": [
+        "spacing",
+        "radius"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-image",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/buttons",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "layout": "object",
+        "style": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "align": [
+          "wide",
+          "full"
+        ],
+        "html": false,
+        "__experimentalExposeControlsToChildren": true,
+        "color": {
+          "gradients": true,
+          "text": false,
+          "__experimentalDefaultControls": {
+            "background": true
+          }
+        },
+        "spacing": {
+          "blockGap": [
+            "horizontal",
+            "vertical"
+          ],
+          "padding": true,
+          "margin": [
+            "top",
+            "bottom"
+          ],
+          "__experimentalDefaultControls": {
+            "blockGap": true
+          }
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontFamily": true,
+          "__experimentalFontWeight": true,
+          "__experimentalFontStyle": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "style": true,
+          "width": true,
+          "__experimentalDefaultControls": {
+            "color": true,
+            "radius": true,
+            "style": true,
+            "width": true
+          }
+        },
+        "layout": {
+          "allowSwitching": false,
+          "allowInheriting": false,
+          "default": {
+            "type": "flex"
+          }
+        },
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "listView": true,
+        "contentRole": true
+      },
+      "tokens": [
+        "spacing"
+      ],
+      "allowedChildren": [
+        "core/button"
+      ],
+      "rendererFixture": "core-buttons",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/button",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "url": "string",
+        "linkTarget": "string",
+        "style": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "splitting": true,
+        "align": false,
+        "alignWide": false,
+        "color": {
+          "__experimentalSkipSerialization": true,
+          "gradients": true,
+          "__experimentalDefaultControls": {
+            "background": true,
+            "text": true
+          }
+        },
+        "typography": {
+          "__experimentalSkipSerialization": [
+            "fontSize",
+            "lineHeight",
+            "textAlign",
+            "fontFamily",
+            "fontWeight",
+            "fontStyle",
+            "textTransform",
+            "textDecoration",
+            "letterSpacing"
+          ],
+          "fontSize": true,
+          "lineHeight": true,
+          "textAlign": true,
+          "__experimentalFontFamily": true,
+          "__experimentalFontWeight": true,
+          "__experimentalFontStyle": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalWritingMode": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "reusable": false,
+        "shadow": {
+          "__experimentalSkipSerialization": true
+        },
+        "spacing": {
+          "__experimentalSkipSerialization": true,
+          "padding": [
+            "horizontal",
+            "vertical"
+          ],
+          "__experimentalDefaultControls": {
+            "padding": true
+          }
+        },
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "style": true,
+          "width": true,
+          "__experimentalSkipSerialization": true,
+          "__experimentalDefaultControls": {
+            "color": true,
+            "radius": true,
+            "style": true,
+            "width": true
+          }
+        },
+        "interactivity": {
+          "clientNavigation": true
+        }
+      },
+      "tokens": [
+        "spacing",
+        "color",
+        "radius",
+        "typography"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-button",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/list",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "ordered": "boolean",
+        "start": "number",
+        "style": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "html": false,
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "style": true,
+          "width": true
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontFamily": true,
+          "__experimentalFontWeight": true,
+          "__experimentalFontStyle": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "color": {
+          "gradients": true,
+          "link": true,
+          "__experimentalDefaultControls": {
+            "background": true,
+            "text": true
+          }
+        },
+        "spacing": {
+          "margin": true,
+          "padding": true,
+          "__experimentalDefaultControls": {
+            "margin": false,
+            "padding": false
+          }
+        },
+        "__unstablePasteTextInline": true,
+        "__experimentalOnMerge": true,
+        "__experimentalSlashInserter": true,
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "listView": true
+      },
+      "tokens": [
+        "spacing",
+        "typography",
+        "color"
+      ],
+      "allowedChildren": [
+        "core/list-item"
+      ],
+      "rendererFixture": "core-list",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/list-item",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {},
+      "supports": {
+        "anchor": true,
+        "className": false,
+        "splitting": true,
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "style": true,
+          "width": true
+        },
+        "color": {
+          "gradients": true,
+          "link": true,
+          "background": true,
+          "__experimentalDefaultControls": {
+            "text": true
+          }
+        },
+        "spacing": {
+          "margin": true,
+          "padding": true,
+          "__experimentalDefaultControls": {
+            "margin": false,
+            "padding": false
+          }
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontFamily": true,
+          "__experimentalFontWeight": true,
+          "__experimentalFontStyle": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "interactivity": {
+          "clientNavigation": true
+        }
+      },
+      "tokens": [
+        "typography",
+        "color"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-list-item",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/columns",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "verticalAlignment": "string",
+        "isStackedOnMobile": "boolean",
+        "style": "object",
+        "presentation": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "align": [
+          "wide",
+          "full"
+        ],
+        "html": false,
+        "color": {
+          "gradients": true,
+          "link": true,
+          "heading": true,
+          "button": true,
+          "__experimentalDefaultControls": {
+            "background": true,
+            "text": true
+          }
+        },
+        "spacing": {
+          "blockGap": {
+            "__experimentalDefault": "2em",
+            "sides": [
+              "horizontal",
+              "vertical"
+            ]
+          },
+          "margin": [
+            "top",
+            "bottom"
+          ],
+          "padding": true,
+          "__experimentalDefaultControls": {
+            "padding": true,
+            "blockGap": true
+          }
+        },
+        "layout": {
+          "allowSwitching": false,
+          "allowInheriting": false,
+          "allowEditing": false,
+          "default": {
+            "type": "flex",
+            "flexWrap": "nowrap"
+          }
+        },
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "style": true,
+          "width": true,
+          "__experimentalDefaultControls": {
+            "color": true,
+            "radius": true,
+            "style": true,
+            "width": true
+          }
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontFamily": true,
+          "__experimentalFontWeight": true,
+          "__experimentalFontStyle": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "shadow": true
+      },
+      "tokens": [
+        "spacing"
+      ],
+      "allowedChildren": [
+        "core/column"
+      ],
+      "rendererFixture": "core-columns",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/column",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "width": "string",
+        "verticalAlignment": "string",
+        "style": "object",
+        "presentation": "object"
+      },
+      "supports": {
+        "__experimentalOnEnter": true,
+        "anchor": true,
+        "reusable": false,
+        "html": false,
+        "color": {
+          "gradients": true,
+          "heading": true,
+          "button": true,
+          "link": true,
+          "__experimentalDefaultControls": {
+            "background": true,
+            "text": true
+          }
+        },
+        "shadow": true,
+        "spacing": {
+          "blockGap": true,
+          "padding": true,
+          "__experimentalDefaultControls": {
+            "padding": true,
+            "blockGap": true
+          }
+        },
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "style": true,
+          "width": true,
+          "__experimentalDefaultControls": {
+            "color": true,
+            "radius": true,
+            "style": true,
+            "width": true
+          }
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontFamily": true,
+          "__experimentalFontWeight": true,
+          "__experimentalFontStyle": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "layout": true,
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "allowedBlocks": true
+      },
+      "tokens": [
+        "spacing"
+      ],
+      "allowedChildren": [
+        "*"
+      ],
+      "rendererFixture": "core-column",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/spacer",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "height": "string",
+        "width": "string",
+        "presentation": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "spacing": {
+          "margin": [
+            "top",
+            "bottom"
+          ],
+          "__experimentalDefaultControls": {
+            "margin": true
+          }
+        },
+        "interactivity": {
+          "clientNavigation": true
+        }
+      },
+      "tokens": [
+        "spacing"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-spacer",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/separator",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "opacity": "string",
+        "style": "object",
+        "presentation": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "align": [
+          "center",
+          "wide",
+          "full"
+        ],
+        "color": {
+          "enableContrastChecker": false,
+          "__experimentalSkipSerialization": true,
+          "gradients": true,
+          "background": true,
+          "text": false,
+          "__experimentalDefaultControls": {
+            "background": true
+          }
+        },
+        "spacing": {
+          "margin": [
+            "top",
+            "bottom"
+          ]
+        },
+        "interactivity": {
+          "clientNavigation": true
+        }
+      },
+      "tokens": [
+        "spacing",
+        "color"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-separator",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/cover",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "url": "string",
+        "id": "number",
+        "dimRatio": "number",
+        "overlayColor": "string",
+        "style": "object",
+        "presentation": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "align": true,
+        "html": false,
+        "shadow": true,
+        "spacing": {
+          "padding": true,
+          "margin": [
+            "top",
+            "bottom"
+          ],
+          "blockGap": true,
+          "__experimentalDefaultControls": {
+            "padding": true,
+            "blockGap": true
+          }
+        },
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "style": true,
+          "width": true,
+          "__experimentalDefaultControls": {
+            "color": true,
+            "radius": true,
+            "style": true,
+            "width": true
+          }
+        },
+        "color": {
+          "heading": true,
+          "text": true,
+          "background": false,
+          "__experimentalSkipSerialization": [
+            "gradients"
+          ],
+          "enableContrastChecker": false
+        },
+        "dimensions": {
+          "aspectRatio": true
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontFamily": true,
+          "__experimentalFontWeight": true,
+          "__experimentalFontStyle": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "layout": {
+          "allowJustification": false
+        },
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "filter": {
+          "duotone": true
+        },
+        "allowedBlocks": true
+      },
+      "tokens": [
+        "spacing",
+        "color"
+      ],
+      "allowedChildren": [
+        "*"
+      ],
+      "rendererFixture": "core-cover",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/block",
+      "source": "core",
+      "regions": [
+        "header",
+        "content",
+        "footer"
+      ],
+      "dataRequirements": [],
+      "attributes": {
+        "ref": "number"
+      },
+      "supports": {
+        "customClassName": false,
+        "html": false,
+        "inserter": false,
+        "renaming": false,
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "customCSS": false
+      },
+      "tokens": [],
+      "allowedChildren": [
+        "*"
+      ],
+      "rendererFixture": "core-block",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/site-title",
+      "source": "core",
+      "regions": [
+        "header",
+        "footer"
+      ],
+      "dataRequirements": [
+        "site"
+      ],
+      "attributes": {
+        "level": "number",
+        "isLink": "boolean",
+        "fontSize": "string",
+        "style": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "align": [
+          "wide",
+          "full"
+        ],
+        "html": false,
+        "color": {
+          "gradients": true,
+          "link": true,
+          "__experimentalDefaultControls": {
+            "background": true,
+            "text": true,
+            "link": true
+          }
+        },
+        "spacing": {
+          "padding": true,
+          "margin": true,
+          "__experimentalDefaultControls": {
+            "margin": false,
+            "padding": false
+          }
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontFamily": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalFontStyle": true,
+          "__experimentalFontWeight": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalWritingMode": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "__experimentalBorder": {
+          "radius": true,
+          "color": true,
+          "width": true,
+          "style": true
+        }
+      },
+      "tokens": [
+        "typography",
+        "color"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-site-title",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/site-logo",
+      "source": "core",
+      "regions": [
+        "header",
+        "footer"
+      ],
+      "dataRequirements": [
+        "site"
+      ],
+      "attributes": {
+        "width": "number",
+        "isLink": "boolean",
+        "linkTarget": "string",
+        "shouldSyncIcon": "boolean",
+        "className": "string",
+        "style": "object",
+        "logo": "object",
+        "logoVariation": "object",
+        "logoDark": "object",
+        "presentation": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "html": false,
+        "align": true,
+        "alignWide": false,
+        "color": {
+          "text": false,
+          "background": false
+        },
+        "spacing": {
+          "margin": true,
+          "padding": true,
+          "__experimentalDefaultControls": {
+            "margin": false,
+            "padding": false
+          }
+        },
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "filter": {
+          "duotone": true
+        }
+      },
+      "tokens": [
+        "spacing"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-site-logo",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/site-tagline",
+      "source": "core",
+      "regions": [
+        "header",
+        "footer"
+      ],
+      "dataRequirements": [
+        "site"
+      ],
+      "attributes": {
+        "textAlign": "string",
+        "fontSize": "string",
+        "style": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "align": [
+          "wide",
+          "full"
+        ],
+        "html": false,
+        "color": {
+          "gradients": true,
+          "__experimentalDefaultControls": {
+            "background": true,
+            "text": true
+          }
+        },
+        "contentRole": true,
+        "spacing": {
+          "margin": true,
+          "padding": true,
+          "__experimentalDefaultControls": {
+            "margin": false,
+            "padding": false
+          }
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontFamily": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalFontStyle": true,
+          "__experimentalFontWeight": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalWritingMode": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "__experimentalBorder": {
+          "radius": true,
+          "color": true,
+          "width": true,
+          "style": true
+        }
+      },
+      "tokens": [
+        "typography",
+        "color"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-site-tagline",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/navigation",
+      "source": "core",
+      "regions": [
+        "header",
+        "footer"
+      ],
+      "dataRequirements": [
+        "navigation"
+      ],
+      "attributes": {
+        "ref": "number",
+        "overlayMenu": "string",
+        "layout": "object",
+        "ariaLabel": "string",
+        "submenuVisibility": "string",
+        "openSubmenusOnClick": "boolean",
+        "showSubmenuIcon": "boolean",
+        "items": "array",
+        "presentation": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "align": [
+          "wide",
+          "full"
+        ],
+        "ariaLabel": true,
+        "contentRole": true,
+        "html": false,
+        "inserter": true,
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontStyle": true,
+          "__experimentalFontWeight": true,
+          "__experimentalTextTransform": true,
+          "__experimentalFontFamily": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalSkipSerialization": [
+            "textDecoration"
+          ],
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "spacing": {
+          "blockGap": true,
+          "units": [
+            "px",
+            "em",
+            "rem",
+            "vh",
+            "vw"
+          ],
+          "__experimentalDefaultControls": {
+            "blockGap": true
+          }
+        },
+        "layout": {
+          "allowSwitching": false,
+          "allowInheriting": false,
+          "allowVerticalAlignment": false,
+          "allowSizingOnChildren": true,
+          "default": {
+            "type": "flex"
+          }
+        },
+        "interactivity": true,
+        "renaming": false
+      },
+      "tokens": [
+        "spacing",
+        "color",
+        "typography"
+      ],
+      "allowedChildren": [
+        "core/navigation-link",
+        "core/navigation-submenu",
+        "core/page-list",
+        "core/page-list-item"
+      ],
+      "rendererFixture": "core-navigation",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "getquick-design/navigation",
+      "source": "getquick-design",
+      "regions": [
+        "header",
+        "footer"
+      ],
+      "dataRequirements": [
+        "navigation"
+      ],
+      "attributes": {
+        "location": "string",
+        "label": "string",
+        "items": "array",
+        "align": "string",
+        "className": "string",
+        "presentation": "object"
+      },
+      "supports": {
+        "align": [
+          "wide",
+          "full"
+        ],
+        "html": false
+      },
+      "tokens": [
+        "spacing",
+        "color",
+        "typography"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "getquick-navigation",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/post-title",
+      "source": "core",
+      "regions": [
+        "content"
+      ],
+      "dataRequirements": [
+        "post"
+      ],
+      "attributes": {
+        "level": "number",
+        "isLink": "boolean",
+        "style": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "align": [
+          "wide",
+          "full"
+        ],
+        "html": false,
+        "color": {
+          "gradients": true,
+          "link": true,
+          "__experimentalDefaultControls": {
+            "background": true,
+            "text": true,
+            "link": true
+          }
+        },
+        "spacing": {
+          "margin": true,
+          "padding": true
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontFamily": true,
+          "__experimentalFontWeight": true,
+          "__experimentalFontStyle": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "__experimentalBorder": {
+          "radius": true,
+          "color": true,
+          "width": true,
+          "style": true,
+          "__experimentalDefaultControls": {
+            "radius": true,
+            "color": true,
+            "width": true,
+            "style": true
+          }
+        }
+      },
+      "tokens": [
+        "typography",
+        "spacing",
+        "color"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-post-title",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/post-featured-image",
+      "source": "core",
+      "regions": [
+        "content"
+      ],
+      "dataRequirements": [
+        "post"
+      ],
+      "attributes": {
+        "aspectRatio": "string",
+        "scale": "string",
+        "isLink": "boolean",
+        "align": "string",
+        "style": "object",
+        "presentation": "object"
+      },
+      "supports": {
+        "anchor": true,
+        "align": [
+          "left",
+          "right",
+          "center",
+          "wide",
+          "full"
+        ],
+        "color": {
+          "text": false,
+          "background": false
+        },
+        "__experimentalBorder": {
+          "color": true,
+          "radius": true,
+          "width": true,
+          "__experimentalSkipSerialization": true,
+          "__experimentalDefaultControls": {
+            "color": true,
+            "radius": true,
+            "width": true
+          }
+        },
+        "filter": {
+          "duotone": true
+        },
+        "shadow": {
+          "__experimentalSkipSerialization": true
+        },
+        "html": false,
+        "spacing": {
+          "margin": true,
+          "padding": true
+        },
+        "interactivity": {
+          "clientNavigation": true
+        }
+      },
+      "tokens": [
+        "spacing",
+        "radius"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-post-featured-image",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "core/post-content",
+      "source": "core",
+      "regions": [
+        "content"
+      ],
+      "dataRequirements": [
+        "post"
+      ],
+      "attributes": {},
+      "supports": {
+        "anchor": true,
+        "align": [
+          "wide",
+          "full"
+        ],
+        "html": false,
+        "layout": true,
+        "background": {
+          "backgroundImage": true,
+          "backgroundSize": true,
+          "__experimentalDefaultControls": {
+            "backgroundImage": true
+          }
+        },
+        "dimensions": {
+          "minHeight": true
+        },
+        "spacing": {
+          "blockGap": true,
+          "padding": true,
+          "margin": true,
+          "__experimentalDefaultControls": {
+            "margin": false,
+            "padding": false
+          }
+        },
+        "color": {
+          "gradients": true,
+          "heading": true,
+          "link": true,
+          "__experimentalDefaultControls": {
+            "background": false,
+            "text": false
+          }
+        },
+        "typography": {
+          "fontSize": true,
+          "lineHeight": true,
+          "__experimentalFontFamily": true,
+          "__experimentalFontWeight": true,
+          "__experimentalFontStyle": true,
+          "__experimentalTextTransform": true,
+          "__experimentalTextDecoration": true,
+          "__experimentalLetterSpacing": true,
+          "__experimentalDefaultControls": {
+            "fontSize": true
+          }
+        },
+        "interactivity": {
+          "clientNavigation": true
+        },
+        "__experimentalBorder": {
+          "radius": true,
+          "color": true,
+          "width": true,
+          "style": true,
+          "__experimentalDefaultControls": {
+            "radius": true,
+            "color": true,
+            "width": true,
+            "style": true
+          }
+        }
+      },
+      "tokens": [
+        "spacing",
+        "typography",
+        "color"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "core-post-content",
+      "available": true,
+      "enabled": true
+    },
+    {
+      "name": "polylang/language-switcher",
+      "source": "polylang",
+      "regions": [
+        "header",
+        "footer"
+      ],
+      "dataRequirements": [
+        "site"
+      ],
+      "attributes": {
+        "dropdown": "boolean",
+        "show_names": "boolean",
+        "show_flags": "boolean",
+        "force_home": "boolean",
+        "hide_current": "boolean",
+        "hide_if_no_translation": "boolean",
+        "className": "string",
+        "links": "array",
+        "presentation": "object"
+      },
+      "supports": {},
+      "tokens": [
+        "spacing",
+        "color",
+        "layout"
+      ],
+      "allowedChildren": [],
+      "rendererFixture": "polylang-language-switcher",
+      "available": true,
+      "enabled": true
+    }
+  ],
+  "languages": {
+    "provider": "polylang",
+    "active": [
+      {
+        "requested": "en",
+        "resolved": "en",
+        "locale": "en_US",
+        "direction": "ltr",
+        "fallback": false
+      },
+      {
+        "requested": "fr",
+        "resolved": "fr",
+        "locale": "fr_FR",
+        "direction": "ltr",
+        "fallback": false
+      }
+    ]
+  },
+  "cache": {
+    "visibility": "public",
+    "maxAge": 300,
+    "sharedMaxAge": 3600,
+    "staleWhileRevalidate": 86400,
+    "lastModified": null
+  }
+}

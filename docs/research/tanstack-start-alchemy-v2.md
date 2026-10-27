@@ -1,116 +1,116 @@
-# TanStack Start on the blueprint's Alchemy v2
+# TanStack Start on Alchemy v2
 
-Verified 2026-10-26 against published npm artifacts, rather than Alchemy v1
-examples. This note concerns blueprint deployment and package consumption.
+Verified against published packages on 2026-10-26/27 and integrated with gq-site
+main `e033403` (0.24.1), including ADRs 0019 and 0020. This concerns blueprint
+deployment and package consumption, not a Site's redesign.
 
-## Deployment integration
+## Deployment evidence
 
-The [official Alchemy Cloudflare Start guide](https://alchemy.run/cloudflare/frontend/tanstack-start/)
-selects `Cloudflare.Website.Vite` with the ordinary `tanstackStart()` and React
-plugins. It removes `@cloudflare/vite-plugin`: Alchemy adds its own plugin.
-The current guide uses a newer import layout; the blueprint's beta.79 artifact
-exports `alchemy/Cloudflare`, verified from its package exports.
-
+The [official Cloudflare Start guide](https://alchemy.run/cloudflare/frontend/tanstack-start/)
+uses `Cloudflare.Website.Vite`, `tanstackStart()` and the React Vite plugin.
+It removes `@cloudflare/vite-plugin` because Alchemy supplies its own plugin.
+The current guide's import layout has moved; the pinned
 [alchemy@2.0.0-beta.79](https://www.npmjs.com/package/alchemy/v/2.0.0-beta.79)
-ships `lib/Cloudflare/Website/Vite.{js,d.ts}`. Its `ViteProps` extends Worker
-props, so D1, Redacted secrets, domains, workersDev, cron, compatibility and
-observability are supported. `Vite` delegates to the same Worker resource as
-Astro; preserving logical IDs preserves the deployment identity.
-`lib/Cloudflare/Workers/Sources/Vite.js` loads the app's Vite and calls
-`createBuilder` with `@alchemy.run/cloudflare-runtime/vite`, followed by
-`builder.buildApp()`. The proof executes that published plugin with the
-same custom Worker entry (`main: "src/worker.ts"`) without deploying.
+artifact exports `alchemy/Cloudflare`.
 
-The custom entry wraps Start's published `@tanstack/react-start/server-entry`
-fetch handler and exports `scheduled`, which delegates to Runtime consent
-purging. Bindings are read on requests via `cloudflare:workers`; a type-only
-`Cloudflare.InferEnv<typeof Website>` import prevents infrastructure code from
-entering the Worker. Outside workerd the bindings callback returns no bindings.
+The published `lib/Cloudflare/Website/Vite.{js,d.ts}` declares `ViteProps` from
+Worker props: native bindings, Redacted secrets, domains, workersDev and assets
+are retained. `Vite` delegates to the same Worker resource as Astro. Preserving
+the logical IDs therefore preserves the deployment identity.
+`lib/Cloudflare/Workers/Sources/Vite.js` loads the app's own Vite, calls
+`createBuilder` with `@alchemy.run/cloudflare-runtime/vite`, then `buildApp()`.
+The proof executes this actual published plugin against the generated app,
+without the Alchemy engine or a Cloudflare account.
 
-## Compatible pins
+The Start infra is the current shared Frontend declaration with only its
+framework-specific driver/options changed. It retains package migration lookup,
+publication database, consent database/purge imports, GraphQL credentials,
+consent retention, forms/Turnstile bindings, preview bindings, domains, stages
+and Offboarded Site guards. Consent's scheduled handler remains in the existing
+separate purge Worker, matching ADR 0019 and CESAM's deployed resource model.
+There is no v1 adapter, Wrangler configuration or production deployment.
 
-Start 1.169.4 declares Vite >=8 and depends on Router 1.170.46; the skeleton
-pins that exact Router. React/React DOM are 19.3.1. React plugin 6.0.2 satisfies
-the frontend-frameworks beta.79 peer. Vite Plus 1.0.0 uses its own Vite 8 core
-and Vitest 5.0.1. Its executable is `vp`; a `vite build` script fails because
-this package has no `vite` executable. Start gets its own create-once workspace
-catalog; Astro's 0.3.0 catalog stays byte-identical. Alchemy, frontend-frameworks
-and Effect remain beta.79 / rc.115 as before.
+## Pins and repeatable proof
 
-The proof's Miniflare 5.20261023.0-beta supports the current compatibility date.
-Stable Miniflare 4.20260730.0 rejects 2026-10-26 (its binary only supports
-2026-08-06). The beta is a proof dependency only, never a generated app dependency.
-Its v5 module manifest is assembled from the emitted Worker and its chunks.
+Start 1.169.4 requires Vite >=8 and depends on Router 1.170.46, which is pinned
+explicitly. React/React DOM are 19.3.1. React plugin 6.0.2 satisfies the
+frontend-frameworks beta.79 peer. Vite Plus 1.0.0 uses its Vite 8 core and
+Vitest 5.0.1. Its executable is `vp`; `vite build` fails because it provides no
+`vite` executable. Start has a separate create-once workspace catalog; Astro's
+catalog is unchanged. Alchemy/frontend-frameworks beta.79 and Effect rc.115 stay
+as pinned on main.
 
-## Runtime contract and handoff
+`node scripts/smoke/tanstack-check.mjs` generates a Site from this checkout,
+installs the CLI from this checkout's file package, and runs app and infra type
+checks. It verifies all five original migration SQL hashes against the installed
+Runtime, builds the Worker with Alchemy's Cloudflare plugin, then runs it in
+local workerd: unprepared home/entry responses are 503; event/refresh method and
+authorization guards and consent method dispatch are the real Runtime's.
+The proof uses Miniflare 5.20261023.0-beta solely as a test dependency. Stable
+Miniflare 4.20260730.0 rejects the current compatibility date; v5 supports it.
+The v5 module manifest contains the emitted server entry and every JS chunk.
+
+Tests compare omitted/explicit Astro generation including the lock, assert
+Start has no Astro or copied Runtime internals, prove sync idempotence and
+managed-route edit refusal, and format both skeletons at short/long names.
+Existing release/offboarding/consent/form tests remain in the full suite.
+
+## Package contracts and remaining work
 
 [@getquick/content@0.4.0](https://www.npmjs.com/package/@getquick/content/v/0.4.0)
-already supplies the required server Runtime:
+already exposes everything used here. `createContentRuntime` from `/server`
+accepts Site identity, CMS/GraphQL URLs, language configuration and a server-only
+bindings callback. Its delivery methods return `found.content`, `missing`,
+`moved.uri` or unavailable results. `responseStatus` supplies 200/404/503.
+`handleEvent` and `handleRefresh` receive the original Request and Site origin.
+`renderDesignPattern`, theme/presentation CSS and `consentConfiguration` remain
+Runtime helpers. The app uses the existing thin `src/lib/content.ts` contract,
+including forms opt-in; no runtime internals are copied.
 
-- `@getquick/content/server`: `createContentRuntime({site, cmsOrigin,
-graphqlEndpoint, wordpress, isServer, bindings, development, consent})`;
-  `publishedHome`, `publishedEntry`, `routeLanguage`, `isLanguageHome`,
-  `handleEvent(Request, {siteOrigin})`, `handleRefresh(Request, {siteOrigin})`,
-  `renderDesignPattern`, `consentConfiguration`. A found result uses
-  `content`, not `value`; moved results expose `uri`. `responseStatus` remains
-  the shared 200/404/503 mapping.
-- `@getquick/content/migrations`: Node-only `migrationsDirectory`.
-  Historical SQL filenames and contents exactly match the blueprint's 0001–0005.
-- `@getquick/content/consent/server`: `createConsentServer({siteId, bindings})`
-  with `handleRecord`, `handleRead`, and scheduled `purge`. Bindings are
-  `CONSENT_DB`, `CONSENT_READ_TOKEN`, `CONSENT_RATE_LIMITER`.
-- `@getquick/content/consent/migrations`: `consentMigrationsDirectory`, separate
-  from the publication database.
-- `@getquick/content/consent/client`: idempotent `startConsent()`, which refreshes
-  after React navigation. Consent UI HTML comes from `consentPage` on the
-  existing `/consent/astro` export. Inspection of its released JS confirms
-  pure HTML functions with no Astro dependency.
+The managed Start consent adapters call `/consent/server`'s
+`createConsentServer({siteId, bindings, retentionDays}).handle(Request)`, reading
+`CONSENT_RETENTION_DAYS` just as Astro does. Form adapters call `/forms/server`'s
+`createFormsServer` with `content().publishedForm`, CMS origin, language, bindings
+and the manifest spam choices. Package migration exports remain Node-only in
+infra. The pair still uses shared managed pins, not new hard-coded CMS pins.
+Main already records the paired 0.4.0 adoption in
+[the content-pair migration guide](../guides/content-pair-migration.md).
 
-The Start CMS skeleton pins `getquick/gq-content` 0.4.0 alongside the npm
-package and sets `GQ_CONTENT_SITE_ID` from `project`; the old copied
-`publication-events.php`, `settings-events.php` and `delivery-retries.php` are
-excluded. Its gq-config 0.5.0 pin provides `getquickLegal` for consent CMS settings
-(the 0.4.0 baseline lacks that field). Existing Astro CMS files and pins stay
-unchanged. See the owner's [CMS instructions](https://github.com/Quick-Release/gq-content/blob/v0.4.0/cms/README.md)
-and [paired release notes](https://github.com/Quick-Release/gq-content/blob/v0.4.0/docs/releases/0.4.0.md).
+No gq-content implementation change blocks this skeleton's compilation or
+Worker guards. One precise nonblocking improvement is a neutral
+`@getquick/content/consent/html` export for the existing `ConsentPageInput`,
+`ConsentPage`, `consentPage`, `legalFooter`, `CONSENT_STYLES`. Its owner files
+are `frontend/src/consent/astro.ts`, a new `frontend/src/consent/html.ts`,
+`frontend/package.json` exports and the build entry list. Keep `/consent/astro`
+compatible and cover SSR plus React navigation in consumer tests. Until that
+release, this skeleton imports the real `/consent/astro` export: its published
+JS is pure HTML generation and has no Astro dependency. Client mounting calls
+the existing idempotent `startConsent()` after navigation.
 
-**Release dependency:** npm 0.4.0 installed successfully in the proof. The private
-Composer artifacts `getquick/gq-content` 0.4.0 and `getquick/gq-config` 0.5.0
-were verified at their upstream tags, but their registry availability and paired
-CMS integration have not been tested here. The upstream v0.4.0 release describes
-availability verification as pending. Do not treat this draft as a completed
-paired rollout. The owner must confirm those exact artifacts are installable
-and pass its CMS/Frontend pair gate. No runtime implementation is edited here.
+## CESAM handoff
 
-No invented Runtime method or unpublished JavaScript support is required.
-A precise nonblocking gq-content improvement is to expose those same
-`ConsentPageInput`, `ConsentPage`, `consentPage`, `legalFooter` and
-`CONSENT_STYLES` through a neutral `@getquick/content/consent/html` export and
-cover SSR plus React navigation in its package consumer tests. The concrete
-owner files are `frontend/src/consent/astro.ts` (existing pure HTML functions),
-a new `frontend/src/consent/html.ts` entry, `frontend/package.json` exports and
-the package build entry list. Keep the current `/consent/astro` export compatible. Until released,
-the skeleton explicitly imports the real `/consent/astro` export.
+Start a separate session in a worktree of the Site clone
+`/data/code/getquick/clients/cesam-bnq`. Its manifest project is `cesam`, with no
+GitHub repository recorded; origin is Cloudflare Artifacts' `cesam` repository.
+No Site is edited by this blueprint task; Nomia is explicitly exempt.
 
-CESAM (local clone `/data/code/getquick/clients/cesam-bnq`) needs its own
-session in a worktree. Its manifest project is `cesam`, with no GitHub
-repository recorded; its origin is the Cloudflare Artifacts `cesam` repository.
-Do not derive resource names from the clone directory name.
-That session must replace its Site-owned app and preserve its exact
-publication and consent D1 resource IDs, existing secrets, bindings, language
-configuration, extensions, forms, chrome and authored routes. Configure any
-CESAM-specific Runtime extension in `src/site.server.ts`; do not copy shared
-Runtime internals into the app. Carry forward its existing consent token and
-services. Check Alchemy's resource plan, release/rollback compatibility,
-refresh/event/readiness behavior and consent writes/reads/retention against
-its store before deployment. A destructive app reset does not authorize
-resetting data or creating replacement databases. Nomia is explicitly exempt.
+CESAM must replace its Site-owned `apps/frontend`, set `framework: "tanstack"`
+while keeping `contentRuntime: "package"`, and update its create-once
+`pnpm-workspace.yaml` and lockfile. Preserve `src/lib/content.ts` configuration:
+languages, extensions/collections, consent services, first-party hosts, forms,
+CMS access and content presentation. Its block rendering/client interactions
+need their own Site acceptance; this thin starter is not a redesign of CESAM.
 
-## Limits
+Keep `CesamFrontend`, Worker `cesam-fe`, `CesamPublications` /
+`cesam-fe-publications`, `CesamConsent` / `cesam-fe-consent`, and
+`CesamConsentPurge` / `cesam-consent-purge`. Sync `infra/frontend.run.ts`, retain
+`infra/consent.ts`, and keep existing secrets and database state. Review the
+Alchemy plan for replacement/deletion before deploying. Verify existing
+publication rows, refresh/events, consent writes/reads/retention, forms,
+readiness, withdrawal through an outage and release/rollback compatibility.
+The new default alone does not migrate any existing Site.
 
-The account-free proof establishes generation, package compatibility, the
-Cloudflare Worker build, unavailable-content status and endpoint guards.
-It does not establish a live deployment, CMS integration, consent readiness,
-withdrawal through an outage, or CESAM's feature parity. Existing runtime
-acceptance tests remain the Runtime owner's responsibility, and Site readiness
-remains the live gate. No production deploy or npm publish was performed.
+The local proof establishes generation, package compatibility, real Cloudflare
+build and endpoint guards. It establishes neither live CMS integration nor
+CESAM feature parity. Those remain acceptance work in their owning repositories.
+No production deploy or npm publish was performed.

@@ -1,8 +1,9 @@
 ---
+import type { Alternate, DesignBlock, DesignPostContext, DesignTheme, SiteChrome, SiteLanguage, WordPressSettings } from "@getquick/content";
+import { designCarouselStyle, designThemeStyleSheet, navigationStyleSheet, presentationStyleSheet, resolveDesignTheme, videoHeroStyleSheet } from "@getquick/content";
+import { consentPage } from "@getquick/content/consent/astro";
+import { content } from "../lib/content";
 import { copyFor } from "../lib/copy";
-import { pageChrome, type Alternate } from "../lib/delivery";
-import { defaultLanguage, languages, type SiteLanguage } from "../lib/site-language";
-import type { SiteChrome } from "../lib/wordpress";
 import "../styles/global.css";
 
 interface Props {
@@ -14,16 +15,34 @@ interface Props {
   language?: SiteLanguage;
   /** Where its readers may switch language (a multilingual Site's pages only). */
   alternates?: Alternate[];
+  /** The resolved theme delivered with the publication. */
+  theme?: DesignTheme;
+  /** Authorized current post, already loaded by the page. */
+  post?: DesignPostContext;
+  /** A home response's Site settings; null means that response had none. */
+  siteSettings?: WordPressSettings | null;
+  /** The Site chooses the surface used by canonical Branding logo selection. */
+  colorScheme?: "light" | "dark";
 }
 
+const runtime = content();
 const {
   title = "{{Project}}",
   description = "",
-  language = defaultLanguage,
+  language = runtime.defaultLanguage,
   alternates = [],
 } = Astro.props;
 const chrome =
-  Astro.props.chrome !== undefined ? Astro.props.chrome : await pageChrome(Astro.site?.origin);
+  Astro.props.chrome !== undefined
+    ? Astro.props.chrome
+    : await runtime.pageChrome(Astro.site?.origin);
+const theme = resolveDesignTheme(Astro.props.theme ?? (await runtime.designPresets())?.theme);
+const siteHome = Astro.props.siteSettings === undefined && (chrome?.header || chrome?.footer)
+  ? await runtime.publishedHome(Astro.site?.origin, language)
+  : null;
+const siteSettings = Astro.props.siteSettings !== undefined
+  ? Astro.props.siteSettings
+  : siteHome?.kind === "found" ? siteHome.content.home.settings : null;
 // Chrome that can't be served leaves the menu, logo and icon out of this
 // response only; it doesn't mean the site has none, so the page is still served.
 const { menuItems, siteIcon, siteLogo } = chrome ?? {
@@ -31,6 +50,30 @@ const { menuItems, siteIcon, siteLogo } = chrome ?? {
   siteIcon: null,
   siteLogo: null,
 };
+// The header and footer editors select in GQ Design's Header & Footer, as
+// the chrome serves them; empty when it serves none (the region uses a
+// template part, nothing published is selected, or the CMS's GQ Design is
+// older than 0.4.1), and the layout keeps its own. Saved HTML renders as it
+// was published; a block that needs code (a dynamic or Site block) needs a
+// renderer in `blocks` (see @getquick/content's "Header and footer patterns").
+const preloadedPosts = await runtime.preloadDesignQueryPosts(
+  [...(chrome?.header?.blocks ?? []), ...(chrome?.footer?.blocks ?? []), ...(Astro.props.post?.blocks ?? [])],
+  Astro.site?.origin,
+);
+const patternOptions = {
+  siteOrigin: Astro.site?.origin,
+  home: language.home,
+  post: Astro.props.post,
+  colorScheme: Astro.props.colorScheme ?? "light",
+  textContext: siteSettings ? { site: {
+    ...siteSettings,
+    url: new URL(language.home, Astro.site ?? Astro.url).href,
+  } } : undefined,
+  resolvePost: preloadedPosts.resolvePost,
+  onUnrendered: (block: DesignBlock) => console.warn(`No renderer for ${block.name}`),
+};
+const headerPattern = runtime.renderDesignPattern(chrome?.header, patternOptions);
+const footerPattern = runtime.renderDesignPattern(chrome?.footer, patternOptions);
 const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.url;
 // The page and its published translations, in the site's language order,
 // each under its language's tag, then the default language's as x-default.
@@ -38,14 +81,30 @@ const translations = alternates.filter((alternate) => alternate.translation);
 const hreflang =
   translations.length === 0
     ? []
-    : languages.flatMap((siteLanguage) => {
-        if (siteLanguage === language) return [{ language: siteLanguage, href: canonical.href }];
-        const translation = translations.find((alternate) => alternate.language === siteLanguage);
+    : runtime.languages.flatMap((siteLanguage) => {
+        if (siteLanguage.slug === language.slug) return [{ language: siteLanguage, href: canonical.href }];
+        const translation = translations.find(
+          (alternate) => alternate.language.slug === siteLanguage.slug,
+        );
         return translation
           ? [{ language: siteLanguage, href: new URL(translation.route, Astro.site ?? Astro.url).href }]
           : [];
       });
 const xDefault = hreflang.find((alternate) => alternate.language.isDefault);
+// The consent Runtime's UI (CONSENT-1, LEGAL-1; docs/guides/consent.md), in
+// the page's language: its configuration and styles in the head, the banner
+// and preferences dialog first in the body, the legal links and the "Cookie
+// settings" control in the footer. The banner is rendered open only without a
+// decision in force. Restyle it through the --gq-consent-* custom properties.
+const configuration = runtime.consentConfiguration(chrome);
+const consent = configuration
+  ? consentPage({
+      configuration,
+      language: language.lang,
+      legal: chrome?.legal,
+      cookie: Astro.request.headers.get("cookie"),
+    })
+  : null;
 ---
 
 <!doctype html>
@@ -59,25 +118,38 @@ const xDefault = hreflang.find((alternate) => alternate.language.isDefault);
     {hreflang.map((alternate) => <link rel="alternate" hreflang={alternate.language.lang} href={alternate.href} />)}
     {xDefault && <link rel="alternate" hreflang="x-default" href={xDefault.href} />}
     <title>{title === "{{Project}}" ? title : `${title} — {{Project}}`}</title>
+    <style is:inline set:html={designThemeStyleSheet(theme)} />
+    <style is:inline set:html={videoHeroStyleSheet()} />
+    <style is:inline set:html={designCarouselStyle()} />
+    <style is:inline set:html={navigationStyleSheet(theme)} />
+    <style is:inline set:html={presentationStyleSheet(theme)} />
+    {consent && <Fragment set:html={consent.head} />}
   </head>
   <body>
-    <header class="site-header">
-      <a href={language.home} class="site-header__home">
-        {siteLogo ? <img src={siteLogo.sourceUrl} alt={siteLogo.altText || "{{Project}}"} /> : "{{Project}}"}
-      </a>
-      {menuItems.length > 0 && (
-        <nav aria-label="Primary">
-          <ul>
-            {menuItems.map((item) => (
-              <li>
-                <a href={item.href} target={item.target ?? undefined}>{item.label}</a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+    {consent && <Fragment set:html={consent.body} />}
+    <header class={headerPattern ? "gqd-content" : "site-header"}>
+      {headerPattern ? (
+        <Fragment set:html={headerPattern} />
+      ) : (
+        <>
+          <a href={language.home} class="site-header__home">
+            {siteLogo ? <img src={siteLogo.sourceUrl} alt={siteLogo.altText || "{{Project}}"} /> : "{{Project}}"}
+          </a>
+          {menuItems.length > 0 && (
+            <nav aria-label="Primary">
+              <ul>
+                {menuItems.map((item) => (
+                  <li>
+                    <a href={item.href} target={item.target ?? undefined}>{item.label}</a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+        </>
       )}
       {alternates.length > 0 && (
-        <nav class="language-switcher" aria-label={copyFor(language).languages}>
+        <nav class="language-switcher" aria-label={copyFor(language, runtime.multilingual).languages}>
           <ul>
             {alternates.map((alternate) => (
               <li>
@@ -91,5 +163,35 @@ const xDefault = hreflang.find((alternate) => alternate.language.isDefault);
       )}
     </header>
     <slot />
+    {(footerPattern || consent) && (
+      <footer class="site-footer">
+        {footerPattern && <div class="gqd-content"><Fragment set:html={footerPattern} /></div>}
+        {consent && <Fragment set:html={consent.footer} />}
+      </footer>
+    )}
+    <script>
+      // Applies the visitor's decisions, loads each catalog service only after
+      // its grant, and records decisions at /gq/consent.
+      import { startConsent } from "@getquick/content/consent/client";
+      import { mountDesignCarousels, mountDesignCoverVideos, mountDesignNavigation, mountVideoHero } from "@getquick/content/design/client";
+      startConsent();
+      let unmountPresentation = () => {};
+      const mountPresentation = () => {
+        unmountPresentation();
+        const unmountCarousels = mountDesignCarousels();
+        const unmountCoverVideos = mountDesignCoverVideos();
+        const unmountNavigation = mountDesignNavigation();
+        const cleanups = [...document.querySelectorAll<HTMLElement>(".wp-block-getquick-design-video-hero")].map(mountVideoHero);
+        unmountPresentation = () => {
+          unmountCarousels();
+          unmountCoverVideos();
+          unmountNavigation();
+          cleanups.forEach((cleanup) => cleanup());
+        };
+      };
+      mountPresentation();
+      window.addEventListener("pagehide", () => unmountPresentation());
+      window.addEventListener("pageshow", mountPresentation);
+    </script>
   </body>
 </html>

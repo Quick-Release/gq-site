@@ -8,7 +8,7 @@ interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
 
-// workerd's module for the Worker's bindings; src/lib/runtime.ts types them.
+// workerd's module for the Worker's bindings; src/lib/content.ts types them.
 declare module "cloudflare:workers" {
   export const env: Record<string, unknown>;
 }

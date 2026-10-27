@@ -53,9 +53,13 @@ steps in `deploy/ploi/admin.d` (`10-theme.sh` activates
 
 ## Publication events
 
-`web/app/mu-plugins/publication-events.php` tells the Frontend when a page or
-post is published or updated, so it refreshes its public copy without a
-deploy. It signs each event with `PUBLICATION_EVENT_SECRET` (in the server's
+The `getquick/gq-content` must-use plugin (a Composer requirement, pinned
+with the Frontend's `@getquick/content`; `gq sync` keeps the two at one
+version) tells the Frontend when a page or post is published or updated, so
+it refreshes its public copy without a deploy. It names this Site by
+`GQ_CONTENT_SITE_ID`, which `config/application.php` sets to the project;
+the Frontend accepts no other. Its README in `web/app/mu-plugins/gq-content`
+documents its configuration and commands. It signs each event with `PUBLICATION_EVENT_SECRET` (in the server's
 `.env`, from `pnpm ploi:events`) and sends it to `GETQUICK_FRONTEND_URL` at
 the end of the request; publishing never waits on it or fails because of it.
 Unpublishing, making private, password-protecting, trashing or deleting a
@@ -71,7 +75,7 @@ wp gq-events status           # entries whose last event is pending or failed
 wp gq-events retry <post-id>  # send an entry's event again
 ```
 
-`web/app/mu-plugins/settings-events.php` does the same for the shared
+The plugin does the same for the shared
 settings, so a change reaches every page without republishing them: the menus
 (a menu shown at a theme location, or the locations), the logo (`site_logo`),
 the site's identity (`blogname`, `blogdescription`, `site_icon`) and the
@@ -85,7 +89,7 @@ wp gq-events settings status           # each setting's last event
 wp gq-events settings retry <setting>  # menus, logo, identity or design
 ```
 
-`web/app/mu-plugins/delivery-retries.php` retries the events the Frontend
+It retries the events the Frontend
 didn't confirm, entries' and settings' alike: after 1, 2, 5, 10 and 30
 minutes, then hourly, up to 12 attempts. The server's cron runs it every
 minute (`pnpm ploi:events` adds the Ploi crontab; WP-Cron isn't used).

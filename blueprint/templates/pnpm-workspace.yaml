@@ -7,9 +7,13 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: true
   workerd: true
-# GETQUICK's own tooling may be installed the day it is released.
+# GETQUICK's own packages may be installed the day they are released:
+# @getquick/site, and the consent Runtime it and the Frontend use
+# (@getquick/content; the storefront's adapter on commerce).
 minimumReleaseAgeExclude:
   - "@getquick/site"
+  - "@getquick/content"
+  - "@quick-release/storefront"
 overrides:
   "@effect/platform-node-shared": 4.0.0-rc.115
   vite: npm:@voidzero-dev/vite-plus-core@0.3.0

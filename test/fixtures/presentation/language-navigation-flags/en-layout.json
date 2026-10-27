@@ -1,0 +1,368 @@
+{
+  "contractVersion": "1.3.0",
+  "schemaVersion": 1,
+  "template": {
+    "key": "single-post",
+    "id": "template:single-post",
+    "sourceId": "getquick-theme//single-post",
+    "modified": "2026-10-24T01:01:37+00:00"
+  },
+  "language": {
+    "requested": "en",
+    "resolved": "en",
+    "locale": "en_US",
+    "direction": "ltr",
+    "fallback": false
+  },
+  "regions": [
+    {
+      "slot": "header",
+      "part": {
+        "id": "part:gqd-pll-mlay769p-part-header-en",
+        "sourceId": "getquick-theme//gqd-pll-mlay769p-part-header-en",
+        "slug": "gqd-pll-mlay769p-part-header-en",
+        "modified": "2026-10-24T01:01:40+00:00",
+        "language": {
+          "resolved": "en",
+          "fallback": true
+        }
+      },
+      "blocks": [
+        {
+          "name": "core/paragraph",
+          "attributes": {},
+          "content": "<p>gqd-pll-mlay769p PART header en v1</p>",
+          "children": [],
+          "supported": true
+        },
+        {
+          "name": "getquick-design/navigation",
+          "attributes": {
+            "items": [
+              {
+                "id": "menu-item:752",
+                "label": "gqd-pll-mlay769p MENU en v1",
+                "url": "/gqd-pll-mlay769p-page-en/",
+                "children": [],
+                "target": "_self"
+              },
+              {
+                "id": "menu-item:753",
+                "label": "Category target",
+                "url": "/category/gqd-polylang-gqd-pll-mlay769p-category-en/",
+                "children": []
+              },
+              {
+                "id": "menu-item:754",
+                "label": "Custom target",
+                "url": "https://outside.test/custom?x=1#part",
+                "children": []
+              }
+            ],
+            "label": "Primary navigation",
+            "location": "primary"
+          },
+          "content": null,
+          "children": [],
+          "supported": true,
+          "dataRequirements": [
+            "navigation"
+          ]
+        },
+        {
+          "name": "polylang/language-switcher",
+          "attributes": {
+            "className": "gqd-capture-language-list",
+            "dropdown": false,
+            "force_home": true,
+            "hide_current": false,
+            "hide_if_no_translation": true,
+            "links": [
+              {
+                "slug": "en",
+                "locale": "en-US",
+                "label": "English",
+                "url": "http://127.0.0.1:8180/",
+                "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/gb.png",
+                "current": true,
+                "direction": "ltr",
+                "noTranslation": true
+              },
+              {
+                "slug": "fr",
+                "locale": "fr-FR",
+                "label": "Français",
+                "url": "http://127.0.0.1:8180/fr/",
+                "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/fr.png",
+                "current": false,
+                "direction": "ltr",
+                "noTranslation": true
+              }
+            ],
+            "presentation": {
+              "base": {
+                "display": "flex",
+                "gap": 4,
+                "textAlign": "start"
+              },
+              "lg": {
+                "gap": 8
+              }
+            },
+            "show_flags": true,
+            "show_names": true
+          },
+          "content": null,
+          "children": [],
+          "supported": true,
+          "dataRequirements": [
+            "site"
+          ]
+        },
+        {
+          "name": "polylang/language-switcher",
+          "attributes": {
+            "className": "gqd-capture-language-flags",
+            "dropdown": false,
+            "force_home": true,
+            "hide_current": false,
+            "hide_if_no_translation": true,
+            "links": [
+              {
+                "slug": "en",
+                "locale": "en-US",
+                "label": "English",
+                "url": "http://127.0.0.1:8180/",
+                "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/gb.png",
+                "current": true,
+                "direction": "ltr",
+                "noTranslation": true
+              },
+              {
+                "slug": "fr",
+                "locale": "fr-FR",
+                "label": "Français",
+                "url": "http://127.0.0.1:8180/fr/",
+                "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/fr.png",
+                "current": false,
+                "direction": "ltr",
+                "noTranslation": true
+              }
+            ],
+            "presentation": {
+              "base": {
+                "display": "flex",
+                "gap": 4,
+                "textAlign": "start"
+              },
+              "lg": {
+                "gap": 8
+              }
+            },
+            "show_flags": true,
+            "show_names": false
+          },
+          "content": null,
+          "children": [],
+          "supported": true,
+          "dataRequirements": [
+            "site"
+          ]
+        },
+        {
+          "name": "polylang/language-switcher",
+          "attributes": {
+            "className": "gqd-capture-language-dropdown",
+            "dropdown": true,
+            "force_home": true,
+            "hide_current": true,
+            "hide_if_no_translation": true,
+            "links": [
+              {
+                "slug": "en",
+                "locale": "en-US",
+                "label": "English",
+                "url": "http://127.0.0.1:8180/",
+                "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/gb.png",
+                "current": true,
+                "direction": "ltr",
+                "noTranslation": true
+              },
+              {
+                "slug": "fr",
+                "locale": "fr-FR",
+                "label": "Français",
+                "url": "http://127.0.0.1:8180/fr/",
+                "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/fr.png",
+                "current": false,
+                "direction": "ltr",
+                "noTranslation": true
+              }
+            ],
+            "presentation": {
+              "base": {
+                "display": "flex",
+                "gap": 4,
+                "textAlign": "start"
+              },
+              "lg": {
+                "gap": 8
+              }
+            },
+            "show_flags": false,
+            "show_names": true
+          },
+          "content": null,
+          "children": [],
+          "supported": true,
+          "dataRequirements": [
+            "site"
+          ]
+        },
+        {
+          "name": "core/navigation",
+          "attributes": {
+            "items": [
+              {
+                "id": "navigation-item:fd53c4df271235af",
+                "label": "gqd-pll-mlay769p INLINE",
+                "url": "/gqd-pll-mlay769p-page-en/",
+                "children": [],
+                "presentation": {
+                  "base": {
+                    "paddingInline": 2
+                  }
+                }
+              }
+            ]
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/navigation-link",
+              "attributes": {
+                "id": 750,
+                "kind": "post-type",
+                "label": "gqd-pll-mlay769p INLINE",
+                "presentation": {
+                  "base": {
+                    "paddingInline": 2
+                  }
+                },
+                "type": "page",
+                "url": "/gqd-pll-mlay769p-page-en/"
+              },
+              "content": null,
+              "children": [],
+              "supported": true,
+              "dataRequirements": [
+                "navigation"
+              ]
+            }
+          ],
+          "supported": true,
+          "dataRequirements": [
+            "navigation"
+          ]
+        }
+      ]
+    },
+    {
+      "slot": "content",
+      "part": {
+        "id": "part:gqd-pll-mlay769p-part-content-en",
+        "sourceId": "getquick-theme//gqd-pll-mlay769p-part-content-en",
+        "slug": "gqd-pll-mlay769p-part-content-en",
+        "modified": "2026-10-24T01:01:37+00:00",
+        "language": {
+          "resolved": "en",
+          "fallback": true
+        }
+      },
+      "blocks": [
+        {
+          "name": "core/paragraph",
+          "attributes": {},
+          "content": "<p>gqd-pll-mlay769p PART content en v1</p>",
+          "children": [],
+          "supported": true
+        },
+        {
+          "name": "core/block",
+          "attributes": {
+            "ref": 746
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>gqd-pll-mlay769p PATTERN en v1</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        },
+        {
+          "name": "core/block",
+          "attributes": {
+            "ref": 749
+          },
+          "content": null,
+          "children": [
+            {
+              "name": "core/paragraph",
+              "attributes": {},
+              "content": "<p>gqd-pll-mlay769p UNLINKED EN</p>",
+              "children": [],
+              "supported": true
+            }
+          ],
+          "supported": true
+        }
+      ]
+    },
+    {
+      "slot": "footer",
+      "part": {
+        "id": "part:gqd-pll-mlay769p-part-footer-en",
+        "sourceId": "getquick-theme//gqd-pll-mlay769p-part-footer-en",
+        "slug": "gqd-pll-mlay769p-part-footer-en",
+        "modified": "2026-10-24T01:01:37+00:00",
+        "language": {
+          "resolved": "en",
+          "fallback": true
+        }
+      },
+      "blocks": [
+        {
+          "name": "core/paragraph",
+          "attributes": {},
+          "content": "<p>gqd-pll-mlay769p PART footer en v1</p>",
+          "children": [],
+          "supported": true
+        }
+      ]
+    }
+  ],
+  "diagnostics": [],
+  "dependencies": {
+    "templates": [
+      "getquick-theme//single-post"
+    ],
+    "templateParts": [
+      "getquick-theme//gqd-pll-mlay769p-part-content-en",
+      "getquick-theme//gqd-pll-mlay769p-part-footer-en",
+      "getquick-theme//gqd-pll-mlay769p-part-header-en"
+    ],
+    "reusableBlocks": [
+      746,
+      749
+    ],
+    "navigation": [
+      205,
+      750
+    ]
+  }
+}

@@ -2,8 +2,8 @@
 // inspectArchive() reads, once, what is left to archive and delete;
 // archivePlan() turns it into ordered items ("done", "todo" with its
 // `apply`, or "manual"). The archive goes first: every media object
-// (uploads.zip), a fresh database dump, the D1 store's export, the database
-// backups, gq.ops.json and a manifest.json of them all, under
+// (uploads.zip), a fresh database dump, the D1 stores' exports, the consent
+// databases' (ADR 0019), the database backups, gq.ops.json and a manifest.json of them all, under
 // r2://offboarded-clients/<project>/<UTC date>/. It is verified by reading it
 // all back, and recorded in gq.ops.json (`offboarded.archive`) only then;
 // nothing is deleted before. The deletions follow gq-smoke-down's order,
@@ -29,10 +29,12 @@ import { text } from "node:stream/consumers";
 import { isArtifactsOnly } from "../ci/git-artifacts.mjs";
 import { webhookUrl } from "../ci/github-setup.mjs";
 import { updateManifest } from "../manifest/manifest.mjs";
-import { frontendFramework } from "../manifest/schema.mjs";
 import { VERSION } from "../version.mjs";
 import {
   artifactsRepositoryName,
+  CONSENT_BINDING,
+  consentDatabase,
+  consentPurgeWorker,
   frontendWorker,
   isOwn as isOwnName,
   ownName,
@@ -103,16 +105,12 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
   const database = (await ploi.databases()).find(({ name }) => name === ops.ploi.database);
   const d1 = await cloudflare.d1(d1Name);
   const { stages, unclear, unbound } = await frontendStages(cloudflare, ops.project, workers);
-  // Consent stores have a separate lifecycle and must be kept in the archive
-  // before deletion, including every discovered publication-backed stage.
-  const consentStores = [];
-  if (frontendFramework(ops) === "tanstack") {
-    for (const stage of [undefined, ...stages.map(({ stage }) => stage)]) {
-      const name = `${ops.project}-fe-consent${stage ? `-${stage}` : ""}`;
-      const store = await cloudflare.d1(name);
-      if (store) consentStores.push({ path: `consent${stage ? `-${stage}` : ""}.sql`, store });
-    }
-  }
+  const consent = await inspectConsent(
+    cloudflare,
+    ops.project,
+    workers,
+    stages.map(({ stage }) => stage),
+  );
   const artifacts = await cloudflare.artifactsRepository(
     ops.artifacts.namespace,
     ops.artifacts.repo,
@@ -123,14 +121,6 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
     [database, `the database ${ops.ploi.database}`],
     [frontendExists, `the Frontend Worker ${frontend}`],
     [d1, `the D1 store ${d1Name}`],
-    ...(frontendFramework(ops) === "tanstack"
-      ? [
-          [
-            consentStores.some(({ path }) => path === "consent.sql"),
-            `the D1 store ${ops.project}-fe-consent`,
-          ],
-        ]
-      : []),
     ...(mediaOwn ? [[mediaExists, `the media bucket ${ops.media.bucket}`]] : []),
     ...(artifactsOnly
       ? [[artifacts, `the Artifacts repository ${artifactsRepositoryName(ops)}`]]
@@ -148,7 +138,6 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
       mediaOwn,
       artifactsOnly,
       artifactsExists: Boolean(artifacts),
-      consentStores,
     }),
     ploi: {
       site,
@@ -165,12 +154,12 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
       exists: frontendExists,
       d1,
       d1Name,
-      consentStores,
       // Its other stages: their Workers, and their D1 stores by stage.
       stages: stages.map(({ worker }) => worker),
       unclear,
       stores: stages.map(({ stage, d1 }) => ({ stage, d1 })),
       unbound,
+      consent,
     },
     ci: {
       worker: ops.ci.worker,
@@ -199,6 +188,55 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
     zoneName,
     tokens: await cloudflare.projectTokens(),
     repository: artifactsOnly ? undefined : await inspectRepository(providers),
+  };
+}
+
+// The consent records' resources (ADR 0019, infra/consent.ts), each stage's
+// consent database and retention purge Worker: production's by their exact
+// names, and those of the `stages` already tied to the project (frontendStages)
+// by theirs. A stage's purge Worker is the project's only while it binds that
+// stage's consent database (`<project>-consent-purge-ci` may be project
+// `<project>-consent-purge`'s CI Worker); one that doesn't is `mistied`. What
+// is named like another stage's is left to the operator (`unclear`). A Site
+// without a consent Runtime has none of them.
+async function inspectConsent(cloudflare, project, workers, stages) {
+  const found = [];
+  for (const stage of [undefined, ...stages]) {
+    const d1Name = consentDatabase(project, stage);
+    const worker = consentPurgeWorker(project, stage);
+    const d1 = await cloudflare.d1(d1Name);
+    let purge;
+    if (await cloudflare.workerExists(worker)) {
+      const bound =
+        stage === undefined ||
+        (await cloudflare.workerBindings(worker)).some(
+          (binding) =>
+            binding.type === "d1" &&
+            binding.name === CONSENT_BINDING &&
+            d1 !== undefined &&
+            (binding.database_id ?? binding.id) === d1.uuid,
+        );
+      purge = bound ? "own" : "mistied";
+    }
+    if (d1 || purge) found.push({ stage, d1Name, d1, worker, purge });
+  }
+  // Names under `prefix` that are none of the tied stages'.
+  const untied = (prefix, names) =>
+    names.filter(
+      (name) => name.startsWith(prefix) && !stages.some((stage) => name === `${prefix}${stage}`),
+    );
+  const d1Prefix = `${consentDatabase(project)}-`;
+  const stores = await cloudflare.d1Stores(d1Prefix);
+  const untiedStores = untied(
+    d1Prefix,
+    stores.map(({ name }) => name),
+  );
+  return {
+    found,
+    unclear: {
+      d1: stores.filter(({ name }) => untiedStores.includes(name)),
+      workers: untied(`${consentPurgeWorker(project)}-`, workers),
+    },
   };
 }
 
@@ -243,7 +281,7 @@ function isOwn(ops, role, name) {
 // another's is in its GitHub repository (`head`: its HEAD commit).
 async function inspectContents(
   providers,
-  { now, gone, wholeBackups, mediaOwn, artifactsOnly, artifactsExists, consentStores },
+  { now, gone, wholeBackups, mediaOwn, artifactsOnly, artifactsExists },
 ) {
   const { ops, cloudflare, github } = providers;
   const recorded = ops.offboarded?.archive;
@@ -254,21 +292,6 @@ async function inspectContents(
       throw new Error(
         `r2://${recorded.bucket}/${recorded.prefix}manifest.json ${manifest ? "doesn't match" : "is missing, unlike"} gq.ops.json offboarded.archive: stopping before anything else is deleted.`,
       );
-    }
-    if (consentStores.length) {
-      const contents = JSON.parse(
-        await (await bucket.get(`${recorded.prefix}manifest.json`)).text(),
-      );
-      for (const { path, store } of consentStores) {
-        if (
-          !contents.files.some((file) => file.path === path) ||
-          !contents.sources.frontend.consentStores?.some(({ id }) => id === store.uuid)
-        ) {
-          throw new Error(
-            `The recorded archive does not contain consent store ${store.name}; stopping before anything else is deleted.`,
-          );
-        }
-      }
     }
     if (!artifactsOnly) return { recorded };
     const contents = JSON.parse(
@@ -393,14 +416,22 @@ function archiveItems(site, { configPath, now, session }) {
     ];
   }
   const at = `r2://${ARCHIVE_BUCKET}/${archive.prefix}`;
-  // Production's D1 store, then each other stage's.
+  // Production's D1 store, then each other stage's; then their consent
+  // databases, which hold visitors' consent records (personal data).
   const stores = [
-    { path: "publications.sql", store: site.frontend.d1 },
-    ...(site.frontend.consentStores ?? []),
+    { path: "publications.sql", what: "the D1 store", store: site.frontend.d1 },
     ...site.frontend.stores.map(({ stage, d1 }) => ({
       path: `publications-${stage}.sql`,
+      what: "the D1 store",
       store: d1,
     })),
+    ...site.frontend.consent.found
+      .filter(({ d1 }) => d1)
+      .map(({ stage, d1 }) => ({
+        path: stage ? `consent-${stage}.sql` : "consent.sql",
+        what: "the consent database",
+        store: d1,
+      })),
   ];
   return [
     archive.bucketExists
@@ -427,8 +458,8 @@ function archiveItems(site, { configPath, now, session }) {
       );
       session.files.push({ path: "database.sql.gz", size: dump.bytes, sha256: dump.sha256 });
     }),
-    ...stores.map(({ path, store }) =>
-      todo("Archive", `${at}${path} ← the D1 store ${store.name}`, async (p) => {
+    ...stores.map(({ path, what, store }) =>
+      todo("Archive", `${at}${path} ← ${what} ${store.name}`, async (p) => {
         const exported = await p.cloudflare.exportD1(store.uuid);
         const bucket = await p.r2(ARCHIVE_BUCKET);
         const stored = await bucket.upload(
@@ -602,18 +633,12 @@ function manifestOf(site, { files, refs }, date) {
       frontend: {
         worker: frontend.worker,
         domain: ops.domains.frontend,
-        ...(frontend.consentStores?.length
-          ? {
-              consentStores: frontend.consentStores.map(({ store }) => ({
-                name: store.name,
-                id: store.uuid,
-              })),
-            }
-          : {}),
         d1: frontend.d1 ? { name: frontend.d1.name, id: frontend.d1.uuid } : null,
+        ...consentSource(frontend.consent),
         stages: frontend.stores.map(({ stage, d1 }) => ({
           worker: `${frontend.worker}-${stage}`,
           d1: { name: d1.name, id: d1.uuid },
+          ...consentSource(frontend.consent, stage),
         })),
       },
       ci: {
@@ -633,6 +658,20 @@ function manifestOf(site, { files, refs }, date) {
         zoneName: ops.cloudflare.zoneName ?? null,
       },
       sigillo: { projectId: ops.sigillo?.projectId ?? null },
+    },
+  };
+}
+
+// manifest.json's `consent` for production or `stage`: its consent database
+// and purge Worker, when it has either (nothing otherwise, so a Site without
+// consent records has the manifest it always had).
+function consentSource(consent, stage) {
+  const found = consent.found.find((entry) => entry.stage === stage);
+  if (!found) return {};
+  return {
+    consent: {
+      d1: found.d1 ? { name: found.d1.name, id: found.d1.uuid } : null,
+      purgeWorker: found.purge === "own" ? found.worker : null,
     },
   };
 }
@@ -752,6 +791,9 @@ function deletionItems(site, { configPath }) {
             (p) => p.ploi.deleteSystemUser(ploi.systemUser.id),
           )
         : done("Ploi", `the system user ${ops.ploi.systemUser} is deleted`),
+    // The consent records first, while the stages they belong to are still
+    // tied to the project: each purge Worker, then each consent database.
+    ...consentItems(site),
     frontend.exists
       ? own(
           "Frontend",
@@ -774,11 +816,6 @@ function deletionItems(site, { configPath }) {
           ),
         )
       : done("Frontend", `the D1 store ${frontend.d1Name} is deleted`),
-    ...(frontend.consentStores ?? []).map(({ store }) =>
-      todo("Frontend", `delete the D1 store ${store.name} (${store.uuid})`, (p) =>
-        p.cloudflare.deleteD1(store.uuid),
-      ),
-    ),
     // Its other stages, each tied to the project by its publication store.
     ...frontend.stages.map((worker) =>
       todo("Frontend", `delete the Worker ${worker}`, (p) => p.cloudflare.deleteWorker(worker)),
@@ -931,6 +968,49 @@ function deletionItems(site, { configPath }) {
               )
             : done("GitHub", "no push webhook to the CI Worker is left"),
         ]),
+  ];
+}
+
+// Deleting the consent databases and their purge Workers (inspectConsent),
+// each stage's in turn: the purge Workers before the databases they bind.
+function consentItems(site) {
+  const { ops, frontend } = site;
+  const { found, unclear } = frontend.consent;
+  const purgeWorkers = found.map(({ stage, d1Name, worker, purge }) =>
+    purge === "own"
+      ? todo("Frontend", `delete the consent purge Worker ${worker}`, (p) =>
+          p.cloudflare.deleteWorker(worker),
+        )
+      : purge === "mistied"
+        ? manual(
+            "Frontend",
+            `the Worker ${worker} is named like the ${stage} stage's consent purge Worker, but no ${CONSENT_BINDING} binding to ${d1Name} ties it to ${ops.project}; check it by hand`,
+          )
+        : done("Frontend", `the consent purge Worker ${worker} is deleted`),
+  );
+  const databases = found.map(({ d1Name, d1 }) =>
+    d1
+      ? todo("Frontend", `delete the consent database ${d1.name} (${d1.uuid})`, (p) =>
+          p.cloudflare.deleteD1(d1.uuid),
+        )
+      : done("Frontend", `the consent database ${d1Name} is deleted`),
+  );
+  const untied = `but no ${frontend.worker}-<stage> Worker ties its stage to ${ops.project}; check it by hand`;
+  return [
+    ...purgeWorkers,
+    ...databases,
+    ...unclear.d1.map(({ name }) =>
+      manual(
+        "Frontend",
+        `the consent database ${name} is named like one of ${ops.project}'s stages' consent databases, ${untied}`,
+      ),
+    ),
+    ...unclear.workers.map((worker) =>
+      manual(
+        "Frontend",
+        `the Worker ${worker} is named like one of ${ops.project}'s stages' consent purge Workers, ${untied}`,
+      ),
+    ),
   ];
 }
 

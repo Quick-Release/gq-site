@@ -4,6 +4,15 @@
   (reconciliation lifts a withdrawal only for a modification WordPress made
   after it)
 - Date: 2026-10-02
+- Superseded in part: its runtime decisions by
+  [gq-content ADR 0002](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0002-preserve-publication-delivery-and-withdrawal-through-extraction.md)
+  for Sites on the content package pair ([ADR 0020](0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+
+## Superseded in part
+
+Withdrawal events, withdrawing without a CMS read, and the check on every
+promotion and ordering are the runtime's. Kept here: no cache in front of the
+store, which the Site's pages keep with `Cache-Control: no-cache`.
 
 ## Context
 

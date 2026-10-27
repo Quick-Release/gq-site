@@ -20,9 +20,9 @@ const OPS = Object.freeze({
 
 const SIGILLO_BIN = "node_modules/.bin/sigillo";
 
-function site(framework) {
+function site() {
   return createFixtureSite({
-    ops: { ...OPS, ...(framework ? { framework } : {}) },
+    ops: OPS,
     files: {
       "package.json": `${JSON.stringify({ devDependencies: { sigillo: "0.13.0" } })}\n`,
       [SIGILLO_BIN]: "#!/bin/sh\n",
@@ -64,6 +64,24 @@ test("frontend secrets generates the refresh token and event key Sigillo staging
   assert.match(result.stdout, /pnpm ploi:events/u);
 });
 
+test("frontend secrets generates the consent read token the Site's Worker and CMS share", async () => {
+  const fixture = await site();
+  const { exec, secrets } = fakeSigillo({
+    FRONTEND_REFRESH_TOKEN: "a",
+    PUBLICATION_EVENT_SECRET: "b",
+  });
+
+  const result = await fixture.run(["frontend", "secrets"], { exec });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(secrets.CONSENT_READ_TOKEN, /^[0-9a-f]{64}$/u);
+  assert.ok(!result.stdout.includes(secrets.CONSENT_READ_TOKEN), "a value is never printed");
+  assert.match(
+    result.stdout,
+    /\+ generate CONSENT_READ_TOKEN \(the CMS's bearer for consent record reads\)/u,
+  );
+});
+
 test("frontend secrets keeps what Sigillo already has, and replaces a value too short to use", async () => {
   const fixture = await site();
   const { exec, secrets } = fakeSigillo({
@@ -86,9 +104,13 @@ test("frontend secrets keeps what Sigillo already has, and replaces a value too 
   assert.match(result.stdout, /~ PUBLICATION_EVENT_SECRET is shorter than 32 characters/u);
 });
 
-test("frontend secrets changes nothing when both are stored", async () => {
+test("frontend secrets changes nothing when all three are stored", async () => {
   const fixture = await site();
-  const { exec } = fakeSigillo({ FRONTEND_REFRESH_TOKEN: "a", PUBLICATION_EVENT_SECRET: "b" });
+  const { exec } = fakeSigillo({
+    FRONTEND_REFRESH_TOKEN: "a",
+    PUBLICATION_EVENT_SECRET: "b",
+    CONSENT_READ_TOKEN: "c",
+  });
 
   const result = await fixture.run(["frontend", "secrets"], { exec });
 
@@ -108,18 +130,4 @@ test("frontend secrets --dry-run only reports the plan", async () => {
   assert.match(result.stdout, /\+ generate PUBLICATION_EVENT_SECRET/u);
   assert.match(result.stdout, /Dry run: nothing changed\./u);
   assert.deepEqual(secrets, {});
-});
-
-test("Start prepares a separate consent-read token without changing existing credentials", async () => {
-  const fixture = await site("tanstack");
-  const { exec, secrets } = fakeSigillo({
-    FRONTEND_REFRESH_TOKEN: "existing-refresh",
-    PUBLICATION_EVENT_SECRET: "existing-events",
-  });
-  const result = await fixture.run(["frontend", "secrets"], { exec });
-  assert.equal(result.code, 0, result.stderr);
-  assert.equal(secrets.FRONTEND_REFRESH_TOKEN, "existing-refresh");
-  assert.equal(secrets.PUBLICATION_EVENT_SECRET, "existing-events");
-  assert.match(secrets.CONSENT_READ_TOKEN, /^[0-9a-f]{64}$/u);
-  assert.ok(!result.stdout.includes(secrets.CONSENT_READ_TOKEN));
 });

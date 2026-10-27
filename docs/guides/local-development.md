@@ -27,11 +27,14 @@ The runners are shared; what they check is the site's.
   `gq.ops.json` `artifacts`), the apps' `.env` files, Sigillo's project and
   login (with `sigillo`), the Artifacts namespace's jurisdiction against
   `artifacts.jurisdiction` (read with `ARTIFACTS_API_TOKEN` from the
-  environment or Sigillo `staging`, and skipped without it), local media (`gq media check --local`) and the DDEV
+  environment or Sigillo `staging`, and skipped without it), the consent
+  databases' jurisdiction, which must be `eu` (read with
+  `CLOUDFLARE_API_TOKEN` likewise; [consent guide](consent.md)), local media (`gq media check --local`) and the DDEV
   project named in `apps/cms/.ddev/config.yaml`. A missing tool, required
   file or `node_modules`, a Node below the minimum, disallowed secret
   assignments in local environment files, configured Sigillo that cannot
-  be checked, or a namespace outside its jurisdiction fails it
+  be checked, a namespace outside its jurisdiction or a consent database
+  outside `eu` fails it
   (exit 1); drift from a pin only warns.
 
 ## Local environment files and secrets

@@ -15,7 +15,6 @@ const builder = await createBuilder(
     root: new URL("../apps/frontend", import.meta.url).pathname,
     plugins: [
       cloudflare({
-        main: "src/worker.ts",
         compatibilityDate: "2026-10-26",
         compatibilityFlags: ["nodejs_compat"],
       }),

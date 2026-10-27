@@ -241,6 +241,88 @@ test("an invalid manifest fails naming each key path", async () => {
   }
 });
 
+test("consent.retentionDays is a whole number of days from 1 to the Runtime's 1826", async () => {
+  const site = { schemaVersion: 1, project: "fixture", variant: "content" };
+  for (const retentionDays of [1, 365, 1826]) {
+    const fixture = await createFixtureSite({ ops: { ...site, consent: { retentionDays } } });
+    const result = await fixture.run(["context", "show"]);
+    assert.equal(result.code, 0, `${retentionDays}: ${result.stderr}`);
+  }
+  for (const [consent, problem] of [
+    [{ retentionDays: 0 }, "consent.retentionDays: Too small: expected number to be >=1"],
+    [{ retentionDays: 1827 }, "consent.retentionDays: Too big: expected number to be <=1826"],
+    [
+      { retentionDays: 36.5 },
+      "consent.retentionDays: Invalid input: expected int, received number",
+    ],
+    [
+      { retentionDays: "365" },
+      "consent.retentionDays: Invalid input: expected number, received string",
+    ],
+    [{ retention: 365 }, "consent.retention is not a known key"],
+  ]) {
+    const fixture = await createFixtureSite({ ops: { ...site, consent } });
+    const result = await fixture.run(["context", "show"]);
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr, `gq: gq.ops.json is invalid: ${problem}.\n`);
+  }
+});
+
+const FORMS_DECLARED = { provider: "gravityforms", spam: ["honeypot"] };
+const FORMS_SITE = {
+  schemaVersion: 1,
+  project: "fixture",
+  variant: "content",
+  contentRuntime: "package",
+  wordpress: { plugins: ["gravityforms"] },
+};
+
+async function validateForms(ops) {
+  const fixture = await createFixtureSite({ ops });
+  return fixture.run(["context", "show"]);
+}
+
+test("forms names its provider and the spam controls the Site relies on", async () => {
+  for (const forms of [
+    { provider: "gravityforms" },
+    { provider: "gravityforms", spam: [] },
+    { provider: "gravityforms", spam: ["honeypot"] },
+    { provider: "gravityforms", spam: ["honeypot", "turnstile"] },
+    { provider: "gravityforms", spam: ["turnstile"] },
+  ]) {
+    const result = await validateForms({ ...FORMS_SITE, forms });
+    assert.equal(result.code, 0, `${JSON.stringify(forms)}: ${result.stderr}`);
+  }
+  for (const [ops, problem] of [
+    [{ ...FORMS_SITE, forms: {} }, 'forms.provider must be "gravityforms"'],
+    [{ ...FORMS_SITE, forms: { provider: "wpforms" } }, 'forms.provider must be "gravityforms"'],
+    [
+      { ...FORMS_SITE, forms: { provider: "gravityforms", spam: ["recaptcha"] } },
+      'forms.spam[0] must be "honeypot" or "turnstile"',
+    ],
+    [
+      { ...FORMS_SITE, forms: { provider: "gravityforms", spam: ["honeypot", "honeypot"] } },
+      "forms.spam repeats a control",
+    ],
+    [
+      { ...FORMS_SITE, forms: { provider: "gravityforms", turnstile: true } },
+      "forms.turnstile is not a known key",
+    ],
+    [
+      { ...FORMS_SITE, wordpress: { plugins: [] }, forms: FORMS_DECLARED },
+      "forms needs gravityforms in wordpress.plugins, so the CMS deploy activates it",
+    ],
+    [
+      { ...FORMS_SITE, contentRuntime: undefined, forms: FORMS_DECLARED },
+      'forms needs a content Site on the package pair (variant "content", contentRuntime "package")',
+    ],
+  ]) {
+    const result = await validateForms(ops);
+    assert.equal(result.code, 1, JSON.stringify(ops));
+    assert.equal(result.stderr, `gq: gq.ops.json is invalid: ${problem}.\n`);
+  }
+});
+
 test("the published JSON Schema is the one generated from the zod schema", async () => {
   const published = await readFile(
     new URL("../../schema/gq.ops.schema.json", import.meta.url),

@@ -314,9 +314,14 @@ test("gq doctor rejects assignments from every Sigillo environment across apps w
     result.stdout + result.stderr,
     /must-stay-private|another-private-value|node_modules.*sets/u,
   );
+  // Listing reads names only; the one value read is the consent check's
+  // Cloudflare token, never a listed assignment's.
   const calls = actions(exec).filter((line) => line.startsWith("sigillo secrets"));
-  assert.equal(calls.length, 3);
-  assert.ok(calls.every((line) => !line.includes(" get ")));
+  assert.equal(calls.filter((line) => !line.includes(" get ")).length, 3);
+  assert.deepEqual(
+    calls.filter((line) => line.includes(" get ")).map((line) => line.split(" ")[3]),
+    ["CLOUDFLARE_API_TOKEN"],
+  );
 });
 
 test("gq doctor allows only the blueprint's exact CMS local stand-ins, even when examples are edited", async () => {
@@ -633,7 +638,7 @@ test("gq doctor confirms the namespace's jurisdiction with ARTIFACTS_API_TOKEN f
   assert.equal(result.code, 0, result.stdout);
   assert.match(result.stdout, /✓ Artifacts namespace fixture-ns is in us, as gq\.ops\.json says/u);
   assert.equal(fetch.requests[0].headers.Authorization, "Bearer env-artifacts");
-  assert.ok(!actions(exec).some((line) => line.startsWith("sigillo secrets get")));
+  assert.ok(!actions(exec).some((line) => line.startsWith("sigillo secrets get ARTIFACTS")));
 });
 
 test("gq doctor only warns when it can't check the namespace's jurisdiction", async () => {
@@ -667,6 +672,116 @@ test("gq doctor skips the jurisdiction check without the Artifacts token", async
   assert.match(
     result.stdout,
     /· Artifacts namespace fixture-ns's jurisdiction not checked: no ARTIFACTS_API_TOKEN/u,
+  );
+});
+
+// The D1 listing for the consent databases (ADR 0019), holding `databases`;
+// the Artifacts listing answers as artifactsApi's does.
+function consentApi({ databases = [], status = 200, namespaces = [], details = {} } = {}) {
+  return recordingFetch(({ method, url }) => {
+    assert.equal(method, "GET");
+    const { pathname, searchParams } = new URL(url);
+    if (pathname.endsWith("/artifacts/namespaces")) return { success: true, result: namespaces };
+    const detail = /\/d1\/database\/([^/]+)$/u.exec(pathname)?.[1];
+    if (detail) return { success: true, result: details[detail] };
+    assert.equal(pathname, "/client/v4/accounts/account-1/d1/database");
+    assert.equal(searchParams.get("name"), "fixture-fe-consent");
+    if (status !== 200) return json({ success: false, errors: [{ message: "denied" }] }, status);
+    const page = Number(searchParams.get("page") ?? 1);
+    return {
+      success: true,
+      result: page === 1 ? databases : [],
+      result_info: { page, per_page: 50, total_pages: 1 },
+    };
+  });
+}
+
+const CONSENT_TOKEN =
+  "sigillo secrets get CLOUDFLARE_API_TOKEN --api-url https://secrets.example.test " +
+  "--project PROJECT1 --env stage --raw --force";
+
+test("gq doctor fails when a consent database isn't in the eu jurisdiction", async () => {
+  const fixture = await healthySite({}, STAGING_OPS);
+  const exec = machine({ stdout: { [CONSENT_TOKEN]: "staging-deploy\n" } });
+  const fetch = consentApi({
+    databases: [
+      { uuid: "a", name: "fixture-fe-consent", jurisdiction: "eu" },
+      { uuid: "b", name: "fixture-fe-consent-preview", jurisdiction: null },
+      // Another Site's, which the name filter can match too.
+      { uuid: "c", name: "fixture-fe-consent2", jurisdiction: null },
+    ],
+  });
+
+  const result = await fixture.run(["doctor"], { exec, fetch });
+
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(
+    result.stdout,
+    /✗ consent database fixture-fe-consent-preview is in the default jurisdiction, not eu: Cloudflare can't move it/u,
+  );
+  assert.match(result.stdout, /✓ consent database fixture-fe-consent is in the eu jurisdiction/u);
+  assert.doesNotMatch(result.stdout, /fixture-fe-consent2/u);
+  const d1 = fetch.requests.find(({ url }) => url.includes("/d1/"));
+  assert.equal(d1.headers.Authorization, "Bearer staging-deploy");
+  assert.ok(!result.stdout.includes("staging-deploy"));
+});
+
+test("gq doctor passes consent databases in eu, with CLOUDFLARE_API_TOKEN from the environment", async () => {
+  const fixture = await healthySite();
+  const fetch = consentApi({
+    databases: [{ uuid: "a", name: "fixture-fe-consent", jurisdiction: "eu" }],
+  });
+
+  const result = await fixture.run(["doctor"], {
+    env: { CLOUDFLARE_API_TOKEN: "env-deploy" },
+    exec: machine(),
+    fetch,
+  });
+
+  assert.equal(result.code, 0, result.stdout);
+  assert.match(result.stdout, /✓ consent database fixture-fe-consent is in the eu jurisdiction/u);
+});
+
+test("gq doctor reads a database's jurisdiction itself when the listing leaves it out", async () => {
+  const fixture = await healthySite();
+  const fetch = consentApi({
+    databases: [{ uuid: "a", name: "fixture-fe-consent" }],
+    details: { a: { uuid: "a", name: "fixture-fe-consent", jurisdiction: "eu" } },
+  });
+
+  const result = await fixture.run(["doctor"], {
+    env: { CLOUDFLARE_API_TOKEN: "env-deploy" },
+    exec: machine(),
+    fetch,
+  });
+
+  assert.equal(result.code, 0, result.stdout);
+  assert.match(result.stdout, /✓ consent database fixture-fe-consent is in the eu jurisdiction/u);
+  assert.ok(fetch.requests.some(({ url }) => url.endsWith("/d1/database/a")));
+});
+
+test("gq doctor reports a Site without a consent database, and skips without a token", async () => {
+  const fixture = await healthySite();
+  const none = await fixture.run(["doctor"], {
+    env: { CLOUDFLARE_API_TOKEN: "env-deploy" },
+    exec: machine(),
+    fetch: consentApi(),
+  });
+  assert.equal(none.code, 0, none.stdout);
+  assert.match(none.stdout, /· no consent database yet: a Frontend deploy creates it in eu/u);
+
+  const denied = await fixture.run(["doctor"], {
+    env: { CLOUDFLARE_API_TOKEN: "env-deploy" },
+    exec: machine(),
+    fetch: consentApi({ status: 403 }),
+  });
+  assert.equal(denied.code, 0, denied.stdout);
+  assert.match(denied.stdout, /⚠ could not list the consent databases: .*denied/u);
+
+  const skipped = await fixture.run(["doctor"], { exec: machine() });
+  assert.match(
+    skipped.stdout,
+    /· consent database jurisdiction not checked: no CLOUDFLARE_API_TOKEN/u,
   );
 });
 
@@ -753,4 +868,109 @@ test("gq setup and gq doctor take no options of their own beyond --no-ddev", asy
     assert.equal(result.code, 1, argv.join(" "));
     assert.match(result.stderr, /Usage: gq (setup \[--no-ddev\]|doctor)/u);
   }
+});
+
+// --- gq doctor: headless forms -------------------------------------------------
+
+const FORMS_ROUTE = "apps/frontend/src/pages/gq/forms/[...rest].ts";
+const STAGE_NAMES =
+  "sigillo secrets --api-url https://secrets.example.test --project PROJECT1 --env stage";
+
+function formsSite({ spam = ["honeypot"], files = {} } = {}) {
+  return healthySite(files, {
+    ...OPS,
+    contentRuntime: "package",
+    wordpress: { plugins: ["gravityforms"] },
+    forms: { provider: "gravityforms", spam },
+    sigillo: { ...OPS.sigillo, environments: { local: "dev", staging: "stage" } },
+  });
+}
+
+test("gq doctor checks a Site's forms wiring: its route, its runtime opt-in and Turnstile's keys", async () => {
+  const wired = {
+    [FORMS_ROUTE]: "// managed\n",
+    "apps/frontend/src/lib/content.ts": "createContentRuntime({ forms: true });\n",
+  };
+  const honeypot = await (await formsSite({ files: wired })).run(["doctor"], { exec: machine() });
+  assert.equal(honeypot.code, 0, honeypot.stdout);
+  assert.match(
+    honeypot.stdout,
+    /\nForms:\n {2}✓ apps\/frontend\/src\/pages\/gq\/forms\/\[\.\.\.rest\]\.ts handles form posts\n {2}✓ src\/lib\/content\.ts passes forms to the content runtime\n/u,
+  );
+
+  const unwired = await (await formsSite()).run(["doctor"], { exec: machine() });
+  assert.equal(unwired.code, 1);
+  assert.match(
+    unwired.stdout,
+    /✗ apps\/frontend\/src\/pages\/gq\/forms\/\[\.\.\.rest\]\.ts is missing — run: gq sync/u,
+  );
+  assert.match(
+    unwired.stdout,
+    /⚠ apps\/frontend\/src\/lib\/content\.ts doesn't pass forms to createContentRuntime/u,
+  );
+
+  const turnstile = await formsSite({ spam: ["honeypot", "turnstile"], files: wired });
+  const without = await turnstile.run(["doctor"], {
+    exec: machine({ stdout: { [STAGE_NAMES]: "TURNSTILE_SITE_KEY\n" } }),
+  });
+  assert.equal(without.code, 1);
+  assert.match(
+    without.stdout,
+    /✗ gq\.ops\.json forms\.spam chooses Turnstile, but Sigillo staging lacks TURNSTILE_SECRET_KEY/u,
+  );
+  const withKeys = await turnstile.run(["doctor"], {
+    exec: machine({ stdout: { [STAGE_NAMES]: "TURNSTILE_SITE_KEY\nTURNSTILE_SECRET_KEY\n" } }),
+  });
+  assert.equal(withKeys.code, 0, withKeys.stdout);
+  assert.match(withKeys.stdout, /✓ Sigillo staging has Turnstile's keys/u);
+});
+
+test("gq doctor fails a Site with forms whose CMS REST gate still closes submissions", async () => {
+  const CONTENT_API = "apps/cms/web/app/mu-plugins/content-api.php";
+  const wired = {
+    [FORMS_ROUTE]: "// managed\n",
+    "apps/frontend/src/lib/content.ts": "createContentRuntime({ forms: true });\n",
+  };
+  const before = await formsSite({
+    files: {
+      ...wired,
+      [CONTENT_API]: "<?php add_filter('rest_authentication_errors', $closed);\n",
+    },
+  });
+  const closed = await before.run(["doctor"], { exec: machine() });
+  assert.equal(closed.code, 1);
+  assert.match(
+    closed.stdout,
+    /✗ apps\/cms\/web\/app\/mu-plugins\/content-api\.php closes the REST API to anonymous form submissions, so every post fails with 401: add the submissions exception \(docs\/guides\/forms\.md#the-cmss-rest-gate\)/u,
+  );
+
+  const template = await readFile(
+    new URL(`../../blueprint/templates/${CONTENT_API}`, import.meta.url),
+    "utf8",
+  );
+  const after = await formsSite({ files: { ...wired, [CONTENT_API]: template } });
+  const open = await after.run(["doctor"], { exec: machine() });
+  assert.equal(open.code, 0, open.stdout);
+  assert.match(open.stdout, /✓ the CMS's REST gate lets form submissions through/u);
+
+  // A mention of the route isn't the exception.
+  const mentioned = await formsSite({
+    files: {
+      ...wired,
+      [CONTENT_API]:
+        "<?php // TODO /gf/v2/forms/\nadd_filter('rest_authentication_errors', $closed);\n",
+    },
+  });
+  assert.equal((await mentioned.run(["doctor"], { exec: machine() })).code, 1);
+
+  const missing = await (await formsSite({ files: wired })).run(["doctor"], { exec: machine() });
+  assert.match(
+    missing.stdout,
+    /· apps\/cms\/web\/app\/mu-plugins\/content-api\.php not found: its REST gate isn't checked/u,
+  );
+});
+
+test("gq doctor has no forms section for a Site without forms", async () => {
+  const result = await (await healthySite()).run(["doctor"], { exec: machine() });
+  assert.doesNotMatch(result.stdout, /Forms:/u);
 });

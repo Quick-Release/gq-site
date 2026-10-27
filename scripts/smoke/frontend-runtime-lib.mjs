@@ -1,9 +1,10 @@
-// What the Frontend's runtime proofs share (frontend-runtime.mjs,
-// frontend-languages.mjs, cms-events.mjs): a stub WordPress they can take down, Alchemy's Astro
-// Cloudflare build of a generated site's Frontend (`buildInChild`, what
-// `pnpm deploy:frontend` runs in its build child), and that build served in
-// workerd (Wrangler's local mode) with a local D1 publication store migrated
-// from the Frontend's own migrations. Nothing reaches Cloudflare.
+// What the content pair's wiring proof (content-pair.mjs) uses: a stub
+// WordPress, Alchemy's Astro Cloudflare build of a generated site's Frontend
+// (`buildInChild`, what `pnpm deploy:frontend` runs in its build child), and
+// that build served in workerd (Wrangler's local mode) with a local D1
+// publication store migrated from the migrations the deploy resolves, and,
+// for the consent proof (consent.mjs), the consent database beside it.
+// Nothing reaches Cloudflare.
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
@@ -42,8 +43,9 @@ function modifiedGmt(entry) {
  * WordPress, answering the Frontend's queries by name from `entries`
  * (published entries by URI: { id, title, content, modified? }), `heading`
  * (the front page's) and the shared settings: `menuLabel`, `logo`, `icon`,
- * `title`, `tagline` and `color` (the brand preset's). `requests` counts the
- * queries it answered.
+ * `title`, `tagline` and `color` (the brand preset's). `answers` (query
+ * name → (variables) => data) replaces any of those answers. `requests` counts
+ * the queries it answered.
  */
 export function stubCms(entries) {
   const cms = {
@@ -55,6 +57,7 @@ export function stubCms(entries) {
     tagline: "Things",
     color: "#c00",
     entries: new Map(entries),
+    answers: {},
     server: null,
     port: 0,
     requests: 0,
@@ -66,6 +69,13 @@ export function stubCms(entries) {
           this.requests += 1;
           const { query, variables } = JSON.parse(body);
           const name = /query (\w+)/.exec(query)?.[1];
+          const answer = this.answers[name];
+          if (answer) {
+            const data = answer(variables ?? {});
+            response.writeHead(200, { "content-type": "application/json" });
+            response.end(JSON.stringify({ data }));
+            return;
+          }
           const entry = name === "EntryByUri" ? this.entries.get(decodeURI(variables.uri)) : null;
           const brand = { colors: [{ slug: "brand", color: this.color }], spacingSizes: [] };
           const data = {
@@ -81,6 +91,8 @@ export function stubCms(entries) {
                     isRestricted: false,
                     modifiedGmt: modifiedGmt(entry),
                     featuredImage: null,
+                    // gq-content's forms module, for an entry with forms.
+                    ...(entry.forms ? { getquickForms: JSON.stringify(entry.forms) } : {}),
                   }
                 : null,
               designTokens: brand,
@@ -99,6 +111,8 @@ export function stubCms(entries) {
               },
             },
             DesignPresets: { designTokens: brand },
+            // GQ Config with no legal page assigned and GA4 off.
+            ConsentSettings: { getquickLegal: null, googleAnalytics: null },
             HomePage: {
               generalSettings: { title: this.title, description: this.tagline },
               nodeByUri: {
@@ -119,6 +133,9 @@ export function stubCms(entries) {
                   { id: "a", parentId: null, label: this.menuLabel, url: "/about/", target: null },
                 ],
               },
+              // GQ Design's Header & Footer selects no pattern.
+              header: null,
+              footer: null,
             },
           }[name];
           response.writeHead(data ? 200 : 400, { "content-type": "application/json" });
@@ -170,10 +187,13 @@ export function buildFrontend(frontend, siteUrl, graphqlUrl) {
 
 /**
  * A local Worker for the built Frontend: its Wrangler config in `work`, with
- * the publication store persisted under `work/state`, and the Worker's
- * secrets passed as `vars`.
+ * the publication store persisted under `work/state` and migrated from
+ * `migrations`, and the Worker's secrets passed as `vars`. With
+ * `consentMigrations`, the consent database (CONSENT_DB) and the record
+ * endpoint's rate limit (CONSENT_RATE_LIMITER) are bound as
+ * infra/frontend.run.ts binds them, the database migrated from those.
  */
-export function localWorker({ site, work, vars }) {
+export function localWorker({ site, work, vars, migrations, consentMigrations }) {
   const frontend = join(site, "apps/frontend");
   const wrangler = join(site, "infra/ci/node_modules/.bin/wrangler");
   const persist = join(work, "state");
@@ -195,9 +215,30 @@ export function localWorker({ site, work, vars }) {
             binding: "PUBLICATION_DB",
             database_name: "acme-fe-publications",
             database_id: "00000000-0000-0000-0000-000000000000",
-            migrations_dir: join(frontend, "migrations"),
+            migrations_dir: migrations,
           },
+          ...(consentMigrations
+            ? [
+                {
+                  binding: "CONSENT_DB",
+                  database_name: "acme-fe-consent",
+                  database_id: "00000000-0000-0000-0000-000000000001",
+                  migrations_dir: consentMigrations,
+                },
+              ]
+            : []),
         ],
+        ...(consentMigrations
+          ? {
+              ratelimits: [
+                {
+                  name: "CONSENT_RATE_LIMITER",
+                  namespace_id: "1001",
+                  simple: { limit: 30, period: 60 },
+                },
+              ],
+            }
+          : {}),
       },
       null,
       2,
@@ -206,15 +247,16 @@ export function localWorker({ site, work, vars }) {
 
   return {
     // In production Alchemy applies the migrations on deploy; here Wrangler
-    // applies the same files to the local store the Worker is served with.
-    migrate() {
+    // applies the same files to the local store the Worker is served with
+    // (or to `binding`'s database).
+    migrate(binding = "PUBLICATION_DB") {
       return spawnSync(
         wrangler,
         [
           "d1",
           "migrations",
           "apply",
-          "PUBLICATION_DB",
+          binding,
           "--local",
           "--persist-to",
           persist,

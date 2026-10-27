@@ -12,7 +12,10 @@
 // (the lock records it as created once it exists, whoever wrote it), unless
 // gq sync --recreate asks for it. One of an app skeleton (its `app`, the
 // app's directory) is written only with its app: while that directory is
-// missing, so an app the site already has never gains skeleton files.
+// missing, so an app the site already has never gains skeleton files. A
+// fully generated file with a `manifestKey` exists only while gq.ops.json
+// has that key: without it, gq sync writes none, and removes one it wrote
+// that the site hasn't edited since.
 import { createHash } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -101,16 +104,9 @@ function templateValues(manifest) {
 // existing file, and the lock to record (`lock.status` `unchanged`, `create`
 // or `update`). `recreate` lists the create-once files to write again.
 export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
-  const selected = Object.fromEntries(
-    Object.entries(ownership).map(([kind, entries]) => [
-      kind,
-      entries.filter(
-        (entry) => !entry.framework || entry.framework === frontendFramework(manifest),
-      ),
-    ]),
-  );
-  const recreatable = selected.createOnce.filter(({ template }) => template !== undefined);
-  const apps = new Set(selected.createOnce.flatMap(({ app }) => app ?? []));
+  const applicable = ownership.createOnce.filter((entry) => appliesTo(entry, manifest));
+  const recreatable = applicable.filter(({ template }) => template !== undefined);
+  const apps = new Set(applicable.flatMap(({ app }) => app ?? []));
   for (const path of recreate) {
     if (!recreatable.some((entry) => entry.path === path)) {
       const rootFiles = recreatable.flatMap((entry) => (entry.app ? [] : [entry.path]));
@@ -125,14 +121,44 @@ export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
   for (const app of apps) {
     if ((await readEntry(join(root, app))) === undefined) missingApps.add(app);
   }
-  const planned = await Promise.all([
-    ...selected.fullyGenerated.map((entry) => planGeneratedFile(root, lock, manifest, entry)),
-    ...selected.generatedSections.map((entry) => planSection(root, lock, entry)),
-    ...selected.managedKeys.map((entry) => planKeys(root, lock, manifest, entry)),
-    ...selected.createOnce.map((entry) =>
-      planCreateOnce(root, lock, manifest, entry, { recreate, missingApps }),
-    ),
-  ]);
+  const applies = (entry) => appliesTo(entry, manifest);
+  const created = await Promise.all(
+    ownership.createOnce
+      .filter(applies)
+      .map((entry) => planCreateOnce(root, lock, manifest, entry, { recreate, missingApps })),
+  );
+  // A file gq creates once and manages keys of (a skeleton's composer.json)
+  // is written once, with its keys set.
+  const writing = new Map(
+    created
+      .filter(({ status }) => status === "create" || status === "update")
+      .map((plan) => [plan.path, plan]),
+  );
+  const keyed = await Promise.all(
+    ownership.managedKeys
+      .filter(applies)
+      .map((entry) => planKeys(root, lock, manifest, entry, writing.get(entry.path))),
+  );
+  for (const keys of keyed) {
+    const file = writing.get(keys.path);
+    if (file === undefined) continue;
+    file.content = keys.content;
+    file.write = { ...file.write, bytes: keys.content };
+    file.record = { ...file.record, ...keys.record };
+  }
+  const planned = [
+    ...(await Promise.all([
+      ...ownership.fullyGenerated
+        .filter(applies)
+        .map((entry) => planGeneratedFile(root, lock, manifest, entry)),
+      ...ownership.fullyGenerated
+        .filter((entry) => !applies(entry) && entry.manifestKey !== undefined)
+        .map((entry) => planRetiredFile(root, lock, entry)),
+      ...ownership.generatedSections.filter(applies).map((entry) => planSection(root, lock, entry)),
+    ])),
+    ...keyed.filter(({ path }) => !writing.has(path)),
+    ...created,
+  ];
   planned.sort((a, b) => (a.path < b.path ? -1 : 1));
   // A create-once file without a template (gq.ops.json) is only recorded.
   const files = planned.filter(({ status }) => status !== undefined);
@@ -153,11 +179,12 @@ export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
   return { files, lock: { path: LOCK_FILENAME, status, content } };
 }
 
-// Writes what `plan` creates or updates, the lock last. Refuses a plan with
-// an edited file: nothing is written then. What a whole managed file or
-// symlink replaces is removed first, so a write never goes through a symlink
-// the site left there; a file gq manages only part of is a regular file (or
-// missing), written in place so it keeps its mode.
+// Writes what `plan` creates or updates, and removes what it removes, the
+// lock last. Refuses a plan with an edited file: nothing is written then.
+// What a whole managed file or symlink replaces is removed first, so a write
+// never goes through a symlink the site left there; a file gq manages only
+// part of is a regular file (or missing), written in place so it keeps its
+// mode.
 export async function applyManagedFiles(root, plan) {
   if (plan.files.some(({ status }) => status === "edited")) {
     throw new Error("Refusing to write managed files over local edits.");
@@ -166,6 +193,10 @@ export async function applyManagedFiles(root, plan) {
   for (const { path: file, status, write } of [...plan.files, { path: LOCK_FILENAME, ...lock }]) {
     if (status === "unchanged") continue;
     const path = join(root, file);
+    if (status === "remove") {
+      await rm(path, { force: true });
+      continue;
+    }
     await mkdir(dirname(path), { recursive: true });
     if (write.replace) await rm(path, { force: true });
     if (write.symlink !== undefined) await symlink(write.symlink, path);
@@ -174,6 +205,34 @@ export async function applyManagedFiles(root, plan) {
       if (write.executable) await chmod(path, 0o755);
     }
   }
+}
+
+// Whether an ownership entry applies to the Site: one marked with a
+// `contentRuntime` applies only to a Site whose gq.ops.json names that
+// runtime (ADR 0020), so a Site generated before keeps what it copied; one
+// marked with a `manifestKey` only while gq.ops.json has that key (`forms`).
+function appliesTo(entry, manifest) {
+  return (
+    (entry.framework === undefined || entry.framework === frontendFramework(manifest)) &&
+    (entry.contentRuntime === undefined || entry.contentRuntime === manifest.contentRuntime) &&
+    (entry.manifestKey === undefined || manifest[entry.manifestKey] !== undefined)
+  );
+}
+
+// A fully generated file whose `manifestKey` gq.ops.json no longer has: gq
+// sync removes it while it is as gq last wrote it, and otherwise leaves it,
+// the site's now. Either way the lock stops recording it.
+async function planRetiredFile(root, lock, { path }) {
+  const written = lock?.files[path];
+  const current = written === undefined ? undefined : await readEntry(join(root, path));
+  const status = current !== undefined && hashEntry(current) === written ? "remove" : undefined;
+  return {
+    path,
+    status,
+    current: current && displayEntry(current),
+    content: Buffer.alloc(0),
+    record: {},
+  };
 }
 
 // A fully generated file or symlink, rendered whole from its template.
@@ -254,13 +313,23 @@ async function planSection(root, lock, { path, template }) {
 // the site hasn't changed it since gq wrote it (else it is the site's now).
 // A missing file is created holding the managed keys after the site's own
 // that it starts with: the rendered `initial` template's.
-async function planKeys(root, lock, manifest, { path, template, initial }) {
+// `creating`, the plan of a create-once file at the same path, is what the
+// keys are set in instead: the file as gq is about to write it.
+async function planKeys(root, lock, manifest, { path, template, initial }, creating) {
   const managed = leafKeys(JSON.parse(await readTemplate(template)));
   const record = {
     keys: { [path]: Object.fromEntries(managed.map(({ key, value }) => [key, hashValue(value)])) },
   };
-  const current = await readEntry(join(root, path));
+  const current = creating ? { bytes: creating.content } : await readEntry(join(root, path));
   if (current === undefined) {
+    // A file only a skeleton creates (apps/cms/composer.json) has no initial
+    // keys of its own here.
+    if (initial === undefined) {
+      throw new Error(
+        `${path} is missing, and gq sync manages keys of it: restore it, or recreate it ` +
+          `with gq sync --recreate ${path}.`,
+      );
+    }
     const object = JSON.parse(await renderTemplate(initial, manifest));
     for (const { segments, value } of managed) setNested(object, segments, value);
     const content = Buffer.from(`${JSON.stringify(object, null, 2)}\n`);
@@ -299,7 +368,7 @@ async function planKeys(root, lock, manifest, { path, template, initial }) {
     const { node } = found.member;
     const currentValue = JSON.parse(text.slice(node.start, node.end));
     if (JSON.stringify(currentValue) === JSON.stringify(value)) continue;
-    if (hashValue(currentValue) === written[key]) changed.push(key);
+    if (creating || hashValue(currentValue) === written[key]) changed.push(key);
     else edited.push(key);
     edits.push({ start: node.start, end: node.end, text: JSON.stringify(value) });
   }

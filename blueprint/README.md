@@ -24,11 +24,13 @@ create-once scaffolding; consult `ownership.json` to tell them apart.
 
 Partial sources live in `templates/fragments/`:
 
-| Source                        | Site target         | Role                                               |
-| ----------------------------- | ------------------- | -------------------------------------------------- |
-| `fragments/AGENTS.section.md` | `AGENTS.md`         | Generated section, including its begin/end markers |
-| `fragments/gitignore.section` | `.gitignore`        | Generated section, including its begin/end markers |
-| `fragments/package.keys.json` | Root `package.json` | Managed JSON leaf keys, not a complete package     |
+| Source                                 | Site target                  | Role                                               |
+| -------------------------------------- | ---------------------------- | -------------------------------------------------- |
+| `fragments/AGENTS.section.md`          | `AGENTS.md`                  | Generated section, including its begin/end markers |
+| `fragments/gitignore.section`          | `.gitignore`                 | Generated section, including its begin/end markers |
+| `fragments/package.keys.json`          | Root `package.json`          | Managed JSON leaf keys, not a complete package     |
+| `fragments/cms-composer.keys.json`     | `apps/cms/composer.json`     | The content pair's CMS pin (managed key)           |
+| `fragments/frontend-package.keys.json` | `apps/frontend/package.json` | The content pair's Frontend pin (managed key)      |
 
 These paths are relative to `templates/`. Fragments are used as shipped, without
 `{{name}}` substitution. Fully generated and create-once whole-file sources are
@@ -51,6 +53,15 @@ app and infrastructure `package.json` sources retain their target-shaped names.
   does not restore it on the next sync unless `--recreate <path>` requests it.
   App skeleton files are created only while their app directory is absent;
   an existing app does not gain missing skeleton files unless explicitly recreated.
+
+An entry marked `"contentRuntime": "package"` applies only to a Site whose
+`gq.ops.json` says so: the content pair's pins and its `/gq` route adapters.
+Elsewhere `gq sync` neither writes nor records it, so a Site generated before
+keeps its copied runtime
+([ADR 0020](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+The two pin fragments must name one version, which the skeletons'
+`composer.json` and `package.json` start with too; a test holds them equal.
+A managed key in a file created in the same run is written with that file.
 
 `gq.ops.json` is listed without a template: the CLI creates or migrates the
 manifest, and the ownership machinery records its existence. The lock records

@@ -16,8 +16,9 @@
 // printed, only the signature. A Frontend that reconciles with WordPress
 // (ADR 0009) also says how its last reconciliation went, which is printed.
 //
-// `gq frontend secrets` generates the Site's own FRONTEND_REFRESH_TOKEN and
-// PUBLICATION_EVENT_SECRET (32 random bytes each, hex) into Sigillo staging
+// `gq frontend secrets` generates the Site's own FRONTEND_REFRESH_TOKEN,
+// PUBLICATION_EVENT_SECRET and CONSENT_READ_TOKEN (the bearer the CMS reads
+// consent records with; ADR 0019) (32 random bytes each, hex) into Sigillo staging
 // when they are missing or too short for the Frontend to accept. Values go to
 // Sigillo over stdin and are never printed. Deploys, CI releases (gq ci
 // deploy) and the CMS (gq ploi events) take them from there.
@@ -39,12 +40,13 @@ export const FRONTEND_USAGE = [
   "gq frontend events check [--url <frontend origin>] [--json]",
 ];
 
-/** The Frontend's per-Site secrets; it refuses either when shorter than 32 characters. */
+/** The Frontend's per-Site secrets; it refuses any shorter than 32 characters. */
 export const FRONTEND_SECRETS = {
   FRONTEND_REFRESH_TOKEN: "the trusted refresh's bearer token (gq frontend refresh)",
   PUBLICATION_EVENT_SECRET: "the key the CMS signs its events with",
+  CONSENT_READ_TOKEN: "the CMS's bearer for consent record reads",
 };
-const MINIMUM_SECRET_LENGTH = 32;
+export const MINIMUM_SECRET_LENGTH = 32;
 
 const MARKS = { promoted: "✓", superseded: "✓", kept: "✗" };
 
@@ -224,11 +226,7 @@ export async function runFrontendCommand({ context, parsed, env, fetch, exec, io
 async function generateSecrets({ context, parsed, env, exec, io, interactive }) {
   const secrets = await sigilloSecrets({ context, env, exec }, SECRETS_ENVIRONMENT);
   const listed = await secrets.list();
-  const frontendSecrets =
-    context.config.framework === "tanstack"
-      ? { ...FRONTEND_SECRETS, CONSENT_READ_TOKEN: "the CMS consent-read bearer token" }
-      : FRONTEND_SECRETS;
-  const plan = Object.keys(frontendSecrets).map((name) => {
+  const plan = Object.keys(FRONTEND_SECRETS).map((name) => {
     const stored = new RegExp(`\\b${name}\\b`, "u").test(listed);
     const value = context.env[name]?.trim();
     if (!stored) return { name, action: "generate" };
@@ -246,7 +244,7 @@ async function generateSecrets({ context, parsed, env, exec, io, interactive }) 
         action === "keep"
           ? `✓ ${name} in Sigillo ${secrets.name}`
           : action === "generate"
-            ? `+ generate ${name} (${frontendSecrets[name]}), store it in Sigillo ${secrets.name}`
+            ? `+ generate ${name} (${FRONTEND_SECRETS[name]}), store it in Sigillo ${secrets.name}`
             : `~ ${name} is shorter than ${MINIMUM_SECRET_LENGTH} characters, which the Frontend refuses: generate a new one`,
       )
       .join("\n"),
@@ -266,7 +264,7 @@ async function generateSecrets({ context, parsed, env, exec, io, interactive }) 
     ui.success(`${name} stored in Sigillo ${secrets.name}`);
   }
   ui.outro(
-    "Bind them: pnpm ci:deploy (CI releases), then deploy the Frontend (a release or pnpm deploy:frontend); pnpm ploi:events gives the CMS its event key for its next release.",
+    "Bind them: pnpm ci:deploy (CI releases), then deploy the Frontend (a release or pnpm deploy:frontend); pnpm ploi:events gives the CMS its event key and consent read token for its next release.",
   );
   return 0;
 }

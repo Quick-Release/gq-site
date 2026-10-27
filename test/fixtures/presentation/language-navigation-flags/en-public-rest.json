@@ -1,0 +1,240 @@
+{
+  "id": 768,
+  "date": "2026-10-24T01:01:40",
+  "date_gmt": "2026-10-24T01:01:40",
+  "guid": {
+    "rendered": "http://127.0.0.1:8180/gqd-pll-mlay769p-capture-language-en/"
+  },
+  "modified": "2026-10-24T01:01:40",
+  "modified_gmt": "2026-10-24T01:01:40",
+  "slug": "gqd-pll-mlay769p-capture-language-en",
+  "status": "publish",
+  "type": "page",
+  "link": "http://127.0.0.1:8180/gqd-pll-mlay769p-capture-language-en/",
+  "title": {
+    "rendered": "GQD Polylang gqd-pll-mlay769p capture_language_en"
+  },
+  "content": {
+    "rendered": "<div class=\"gqd-content\"><nav role=\"navigation\" aria-label=\"Choose a language\"><ul style=\"--gqd-base-display:flex;--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 4);--gqd-base-textAlign:start;--gqd-lg-gap:calc(var(--gqd-spacing, 0.25rem) * 8)\" class=\"gqd-capture-language-list wp-block-polylang-language-switcher gqd-presentation\">\t<li class=\"lang-item lang-item-194 lang-item-en current-lang lang-item-first\"><a lang=\"en-US\" hreflang=\"en-US\" href=\"http://127.0.0.1:8180/\" aria-current=\"true\"><img loading=\"lazy\" decoding=\"async\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAALCAMAAABBPP0LAAAAt1BMVEWSmb66z+18msdig8La3u+tYX9IaLc7W7BagbmcUW+kqMr/q6n+//+hsNv/lIr/jIGMnNLJyOP9/fyQttT/wb3/////aWn+YWF5kNT0oqz0i4ueqtIZNJjhvt/8gn//WVr/6+rN1+o9RKZwgcMPJpX/VFT9UEn+RUX8Ozv2Ly+FGzdYZrfU1e/8LS/lQkG/mbVUX60AE231hHtcdMb0mp3qYFTFwNu3w9prcqSURGNDaaIUMX5FNW5wYt7AAAAAjklEQVR4AR3HNUJEMQCGwf+L8RR36ajR+1+CEuvRdd8kK9MNAiRQNgJmVDAt1yM6kSzYVJUsPNssAk5N7ZFKjVNFAY4co6TAOI+kyQm+LFUEBEKKzuWUNB7rSH/rSnvOulOGk+QlXTBqMIrfYX4tSe2nP3iRa/KNK7uTmWJ5a9+erZ3d+18od4ytiZdvZyuKWy8o3UpTVAAAAABJRU5ErkJggg==\" alt=\"\" width=\"16\" height=\"11\" style=\"width: 16px; height: 11px;\" /><span style=\"margin-left:0.3em;\">English</span></a></li>\n\t<li class=\"lang-item lang-item-197 lang-item-fr\"><a lang=\"fr-FR\" hreflang=\"fr-FR\" href=\"http://127.0.0.1:8180/fr/\"><img loading=\"lazy\" decoding=\"async\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAALCAMAAABBPP0LAAAAbFBMVEVzldTg4ODS0tLxDwDtAwDjAADD0uz39/fy8vL3k4nzgna4yOixwuXu7u7s6+zn5+fyd2rvcGPtZljYAABrjNCpvOHrWkxegsqfs93NAADpUUFRd8THAABBa7wnVbERRKa8vLyxsLCoqKigoKClCvcsAAAAXklEQVR4AS3JxUEAQQAEwZo13Mk/R9w5/7UERJCIGIgj5qfRJZEpPyNfCgJTjMR1eRRnJiExFJz5Mf1PokWr/UztIjRGQ3V486u0HO55m634U6dMcf0RNPfkVCTvKjO16xHA8miowAAAAABJRU5ErkJggg==\" alt=\"\" width=\"16\" height=\"11\" style=\"width: 16px; height: 11px;\" /><span style=\"margin-left:0.3em;\">Français</span></a></li>\n</ul></nav><nav role=\"navigation\" aria-label=\"Choose a language\"><ul style=\"--gqd-base-display:flex;--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 4);--gqd-base-textAlign:start;--gqd-lg-gap:calc(var(--gqd-spacing, 0.25rem) * 8)\" class=\"gqd-capture-language-flags wp-block-polylang-language-switcher gqd-presentation\">\t<li class=\"lang-item lang-item-194 lang-item-en current-lang lang-item-first\"><a lang=\"en-US\" hreflang=\"en-US\" href=\"http://127.0.0.1:8180/\" aria-current=\"true\"><img loading=\"lazy\" decoding=\"async\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAALCAMAAABBPP0LAAAAt1BMVEWSmb66z+18msdig8La3u+tYX9IaLc7W7BagbmcUW+kqMr/q6n+//+hsNv/lIr/jIGMnNLJyOP9/fyQttT/wb3/////aWn+YWF5kNT0oqz0i4ueqtIZNJjhvt/8gn//WVr/6+rN1+o9RKZwgcMPJpX/VFT9UEn+RUX8Ozv2Ly+FGzdYZrfU1e/8LS/lQkG/mbVUX60AE231hHtcdMb0mp3qYFTFwNu3w9prcqSURGNDaaIUMX5FNW5wYt7AAAAAjklEQVR4AR3HNUJEMQCGwf+L8RR36ajR+1+CEuvRdd8kK9MNAiRQNgJmVDAt1yM6kSzYVJUsPNssAk5N7ZFKjVNFAY4co6TAOI+kyQm+LFUEBEKKzuWUNB7rSH/rSnvOulOGk+QlXTBqMIrfYX4tSe2nP3iRa/KNK7uTmWJ5a9+erZ3d+18od4ytiZdvZyuKWy8o3UpTVAAAAABJRU5ErkJggg==\" alt=\"English\" width=\"16\" height=\"11\" style=\"width: 16px; height: 11px;\" /></a></li>\n\t<li class=\"lang-item lang-item-197 lang-item-fr\"><a lang=\"fr-FR\" hreflang=\"fr-FR\" href=\"http://127.0.0.1:8180/fr/\"><img loading=\"lazy\" decoding=\"async\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAALCAMAAABBPP0LAAAAbFBMVEVzldTg4ODS0tLxDwDtAwDjAADD0uz39/fy8vL3k4nzgna4yOixwuXu7u7s6+zn5+fyd2rvcGPtZljYAABrjNCpvOHrWkxegsqfs93NAADpUUFRd8THAABBa7wnVbERRKa8vLyxsLCoqKigoKClCvcsAAAAXklEQVR4AS3JxUEAQQAEwZo13Mk/R9w5/7UERJCIGIgj5qfRJZEpPyNfCgJTjMR1eRRnJiExFJz5Mf1PokWr/UztIjRGQ3V486u0HO55m634U6dMcf0RNPfkVCTvKjO16xHA8miowAAAAABJRU5ErkJggg==\" alt=\"Français\" width=\"16\" height=\"11\" style=\"width: 16px; height: 11px;\" /></a></li>\n</ul></nav><div style=\"--gqd-base-display:flex;--gqd-base-gap:calc(var(--gqd-spacing, 0.25rem) * 4);--gqd-base-textAlign:start;--gqd-lg-gap:calc(var(--gqd-spacing, 0.25rem) * 8)\" class=\"gqd-capture-language-dropdown wp-block-polylang-language-switcher gqd-presentation\"><label class=\"screen-reader-text\" for=\"lang_choice_3\">Choose a language</label><select name=\"lang_choice_3\" id=\"lang_choice_3\" class=\"pll-switcher-select\">\n\t<option value=\"http://127.0.0.1:8180/\" lang=\"en-US\" data-lang=\"{&quot;id&quot;:0,&quot;name&quot;:&quot;English&quot;,&quot;slug&quot;:&quot;en&quot;,&quot;dir&quot;:0}\">English</option>\n\t<option value=\"http://127.0.0.1:8180/fr/\" lang=\"fr-FR\" data-lang=\"{&quot;id&quot;:0,&quot;name&quot;:&quot;Fran\\u00e7ais&quot;,&quot;slug&quot;:&quot;fr&quot;,&quot;dir&quot;:0}\">Français</option>\n\n</select>\n<script>\n\t\t\t\t\tdocument.getElementById( \"lang_choice_3\" ).addEventListener( \"change\", function ( event ) { location.href = event.currentTarget.value; } )\n\t\t\t\t</script></div></div>",
+    "protected": false
+  },
+  "excerpt": {
+    "rendered": "",
+    "protected": false
+  },
+  "author": 0,
+  "featured_media": 0,
+  "parent": 0,
+  "menu_order": 0,
+  "comment_status": "closed",
+  "ping_status": "closed",
+  "template": "",
+  "meta": {
+    "footnotes": ""
+  },
+  "class_list": [
+    "post-768",
+    "page",
+    "type-page",
+    "status-publish",
+    "hentry"
+  ],
+  "getquickBlocks": [
+    {
+      "name": "polylang/language-switcher",
+      "attributes": {
+        "className": "gqd-capture-language-list",
+        "dropdown": false,
+        "force_home": true,
+        "hide_current": false,
+        "hide_if_no_translation": true,
+        "links": [
+          {
+            "slug": "en",
+            "locale": "en-US",
+            "label": "English",
+            "url": "http://127.0.0.1:8180/",
+            "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/gb.png",
+            "current": true,
+            "direction": "ltr",
+            "noTranslation": false
+          },
+          {
+            "slug": "fr",
+            "locale": "fr-FR",
+            "label": "Français",
+            "url": "http://127.0.0.1:8180/fr/",
+            "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/fr.png",
+            "current": false,
+            "direction": "ltr",
+            "noTranslation": false
+          }
+        ],
+        "presentation": {
+          "base": {
+            "display": "flex",
+            "gap": 4,
+            "textAlign": "start"
+          },
+          "lg": {
+            "gap": 8
+          }
+        },
+        "show_flags": true,
+        "show_names": true
+      },
+      "content": null,
+      "children": [],
+      "supported": true,
+      "dataRequirements": [
+        "site"
+      ]
+    },
+    {
+      "name": "polylang/language-switcher",
+      "attributes": {
+        "className": "gqd-capture-language-flags",
+        "dropdown": false,
+        "force_home": true,
+        "hide_current": false,
+        "hide_if_no_translation": true,
+        "links": [
+          {
+            "slug": "en",
+            "locale": "en-US",
+            "label": "English",
+            "url": "http://127.0.0.1:8180/",
+            "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/gb.png",
+            "current": true,
+            "direction": "ltr",
+            "noTranslation": false
+          },
+          {
+            "slug": "fr",
+            "locale": "fr-FR",
+            "label": "Français",
+            "url": "http://127.0.0.1:8180/fr/",
+            "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/fr.png",
+            "current": false,
+            "direction": "ltr",
+            "noTranslation": false
+          }
+        ],
+        "presentation": {
+          "base": {
+            "display": "flex",
+            "gap": 4,
+            "textAlign": "start"
+          },
+          "lg": {
+            "gap": 8
+          }
+        },
+        "show_flags": true,
+        "show_names": false
+      },
+      "content": null,
+      "children": [],
+      "supported": true,
+      "dataRequirements": [
+        "site"
+      ]
+    },
+    {
+      "name": "polylang/language-switcher",
+      "attributes": {
+        "className": "gqd-capture-language-dropdown",
+        "dropdown": true,
+        "force_home": true,
+        "hide_current": true,
+        "hide_if_no_translation": true,
+        "links": [
+          {
+            "slug": "en",
+            "locale": "en-US",
+            "label": "English",
+            "url": "http://127.0.0.1:8180/",
+            "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/gb.png",
+            "current": true,
+            "direction": "ltr",
+            "noTranslation": false
+          },
+          {
+            "slug": "fr",
+            "locale": "fr-FR",
+            "label": "Français",
+            "url": "http://127.0.0.1:8180/fr/",
+            "flagUrl": "http://127.0.0.1:8180/wp-content/plugins/gq-design/.ci/wordpress/wp-content/plugins/polylang/flags/fr.png",
+            "current": false,
+            "direction": "ltr",
+            "noTranslation": false
+          }
+        ],
+        "presentation": {
+          "base": {
+            "display": "flex",
+            "gap": 4,
+            "textAlign": "start"
+          },
+          "lg": {
+            "gap": 8
+          }
+        },
+        "show_flags": false,
+        "show_names": true
+      },
+      "content": null,
+      "children": [],
+      "supported": true,
+      "dataRequirements": [
+        "site"
+      ]
+    }
+  ],
+  "_links": {
+    "self": [
+      {
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/pages/768",
+        "targetHints": {
+          "allow": [
+            "GET"
+          ]
+        }
+      }
+    ],
+    "collection": [
+      {
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/pages"
+      }
+    ],
+    "about": [
+      {
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/types/page"
+      }
+    ],
+    "replies": [
+      {
+        "embeddable": true,
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/comments?post=768"
+      }
+    ],
+    "version-history": [
+      {
+        "count": 0,
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/pages/768/revisions"
+      }
+    ],
+    "wp:attachment": [
+      {
+        "href": "http://127.0.0.1:8180/wp-json/wp/v2/media?parent=768"
+      }
+    ],
+    "curies": [
+      {
+        "name": "wp",
+        "href": "https://api.w.org/{rel}",
+        "templated": true
+      }
+    ]
+  }
+}

@@ -103,7 +103,11 @@ A Frontend stage is a Worker named `<project>-fe-<stage>` whose
 that binding is what ties it to the project. Any other Worker named like one
 (`<project>-fe-fe`, project `<project>-fe`'s production Worker; a
 hand-deployed `<project>-fe-redirects`; `<project>-fe-shop-fe`) may not be
-the Site's: the plan lists it for you to check, and leaves it alone. Once the Ploi site is suspended the backup
+the Site's: the plan lists it for you to check, and leaves it alone. A
+consent purge Worker (`<project>-consent-purge[-<stage>]`, [consent
+guide](consent.md)) is named apart so it is never taken for a stage: it has
+no URL to cut, and keeps purging expired consent records until the archive
+deletes it. Once the Ploi site is suspended the backup
 counts as done: a suspended CMS can't change its database, so the backup
 taken before it is the final one.
 
@@ -201,10 +205,16 @@ former client (created if missing, with no public domain), under
 | `uploads.zip`      | Every object of the media bucket, keys kept as paths. Streamed from the bucket to the archive, never held in memory or on disk. Only a media bucket named `<project>-media` is archived: another may hold other clients' uploads, and is listed for you. |
 | `database.sql.gz`  | A fresh dump of the CMS database (still there, on the suspended site).                                                                                                                                                                                   |
 | `publications.sql` | The Frontend's D1 publication store, exported (and `publications-<stage>.sql` for each other stage's). A Site without one (no durable delivery) can't be archived yet.                                                                                   |
+| `consent.sql`      | The Frontend's consent database (`<project>-fe-consent`, [consent guide](consent.md)), exported, and `consent-<stage>.sql` for each other stage's. Only on a Site whose Frontend has a consent Runtime. Visitors' consent records: see below.            |
 | `backups/`         | Copies of the Site's own database backups (`<backups.prefix><database>/`), the cut's final backup among them. When the backups bucket is deleted whole (it is the project's releases bucket, as is usual), everything under `backups.prefix` instead.    |
 | `code.bundle`      | An Artifacts-only Site's code: a git bundle of every ref of its Artifacts repository. A Site on GitHub has none: its repository is archived instead.                                                                                                     |
 | `gq.ops.json`      | The Site's manifest as it was.                                                                                                                                                                                                                           |
-| `manifest.json`    | Each file's size and sha256, and where everything came from: buckets, Ploi IDs, Workers, the D1 store, the GitHub repository's HEAD (an Artifacts-only Site's refs instead).                                                                             |
+| `manifest.json`    | Each file's size and sha256, and where everything came from: buckets, Ploi IDs, Workers, the D1 stores, each stage's consent database and purge Worker, the GitHub repository's HEAD (an Artifacts-only Site's refs instead).                            |
+
+**An archive with `consent*.sql` holds personal data**: visitors' consent
+records, kept as the controller's proof of consent. CONSENT-1's retention
+(CN-R10) governs how long the archive may keep them, whatever the archive's
+own retention: delete them from it once that period ends.
 
 Each media object and backup must hold as many bytes as its bucket lists.
 Then every file is read back and checked against `manifest.json`, and
@@ -234,7 +244,7 @@ In this order, only after the archive is recorded:
 | Part      | What happens                                                                                                                                                                                                  |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Ploi      | The site (and `ploi.siteId` in `gq.ops.json`), its database and its system user, unless another site on the server runs as it. Ploi deletes the site in the background, so gq waits for it to go first.       |
-| Frontend  | The Worker and its D1 publication store, and every other stage's.                                                                                                                                             |
+| Frontend  | Each stage's consent purge Worker, then its consent database; then the Worker and its D1 publication store, and every other stage's.                                                                          |
 | CI        | The CI Worker, its Workflows and its container application.                                                                                                                                                   |
 | Media, R2 | The media bucket's custom domain; then the media, releases and CI backup buckets, each emptied with a key scoped to it, and deleted. The backups bucket stays: only the Site's own backups in it are deleted. |
 | Artifacts | The Artifacts repository. The empty namespace stays (the plan says so).                                                                                                                                       |
@@ -260,11 +270,17 @@ own:
 | Workers               | `<project>-fe`, `<project>-ci`                                  |
 | Workflows             | `<project>-ci`, `<project>-mirror`                              |
 | Container application | `<project>-ci-cisandbox`                                        |
-| D1 store              | `<project>-fe-publications`                                     |
+| D1 stores             | `<project>-fe-publications`, `<project>-fe-consent`             |
+| Consent purge Worker  | `<project>-consent-purge`                                       |
 | Artifacts repository  | `<project>`                                                     |
 
 Other stages' Workers and D1 stores go only when the `PUBLICATION_DB` binding
-ties them together (see the cut). Anything else, a sibling project's
+ties them together (see the cut). A stage's consent database
+(`<project>-fe-consent-<stage>`) goes only when that stage is tied so, and
+its purge Worker (`<project>-consent-purge-<stage>`) only when its
+`CONSENT_DB` binding is that database too; one named for a stage nothing
+ties to the project is listed for you. The consent resources go before the
+Frontend's, so a rerun still finds the stages they belong to. Anything else, a sibling project's
 `<project>-shop-media` included, is listed for you (`!`) and left alone; so
 are the custom domain and DNS records of a media bucket that isn't the
 project's own. A resource is reported deleted (`✓`) only once an exact lookup

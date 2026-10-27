@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { consent } from "../site.server";
+import { handleConsent } from "../site.server";
 
-const handle = ({ request }: { request: Request }) => consent.handleRead(request);
+const handle = ({ request }: { request: Request }) => handleConsent(request);
 export const Route = createFileRoute("/gq/consent/$")({
   server: {
     handlers: {

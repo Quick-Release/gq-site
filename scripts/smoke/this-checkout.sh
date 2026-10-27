@@ -15,10 +15,16 @@ use_this_checkout() {
   tarball=$(cd "$packed" && pwd)/$(cd "$packed" && ls getquick-site-*.tgz)
   node -e '
     const fs = require("node:fs");
-    const [file, tarball] = process.argv.slice(1);
+    const [file, tarball, contentTarball] = process.argv.slice(1);
     const workspace = fs.readFileSync(file, "utf8");
     if (!/^overrides:$/m.test(workspace)) throw new Error(`${file} has no overrides`);
-    const override = `overrides:\n  "@getquick/site": ${JSON.stringify(`file:${tarball}`)}`;
+    let override = `overrides:\n  "@getquick/site": ${JSON.stringify(`file:${tarball}`)}`;
+    // Staged consumer evidence can install an immutable public-content preview
+    // without changing the generated release pins or requiring private packages.
+    if (contentTarball) {
+      const packedContent = fs.realpathSync(contentTarball);
+      override += `\n  "@getquick/content": ${JSON.stringify(`file:${packedContent}`)}`;
+    }
     fs.writeFileSync(file, workspace.replace(/^overrides:$/m, override));
-  ' "$site/pnpm-workspace.yaml" "$tarball"
+  ' "$site/pnpm-workspace.yaml" "$tarball" "${GQ_CONTENT_TARBALL:-}"
 }

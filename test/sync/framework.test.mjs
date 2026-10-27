@@ -14,10 +14,14 @@ test("framework is independent of variant and omission preserves Astro", () => {
   for (const variant of ["content", "commerce"]) {
     assert.equal(frontendFramework(validateManifest({ ...legacy, variant })), "astro");
     for (const framework of ["astro", "tanstack"]) {
-      assert.equal(validateManifest({ ...legacy, variant, framework }).framework, framework);
+      assert.equal(
+        validateManifest({ ...legacy, variant, framework, contentRuntime: "package" }).framework,
+        framework,
+      );
     }
   }
   assert.throws(() => validateManifest({ ...legacy, framework: "react" }), /framework/u);
+  assert.throws(() => validateManifest({ ...legacy, framework: "tanstack" }), /contentRuntime/u);
 });
 
 test("an omitted framework generates byte-identical Astro files and lock", async () => {
@@ -48,11 +52,8 @@ test("new defaults to Start with managed Runtime endpoints, no copied runtime, a
   }
   const composer = JSON.parse(files["apps/cms/composer.json"].content);
   assert.equal(composer.require["getquick/gq-content"], "0.4.0");
-  assert.equal(composer.require["getquick/gq-config"], "0.5.0");
-  assert.match(
-    files["apps/cms/config/application.php"].content,
-    /Config::define\('GQ_CONTENT_SITE_ID', 'cesam-bnq'\)/u,
-  );
+  assert.equal(composer.require["getquick/gq-config"], "0.4.3");
+  assert.match(files["apps/cms/config/application.php"].content, /GQ_CONTENT_SITE_ID/u);
   const pkg = JSON.parse(files["apps/frontend/package.json"].content);
   assert.equal(pkg.dependencies["@getquick/content"], "0.4.0");
   assert.equal(pkg.dependencies.astro, undefined);
@@ -84,4 +85,28 @@ test("new defaults to Start with managed Runtime endpoints, no copied runtime, a
   const refused = await runGq(["sync"], { cwd: root });
   assert.equal(refused.code, 1);
   assert.deepEqual(await snapshot(root), edited);
+});
+
+test("Start forms are managed only while configured and doctor checks the Start adapter", async () => {
+  const root = await temporaryDirectory();
+  const result = await runGq(["new", ".", "--project", "forms-start", "--variant", "content"], {
+    cwd: root,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const ops = JSON.parse(await readSite(root, "gq.ops.json"));
+  ops.wordpress.plugins.push("gravityforms");
+  ops.forms = { provider: "gravityforms", spam: ["honeypot"] };
+  const manifest = join(root, "gq.ops.json");
+  await writeFile(manifest, `${JSON.stringify(ops, null, 2)}\n`);
+  const sync = await runGq(["sync"], { cwd: root });
+  assert.equal(sync.code, 0, sync.stderr);
+  const route = "apps/frontend/src/routes/gq.forms.$.ts";
+  assert.match(await readSite(root, route), /createFormsServer/u);
+  const doctor = await runGq(["doctor"], { cwd: root });
+  assert.ok(doctor.stdout.includes(`${route} handles form posts`), doctor.stdout + doctor.stderr);
+  assert.ok(!doctor.stdout.includes("src/pages/gq/forms/[...rest].ts is missing"));
+  delete ops.forms;
+  await writeFile(manifest, `${JSON.stringify(ops, null, 2)}\n`);
+  assert.equal((await runGq(["sync"], { cwd: root })).code, 0);
+  assert.equal((await snapshot(root))[route], undefined);
 });

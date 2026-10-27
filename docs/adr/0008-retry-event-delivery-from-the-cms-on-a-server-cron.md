@@ -3,6 +3,18 @@
 - Status: Accepted; amended by [ADR 0009](0009-reconcile-missed-changes-on-the-cms-scheduler.md)
   (each `retry-due` run also asks the Frontend to reconcile)
 - Date: 2026-10-02
+- Superseded in part: its runtime decisions by
+  [gq-content ADR 0002](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0002-preserve-publication-delivery-and-withdrawal-through-extraction.md)
+  for Sites on the content package pair ([ADR 0020](0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+
+## Superseded in part
+
+Resending recorded events, when a delivery is due and the editor and
+operator diagnostics are the runtime's (the `getquick/gq-content` plugin's
+`wp gq-events` commands). Kept here: the server's cron as the scheduler,
+which `gq ploi events` installs with the same command,
+`wp gq-events retry-due --quiet`, and `gq offboard`'s handling of that
+crontab.
 
 ## Context
 

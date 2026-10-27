@@ -1,0 +1,66 @@
+{
+  "blocks": [
+    {
+      "fixture": "getquick-container-presentation",
+      "node": {
+        "attributes": {
+          "presentation": {
+            "base": {
+              "maxWidth": "none"
+            }
+          }
+        },
+        "children": [
+          {
+            "attributes": {},
+            "children": [
+              {
+                "attributes": {},
+                "children": [],
+                "content": "<p>Bare nested container</p>",
+                "name": "core/paragraph",
+                "supported": true
+              }
+            ],
+            "content": null,
+            "name": "getquick-design/container",
+            "supported": true
+          },
+          {
+            "attributes": {
+              "presentation": {
+                "base": {
+                  "marginInline": "auto",
+                  "paddingInline": 4,
+                  "width": "1/2"
+                },
+                "lg": {
+                  "maxWidth": "lg"
+                },
+                "md": {
+                  "width": "full"
+                }
+              }
+            },
+            "children": [
+              {
+                "attributes": {},
+                "children": [],
+                "content": "<p>Authored nested container</p>",
+                "name": "core/paragraph",
+                "supported": true
+              }
+            ],
+            "content": null,
+            "name": "getquick-design/container",
+            "supported": true
+          }
+        ],
+        "content": null,
+        "name": "getquick-design/container",
+        "supported": true
+      }
+    }
+  ],
+  "renderer": "neutral"
+}

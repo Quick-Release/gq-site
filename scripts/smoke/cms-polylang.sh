@@ -7,9 +7,9 @@
 # Polylang and GQ Polylang for WPGraphQL, then runs cms-polylang.mjs: the
 # deploy's Polylang configuration (the generated deploy/ploi/polylang.sh,
 # with the languages the generated admin.sh passes it) on an existing
-# monolingual Site, then GraphQL over HTTP as the Frontend reads it, then
-# the events the site's publication-events.php and settings-events.php send
-# as each language is edited.
+# monolingual Site, then GraphQL over HTTP as the Frontend reads it. The
+# events each language's changes send are the content runtime's
+# (getquick/gq-content), proved in its own repository.
 #
 # Generation stays offline and secret-free; only the downloads (WordPress,
 # its SQLite integration, WPGraphQL, Polylang, GQ Polylang for WPGraphQL and

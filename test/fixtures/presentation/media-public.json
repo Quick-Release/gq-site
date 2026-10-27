@@ -1,0 +1,106 @@
+{
+  "nodes": [
+    {
+      "name": "core/image",
+      "attributes": {
+        "linkDestination": "custom",
+        "presentation": {
+          "base": {
+            "width": "full",
+            "height": 48,
+            "aspectRatio": "square",
+            "objectFit": "cover",
+            "objectPosition": "top-left"
+          }
+        }
+      },
+      "content": "<figure class=\"wp-block-image\"><a href=\"https://example.test/route\"><img src=\"https://gqd-media.test/photo.svg\" alt=\"Mountain\" /></a><figcaption class=\"wp-element-caption\">Caption</figcaption></figure>",
+      "children": [],
+      "supported": true
+    },
+    {
+      "name": "core/cover",
+      "attributes": {
+        "alt": "Cover landscape",
+        "dimRatio": 50,
+        "id": 42,
+        "presentation": {
+          "base": {
+            "width": "full",
+            "height": 48,
+            "objectFit": "cover",
+            "objectPosition": {
+              "x": 0.2,
+              "y": 0.8
+            },
+            "overlayOpacity": "50"
+          }
+        },
+        "url": "https://gqd-media.test/photo.svg"
+      },
+      "content": null,
+      "children": [
+        {
+          "name": "core/paragraph",
+          "attributes": {},
+          "content": "<p>Readable foreground</p>",
+          "children": [],
+          "supported": true
+        }
+      ],
+      "supported": true
+    },
+    {
+      "name": "core/post-featured-image",
+      "attributes": {
+        "isLink": true,
+        "presentation": {
+          "base": {
+            "width": "full",
+            "height": 48,
+            "aspectRatio": "square",
+            "objectFit": "cover",
+            "objectPosition": "top-left"
+          }
+        }
+      },
+      "content": null,
+      "children": [],
+      "supported": true,
+      "dataRequirements": [
+        "post"
+      ]
+    },
+    {
+      "name": "core/site-logo",
+      "attributes": {
+        "isLink": true,
+        "linkTarget": "_self",
+        "logo": null,
+        "logoDark": null,
+        "logoVariation": null,
+        "presentation": {
+          "base": {
+            "width": "full",
+            "height": 48,
+            "aspectRatio": "square",
+            "objectFit": "cover",
+            "objectPosition": "top-left"
+          }
+        }
+      },
+      "content": null,
+      "children": [],
+      "supported": true,
+      "dataRequirements": [
+        "site"
+      ]
+    }
+  ],
+  "html": [
+    "\n<figure style=\"--gqd-base-width:100%;--gqd-base-height:calc(var(--gqd-spacing, 0.25rem) * 48);--gqd-base-aspectRatio:1 / 1;--gqd-base-objectFit:cover;--gqd-base-objectPosition:left top\" class=\"wp-block-image gqd-presentation\"><a href=\"https://example.test/route\"><img src=\"https://gqd-media.test/photo.svg\" alt=\"Mountain\"/></a><figcaption class=\"wp-element-caption\">Caption</figcaption></figure>\n",
+    "\n<div style=\"--gqd-base-width:100%;--gqd-base-height:calc(var(--gqd-spacing, 0.25rem) * 48);--gqd-base-objectFit:cover;--gqd-base-objectPosition:20% 80%;--gqd-base-overlayOpacity:0.5\" class=\"wp-block-cover gqd-presentation\"><img class=\"wp-block-cover__image-background wp-image-42\" alt=\"Cover landscape\" src=\"https://gqd-media.test/photo.svg\" data-object-fit=\"cover\"/><span aria-hidden=\"true\" class=\"wp-block-cover__background has-background-dim\"></span><div class=\"wp-block-cover__inner-container is-layout-flow wp-block-cover-is-layout-flow\">\n<p class=\"wp-block-paragraph\">Readable foreground</p>\n</div></div>\n",
+    "",
+    ""
+  ]
+}

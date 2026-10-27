@@ -1,6 +1,6 @@
 import "@tanstack/react-start/server-only";
-import { createContentRuntime } from "@getquick/content/server";
-import { createConsentServer } from "@getquick/content/consent/server";
+import { content } from "./lib/content";
+import { createConsentServer, type ConsentBindings } from "@getquick/content/consent/server";
 // This export currently has an Astro name, but contains pure HTML functions,
 // no Astro dependency. A neutral consent UI export is requested upstream.
 import { consentPage } from "@getquick/content/consent/astro";
@@ -12,40 +12,29 @@ import {
 } from "@getquick/content";
 import { getRequest, setResponseHeader, setResponseStatus } from "@tanstack/react-start/server";
 import { redirect } from "@tanstack/react-router";
-import type { WebsiteEnv } from "../../../infra/frontend.run";
 import manifest from "../../../gq.ops.json";
-
-async function bindings(): Promise<Partial<WebsiteEnv>> {
-  return import("cloudflare:workers").then(({ env }) => env as WebsiteEnv).catch(() => ({}));
+const bindings = async () =>
+  ((await import("cloudflare:workers").catch(() => null))?.env ?? {}) as ConsentBindings & {
+    CONSENT_RETENTION_DAYS?: string;
+  };
+export async function handleConsent(request: Request) {
+  const { CONSENT_RETENTION_DAYS: retention } = await bindings();
+  const server = createConsentServer({
+    siteId: manifest.project,
+    bindings,
+    retentionDays: retention ? Number(retention) : undefined,
+  });
+  return (await server.handle(request)) ?? new Response(null, { status: 404 });
 }
-const ops: {
-  project: string;
-  domains?: { admin: string; frontend: string };
-  wordpress?: import("@getquick/content").WordPressLanguages & { graphqlPath?: string };
-} = manifest;
-const graphqlEndpoint =
-  import.meta.env.PUBLIC_WORDPRESS_GRAPHQL_URL ||
-  `https://${ops.domains?.admin ?? "{{project}}-admin.ddev.site"}${ops.wordpress?.graphqlPath ?? "/wp/graphql"}`;
-const cmsOrigin = new URL(graphqlEndpoint).origin;
-export const content = createContentRuntime({
-  site: ops.project,
-  cmsOrigin,
-  graphqlEndpoint,
-  wordpress: ops.wordpress,
-  development: import.meta.env.DEV,
-  isServer: () => true,
-  bindings,
-  consent: { cmsSettings: true },
-});
-export const consent = createConsentServer({ siteId: ops.project, bindings });
 
 export async function page(path: string) {
+  const runtime = content();
   const request = getRequest();
   const origin = new URL(request.url).origin;
-  const language = content.routeLanguage(path);
-  const result = content.isLanguageHome(path)
-    ? await content.publishedHome(origin, language)
-    : await content.publishedEntry(path, origin);
+  const language = runtime.routeLanguage(path);
+  const result = runtime.isLanguageHome(path)
+    ? await runtime.publishedHome(origin, language)
+    : await runtime.publishedEntry(path, origin);
   setResponseHeader("Cache-Control", "no-cache");
   if (result.kind === "moved") throw redirect({ href: result.uri, statusCode: 301 });
   setResponseStatus(responseStatus(result));
@@ -53,7 +42,7 @@ export async function page(path: string) {
   if (result.kind !== "found")
     return {
       language: language.locale.replaceAll("_", "-") || "en",
-    title: result.kind === "missing" ? "Page not found" : "Content unavailable",
+      title: result.kind === "missing" ? "Page not found" : "Content unavailable",
       styles: "",
       body: "",
       header: "",
@@ -63,16 +52,16 @@ export async function page(path: string) {
   const publication = "home" in result.content ? result.content.home : result.content.entry;
   const body = "page" in publication ? publication.page : publication;
   const chrome = result.content.chrome;
-  const configuration = content.consentConfiguration(chrome);
+  const configuration = runtime.consentConfiguration(chrome);
   return {
     language: language.locale.replaceAll("_", "-") || "en",
     title: stripHtml(body.title),
     styles: designThemeStyleSheet(publication.theme) + presentationStyleSheet(publication.theme),
     body: body.designBlocks
-      ? content.renderDesignPattern(body.designBlocks, { siteOrigin: origin })
+      ? runtime.renderDesignPattern(body.designBlocks, { siteOrigin: origin })
       : body.content,
-    header: content.renderDesignPattern(chrome.header, { siteOrigin: origin }),
-    footer: content.renderDesignPattern(chrome.footer, { siteOrigin: origin }),
+    header: runtime.renderDesignPattern(chrome.header, { siteOrigin: origin }),
+    footer: runtime.renderDesignPattern(chrome.footer, { siteOrigin: origin }),
     consent: configuration
       ? consentPage({
           configuration,

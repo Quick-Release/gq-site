@@ -4,6 +4,16 @@
   (a bilingual Site is ready only when every language exists in the CMS and
   its front page, chrome and homepage are served)
 - Date: 2026-10-03
+- Superseded in part: its runtime decisions by
+  [gq-content ADR 0002](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0002-preserve-publication-delivery-and-withdrawal-through-extraction.md)
+  for Sites on the content package pair ([ADR 0020](0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
+
+## Superseded in part
+
+Only the runtime evidence the gate reads moves: the signed `check` event's
+answer (store state and last reconciliation) is `@getquick/content`'s. The
+gate itself, `gq site check`, its orchestration, the media checks and
+provisioning stay here.
 
 ## Context
 

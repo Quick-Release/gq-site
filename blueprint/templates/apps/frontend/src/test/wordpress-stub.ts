@@ -15,7 +15,43 @@ export const chrome = {
   menuItems: {
     nodes: [{ id: "a", parentId: null, label: "About us", url: "/about/", target: null }],
   },
+  // GQ Design's Header & Footer selects no pattern, so the layout keeps its own.
+  header: null,
+  footer: null,
 };
+
+/** GQ Config's Legal Contract for a language, as getquickLegal answers it (LEGAL-1). */
+export const legal = {
+  schemaVersion: 1,
+  controller: { name: "Acme, Lda.", privacyEmail: "privacy@acme.example", dpoContact: null },
+  roles: [
+    {
+      role: "privacy_policy",
+      url: "/privacy/",
+      title: "Privacy policy",
+      revision: "2026-10-01T09:00:00",
+      isFallback: false,
+    },
+    {
+      role: "cookie_policy",
+      url: "/cookies/",
+      title: "Cookie policy",
+      revision: "2026-10-02T09:00:00",
+      isFallback: false,
+    },
+  ],
+  missingRequired: [],
+};
+
+/** GQ Config's consent settings: the Legal Contract, and GA4 off unless a test says otherwise. */
+export function consentSettings(
+  analytics: { enabled: boolean; measurementId: string | null } = {
+    enabled: false,
+    measurementId: null,
+  },
+): Answer {
+  return data({ getquickLegal: legal, googleAnalytics: analytics });
+}
 
 /** WordPress's list of published routes, on one page. */
 export function routes(...uris: string[]): Answer {
@@ -56,18 +92,20 @@ export function timeout(): never {
   throw new DOMException("The operation timed out.", "TimeoutError");
 }
 
-// The site chrome and the design presets are fine, and nothing but the front
-// page is published, unless a test says otherwise; any other query fails the
-// test.
+// The site chrome, GQ Config's consent settings and the design presets are
+// fine, and nothing but the front page is published, unless a test says
+// otherwise; any other query fails the test.
 export function stubWordPress(handlers: {
   home?: Handler;
   entry?: Handler;
   chrome?: Handler;
+  consent?: Handler;
   design?: Handler;
   routes?: Handler;
 }) {
   const answer = {
     chrome: () => data(chrome),
+    consent: () => consentSettings(),
     design: () => data({ designTokens: tokens }),
     routes: () => routes("/"),
     ...handlers,
@@ -82,6 +120,7 @@ export function stubWordPress(handlers: {
       HomePage: answer.home,
       EntryByUri: answer.entry,
       SiteChrome: answer.chrome,
+      ConsentSettings: answer.consent,
       DesignPresets: answer.design,
       PublishedRoutes: answer.routes,
     }[name ?? ""];

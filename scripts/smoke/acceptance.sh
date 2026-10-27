@@ -6,13 +6,19 @@
 #
 #   1. pnpm check: formatting, lint, and the package's tests (generation,
 #      ownership, provisioning commands and gq site check at the run() seam).
-#   2. frontend-check.sh: the generated Frontend's own tests (the delivery
-#      scenarios against a stubbed CMS), astro check, lint and format.
-#   3. frontend-runtime.sh: Alchemy's Astro build served in workerd with a
-#      local D1 store, through outages, restarts, redeploys and events.
-#   4. cms-events.sh: a real WordPress (with real WPGraphQL for readiness)
-#      sending signed events to that Worker, its retries, reconciliation and,
-#      with the local DDEV web server image, a real cron.
+#   2. frontend-check.sh: the generated Frontend's own tests (its pages
+#      against a stubbed CMS), astro check, lint and format.
+#   3. content-pair.sh: the generated Site wired to the pinned content
+#      runtime (ADR 0020): its pins, the CMS plugin's crontab command, the
+#      migrations the deploy resolves, and Alchemy's Astro build served in
+#      workerd with a local D1 store, through its /gq routes and gq frontend
+#      refresh and events check. The runtime's own behaviour, on a real
+#      WordPress too, is proved in Quick-Release/gq-content.
+#   4. consent.sh: the generated Site's consent UI, routes and records
+#      (CONSENT-1, LEGAL-1): gq-content's shared acceptance suite in
+#      Chromium, POST /gq/consent into a local consent database and its
+#      authenticated reads, and gq site check's consent part with GA4 on,
+#      monolingual and bilingual. Needs Playwright's Chromium.
 #
 # Each proof deletes what it created. The live half is the gq-smoke wizard
 # (scripts/smoke/gq-smoke-up.sh, stages 18 to 22). Stops at the first failure.
@@ -28,8 +34,8 @@ step "pnpm check"
 pnpm check
 step "Generated Frontend checks (frontend-check.sh)"
 scripts/smoke/frontend-check.sh
-step "Frontend runtime proof (frontend-runtime.sh)"
-scripts/smoke/frontend-runtime.sh
-step "Real-CMS events and readiness proof (cms-events.sh)"
-scripts/smoke/cms-events.sh
+step "Content pair wiring proof (content-pair.sh)"
+scripts/smoke/content-pair.sh
+step "Consent proof (consent.sh)"
+scripts/smoke/consent.sh
 printf '\nLocal acceptance gate passed. The live half: scripts/smoke/gq-smoke-up.sh (stages 18-22).\n'

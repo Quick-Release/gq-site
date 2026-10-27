@@ -1,0 +1,5 @@
+{
+  "require": {
+    "getquick/gq-content": "0.4.0"
+  }
+}

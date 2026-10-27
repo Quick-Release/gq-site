@@ -12,6 +12,7 @@ import { createFixtureSite, temporaryDirectory } from "../support/fixture-site.m
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
 const DEPLOY_PATHS = [
+  "apps/frontend/workers/consent-purge.ts",
   "infra/ci/Dockerfile",
   "infra/ci/cloudflare.ci.ts",
   "infra/ci/env.ts",
@@ -22,6 +23,7 @@ const DEPLOY_PATHS = [
   "infra/ci/src/index.ts",
   "infra/ci/tsconfig.json",
   "infra/ci/wrangler.jsonc",
+  "infra/consent.ts",
   "infra/frontend.run.ts",
   "infra/package.json",
   "infra/scripts/deploy-frontend.mjs",
@@ -121,6 +123,43 @@ test("every site value in the deploy files comes from gq.ops.json", async () => 
   }
 });
 
+test("the Frontend deploy provisions the consent records in the eu jurisdiction (ADR 0019)", async () => {
+  const fixture = await createFixtureSite({ ops: ACME });
+
+  const result = await fixture.run(["sync"]);
+
+  assert.equal(result.code, 0, result.stderr);
+  const consent = await readSite(fixture.root, "infra/consent.ts");
+  // One database per Site and stage, created in eu, kept in production.
+  assert.match(consent, /^ {2}const database = "acme-shop-fe-consent";$/mu);
+  assert.match(consent, /^ {2}return yield\* Cloudflare\.D1\.Database\("AcmeShopConsent", \{$/mu);
+  assert.match(consent, /^ {4}name: production \? database : `\$\{database\}-\$\{stage\}`,$/mu);
+  assert.match(consent, /^ {4}jurisdiction: CONSENT_JURISDICTION,$/mu);
+  assert.match(consent, /^export const CONSENT_JURISDICTION = "eu";$/mu);
+  assert.match(consent, /\.pipe\(Alchemy\.RemovalPolicy\.retain\(production\)\)/u);
+  // Its migrations are the Frontend's installed consent Runtime's.
+  assert.match(consent, /"\.\/consent\/migrations"/u);
+  // The retention purge: its own Worker on a daily cron, with no public URL.
+  assert.match(consent, /^ {4}const worker = "acme-shop-consent-purge";$/mu);
+  assert.match(consent, /^ {6}crons: \[CONSENT_PURGE_SCHEDULE\],$/mu);
+  assert.match(consent, /^ {6}workersDev: false,$/mu);
+  assert.match(
+    consent,
+    /^ {6}main: fileURLToPath\(new URL\("workers\/consent-purge\.ts", frontendApp\)\),$/mu,
+  );
+
+  const frontend = await readSite(fixture.root, "infra/frontend.run.ts");
+  assert.match(frontend, /^ {14}CONSENT_DB: yield\* ConsentDatabase,$/mu);
+  assert.match(frontend, /^ {14}CONSENT_RATE_LIMITER: consentRateLimiter\(name\),$/mu);
+  assert.match(frontend, /CONSENT_READ_TOKEN: Redacted\.make\(consentReadToken\)/u);
+  assert.match(frontend, /^ {4}if \(consentRecords\) yield\* ConsentPurge;$/mu);
+
+  const purge = await readSite(fixture.root, "apps/frontend/workers/consent-purge.ts");
+  assert.match(purge, /from "@getquick\/content\/consent\/server";$/mu);
+  assert.match(purge, /^ {2}async scheduled\(/mu);
+  assert.match(purge, /\.purge\(\)/u);
+});
+
 test("a gq new site's deploy files hold placeholders until gq.ops.json has the values", async () => {
   const site = await newSite();
   const wrangler = await readSite(site.root, "infra/ci/wrangler.jsonc");
@@ -191,6 +230,10 @@ test("no secret reaches a generated file, and generation calls no provider", asy
     SIGILLO_TOKEN: "secret-sigillo-token",
     FRONTEND_REFRESH_TOKEN: "secret-frontend-refresh-token-0123456789",
     PUBLICATION_EVENT_SECRET: "secret-publication-event-key-0123456789",
+    GQ_PREVIEW_CMS_USERNAME: "secret-preview-username",
+    GQ_PREVIEW_CMS_APPLICATION_PASSWORD: "secret-preview-password",
+    GQ_PREVIEW_ACCESS_CLIENT_ID: "secret-preview-client-id",
+    GQ_PREVIEW_ACCESS_CLIENT_SECRET: "secret-preview-client-secret",
     GQ_AUTH_GRAPHQL_CLIENT_ID: "secret-graphql-client-id",
     GQ_AUTH_GRAPHQL_CLIENT_SECRET: "secret-graphql-client-secret",
     GQ_AUTH_AUTOMATION_CLIENT_ID: "secret-automation-client-id",
@@ -278,4 +321,23 @@ test("the generated Frontend deploy and CI release step refuse an offboarded Sit
     "acme-shop is offboarded (gq.ops.json offboarded): a release would expose it again. If the Site is coming back, run gq offboard --restore first.\n",
   );
   assert.equal(release.stdout, "", "it refuses before anything else");
+});
+
+test("preview config uses site.bind after Website initialization", async () => {
+  const fixture = await createFixtureSite({
+    ops: {
+      ...ACME,
+      preview: { cmsUrl: "https://cms.acme.test", audience: "https://www.acme.test/gq/preview" },
+    },
+  });
+  const result = await fixture.run(["sync"]);
+  assert.equal(result.code, 0, result.stderr);
+  const frontend = await readSite(fixture.root, "infra/frontend.run.ts");
+  assert.match(frontend, /previewBindings\(ops, process.env, Redacted.make\)/u);
+  assert.match(
+    frontend,
+    /const site = yield\* Website;[\s\S]*site.bind`Preview`\(\{ env: previewEnv \}\)/u,
+  );
+  assert.doesNotMatch(frontend, /\.\.\.previewEnv/u);
+  assert.doesNotMatch(frontend, /PUBLIC_GQ_PREVIEW/u);
 });

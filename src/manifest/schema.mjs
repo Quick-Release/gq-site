@@ -7,6 +7,7 @@
 // and `doctor` hold only additions to the variant's defaults
 // (site-settings.mjs), so a site states only how it differs.
 import { z } from "zod";
+import { validPreviewUrl } from "../frontend/preview-bindings.mjs";
 
 export const MANIFEST_FILENAME = "gq.ops.json";
 export const SCHEMA_VERSION = 1;
@@ -16,6 +17,10 @@ export function frontendFramework(manifest) {
 }
 
 export const VARIANTS = ["content", "commerce"];
+// Where a content Site's runtime comes from (ADR 0020): "package" for the
+// pinned getquick/gq-content and @getquick/content pair. A Site without the
+// key keeps the runtime an earlier blueprint copied into it.
+export const CONTENT_RUNTIMES = ["package"];
 export const WORDPRESS_GRAPHQL_PATHS = ["/graphql", "/wp/graphql"];
 // An offboarded Site's phases (ADR 0011): its access cut (`gq offboard`,
 // reversible), then its content archived and its infrastructure deleted.
@@ -26,6 +31,16 @@ export const CHECK_REQUIREMENTS = ["php", "ddev"];
 // names it. Cloudflare can't change it after the namespace is created.
 export const ARTIFACTS_JURISDICTIONS = ["eu", "us", "unrestricted"];
 export const DEFAULT_ARTIFACTS_JURISDICTION = "eu";
+// The longest a consent record is kept after its decision stops being in
+// force, and the consent Runtime's default (CN-R10; @getquick/content's
+// MAX_RETENTION_DAYS): 5 years.
+export const MAX_CONSENT_RETENTION_DAYS = 1826;
+// Headless forms (gq-platform ADR 0009): the form providers a Site can choose,
+// and the spam controls it can rely on. @getquick/content's forms handler
+// applies a form's own Gravity Forms honeypot whenever the form enables it;
+// Turnstile is verified server-side when the Site chooses it.
+export const FORM_PROVIDERS = ["gravityforms"];
+export const FORM_SPAM_CONTROLS = ["honeypot", "turnstile"];
 
 // Where `$schema` points from a site root, through the site's own install.
 export const SCHEMA_URL = "./node_modules/@getquick/site/schema/gq.ops.schema.json";
@@ -124,8 +139,30 @@ export const manifestSchema = z
     project: name,
     variant: z.enum(VARIANTS),
     framework: z.enum(FRAMEWORKS).optional(),
+    contentRuntime: z
+      .enum(CONTENT_RUNTIMES)
+      .optional()
+      .describe(
+        'Where the content runtime comes from. "package": the pinned getquick/gq-content and ' +
+          "@getquick/content pair, whose pins and /gq routes gq sync manages; gq new sets it. " +
+          "Left out, the Site keeps the runtime an earlier blueprint copied into it, and gq sync " +
+          "leaves that alone.",
+      ),
     domains: z
       .strictObject({ admin: hostname, frontend: hostname, docs: hostname.optional() })
+      .optional(),
+    preview: z
+      .strictObject({
+        cmsUrl: z
+          .string()
+          .refine((value) => validPreviewUrl(value), "must be an exact HTTPS origin"),
+        audience: z
+          .string()
+          .refine(
+            (value) => validPreviewUrl(value, true),
+            "must be an exact HTTPS /gq/preview URL",
+          ),
+      })
       .optional(),
     sigillo: z
       .strictObject({
@@ -196,6 +233,46 @@ export const manifestSchema = z
           ),
       })
       .optional(),
+    consent: z
+      .strictObject({
+        retentionDays: z
+          .int()
+          .min(1)
+          .max(MAX_CONSENT_RETENTION_DAYS)
+          .optional()
+          .describe(
+            "How many days the consent records are kept after a decision stops being in force " +
+              "(CN-R10): the Frontend's consent endpoints and the retention purge get it as " +
+              `CONSENT_RETENTION_DAYS. From 1 to ${MAX_CONSENT_RETENTION_DAYS}; left out, the ` +
+              `consent Runtime's default, ${MAX_CONSENT_RETENTION_DAYS} (5 years).`,
+          ),
+      })
+      .optional(),
+    forms: z
+      .strictObject({
+        provider: z
+          .enum(FORM_PROVIDERS)
+          .describe(
+            'The form plugin the CMS runs: "gravityforms". wordpress.plugins must list it.',
+          ),
+        spam: z
+          .array(z.enum(FORM_SPAM_CONTROLS))
+          .refine((controls) => new Set(controls).size === controls.length, "repeats a control")
+          .optional()
+          .describe(
+            'The spam controls the Site relies on: "honeypot" (Gravity Forms\' own, on each ' +
+              'form that enables it) and "turnstile" (Cloudflare Turnstile, verified by the ' +
+              "Frontend; needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY in Sigillo). Left " +
+              "out, none beyond what each form enables.",
+          ),
+      })
+      .optional()
+      .describe(
+        "Headless forms (gq-platform ADR 0009): gq sync manages the Frontend's /gq/forms/ " +
+          "route, which posts each form to the CMS, and gq site check and gq doctor check " +
+          'the forms published content references. Needs contentRuntime "package". Left out, ' +
+          "the Site has no form endpoint.",
+      ),
     ci: z
       .strictObject({
         worker: z.string().optional(),
@@ -268,7 +345,40 @@ export const manifestSchema = z
         "Written by gq offboard: the Site is offboarded, and gq refuses whatever would expose it again.",
       ),
   })
+  .superRefine((ops, context) => {
+    if (
+      ops.variant === "content" &&
+      ops.framework === "tanstack" &&
+      ops.contentRuntime !== "package"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["contentRuntime"],
+        message: 'TanStack content Frontends require contentRuntime "package".',
+      });
+    }
+  })
+  .superRefine(checkForms)
   .meta({ title: "gq.ops.json", description: "A GETQUICK site's manifest (schema v1)." });
+
+// forms: on a content Site with the package pair, whose CMS deploy activates
+// the provider's plugin.
+function checkForms({ forms, variant, contentRuntime, wordpress }, context) {
+  if (forms === undefined) return;
+  const issue = (message) => context.addIssue({ code: "custom", path: ["forms"], message });
+  if (variant !== "content" || contentRuntime !== "package") {
+    issue('needs a content Site on the package pair (variant "content", contentRuntime "package")');
+  }
+  // A provider is named as its plugin's slug, which the CMS deploy activates.
+  if (!wordpress?.plugins.includes(forms.provider)) {
+    issue(`needs ${forms.provider} in wordpress.plugins, so the CMS deploy activates it`);
+  }
+}
+
+/** The spam controls gq.ops.json `forms` declares; empty without forms. */
+export function formSpamControls(ops) {
+  return ops.forms?.spam ?? [];
+}
 
 // wordpress.languages: beside the default language, each locale and slug
 // once, and the plugins Polylang's configuration needs.

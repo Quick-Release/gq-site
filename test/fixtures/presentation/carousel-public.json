@@ -1,0 +1,97 @@
+{
+  "blocks": [
+    {
+      "fixture": "getquick-carousel-saved-presentation",
+      "node": {
+        "attributes": {
+          "presentation": {
+            "base": {
+              "display": "grid",
+              "height": "150px",
+              "visibility": "visible"
+            },
+            "md": {
+              "display": "none",
+              "height": "240px"
+            },
+            "xl": {
+              "display": "reset",
+              "height": "auto"
+            }
+          }
+        },
+        "children": [
+          {
+            "attributes": {
+              "imageAlt": "Slide 1",
+              "imageId": 0,
+              "imageUrl": "https://example.test/1.svg",
+              "linkUrl": "/first-slide"
+            },
+            "children": [
+              {
+                "attributes": {},
+                "children": [],
+                "content": "<h2 class=\"wp-block-heading\">First slide heading</h2>",
+                "name": "core/heading",
+                "supported": true
+              }
+            ],
+            "content": null,
+            "name": "getquick-design/slider",
+            "supported": true
+          },
+          {
+            "attributes": {
+              "imageAlt": "Slide 2",
+              "imageId": 0,
+              "imageUrl": "https://example.test/2.svg",
+              "linkUrl": ""
+            },
+            "children": [],
+            "content": "<figure class=\"wp-block-getquick-design-slider\"><img src=\"https://example.test/2.svg\" alt=\"Slide 2\" /><div class=\"wp-block-getquick-design-slider__content\"></div></figure>",
+            "name": "getquick-design/slider",
+            "supported": true
+          },
+          {
+            "attributes": {
+              "imageAlt": "Slide 3",
+              "imageId": 0,
+              "imageUrl": "https://example.test/3.svg",
+              "linkUrl": ""
+            },
+            "children": [],
+            "content": "<figure class=\"wp-block-getquick-design-slider\"><img src=\"https://example.test/3.svg\" alt=\"Slide 3\" /><div class=\"wp-block-getquick-design-slider__content\"></div></figure>",
+            "name": "getquick-design/slider",
+            "supported": true
+          },
+          {
+            "attributes": {
+              "arrowColor": "",
+              "autoplay": true,
+              "indicatorColor": "rgb(4, 5, 6)",
+              "lock": {
+                "move": true,
+                "remove": true
+              },
+              "navigationBackgroundColor": "rgb(1, 2, 3)",
+              "navigationPosition": "inside",
+              "navigationType": "lines",
+              "showArrows": true,
+              "slideDuration": 3,
+              "visible": false
+            },
+            "children": [],
+            "content": null,
+            "name": "getquick-design/carousel-navigation",
+            "supported": true
+          }
+        ],
+        "content": null,
+        "name": "getquick-design/sliders",
+        "supported": true
+      }
+    }
+  ],
+  "renderer": "neutral"
+}

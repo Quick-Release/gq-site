@@ -11,8 +11,10 @@ export const Route = createRootRoute({
 });
 function Root() {
   const page = useMatches().at(-1)?.loaderData;
-  const language = page && "language" in page && typeof page.language === "string"
-    ? page.language : "{{wordpress.locale}}".replaceAll("_", "-") || "en";
+  const language =
+    page && "language" in page && typeof page.language === "string"
+      ? page.language
+      : "{{wordpress.locale}}".replaceAll("_", "-") || "en";
   return (
     <html lang={language}>
       <head>
