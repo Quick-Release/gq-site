@@ -331,10 +331,9 @@ hostname on the zone, so no Site's command makes them.
    go active. A custom hostname without a route of its own (not deployed
    yet, or cut by `gq offboard`) is served from it. So it must be a host
    that serves no Site, never a Site's `frontendTarget`: that would show
-   that Site on every such hostname. On `bnq.pt` it is GETQUICK's
-   banquinha.pt service, through a proxied record in `bnq.pt` that points at
-   it. Wait until the dashboard shows it **Active**. The routes still decide
-   where each Site's custom hostname goes.
+   that Site on every such hostname. On `bnq.pt` it is `start.bnq.pt`, a
+   proxied record of its own. Wait until the dashboard shows it **Active**.
+   The routes still decide where each Site's custom hostname goes.
 
 The client adds these records at their DNS. `gq cloudflare custom-hostname`
 (or its `status`) prints them with real values:
