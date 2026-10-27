@@ -114,3 +114,29 @@ The local proof establishes generation, package compatibility, real Cloudflare
 build and endpoint guards. It establishes neither live CMS integration nor
 CESAM feature parity. Those remain acceptance work in their owning repositories.
 No production deploy or npm publish was performed.
+
+## CI follow-up: framework-specific fixtures
+
+Run 40425418996 at `f698281` failed `content-pair` and `consent`: both
+shell scripts called `gq new` without a framework, creating the new Start
+app, while their shared `frontend-runtime-lib.mjs` invoked Alchemy's Astro
+builder. Both failures reproduced locally as `ERR_MODULE_NOT_FOUND` for
+`astro`; installing Astro into a Start Site would hide the fixture mismatch.
+The other five jobs in that completed run passed.
+
+The Astro-specific content-pair, consent and presentation proofs now request
+`--framework astro`, matching their build helper and, for presentation, their
+Astro layout fixture. They continue to cover the existing Astro consumer.
+`tanstack-check.mjs` deliberately omits the option and covers the new default,
+with its own Vite build and workerd probe. The full consent browser acceptance
+suite remains Astro coverage; the Start proof currently checks endpoint guards,
+not that full browser suite. Existing manifests that omit `framework` still
+select Astro. This fix changes only disposable proof fixtures; Nomia and CESAM
+remain untouched.
+
+Follow-up validation: both original failing smoke commands pass; consent runs
+32 monolingual and 56 bilingual browser acceptance checks plus record/read and
+readiness checks. The presentation and Hero proofs pass. The default Start
+consumer proof passes app/infra type checks, Cloudflare build, migration hashes
+and workerd guards. `pnpm exec vp run check` passes all 800 tests, and shell
+syntax, documentation formatting and diff whitespace checks pass.
