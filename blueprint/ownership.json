@@ -12,8 +12,14 @@
       "path": "apps/frontend/workers/consent-purge.ts",
       "template": "templates/apps/frontend/workers/consent-purge.ts"
     },
-    { "path": ".mise.toml", "template": "templates/mise.toml" },
-    { "path": ".nvmrc", "template": "templates/nvmrc" },
+    {
+      "path": ".mise.toml",
+      "template": "templates/mise.toml"
+    },
+    {
+      "path": ".nvmrc",
+      "template": "templates/nvmrc"
+    },
     {
       "path": ".vite-hooks/pre-commit",
       "template": "templates/vite-hooks/pre-commit",
@@ -24,12 +30,30 @@
       "template": "templates/vite-hooks/pre-push",
       "executable": true
     },
-    { "path": "vite.config.ts", "template": "templates/vite.config.ts" },
-    { "path": "docs/adr/README.md", "template": "templates/docs/adr/README.md" },
-    { "path": "docs/plans/README.md", "template": "templates/docs/plans/README.md" },
-    { "path": "docs/research/README.md", "template": "templates/docs/research/README.md" },
-    { "path": "docs/agents/README.md", "template": "templates/docs/agents/README.md" },
-    { "path": "docs/agents/domain.md", "template": "templates/docs/agents/domain.md" },
+    {
+      "path": "vite.config.ts",
+      "template": "templates/vite.config.ts"
+    },
+    {
+      "path": "docs/adr/README.md",
+      "template": "templates/docs/adr/README.md"
+    },
+    {
+      "path": "docs/plans/README.md",
+      "template": "templates/docs/plans/README.md"
+    },
+    {
+      "path": "docs/research/README.md",
+      "template": "templates/docs/research/README.md"
+    },
+    {
+      "path": "docs/agents/README.md",
+      "template": "templates/docs/agents/README.md"
+    },
+    {
+      "path": "docs/agents/domain.md",
+      "template": "templates/docs/agents/domain.md"
+    },
     {
       "path": "docs/agents/issue-tracker.md",
       "template": "templates/docs/agents/issue-tracker.md"
@@ -43,58 +67,156 @@
       "template": "templates/deploy/ploi/admin.sh",
       "executable": true
     },
-    { "path": "deploy/ploi/polylang.sh", "template": "templates/deploy/ploi/polylang.sh" },
-    { "path": "infra/ci/Dockerfile", "template": "templates/infra/ci/Dockerfile" },
-    { "path": "infra/ci/cloudflare.ci.ts", "template": "templates/infra/ci/cloudflare.ci.ts" },
-    { "path": "infra/ci/env.ts", "template": "templates/infra/ci/env.ts" },
-    { "path": "infra/ci/github.ts", "template": "templates/infra/ci/github.ts" },
-    { "path": "infra/ci/mirror.ts", "template": "templates/infra/ci/mirror.ts" },
-    { "path": "infra/ci/package.json", "template": "templates/infra/ci/package.json" },
-    { "path": "infra/ci/release.ts", "template": "templates/infra/ci/release.ts" },
-    { "path": "infra/ci/src/index.ts", "template": "templates/infra/ci/src/index.ts" },
-    { "path": "infra/ci/tsconfig.json", "template": "templates/infra/ci/tsconfig.json" },
-    { "path": "infra/ci/wrangler.jsonc", "template": "templates/infra/ci/wrangler.jsonc" },
-    { "path": "infra/consent.ts", "template": "templates/infra/consent.ts" },
-    { "path": "infra/frontend.run.ts", "template": "templates/infra/frontend.run.ts" },
-    { "path": "infra/package.json", "template": "templates/infra/package.json" },
+    {
+      "path": "deploy/ploi/polylang.sh",
+      "template": "templates/deploy/ploi/polylang.sh"
+    },
+    {
+      "path": "infra/ci/Dockerfile",
+      "template": "templates/infra/ci/Dockerfile"
+    },
+    {
+      "path": "infra/ci/cloudflare.ci.ts",
+      "template": "templates/infra/ci/cloudflare.ci.ts"
+    },
+    {
+      "path": "infra/ci/env.ts",
+      "template": "templates/infra/ci/env.ts"
+    },
+    {
+      "path": "infra/ci/github.ts",
+      "template": "templates/infra/ci/github.ts"
+    },
+    {
+      "path": "infra/ci/mirror.ts",
+      "template": "templates/infra/ci/mirror.ts"
+    },
+    {
+      "path": "infra/ci/package.json",
+      "template": "templates/infra/ci/package.json"
+    },
+    {
+      "path": "infra/ci/release.ts",
+      "template": "templates/infra/ci/release.ts"
+    },
+    {
+      "path": "infra/ci/src/index.ts",
+      "template": "templates/infra/ci/src/index.ts"
+    },
+    {
+      "path": "infra/ci/tsconfig.json",
+      "template": "templates/infra/ci/tsconfig.json"
+    },
+    {
+      "path": "infra/ci/wrangler.jsonc",
+      "template": "templates/infra/ci/wrangler.jsonc"
+    },
+    {
+      "path": "infra/consent.ts",
+      "template": "templates/infra/consent.ts"
+    },
+    {
+      "path": "infra/frontend.run.ts",
+      "template": "templates/infra/frontend.run.ts",
+      "framework": "astro"
+    },
+    {
+      "path": "infra/package.json",
+      "template": "templates/infra/package.json"
+    },
     {
       "path": "infra/scripts/deploy-frontend.mjs",
       "template": "templates/infra/scripts/deploy-frontend.mjs"
     },
-    { "path": "infra/tsconfig.json", "template": "templates/infra/tsconfig.json" },
-    { "path": "scripts/ci-release.mjs", "template": "templates/scripts/ci-release.mjs" },
-    { "path": "scripts/ci.test.mjs", "template": "templates/scripts/ci.test.mjs" },
+    {
+      "path": "infra/tsconfig.json",
+      "template": "templates/infra/tsconfig.json"
+    },
+    {
+      "path": "scripts/ci-release.mjs",
+      "template": "templates/scripts/ci-release.mjs"
+    },
+    {
+      "path": "scripts/ci.test.mjs",
+      "template": "templates/scripts/ci.test.mjs"
+    },
     {
       "path": "apps/frontend/src/pages/gq/consent.ts",
       "template": "templates/apps/frontend/src/pages/gq/consent.ts",
-      "contentRuntime": "package"
+      "contentRuntime": "package",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/pages/gq/consent/[...rest].ts",
       "template": "templates/apps/frontend/src/pages/gq/consent/[...rest].ts",
-      "contentRuntime": "package"
+      "contentRuntime": "package",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/pages/gq/forms/[...rest].ts",
       "template": "templates/apps/frontend/src/pages/gq/forms/[...rest].ts",
       "contentRuntime": "package",
-      "manifestKey": "forms"
+      "manifestKey": "forms",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/pages/gq/events.ts",
       "template": "templates/apps/frontend/src/pages/gq/events.ts",
-      "contentRuntime": "package"
+      "contentRuntime": "package",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/pages/gq/refresh.ts",
       "template": "templates/apps/frontend/src/pages/gq/refresh.ts",
-      "contentRuntime": "package"
+      "contentRuntime": "package",
+      "framework": "astro"
     },
-    { "path": ".claude/skills", "symlink": "../.agents/skills" }
+    {
+      "path": ".claude/skills",
+      "symlink": "../.agents/skills"
+    },
+    {
+      "path": "apps/frontend/src/routes/gq.consent.$.ts",
+      "template": "templates/tanstack/apps/frontend/src/routes/gq.consent.$.ts",
+      "framework": "tanstack"
+    },
+    {
+      "path": "apps/frontend/src/routes/gq.consent.ts",
+      "template": "templates/tanstack/apps/frontend/src/routes/gq.consent.ts",
+      "framework": "tanstack"
+    },
+    {
+      "path": "apps/frontend/src/routes/gq.events.ts",
+      "template": "templates/tanstack/apps/frontend/src/routes/gq.events.ts",
+      "framework": "tanstack"
+    },
+    {
+      "path": "apps/frontend/src/routes/gq.refresh.ts",
+      "template": "templates/tanstack/apps/frontend/src/routes/gq.refresh.ts",
+      "framework": "tanstack"
+    },
+    {
+      "path": "infra/frontend.run.ts",
+      "template": "templates/tanstack/infra/frontend.run.ts",
+      "framework": "tanstack"
+    },
+    {
+      "path": "apps/frontend/src/routes/gq.forms.$.ts",
+      "template": "templates/tanstack/apps/frontend/src/routes/gq.forms.$.ts",
+      "framework": "tanstack",
+      "contentRuntime": "package",
+      "manifestKey": "forms"
+    }
   ],
   "generatedSections": [
-    { "path": ".gitignore", "template": "templates/fragments/gitignore.section" },
-    { "path": "AGENTS.md", "template": "templates/fragments/AGENTS.section.md" }
+    {
+      "path": ".gitignore",
+      "template": "templates/fragments/gitignore.section"
+    },
+    {
+      "path": "AGENTS.md",
+      "template": "templates/fragments/AGENTS.section.md"
+    }
   ],
   "managedKeys": [
     {
@@ -114,15 +236,30 @@
     }
   ],
   "createOnce": [
-    { "path": "gq.ops.json" },
-    { "path": "GLOSSARY.md", "template": "templates/GLOSSARY.md" },
-    { "path": "README.md", "template": "templates/README.md" },
-    { "path": "VERSION", "template": "templates/VERSION" },
+    {
+      "path": "gq.ops.json"
+    },
+    {
+      "path": "GLOSSARY.md",
+      "template": "templates/GLOSSARY.md"
+    },
+    {
+      "path": "README.md",
+      "template": "templates/README.md"
+    },
+    {
+      "path": "VERSION",
+      "template": "templates/VERSION"
+    },
     {
       "path": "deploy/ploi/admin.d/README.md",
       "template": "templates/deploy/ploi/admin.d/README.md"
     },
-    { "path": "pnpm-workspace.yaml", "template": "templates/pnpm-workspace.yaml" },
+    {
+      "path": "pnpm-workspace.yaml",
+      "template": "templates/pnpm-workspace.yaml",
+      "framework": "astro"
+    },
     {
       "path": "apps/cms/.ddev/commands/host/db-sync",
       "template": "templates/apps/cms/ddev/commands/host/db-sync",
@@ -154,7 +291,11 @@
       "template": "templates/apps/cms/LICENSE.md",
       "app": "apps/cms"
     },
-    { "path": "apps/cms/README.md", "template": "templates/apps/cms/README.md", "app": "apps/cms" },
+    {
+      "path": "apps/cms/README.md",
+      "template": "templates/apps/cms/README.md",
+      "app": "apps/cms"
+    },
     {
       "path": "apps/cms/composer.json",
       "template": "templates/apps/cms/composer.json",
@@ -180,7 +321,11 @@
       "template": "templates/apps/cms/phpunit.xml.dist",
       "app": "apps/cms"
     },
-    { "path": "apps/cms/pint.json", "template": "templates/apps/cms/pint.json", "app": "apps/cms" },
+    {
+      "path": "apps/cms/pint.json",
+      "template": "templates/apps/cms/pint.json",
+      "app": "apps/cms"
+    },
     {
       "path": "apps/cms/scripts/.gitkeep",
       "template": "templates/apps/cms/scripts/gitkeep",
@@ -249,37 +394,44 @@
     {
       "path": "apps/frontend/README.md",
       "template": "templates/apps/frontend/README.md",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/astro.config.mjs",
       "template": "templates/apps/frontend/astro.config.mjs",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/components/Home.astro",
       "template": "templates/apps/frontend/src/components/Home.astro",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/lib/content.ts",
       "template": "templates/apps/frontend/src/lib/content.ts",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/lib/copy.ts",
       "template": "templates/apps/frontend/src/lib/copy.ts",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/test/wordpress-stub.ts",
       "template": "templates/apps/frontend/src/test/wordpress-stub.ts",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/package.json",
       "template": "templates/apps/frontend/package.json",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/public/favicon.svg",
@@ -294,53 +446,115 @@
     {
       "path": "apps/frontend/src/env.d.ts",
       "template": "templates/apps/frontend/src/env.d.ts",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/layouts/Layout.astro",
       "template": "templates/apps/frontend/src/layouts/Layout.astro",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/pages/[...slug].astro",
       "template": "templates/apps/frontend/src/pages/[...slug].astro",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/pages/index.astro",
       "template": "templates/apps/frontend/src/pages/index.astro",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/routes.test.ts",
       "template": "templates/apps/frontend/src/routes.test.ts",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/src/styles/global.css",
       "template": "templates/apps/frontend/src/styles/global.css",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/tsconfig.json",
       "template": "templates/apps/frontend/tsconfig.json",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/vite.config.ts",
       "template": "templates/apps/frontend/vite.config.ts",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "apps/frontend/vitest.config.ts",
       "template": "templates/apps/frontend/vitest.config.ts",
-      "app": "apps/frontend"
+      "app": "apps/frontend",
+      "framework": "astro"
     },
     {
       "path": "deploy/ploi/admin.d/10-theme.sh",
       "template": "templates/deploy/ploi/admin.d/10-theme.sh",
       "app": "apps/cms",
       "executable": true
+    },
+    {
+      "path": "apps/frontend/package.json",
+      "template": "templates/tanstack/apps/frontend/package.json",
+      "framework": "tanstack",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "apps/frontend/src/router.tsx",
+      "template": "templates/tanstack/apps/frontend/src/router.tsx",
+      "framework": "tanstack",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "apps/frontend/src/routes/$.tsx",
+      "template": "templates/tanstack/apps/frontend/src/routes/$.tsx",
+      "framework": "tanstack",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "apps/frontend/src/routes/__root.tsx",
+      "template": "templates/tanstack/apps/frontend/src/routes/__root.tsx",
+      "framework": "tanstack",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "apps/frontend/src/site.server.ts",
+      "template": "templates/tanstack/apps/frontend/src/site.server.ts",
+      "framework": "tanstack",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "apps/frontend/tsconfig.json",
+      "template": "templates/tanstack/apps/frontend/tsconfig.json",
+      "framework": "tanstack",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "apps/frontend/vite.config.ts",
+      "template": "templates/tanstack/apps/frontend/vite.config.ts",
+      "framework": "tanstack",
+      "app": "apps/frontend"
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "template": "templates/tanstack/pnpm-workspace.yaml",
+      "framework": "tanstack"
+    },
+    {
+      "path": "apps/frontend/src/lib/content.ts",
+      "template": "templates/tanstack/apps/frontend/src/lib/content.ts",
+      "framework": "tanstack",
+      "app": "apps/frontend"
     }
   ]
 }

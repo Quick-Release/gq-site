@@ -25,7 +25,12 @@ import {
   listConsentDatabases,
 } from "../frontend/consent.mjs";
 import { FORMS_ROUTE, TURNSTILE_KEYS } from "../forms/readiness.mjs";
-import { artifactsJurisdiction, formSpamControls, MANIFEST_FILENAME } from "../manifest/schema.mjs";
+import {
+  artifactsJurisdiction,
+  formSpamControls,
+  frontendFramework,
+  MANIFEST_FILENAME,
+} from "../manifest/schema.mjs";
 import { localMediaReadiness } from "../media/readiness.mjs";
 import {
   hasReleaseConfig,
@@ -337,8 +342,12 @@ async function stagingToken(name, { context, env, exec, sigilloReady }) {
 // can be sent is gq site check's (--local runs wp gq-forms status).
 async function checkForms({ context, env, exec, sigilloReady, report }) {
   const root = context.projectRoot;
-  if (existsSync(join(root, FORMS_ROUTE))) report.ok(`${FORMS_ROUTE} handles form posts`);
-  else report.fail(`${FORMS_ROUTE} is missing — run: gq sync`);
+  const route =
+    frontendFramework(context.config) === "tanstack"
+      ? "apps/frontend/src/routes/gq.forms.$.ts"
+      : FORMS_ROUTE;
+  if (existsSync(join(root, route))) report.ok(`${route} handles form posts`);
+  else report.fail(`${route} is missing — run: gq sync`);
 
   const runtime = join(root, FRONTEND_PATH, "src/lib/content.ts");
   const source = existsSync(runtime) ? readFileSync(runtime, "utf8") : "";

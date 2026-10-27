@@ -20,6 +20,13 @@
         "commerce"
       ]
     },
+    "framework": {
+      "type": "string",
+      "enum": [
+        "astro",
+        "tanstack"
+      ]
+    },
     "contentRuntime": {
       "description": "Where the content runtime comes from. \"package\": the pinned getquick/gq-content and @getquick/content pair, whose pins and /gq routes gq sync manages; gq new sets it. Left out, the Site keeps the runtime an earlier blueprint copied into it, and gq sync leaves that alone.",
       "type": "string",

@@ -28,7 +28,8 @@ else
 fi
 
 cd "$parent"
-node "$repo/bin/gq.mjs" new acme --project acme --variant content >/dev/null
+# This proof uses Astro build/layout APIs; the default Start app has its own proof.
+node "$repo/bin/gq.mjs" new acme --project acme --variant content --framework astro >/dev/null
 use_this_checkout "$repo" "$parent/acme"
 cd acme
 CI=1 pnpm install --filter @acme/frontend... --filter @acme/ci... --filter . >/dev/null

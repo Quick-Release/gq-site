@@ -32,7 +32,7 @@ else
 fi
 
 cd "$parent"
-node "$repo/bin/gq.mjs" new "$project" --project "$project" --variant content >/dev/null
+node "$repo/bin/gq.mjs" new "$project" --project "$project" --variant content --framework astro >/dev/null
 use_this_checkout "$repo" "$parent/$project"
 cd "$project"
 CI=1 pnpm install --filter "@$project/frontend..." --filter . >/dev/null

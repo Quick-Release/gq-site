@@ -11,6 +11,11 @@ import { validPreviewUrl } from "../frontend/preview-bindings.mjs";
 
 export const MANIFEST_FILENAME = "gq.ops.json";
 export const SCHEMA_VERSION = 1;
+export const FRAMEWORKS = ["astro", "tanstack"];
+export function frontendFramework(manifest) {
+  return manifest.framework ?? "astro";
+}
+
 export const VARIANTS = ["content", "commerce"];
 // Where a content Site's runtime comes from (ADR 0020): "package" for the
 // pinned getquick/gq-content and @getquick/content pair. A Site without the
@@ -133,6 +138,7 @@ export const manifestSchema = z
     schemaVersion: z.literal(SCHEMA_VERSION),
     project: name,
     variant: z.enum(VARIANTS),
+    framework: z.enum(FRAMEWORKS).optional(),
     contentRuntime: z
       .enum(CONTENT_RUNTIMES)
       .optional()
@@ -338,6 +344,19 @@ export const manifestSchema = z
       .describe(
         "Written by gq offboard: the Site is offboarded, and gq refuses whatever would expose it again.",
       ),
+  })
+  .superRefine((ops, context) => {
+    if (
+      ops.variant === "content" &&
+      ops.framework === "tanstack" &&
+      ops.contentRuntime !== "package"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["contentRuntime"],
+        message: 'TanStack content Frontends require contentRuntime "package".',
+      });
+    }
   })
   .superRefine(checkForms)
   .meta({ title: "gq.ops.json", description: "A GETQUICK site's manifest (schema v1)." });

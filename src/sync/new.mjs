@@ -12,13 +12,26 @@ import { basename, join, relative, resolve } from "node:path";
 
 import packageTemplate from "../../blueprint/templates/fragments/package.keys.json" with { type: "json" };
 import { MANIFEST_FILENAME, validateManifest, writeManifest } from "../manifest/manifest.mjs";
-import { LOCALE_PATTERN, SCHEMA_URL, SCHEMA_VERSION, VARIANTS } from "../manifest/schema.mjs";
+import {
+  FRAMEWORKS,
+  LOCALE_PATTERN,
+  SCHEMA_URL,
+  SCHEMA_VERSION,
+  VARIANTS,
+} from "../manifest/schema.mjs";
 import { CONTENT_RUNTIME_PACKAGE } from "./content-pair.mjs";
 import { applyManagedFiles, planManagedFiles } from "./managed-files.mjs";
 
-export const NEW_USAGE = ["gq new <dir> --project <name> --variant content [--locale <locale>]"];
+export const NEW_USAGE = [
+  "gq new <dir> --project <name> --variant content [--locale <locale>] [--framework astro|tanstack]",
+];
 
-const VALUE_OPTIONS = { "--project": "project", "--variant": "variant", "--locale": "locale" };
+const VALUE_OPTIONS = {
+  "--project": "project",
+  "--variant": "variant",
+  "--locale": "locale",
+  "--framework": "framework",
+};
 
 // The main language a new site gets unless it is given another.
 const DEFAULT_LOCALE = "en_US";
@@ -89,6 +102,7 @@ export async function runNewCommand(args, { cwd, env, exec, stdin, io, interacti
     schemaVersion: SCHEMA_VERSION,
     project,
     variant,
+    framework: options.framework ?? "tanstack",
     // A new Site runs the content runtime from its pinned package pair.
     contentRuntime: CONTENT_RUNTIME_PACKAGE,
     wordpress: { plugins: CONTENT_PLUGINS, locale },
@@ -246,6 +260,8 @@ function parseNewArguments(args) {
       options.directory = argument;
     } else throw new Error(`Usage: ${NEW_USAGE[0]}`);
   }
+  if (options.framework !== undefined && !FRAMEWORKS.includes(options.framework))
+    throw new Error(`--framework must be ${FRAMEWORKS.join(" or ")}: ${options.framework}`);
   if (options.variant !== undefined && !VARIANTS.includes(options.variant)) {
     throw new Error(`--variant must be ${VARIANTS.join(" or ")}: ${options.variant}`);
   }

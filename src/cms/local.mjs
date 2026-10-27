@@ -12,7 +12,7 @@ import { runDesignCommand, withDesignRegistryInstall } from "./local-design.mjs"
 // Layout: where the Bedrock app lives in a site.
 export const CMS_PATH = "apps/cms";
 
-// Astro's dev server, the default local frontend.
+// Both supported frontend dev servers use the same local origin.
 export const DEFAULT_LOCAL_FRONTEND_URL = "http://localhost:4321";
 
 export async function commandExists(exec, command, env) {

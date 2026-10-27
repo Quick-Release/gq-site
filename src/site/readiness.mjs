@@ -41,7 +41,7 @@
 import { scanConsentHtml } from "@getquick/content/consent/testing";
 
 import { RECONCILIATION_STALE_MS, sendCheckEvent } from "../frontend/commands.mjs";
-import { siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
+import { frontendFramework, siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
 import { productionMediaReadiness } from "../media/readiness.mjs";
 import { cmsFetch } from "../cms/access.mjs";
 import { CMS_CONSENT_READ_TOKEN, CONSENT_READ_TOKEN } from "../frontend/consent.mjs";
@@ -389,13 +389,14 @@ export async function frontendReadiness({
   fetch,
   now = Date.now,
   languages = [],
+  framework = "astro",
 }) {
   const checks = [];
   const add = (area, check) => checks.push({ area, ...check });
   const answer = await checkEvents({ origin, project, env, fetch, add });
   await checkRefreshToken({ origin, env, fetch, add });
   if (answer) {
-    add("frontend", storeCheck(answer, languages));
+    add("frontend", storeCheck(answer, languages, framework));
     add("delivery", reconciliationCheck(answer.reconciliation, now));
     add("delivery", delaysCheck(answer.store));
   } else {
@@ -531,13 +532,15 @@ const PREPARE = "prepare the Site: pnpm frontend:refresh (a whole-Site refresh),
  * The store, as the signed check reports it: a prepared Site holds its front
  * page and chrome, and a bilingual Site every other language's too.
  */
-function storeCheck(answer, languages) {
+function storeCheck(answer, languages, framework) {
   const name = "publication-store";
   if (!("store" in answer)) {
     return notReady(
       name,
       "the Frontend's check doesn't report its store: it predates gq site check",
-      "adopt src/lib/events.ts and src/lib/publications.ts from a newly generated site, and deploy",
+      framework === "tanstack"
+        ? "update the pinned @getquick/content Runtime and deploy the managed event route"
+        : "adopt src/lib/events.ts and src/lib/publications.ts from a newly generated site, and deploy",
     );
   }
   const { store } = answer;
@@ -553,7 +556,9 @@ function storeCheck(answer, languages) {
     return notReady(
       name,
       "the Frontend's check doesn't report each language's front page and chrome: it predates bilingual Sites",
-      "adopt src/lib/delivery.ts and src/lib/events.ts from a newly generated site, and deploy",
+      framework === "tanstack"
+        ? "update the pinned @getquick/content Runtime and deploy the managed event route"
+        : "adopt src/lib/delivery.ts and src/lib/events.ts from a newly generated site, and deploy",
     );
   }
   const shared = { home: "front page", chrome: "site chrome" };
@@ -825,6 +830,7 @@ export async function siteReadiness({ ops, env, fetch, origin, upload = true, no
     ...(await frontendReadiness({
       origin: frontend,
       project: ops.project,
+      framework: frontendFramework(ops),
       env,
       fetch,
       now,

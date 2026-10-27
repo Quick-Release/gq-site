@@ -16,11 +16,14 @@ export async function readSite(root, path) {
 }
 
 // A site gq new generated, as its files are right after.
-export async function newSite(project = "acme") {
+export async function newSite(project = "acme", framework = "astro") {
   const parent = await temporaryDirectory();
-  const created = await runGq(["new", project, "--project", project, "--variant", "content"], {
-    cwd: parent,
-  });
+  const created = await runGq(
+    ["new", project, "--project", project, "--variant", "content", "--framework", framework],
+    {
+      cwd: parent,
+    },
+  );
   assert.equal(created.code, 0, created.stderr);
   const root = join(parent, project);
   return { root, run: (argv) => runGq(argv, { cwd: root }) };

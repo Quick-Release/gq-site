@@ -7,7 +7,7 @@
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 
-import { MANIFEST_FILENAME } from "./schema.mjs";
+import { frontendFramework, MANIFEST_FILENAME } from "./schema.mjs";
 
 // The release config module gq.ops.json replaced; `gq sync --manifest` folds
 // it in. The name carries over from the vendored shop-devtools.
@@ -102,7 +102,12 @@ export function siteSettings(config) {
       ...check,
     })),
     requiredFiles: appendRequiredFiles(
-      defaults.doctor.requiredFiles,
+      config.variant === "content" && frontendFramework(config) === "tanstack"
+        ? {
+            ...defaults.doctor.requiredFiles,
+            "apps/frontend": ["package.json", "vite.config.ts", "src/router.tsx"],
+          }
+        : defaults.doctor.requiredFiles,
       config.doctor?.requiredFiles ?? {},
     ),
   };

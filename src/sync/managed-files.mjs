@@ -24,6 +24,7 @@ import ownership from "../../blueprint/ownership.json" with { type: "json" };
 import packageTemplate from "../../blueprint/templates/fragments/package.keys.json" with { type: "json" };
 import packageJson from "../../package.json" with { type: "json" };
 import { deployStatusMarker } from "../ploi/provision.mjs";
+import { frontendFramework } from "../manifest/schema.mjs";
 import { VERSION } from "../version.mjs";
 
 export const LOCK_FILENAME = "gq.lock.json";
@@ -103,8 +104,9 @@ function templateValues(manifest) {
 // existing file, and the lock to record (`lock.status` `unchanged`, `create`
 // or `update`). `recreate` lists the create-once files to write again.
 export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
-  const recreatable = ownership.createOnce.filter(({ template }) => template !== undefined);
-  const apps = new Set(ownership.createOnce.flatMap(({ app }) => app ?? []));
+  const applicable = ownership.createOnce.filter((entry) => appliesTo(entry, manifest));
+  const recreatable = applicable.filter(({ template }) => template !== undefined);
+  const apps = new Set(applicable.flatMap(({ app }) => app ?? []));
   for (const path of recreate) {
     if (!recreatable.some((entry) => entry.path === path)) {
       const rootFiles = recreatable.flatMap((entry) => (entry.app ? [] : [entry.path]));
@@ -211,6 +213,7 @@ export async function applyManagedFiles(root, plan) {
 // marked with a `manifestKey` only while gq.ops.json has that key (`forms`).
 function appliesTo(entry, manifest) {
   return (
+    (entry.framework === undefined || entry.framework === frontendFramework(manifest)) &&
     (entry.contentRuntime === undefined || entry.contentRuntime === manifest.contentRuntime) &&
     (entry.manifestKey === undefined || manifest[entry.manifestKey] !== undefined)
   );

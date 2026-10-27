@@ -136,9 +136,12 @@ test("gq new writes a v1 manifest, the managed files and the lock, then runs git
   const parent = await temporaryDirectory();
   const root = join(parent, "acme");
 
-  const result = await runGq(["new", "acme", "--project", "acme", "--variant", "content"], {
-    cwd: parent,
-  });
+  const result = await runGq(
+    ["new", "acme", "--project", "acme", "--variant", "content", "--framework", "astro"],
+    {
+      cwd: parent,
+    },
+  );
 
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(await readSite(root, "gq.ops.json")), {
@@ -147,6 +150,7 @@ test("gq new writes a v1 manifest, the managed files and the lock, then runs git
     project: "acme",
     variant: "content",
     contentRuntime: "package",
+    framework: "astro",
     wordpress: {
       plugins: [
         "gq-design",
@@ -539,7 +543,7 @@ test("gq new refuses a commerce site and a directory that isn't empty", async ()
     ],
     [
       ["new", "acme", "--project", "acme", "--variant", "content", "--yes"],
-      "gq: Usage: gq new <dir> --project <name> --variant content [--locale <locale>]\n",
+      "gq: Usage: gq new <dir> --project <name> --variant content [--locale <locale>] [--framework astro|tanstack]\n",
     ],
   ]) {
     const result = await runGq(argv, { cwd: parent });

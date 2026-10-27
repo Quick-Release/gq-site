@@ -32,7 +32,7 @@ trap cleanup EXIT
 [[ "${KEEP:-}" == 1 ]] && echo "Keeping the site in $parent/orbit"
 
 cd "$parent"
-node "$repo/bin/gq.mjs" new orbit --project orbit --variant content >/dev/null
+node "$repo/bin/gq.mjs" new orbit --project orbit --variant content --framework astro >/dev/null
 docker build -q -t "$image" orbit/infra/ci >/dev/null
 
 node "$repo/scripts/smoke/ci-composer.mjs" "$parent/orbit" "$image"

@@ -1,0 +1,34 @@
+{
+  "name": "@{{project}}/frontend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev --port 4321",
+    "build": "vp build",
+    "check": "vp build && tsc --noEmit",
+    "preview": "vp preview --port 4321",
+    "format": "vp fmt",
+    "lint": "vp lint",
+    "test": "vp test --passWithNoTests"
+  },
+  "dependencies": {
+    "@getquick/content": "0.4.0",
+    "@tanstack/react-router": "1.170.46",
+    "@tanstack/react-start": "1.169.4",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@alchemy.run/frontend-frameworks": "catalog:",
+    "@cloudflare/workers-types": "5.20261026.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.0.2",
+    "typescript": "6.0.3",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "packageManager": "{{packageManager}}"
+}

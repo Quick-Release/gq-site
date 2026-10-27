@@ -54,35 +54,45 @@ function formatCheck(root, paths) {
 // The shortest name, and one well past any real site's.
 const NAMES = ["a", "abcdefghij-abcdefghij-abcdefghij-abcdefg"];
 
-for (const project of NAMES) {
-  test(`fully generated files are formatter-stable for a ${project.length}-character project name`, async () => {
-    const fixture = await createFixtureSite({ ops: manifest(project) });
-    const result = await fixture.run(["sync"]);
-    assert.equal(result.code, 0, result.stderr);
-    await linkVitePlus(fixture.root);
+for (const framework of ["astro", "tanstack"]) {
+  for (const project of NAMES) {
+    test(`fully generated ${framework} files are formatter-stable for a ${project.length}-character project name`, async () => {
+      const fixture = await createFixtureSite({ ops: { ...manifest(project), framework } });
+      const result = await fixture.run(["sync"]);
+      assert.equal(result.code, 0, result.stderr);
+      await linkVitePlus(fixture.root);
 
-    const paths = ownership.fullyGenerated
-      .filter(({ template }) => template !== undefined)
-      .map(({ path }) => path)
-      .filter((path) => FORMATTED.test(path));
-    const check = formatCheck(fixture.root, paths);
+      const paths = ownership.fullyGenerated
+        .filter(
+          ({ template, framework: selected }) =>
+            template !== undefined && (!selected || selected === framework),
+        )
+        .map(({ path }) => path)
+        .filter((path) => FORMATTED.test(path));
+      const check = formatCheck(fixture.root, paths);
 
-    assert.equal(check.status, 0, `${check.stdout}${check.stderr}`);
-  });
+      assert.equal(check.status, 0, `${check.stdout}${check.stderr}`);
+    });
+  }
 }
 
 // gq new's own name too (four characters), the length a reported site had.
-for (const project of [...NAMES, "acme"]) {
-  test(`create-once files are formatter-stable for a ${project.length}-character project name`, async () => {
-    const site = await newSite(project);
-    await linkVitePlus(site.root);
+for (const framework of ["astro", "tanstack"]) {
+  for (const project of [...NAMES, "acme"]) {
+    test(`create-once ${framework} files are formatter-stable for a ${project.length}-character project name`, async () => {
+      const site = await newSite(project, framework);
+      await linkVitePlus(site.root);
 
-    const paths = ownership.createOnce
-      .filter(({ template }) => template !== undefined)
-      .map(({ path }) => path)
-      .filter((path) => FORMATTED.test(path));
-    const check = formatCheck(site.root, paths);
+      const paths = ownership.createOnce
+        .filter(
+          ({ template, framework: selected }) =>
+            template !== undefined && (!selected || selected === framework),
+        )
+        .map(({ path }) => path)
+        .filter((path) => FORMATTED.test(path));
+      const check = formatCheck(site.root, paths);
 
-    assert.equal(check.status, 0, `${check.stdout}${check.stderr}`);
-  });
+      assert.equal(check.status, 0, `${check.stdout}${check.stderr}`);
+    });
+  }
 }
