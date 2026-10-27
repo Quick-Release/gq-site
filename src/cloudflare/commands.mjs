@@ -1,4 +1,5 @@
 import { runCloudflareCi } from "./ci.mjs";
+import { runCustomHostname } from "./custom-hostname.mjs";
 import { runDeployToken } from "./deploy-token.mjs";
 import { runCloudflareMedia } from "./media.mjs";
 import { runReleases } from "./releases.mjs";
@@ -11,6 +12,14 @@ const CLOUDFLARE_WORKFLOWS = new Map([
   [
     "cloudflare deploy-token",
     ["gq cloudflare deploy-token [--dry-run]", ["dryRun"], runDeployToken],
+  ],
+  [
+    "cloudflare custom-hostname",
+    ["gq cloudflare custom-hostname [--dry-run]", ["dryRun"], runCustomHostname],
+  ],
+  [
+    "cloudflare custom-hostname status",
+    ["gq cloudflare custom-hostname status [--json]", [], runCustomHostname],
   ],
   ["cloudflare media", ["gq cloudflare media [--dry-run]", ["dryRun"], runCloudflareMedia]],
   ["cloudflare releases", ["gq cloudflare releases [--dry-run]", ["dryRun"], runReleases]],

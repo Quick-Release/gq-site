@@ -481,6 +481,48 @@ test("offboard --restore re-attaches every custom domain the cut detached", asyn
   );
 });
 
+test("offboard removes a custom hostname's route, keeps the custom hostname, and --restore adds the route back", async () => {
+  const ops = {
+    ...OPS,
+    domains: {
+      ...OPS.domains,
+      frontend: "www.client.example",
+      frontendTarget: "fixture-fe.example.test",
+    },
+  };
+  const fixture = await offboardingSite({ ops });
+  const exposed = fakeAccount().state;
+  const account = fakeAccount({
+    workerRoutes: [
+      ...exposed.workerRoutes,
+      { id: "route-client", pattern: "www.client.example/*", script: "fixture-fe" },
+    ],
+  });
+
+  const cut = await fixture.run(["offboard", "--yes"], { env: ENV, ...account });
+
+  assert.equal(cut.code, 0, cut.stderr);
+  assert.ok(account.state.log.includes("worker route route-client deleted"));
+  assert.deepEqual(
+    account.state.workerRoutes.map(({ pattern }) => pattern),
+    ["www.other.example/*"],
+  );
+  assert.deepEqual((await readOps(fixture)).offboarded.cut.workerRoutes, [
+    { pattern: "www.client.example/*", service: "fixture-fe", zoneId: "zone-1" },
+  ]);
+  assert.match(
+    cut.stdout,
+    /! Frontend: the custom hostname www\.client\.example \(Cloudflare for SaaS\) stays on the zone, unserved/u,
+  );
+
+  account.state.log.length = 0;
+  const restore = await fixture.run(["offboard", "--restore", "--yes"], { env: ENV, ...account });
+
+  assert.equal(restore.code, 0, restore.stderr);
+  assert.ok(account.state.log.includes("worker route www.client.example/* added to fixture-fe"));
+  assert.deepEqual(await readOps(fixture), ops);
+});
+
 test("offboard --restore puts the CI Worker's workers.dev and preview URLs back as they were", async () => {
   const exposed = fakeAccount().state;
   const { account } = await cutAndRestore({

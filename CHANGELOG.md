@@ -3,6 +3,43 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **A Frontend on the client's own domain**
+  ([#131](https://github.com/Quick-Release/gq-site/issues/131)). The new
+  optional `gq.ops.json` key `domains.frontendTarget` says that
+  `domains.frontend` is outside the Cloudflare zone and is served as a
+  Cloudflare for SaaS custom hostname. It names the Frontend's hostname in
+  the zone, which the public one CNAMEs to. `domains.frontend` stays the
+  public, canonical hostname everywhere it is read. The production
+  Frontend deploy (`infra/frontend.run.ts`, Astro and TanStack) keeps its
+  Custom Domain on `frontendTarget` and adds the route
+  `<domains.frontend>/*` on the zone.
+- `gq cloudflare custom-hostname [--dry-run]` creates the custom
+  hostname: TXT ownership pre-validation and a DV certificate that
+  delegated DCV renews. It then prints the DNS records the client adds:
+  the ownership TXT, the `_acme-challenge` CNAME and the traffic CNAME.
+  `gq cloudflare custom-hostname status [--json]` checks the fallback
+  origin, the hostname, its certificate, the route, the client's CNAME and
+  their CAA records (`letsencrypt.org`, `pki.goog`, `ssl.com` must be
+  allowed), and exits 1 until all are right. Enabling Cloudflare for SaaS
+  and setting the fallback origin are done once per zone, by hand, and
+  never to a Site's own Frontend host: both commands say when the fallback
+  origin is missing or is this Site's. See
+  [A Frontend on the client's own domain](docs/guides/provisioning.md#a-frontend-on-the-clients-own-domain).
+
+### Changed
+
+- `gq offboard` removes a custom hostname's route and records it in
+  `offboarded.cut.workerRoutes`, and `--restore` adds it back. The custom
+  hostname itself stays on the zone. `gq offboard --archive` deletes DNS
+  records at `domains.frontendTarget` instead of `domains.frontend`, and
+  lists deleting the custom hostname as a manual step. While a Site is
+  offboarded, `gq cloudflare custom-hostname` refuses to run; its `status`
+  still works.
+
 ## 0.24.1 — 2026-10-26
 
 ### Fixed

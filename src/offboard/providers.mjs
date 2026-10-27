@@ -55,7 +55,8 @@ import {
 } from "../cloudflare/tokens.mjs";
 
 // What the run's temporary token may do: detach and attach Workers custom
-// domains and switch workers.dev, and toggle the media bucket's domain.
+// domains and a custom hostname's route, switch workers.dev, and toggle the
+// media bucket's domain.
 // D1 Read finds the publication stores that tie the Frontend's other stages
 // to the project.
 export const offboardingAccountPermissions = [
@@ -339,6 +340,11 @@ function cloudflareOperations({ manager, cloudflare, zone, managerId, project, f
         zone_id: zoneId,
         environment: "production",
       }),
+    // The zone's Worker routes; a route's own zone is always the Site's.
+    zoneWorkerRoutes: async () => (await zone("GET", "/workers/routes")) ?? [],
+    deleteWorkerRoute: (id) => zone("DELETE", `/workers/routes/${id}`, undefined, GONE),
+    attachWorkerRoute: ({ pattern, service }) =>
+      zone("POST", "/workers/routes", { pattern, script: service }),
     // A Worker's bindings (none once it is gone).
     async workerBindings(script) {
       return (await workerSettings(script))?.bindings ?? [];

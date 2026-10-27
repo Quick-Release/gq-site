@@ -27,8 +27,9 @@ site root. Every site-relative path resolves from there. `--project <dir>` or
 `gq.ops.json` is validated against schema v1 before any command runs
 ([ADR 0002](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0002-generate-sites-from-a-versioned-manifest.md)):
 `schemaVersion`, `project` and `variant` (`content` or `commerce`) are
-required, `domains` has the roles `admin` and `frontend` and an optional
-`docs`, and an unknown or misspelt key fails by its path. The blocks each
+required, `domains` has the roles `admin` and `frontend`, an optional
+`docs`, and an optional `frontendTarget` for a Frontend on the client's own
+domain (see below), and an unknown or misspelt key fails by its path. The blocks each
 command reads (`ploi`, `cloudflare`, `releases`, `media`, `backups`, `local`,
 `artifacts`, `ci`, `github`, `sigillo`, `consent`, `forms`, `wordpress.plugins`,
 `wordpress.graphqlPath`, `wordpress.locale`, `wordpress.languages`) are optional; a command names
@@ -51,6 +52,12 @@ decision stops being in force: a whole number from 1 to 1826. Left out, the
 consent Runtime's default (1826, 5 years) applies. The Frontend's deploy reads
 it and binds it as `CONSENT_RETENTION_DAYS` to the Frontend and the purge
 Worker; see [The Site's retention](../guides/consent.md#the-sites-retention).
+`domains.frontend` is the production Frontend's public hostname. When it is
+outside the Cloudflare zone (the client's own DNS), `domains.frontendTarget`
+names the Frontend's hostname in `cloudflare.zoneName`. That hostname is the
+Worker's Custom Domain and the CNAME target of the public one, which is served as a Cloudflare for SaaS custom hostname. It
+must be in the zone, and `domains.frontend` must not be. See
+[A Frontend on the client's own domain](../guides/provisioning.md#a-frontend-on-the-clients-own-domain).
 `forms` turns on headless Gravity Forms: `provider` is `"gravityforms"`, and
 `spam` lists the spam controls the Site relies on, `"honeypot"` and/or
 `"turnstile"`, each at most once. It needs `contentRuntime: "package"` and

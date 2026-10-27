@@ -227,6 +227,14 @@ development and staging copies. A site's staging hosts are always
 Frontend, where `<project>` is the client's name (the site's `project` in
 `gq.ops.json`).
 
+**Custom hostname**:
+A Site's public Frontend hostname in the client's own DNS, outside the
+Cloudflare zone on our account, served through Cloudflare for SaaS on that
+zone (`domains.frontend` with `domains.frontendTarget`). The client CNAMEs it
+to the Frontend's hostname in the zone, and a Worker route sends its requests
+to the production Frontend.
+_Avoid_: external domain, vanity domain
+
 **Artifacts-only Site**:
 A Site whose `gq.ops.json` names no `github.repository`
 ([ADR 0012](docs/adr/0012-keep-a-sites-code-in-artifacts-when-it-has-no-github-repository.md)):

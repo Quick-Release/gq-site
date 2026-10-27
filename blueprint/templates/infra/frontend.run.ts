@@ -16,7 +16,8 @@ import {
 
 // Hostnames live in gq.ops.json (domains), shared with the Ploi and deploy scripts.
 const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), "utf8")) as {
-  domains: { admin: string; frontend: string };
+  domains: { admin: string; frontend: string; frontendTarget?: string };
+  cloudflare?: { zoneId?: string };
   contentRuntime?: "package";
   preview?: { cmsUrl: string; audience: string };
   wordpress?: { graphqlPath?: "/graphql" | "/wp/graphql" };
@@ -25,6 +26,18 @@ const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), 
 };
 const previewEnv = previewBindings(ops, process.env, Redacted.make);
 const productionHostname = ops.domains.frontend;
+// A public hostname outside the Cloudflare zone (domains.frontendTarget set)
+// is a Cloudflare for SaaS custom hostname: the Worker keeps its Custom Domain
+// on the in-zone hostname, the custom hostname's DNS points there, and a
+// route on the zone hands its requests to the Worker. gq cloudflare
+// custom-hostname creates the custom hostname and its certificate.
+const frontendTarget = ops.domains.frontendTarget;
+const zoneId = ops.cloudflare?.zoneId;
+if (frontendTarget && !zoneId) {
+  throw new Error("gq.ops.json domains.frontendTarget needs cloudflare.zoneId.");
+}
+const customHostnameRoutes =
+  frontendTarget && zoneId ? [{ pattern: `${productionHostname}/*`, zoneId }] : undefined;
 // Alchemy beta.79 passes string Website.env values to Astro's build child,
 // overriding the app's local .env. This is public configuration, not a secret.
 const graphqlUrl =
@@ -161,7 +174,12 @@ export const Website = Cloudflare.Website.Astro(
     return {
       name,
       rootDir: "../apps/frontend",
-      ...(production && !offboarded ? { domain: productionHostname } : {}),
+      ...(production && !offboarded
+        ? {
+            domain: frontendTarget ?? productionHostname,
+            ...(customHostnameRoutes ? { routes: customHostnameRoutes } : {}),
+          }
+        : {}),
       astro: {
         site: production ? `https://${productionHostname}` : `https://${name}.workers.dev`,
         output: "server",
