@@ -18,6 +18,7 @@ const GUARDED = [
   ["cloudflare", "deploy-token"],
   ["cloudflare", "ci"],
   ["cloudflare", "releases"],
+  ["cloudflare", "custom-hostname"],
   ["github", "setup"],
   ["ci", "deploy"],
   ["ploi", "provision", "--yes"],
@@ -120,6 +121,16 @@ test("read-only commands keep working while the Site is offboarded", async () =>
 
   const plan = await fixture.run(["offboard", "--dry-run"], { env: ENV, fetch, exec });
   assert.equal(plan.code, 0, plan.stderr);
+});
+
+test("gq cloudflare custom-hostname status isn't guarded: it only reads", async () => {
+  const fixture = await offboardingSite({ ops: OFFBOARDED });
+
+  const result = await fixture.run(["cloudflare", "custom-hostname", "status"], { env: ENV });
+
+  assert.equal(result.code, 1);
+  assert.doesNotMatch(result.stderr, /offboarded/u);
+  assert.match(result.stderr, /domains\.frontendTarget/u);
 });
 
 test("gq ploi api list and describe keep working while the Site is offboarded", async () => {

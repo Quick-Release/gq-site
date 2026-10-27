@@ -149,7 +149,24 @@ export const manifestSchema = z
           "leaves that alone.",
       ),
     domains: z
-      .strictObject({ admin: hostname, frontend: hostname, docs: hostname.optional() })
+      .strictObject({
+        admin: hostname,
+        frontend: hostname.describe(
+          "The production Frontend's public hostname: its canonical URL, which the CMS links " +
+            "and allows. Outside the Cloudflare zone, it needs frontendTarget.",
+        ),
+        frontendTarget: hostname
+          .optional()
+          .describe(
+            "Set only when domains.frontend is a hostname outside the Cloudflare zone, served " +
+              "through Cloudflare for SaaS: the production Frontend's hostname inside the zone " +
+              "(cloudflare.zoneName). It is the Worker's Custom Domain, the zone's fallback " +
+              "origin and what domains.frontend's DNS points at (a CNAME). " +
+              "Left out, domains.frontend is in the zone.",
+          ),
+        docs: hostname.optional(),
+      })
+      .superRefine(checkFrontendTarget)
       .optional(),
     preview: z
       .strictObject({
@@ -318,6 +335,9 @@ export const manifestSchema = z
             workerDomains: z
               .array(z.strictObject({ hostname, service: name, zoneId: name }))
               .optional(),
+            workerRoutes: z
+              .array(z.strictObject({ pattern: name, service: name, zoneId: name }))
+              .optional(),
             workersDev: z
               .record(name, z.strictObject({ enabled: z.boolean(), previewsEnabled: z.boolean() }))
               .optional(),
@@ -327,7 +347,7 @@ export const manifestSchema = z
           })
           .optional()
           .describe(
-            "Written by gq offboard as it cuts: what it changed (the final backup, the retry crontab, the suspension, detached Worker domains, each Worker's workers.dev setting before, the media domain, the webhook id and the token ids it disabled); gq offboard --restore brings back only these.",
+            "Written by gq offboard as it cuts: what it changed (the final backup, the retry crontab, the suspension, detached Worker domains, the removed route of a custom hostname, each Worker's workers.dev setting before, the media domain, the webhook id and the token ids it disabled); gq offboard --restore brings back only these.",
           ),
         archive: z
           .strictObject({
@@ -359,6 +379,7 @@ export const manifestSchema = z
     }
   })
   .superRefine(checkForms)
+  .superRefine(checkFrontendZone)
   .meta({ title: "gq.ops.json", description: "A GETQUICK site's manifest (schema v1)." });
 
 // forms: on a content Site with the package pair, whose CMS deploy activates
@@ -378,6 +399,56 @@ function checkForms({ forms, variant, contentRuntime, wordpress }, context) {
 /** The spam controls gq.ops.json `forms` declares; empty without forms. */
 export function formSpamControls(ops) {
   return ops.forms?.spam ?? [];
+}
+
+// domains.frontendTarget is another hostname than the one it serves.
+function checkFrontendTarget({ frontend, frontendTarget }, context) {
+  if (frontendTarget === undefined) return;
+  if (sameHostname(frontendTarget, frontend)) {
+    context.addIssue({
+      code: "custom",
+      path: ["frontendTarget"],
+      message: "must be the Frontend's hostname inside the Cloudflare zone, not domains.frontend",
+    });
+  }
+}
+
+// With cloudflare.zoneName known, domains.frontendTarget is inside the zone
+// and domains.frontend, which it serves through Cloudflare for SaaS, isn't.
+function checkFrontendZone({ domains, cloudflare }, context) {
+  const zone = cloudflare?.zoneName;
+  if (!domains?.frontendTarget || !zone) return;
+  const issue = (key, message) =>
+    context.addIssue({ code: "custom", path: ["domains", key], message });
+  if (!inZone(domains.frontendTarget, zone)) {
+    issue("frontendTarget", `must be a hostname in ${zone} (cloudflare.zoneName)`);
+  }
+  if (inZone(domains.frontend, zone)) {
+    issue(
+      "frontend",
+      `is in ${zone} (cloudflare.zoneName): a Worker Custom Domain serves it, so leave out domains.frontendTarget`,
+    );
+  }
+}
+
+const sameHostname = (a, b) => a.toLowerCase() === b.toLowerCase();
+
+function inZone(host, zone) {
+  const name = host.toLowerCase();
+  const apex = zone.toLowerCase();
+  return name === apex || name.endsWith(`.${apex}`);
+}
+
+/**
+ * The production Frontend's Cloudflare for SaaS custom hostname: its public
+ * hostname (domains.frontend, outside the Cloudflare zone) and the in-zone
+ * hostname it CNAMEs to (domains.frontendTarget). Null for a Frontend whose
+ * public hostname is in the zone.
+ */
+export function frontendCustomHostname(ops) {
+  const { frontend, frontendTarget } = ops.domains ?? {};
+  if (!frontend || !frontendTarget) return null;
+  return { hostname: frontend, target: frontendTarget };
 }
 
 // wordpress.languages: beside the default language, each locale and slug

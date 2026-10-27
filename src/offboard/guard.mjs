@@ -28,14 +28,18 @@ export const GUARDED_COMMANDS = new Set([
 
 // Throws when `parsed` (the dispatcher's) is a guarded command and `config`
 // records the Site as offboarded. A `ploi api` operation is guarded unless it
-// only reads (GET) or only prints its request (--dry-run).
+// only reads (GET) or only prints its request (--dry-run), and `cloudflare
+// custom-hostname` unless it is its `status`.
 export function refuseWhenOffboarded(parsed, config) {
   const record = config.offboarded;
   if (!record) return;
   const name = parsed.command.slice(0, 2).join(" ");
   const writesThroughPloiApi =
     name === "ploi api" && !parsed.dryRun && ploiCatalog.get(parsed.command[2]).method !== "GET";
-  if (!GUARDED_COMMANDS.has(name) && !writesThroughPloiApi) return;
+  // Its `status` only reads.
+  const createsCustomHostname =
+    name === "cloudflare custom-hostname" && parsed.command[2] !== "status";
+  if (!GUARDED_COMMANDS.has(name) && !writesThroughPloiApi && !createsCustomHostname) return;
 
   const since = `${record.phase} on ${record.at.slice(0, 10)}`;
   const next =

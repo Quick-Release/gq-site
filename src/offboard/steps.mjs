@@ -21,6 +21,7 @@ import { tokenName } from "../cloudflare/tokens.mjs";
 import { parseDotenv } from "../dotenv-text.mjs";
 import { retryCrontab } from "../ploi/events.mjs";
 import { updateManifest } from "../manifest/manifest.mjs";
+import { frontendCustomHostname } from "../manifest/schema.mjs";
 import {
   artifactsRepositoryName,
   frontendWorker,
@@ -137,10 +138,21 @@ export async function inspectSite(providers) {
     });
   }
 
+  // A production Frontend on a Cloudflare for SaaS custom hostname
+  // (domains.frontendTarget) is also served through a route on the zone.
+  const custom = frontendCustomHostname(ops);
+  const customHostname = custom && {
+    ...custom,
+    route: (await cloudflare.zoneWorkerRoutes()).find(
+      (route) => route.pattern === `${custom.hostname}/*`,
+    ),
+  };
+
   return {
     ops,
     cms: { site, suspended: site.status === "suspended", crontab, existingCrontab },
     frontends,
+    customHostname,
     unclearStages: unclear,
     media: {
       ...ops.media,
@@ -339,6 +351,7 @@ export function cutPlan(site, { configPath, now = () => new Date() }) {
           )
         : done("Frontend", `the Worker ${frontend.worker}'s workers.dev and preview URLs are off`),
     ]),
+    ...customHostnameCut(site, cut),
     ...site.unclearStages.map((worker) => unclearStage("Frontend", ops.project, worker)),
     !isOwn(ops.project, "mediaBucket", media.bucket)
       ? manual(
@@ -403,6 +416,36 @@ function silenceArtifacts(site, disableToken) {
             },
           )
         : done("CI", `no active git token for the Artifacts repository ${repository}`),
+  ];
+}
+
+// The route that hands a Cloudflare for SaaS custom hostname's requests to
+// the Frontend goes, as its Custom Domains do. The custom hostname itself
+// stays on the zone: unserved without its route, and back without anything
+// from the client (its DNS and certificate validation) on --restore.
+function customHostnameCut(site, cut) {
+  const { customHostname } = site;
+  if (!customHostname) return [];
+  const { hostname, route } = customHostname;
+  const zoneId = site.ops.cloudflare.zoneId;
+  return [
+    route
+      ? cut(
+          "Frontend",
+          `remove the route ${route.pattern} to the Worker ${route.script} on the zone`,
+          (record) => {
+            const removed = (record.workerRoutes ??= []);
+            if (!removed.some(({ pattern }) => pattern === route.pattern)) {
+              removed.push({ pattern: route.pattern, service: route.script, zoneId });
+            }
+          },
+          (p) => p.cloudflare.deleteWorkerRoute(route.id),
+        )
+      : done("Frontend", `no route on the zone serves the custom hostname ${hostname}`),
+    manual(
+      "Frontend",
+      `the custom hostname ${hostname} (Cloudflare for SaaS) stays on the zone, unserved: delete it in the dashboard (SSL/TLS → Custom Hostnames) only if the Site won't come back, and ask the client to remove its DNS records`,
+    ),
   ];
 }
 
@@ -483,6 +526,13 @@ export function restorePlan(site, { configPath }) {
         ? done("Frontend", `${hostname} is attached to the Worker ${service}`)
         : todo("Frontend", `attach ${hostname} to the Worker ${service}`, (p) =>
             p.cloudflare.attachWorkerDomain({ hostname, service, zoneId }),
+          ),
+    ),
+    ...(cut.workerRoutes ?? []).map(({ pattern, service, zoneId }) =>
+      site.customHostname?.route?.pattern === pattern
+        ? done("Frontend", `the route ${pattern} runs the Worker ${service}`)
+        : todo("Frontend", `add the route ${pattern} to the Worker ${service} back`, (p) =>
+            p.cloudflare.attachWorkerRoute({ pattern, service, zoneId }),
           ),
     ),
     ...Object.entries(cut.workersDev ?? {})

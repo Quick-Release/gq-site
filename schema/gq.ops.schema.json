@@ -43,6 +43,12 @@
         },
         "frontend": {
           "type": "string",
+          "minLength": 1,
+          "description": "The production Frontend's public hostname: its canonical URL, which the CMS links and allows. Outside the Cloudflare zone, it needs frontendTarget."
+        },
+        "frontendTarget": {
+          "description": "Set only when domains.frontend is a hostname outside the Cloudflare zone, served through Cloudflare for SaaS: the production Frontend's hostname inside the zone (cloudflare.zoneName). It is the Worker's Custom Domain, the zone's fallback origin and what domains.frontend's DNS points at (a CNAME). Left out, domains.frontend is in the zone.",
+          "type": "string",
           "minLength": 1
         },
         "docs": {
@@ -489,7 +495,7 @@
           ]
         },
         "cut": {
-          "description": "Written by gq offboard as it cuts: what it changed (the final backup, the retry crontab, the suspension, detached Worker domains, each Worker's workers.dev setting before, the media domain, the webhook id and the token ids it disabled); gq offboard --restore brings back only these.",
+          "description": "Written by gq offboard as it cuts: what it changed (the final backup, the retry crontab, the suspension, detached Worker domains, the removed route of a custom hostname, each Worker's workers.dev setting before, the media domain, the webhook id and the token ids it disabled); gq offboard --restore brings back only these.",
           "type": "object",
           "properties": {
             "backup": {
@@ -543,6 +549,32 @@
                 },
                 "required": [
                   "hostname",
+                  "service",
+                  "zoneId"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "workerRoutes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "service": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "zoneId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "pattern",
                   "service",
                   "zoneId"
                 ],

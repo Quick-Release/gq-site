@@ -95,7 +95,13 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
   // The records at the Site's own hosts; none at the zone's apex, which
   // carries the zone's own (mail, verification) whatever serves it.
   const zoneName = await cloudflare.zoneName();
-  const hosts = [ops.domains.admin, ops.domains.frontend, ...(mediaOwn ? [ops.media.domain] : [])];
+  // A Frontend on a Cloudflare for SaaS custom hostname has its records at
+  // its in-zone host (domains.frontendTarget); the client's are elsewhere.
+  const hosts = [
+    ops.domains.admin,
+    ops.domains.frontendTarget ?? ops.domains.frontend,
+    ...(mediaOwn ? [ops.media.domain] : []),
+  ];
   const apexHosts = hosts.filter((host) => host.toLowerCase() === zoneName.toLowerCase());
   const records = [];
   for (const host of hosts.filter((host) => !apexHosts.includes(host))) {
@@ -826,6 +832,14 @@ function deletionItems(site, { configPath }) {
       ),
     ),
     ...frontend.unclear.map((worker) => unclearStage("Frontend", ops.project, worker)),
+    ...(ops.domains.frontendTarget
+      ? [
+          manual(
+            "Frontend",
+            `delete the custom hostname ${ops.domains.frontend} (Cloudflare for SaaS) in the dashboard (SSL/TLS → Custom Hostnames), and the zone's fallback origin if nothing else uses it; ask the client to remove its DNS records for ${ops.domains.frontend}`,
+          ),
+        ]
+      : []),
     ...frontend.unbound.map((d1) =>
       manual(
         "Frontend",

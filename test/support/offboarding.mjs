@@ -303,6 +303,8 @@ export function exposedState() {
     },
     // The bucket Sigillo staging's R2 key belongs to: the backups bucket.
     stagingBucket: "fixture-releases",
+    // The zone's Worker routes (a custom hostname's, beside other Sites').
+    workerRoutes: [{ id: "route-other", pattern: "www.other.example/*", script: "other-fe" }],
     log: [],
   };
 }
@@ -349,6 +351,21 @@ export function fakeAccount(overrides = {}) {
       const name = /^\/dns_records\?name=(.+)$/u.exec(path)?.[1];
       if (method === "GET" && name) {
         return ok(state.dnsRecords.filter((record) => record.name === decodeURIComponent(name)));
+      }
+      if (path === "/workers/routes" && method === "GET") return ok(state.workerRoutes);
+      if (path === "/workers/routes" && method === "POST") {
+        const route = { id: `route-${next}`, pattern: data.pattern, script: data.script };
+        next += 1;
+        state.workerRoutes.push(route);
+        state.log.push(`worker route ${data.pattern} added to ${data.script}`);
+        return ok(route);
+      }
+      const route = /^\/workers\/routes\/([^/?]+)$/u.exec(path)?.[1];
+      if (method === "DELETE" && route) {
+        if (!state.workerRoutes.some(({ id }) => id === route)) return notFound();
+        state.workerRoutes = state.workerRoutes.filter(({ id }) => id !== route);
+        state.log.push(`worker route ${route} deleted`);
+        return ok({ id: route });
       }
       const record = /^\/dns_records\/([^/?]+)$/u.exec(path)?.[1];
       if (method === "DELETE" && record) {

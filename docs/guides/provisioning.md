@@ -266,6 +266,115 @@ Pushes to it start CI directly; there is no webhook, mirror or commit status.
 - `gq offboard` archives an Artifacts-only Site's code with its content
   ([Offboarding](offboarding.md#an-artifacts-only-site)).
 
+### A Frontend on the client's own domain
+
+The production Frontend's Worker normally gets `domains.frontend` as a
+Workers Custom Domain, which only works for a hostname in the zone on our
+account (`cloudflare.zoneId`). When the client's hostname stays in their own
+DNS, the Frontend serves it through
+[Cloudflare for SaaS](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/)
+on that same zone. `domains.frontend` stays the public, canonical hostname.
+`domains.frontendTarget` names the Frontend's hostname in the zone, which
+the client's hostname points at:
+
+```json
+{
+  "domains": {
+    "admin": "example-cms.bnq.pt",
+    "frontend": "www.client.example",
+    "frontendTarget": "example.bnq.pt"
+  },
+  "cloudflare": { "accountId": "…", "zoneId": "…", "zoneName": "bnq.pt" }
+}
+```
+
+`frontendTarget` must be in `cloudflare.zoneName`, and `frontend` must not
+be. Everything that reads `domains.frontend` keeps the public hostname: the
+Astro `site` URL, the CMS's `GETQUICK_FRONTEND_URL` and
+`GRAPHQL_CORS_ORIGINS`, `gq frontend refresh` and `gq site check`. The CMS
+and media hostnames don't change.
+
+What each part does:
+
+- **The Worker**: the production deploy (`infra/frontend.run.ts`) keeps its
+  Custom Domain on `frontendTarget` and adds a Worker route
+  `<domains.frontend>/*` on the zone. The route is how a Worker receives a
+  custom hostname's requests
+  ([Workers as your fallback origin](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/start/advanced-settings/worker-as-origin/)).
+  The deploy token already has Workers Routes Write on the zone.
+- **`gq cloudflare custom-hostname`** sets the zone's fallback origin to
+  `frontendTarget` when the zone has none. A Worker Custom Domain is a
+  proxied `AAAA 100::` record, the originless kind Cloudflare expects there.
+  It keeps a fallback origin another Site already set, since the route
+  serves this hostname either way. It then creates the custom hostname: a DV
+  certificate validated by TXT, minimum TLS 1.2, and a TXT ownership record
+  so the hostname can go active before its traffic moves. Finally it prints
+  the client's records. It uses a 1-hour token with Zone Read and SSL and
+  Certificates Write on the zone, deleted afterwards, and `--dry-run` only
+  prints the plan.
+- **`gq cloudflare custom-hostname status`** reads the same state and the
+  client's DNS (its CNAME and CAA records, over DNS over HTTPS) and changes
+  nothing. It exits 1 until the fallback origin, the hostname, its
+  certificate, the route, the CNAME and the CAA records are all right.
+  `--json` prints the checks and the records.
+
+Before the first run, someone with dashboard access enables Cloudflare for
+SaaS on the zone: SSL/TLS → Custom Hostnames → Enable. The API has no call
+for it. Outside Enterprise it asks for a payment method. Free, Pro and
+Business zones include 100 custom hostnames and charge $0.10 a month for each
+one beyond that. Only Enterprise can choose the certificate authority
+([plans](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/plans/)).
+Until it is enabled, the command fails and says so.
+
+The client adds these records at their DNS. `gq cloudflare custom-hostname`
+(or its `status`) prints them with real values:
+
+| Record                                   | Type  | Content                                        | Why                                                                   |
+| ---------------------------------------- | ----- | ---------------------------------------------- | --------------------------------------------------------------------- |
+| `_cf-custom-hostname.www.client.example` | TXT   | the ownership token                            | proves ownership, so the hostname goes active before traffic moves    |
+| `_acme-challenge.www.client.example`     | CNAME | `www.client.example.<uuid>.dcv.cloudflare.com` | delegated DCV: Cloudflare validates every issuance and renewal itself |
+| `www.client.example`                     | CNAME | `example.bnq.pt`                               | the traffic                                                           |
+
+The `_acme-challenge` CNAME must stay in place, and no other
+`_acme-challenge` record may exist for the hostname: one stops delegated DCV.
+If the account has no DCV delegation id, the command prints the
+certificate's own TXT records instead. Those are good for one issuance only.
+
+**CAA.** If the client's domain has CAA records (on the hostname or a parent),
+they must allow the CAs Cloudflare issues from: `0 issue "letsencrypt.org"`,
+`0 issue "pki.goog"` and `0 issue "ssl.com"`. Otherwise the certificate is
+never issued. `status` reads the CAA set that applies and names any CA it
+lacks.
+
+**Moving a live Site's Frontend.** In this order, so nothing breaks while
+the client's DNS changes:
+
+1. Bump the Site's `@getquick/site` pin. Set `domains.frontend` to the new
+   hostname and `domains.frontendTarget` to the current one, then `gq sync`.
+2. Run `gq sigillo run operations -- gq cloudflare custom-hostname`, first
+   with `--dry-run`. Send the printed records, and the CAA note if it
+   applies, to the client.
+3. The client adds the TXT and `_acme-challenge` records. Run
+   `gq cloudflare custom-hostname status` until the hostname and its
+   certificate are active. The `dns` check stays ✗ until step 5.
+4. Deploy the production Frontend (a release, or `pnpm deploy:frontend`): it
+   gets its route, and its `site` URL becomes the new hostname. Update the
+   Ploi site's `.env` by hand: set `GETQUICK_FRONTEND_URL` and
+   `GRAPHQL_CORS_ORIGINS` to `https://<domains.frontend>`. They are only
+   rendered from `gq.ops.json` when `gq ploi provision` creates the `.env`.
+5. The client adds the traffic CNAME. `status` exits 0 once it resolves.
+
+Until step 5, `gq frontend refresh` and `gq site check` can reach the
+Frontend with `--url https://<domains.frontendTarget>`. The in-zone hostname
+keeps serving the Frontend; redirecting it to the public one is the Site's
+choice.
+
+`gq offboard` removes the route and records it, and `--restore` adds it back.
+The custom hostname stays on the zone through the cut, so a restore needs
+nothing from the client. `gq offboard --archive` lists deleting it (and the
+fallback origin, if nothing else uses it) as a step done by hand
+([Offboarding](offboarding.md)).
+
 ## Independent media
 
 A content site's WordPress uploads live on R2 (Human Made S3 Uploads), on a

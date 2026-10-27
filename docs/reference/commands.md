@@ -59,6 +59,8 @@ gq cloudflare dns list [--zone <id>] [--name <hostname>] [--type <type>]
 gq cloudflare deploy-token [--dry-run]
 gq cloudflare releases [--dry-run]
 gq cloudflare media [--dry-run]
+gq cloudflare custom-hostname [--dry-run]
+gq cloudflare custom-hostname status [--json]
 gq cloudflare ci [--dry-run]
 
 gq media check [--upload | --local] [--json]
@@ -114,7 +116,8 @@ URLs and credentials, deleting nothing; it needs the managed deploy files as
 naming `ploi.database`, and gh 2.48 or later. `--restore` reverses what the cut recorded. Both print the
 plan (`✓` done, `-` to cut or `+` to restore, `!` by hand) and need `--yes`
 outside a terminal. While `offboarded` is set, every command that would expose
-the Site again refuses: `cloudflare media|deploy-token|ci|releases`,
+the Site again refuses: `cloudflare media|deploy-token|ci|releases|custom-hostname`
+(not its `status`),
 `github setup`, `ci deploy`, `ploi provision|events|media|release`, a
 `ploi api` operation that writes (unless `--dry-run`), `release push|tag|package` and
 `frontend refresh|secrets`. `--archive` (irreversible, only once `offboarded`
