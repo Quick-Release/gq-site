@@ -41,7 +41,7 @@
 import { scanConsentHtml } from "@getquick/content/consent/testing";
 
 import { RECONCILIATION_STALE_MS, sendCheckEvent } from "../frontend/commands.mjs";
-import { siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
+import { frontendFramework, siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
 import { productionMediaReadiness } from "../media/readiness.mjs";
 import { cmsFetch } from "../cms/access.mjs";
 import { CMS_CONSENT_READ_TOKEN, CONSENT_READ_TOKEN } from "../frontend/consent.mjs";
@@ -830,7 +830,7 @@ export async function siteReadiness({ ops, env, fetch, origin, upload = true, no
     ...(await frontendReadiness({
       origin: frontend,
       project: ops.project,
-      framework: ops.framework ?? "astro",
+      framework: frontendFramework(ops),
       env,
       fetch,
       now,

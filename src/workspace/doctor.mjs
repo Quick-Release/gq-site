@@ -24,9 +24,13 @@ import {
   consentDatabaseName,
   listConsentDatabases,
 } from "../frontend/consent.mjs";
-import { frontendFramework } from "../manifest/schema.mjs";
 import { FORMS_ROUTE, TURNSTILE_KEYS } from "../forms/readiness.mjs";
-import { artifactsJurisdiction, formSpamControls, MANIFEST_FILENAME } from "../manifest/schema.mjs";
+import {
+  artifactsJurisdiction,
+  formSpamControls,
+  frontendFramework,
+  MANIFEST_FILENAME,
+} from "../manifest/schema.mjs";
 import { localMediaReadiness } from "../media/readiness.mjs";
 import {
   hasReleaseConfig,

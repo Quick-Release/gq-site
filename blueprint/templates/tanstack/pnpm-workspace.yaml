@@ -19,7 +19,7 @@ overrides:
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0
   vitest: 5.0.1
 catalog:
-  # Alchemy/Effect: shared by infra (deploy) and apps/frontend (the Astro build
+  # Alchemy/Effect: shared by infra (deploy) and apps/frontend (the Vite build
   # resolves the Alchemy server entrypoint from apps/frontend).
   "@alchemy.run/frontend-frameworks": 2.0.0-beta.79
   "@effect/platform-node": 4.0.0-rc.115
