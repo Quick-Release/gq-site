@@ -235,6 +235,15 @@ to the Frontend's hostname in the zone, and a Worker route sends its requests
 to the production Frontend.
 _Avoid_: external domain, vanity domain
 
+**External proxy**:
+A reverse proxy we run outside Cloudflare that serves a Site's public
+Frontend hostname with a certificate of its own and forwards every request
+to the Frontend's hostname in the Cloudflare zone (`domains.frontendProxy`
+with `domains.frontendTarget`). It is used when the client requires a
+certificate authority Cloudflare can't serve. The Worker has no route for
+the public hostname, and no Custom hostname exists for it.
+_Avoid_: origin proxy, front proxy
+
 **Artifacts-only Site**:
 A Site whose `gq.ops.json` names no `github.repository`
 ([ADR 0012](docs/adr/0012-keep-a-sites-code-in-artifacts-when-it-has-no-github-repository.md)):

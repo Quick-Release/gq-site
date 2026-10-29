@@ -16,7 +16,12 @@ import {
 
 // Hostnames live in gq.ops.json (domains), shared with the Ploi and deploy scripts.
 const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), "utf8")) as {
-  domains: { admin: string; frontend: string; frontendTarget?: string };
+  domains: {
+    admin: string;
+    frontend: string;
+    frontendTarget?: string;
+    frontendProxy?: { trustedProxies: string[] };
+  };
   cloudflare?: { zoneId?: string };
   contentRuntime?: "package";
   preview?: { cmsUrl: string; audience: string };
@@ -27,17 +32,24 @@ const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), 
 const previewEnv = previewBindings(ops, process.env, Redacted.make);
 const productionHostname = ops.domains.frontend;
 // A public hostname outside the Cloudflare zone (domains.frontendTarget set)
-// is a Cloudflare for SaaS custom hostname: the Worker keeps its Custom Domain
-// on the in-zone hostname, the custom hostname's DNS points there, and a
-// route on the zone hands its requests to the Worker. gq cloudflare
-// custom-hostname creates the custom hostname and its certificate.
+// leaves the Worker its Custom Domain on the in-zone hostname. By default it
+// is a Cloudflare for SaaS custom hostname: its DNS points at the in-zone
+// hostname, and a route on the zone hands its requests to the Worker. gq
+// cloudflare custom-hostname creates the custom hostname and its certificate.
+// Behind an external proxy (domains.frontendProxy), the proxy sends its
+// requests to the in-zone hostname itself: no route. The form and consent
+// endpoints believe its X-Forwarded-For from its addresses only
+// (GQ_TRUSTED_PROXIES, comma-separated; @getquick/content's trustedProxies).
 const frontendTarget = ops.domains.frontendTarget;
+const frontendProxy = frontendTarget ? ops.domains.frontendProxy : undefined;
+const customHostname = Boolean(frontendTarget) && !frontendProxy;
+const trustedProxies = frontendProxy?.trustedProxies.join(",") ?? "";
 const zoneId = ops.cloudflare?.zoneId;
-if (frontendTarget && !zoneId) {
+if (customHostname && !zoneId) {
   throw new Error("gq.ops.json domains.frontendTarget needs cloudflare.zoneId.");
 }
 const customHostnameRoutes =
-  frontendTarget && zoneId ? [{ pattern: `${productionHostname}/*`, zoneId }] : undefined;
+  customHostname && zoneId ? [{ pattern: `${productionHostname}/*`, zoneId }] : undefined;
 // Alchemy beta.79 passes string Website.env values to Astro's build child,
 // overriding the app's local .env. This is public configuration, not a secret.
 const graphqlUrl =
@@ -211,6 +223,8 @@ export const Website = Cloudflare.Website.Astro(
             }
           : cmsSecrets),
         ...(ops.forms ? { FORMS_RATE_LIMITER: formsRateLimiter(name), ...formsSecrets } : {}),
+        // Only production is behind the proxy.
+        ...(production && trustedProxies ? { GQ_TRUSTED_PROXIES: trustedProxies } : {}),
       },
     };
   }),

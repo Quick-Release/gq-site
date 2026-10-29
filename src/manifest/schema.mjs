@@ -6,7 +6,9 @@
 // IDs); each command still names the keys it needs. `release`, `verify`
 // and `doctor` hold only additions to the variant's defaults
 // (site-settings.mjs), so a site states only how it differs.
+import { isIP } from "node:net";
 import { z } from "zod";
+
 import { validPreviewUrl } from "../frontend/preview-bindings.mjs";
 
 export const MANIFEST_FILENAME = "gq.ops.json";
@@ -158,11 +160,37 @@ export const manifestSchema = z
         frontendTarget: hostname
           .optional()
           .describe(
-            "Set only when domains.frontend is a hostname outside the Cloudflare zone, served " +
-              "through Cloudflare for SaaS: the production Frontend's hostname inside the zone " +
-              "(cloudflare.zoneName). It is the Worker's Custom Domain and what " +
-              "domains.frontend's DNS points at (a CNAME). " +
+            "Set only when domains.frontend is a hostname outside the Cloudflare zone: the " +
+              "production Frontend's hostname inside the zone (cloudflare.zoneName). It is the " +
+              "Worker's Custom Domain, which domains.frontend reaches through Cloudflare for SaaS, " +
+              "or through frontendProxy. " +
               "Left out, domains.frontend is in the zone.",
+          ),
+        frontendProxy: z
+          .strictObject({
+            trustedProxies: z
+              .array(
+                z
+                  .string()
+                  .refine(validProxyAddress, "must be an IPv4 or IPv6 address or CIDR, not a /0"),
+              )
+              .min(1)
+              .describe(
+                "The addresses the proxy reaches Cloudflare from (addresses or CIDRs, IPv4 or " +
+                  "IPv6): the Frontend's form and consent endpoints believe its " +
+                  "X-Forwarded-For only from them, so each visitor keeps their own rate limit. " +
+                  "Bound to the production Worker as GQ_TRUSTED_PROXIES. List only proxies " +
+                  "we run: a listed address can claim any visitor's.",
+              ),
+          })
+          .optional()
+          .describe(
+            "Set when a reverse proxy we run outside Cloudflare serves domains.frontend " +
+              "(with a certificate of its own, e.g. one the client's CA issues) and forwards " +
+              "to frontendTarget, with Host and SNI frontendTarget. Needs frontendTarget. The " +
+              "Worker gets no route and gq makes no Cloudflare for SaaS custom hostname. " +
+              "Left out, a domains.frontend outside the zone is a Cloudflare for SaaS custom " +
+              "hostname.",
           ),
         docs: hostname.optional(),
       })
@@ -401,9 +429,19 @@ export function formSpamControls(ops) {
   return ops.forms?.spam ?? [];
 }
 
-// domains.frontendTarget is another hostname than the one it serves.
-function checkFrontendTarget({ frontend, frontendTarget }, context) {
-  if (frontendTarget === undefined) return;
+// domains.frontendTarget is another hostname than the one it serves, and
+// domains.frontendProxy forwards to it.
+function checkFrontendTarget({ frontend, frontendTarget, frontendProxy }, context) {
+  if (frontendTarget === undefined) {
+    if (frontendProxy !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["frontendProxy"],
+        message: "needs domains.frontendTarget, the Frontend's hostname inside the Cloudflare zone",
+      });
+    }
+    return;
+  }
   if (sameHostname(frontendTarget, frontend)) {
     context.addIssue({
       code: "custom",
@@ -414,7 +452,8 @@ function checkFrontendTarget({ frontend, frontendTarget }, context) {
 }
 
 // With cloudflare.zoneName known, domains.frontendTarget is inside the zone
-// and domains.frontend, which it serves through Cloudflare for SaaS, isn't.
+// and domains.frontend, which reaches it through Cloudflare for SaaS or an
+// external proxy, isn't.
 function checkFrontendZone({ domains, cloudflare }, context) {
   const zone = cloudflare?.zoneName;
   if (!domains?.frontendTarget || !zone) return;
@@ -447,8 +486,34 @@ function inZone(host, zone) {
  */
 export function frontendCustomHostname(ops) {
   const { frontend, frontendTarget } = ops.domains ?? {};
-  if (!frontend || !frontendTarget) return null;
+  if (!frontend || !frontendTarget || frontendProxied(ops)) return null;
   return { hostname: frontend, target: frontendTarget };
+}
+
+/**
+ * The production Frontend behind an external reverse proxy
+ * (domains.frontendProxy): the public hostname the proxy
+ * serves (domains.frontend) and the Worker's in-zone hostname it forwards to
+ * (domains.frontendTarget). Null otherwise.
+ */
+export function frontendProxy(ops) {
+  const { frontend, frontendTarget } = ops.domains ?? {};
+  if (!frontend || !frontendTarget || !frontendProxied(ops)) return null;
+  return { hostname: frontend, target: frontendTarget };
+}
+
+const frontendProxied = (ops) => ops.domains?.frontendProxy !== undefined;
+
+// An address or CIDR as @getquick/content's trustedProxies takes it; a /0
+// would trust every address.
+function validProxyAddress(value) {
+  const [address, prefix, extra] = value.split("/");
+  const family = isIP(address);
+  if (!family || extra !== undefined) return false;
+  if (prefix === undefined) return true;
+  if (!/^\d{1,3}$/u.test(prefix)) return false;
+  const length = Number(prefix);
+  return length > 0 && length <= (family === 4 ? 32 : 128);
 }
 
 // wordpress.languages: beside the default language, each locale and slug

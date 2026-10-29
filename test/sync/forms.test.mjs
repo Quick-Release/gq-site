@@ -68,6 +68,15 @@ test("gq sync writes the managed form route for a Site with forms, binding creat
     route,
     /spam: \{ turnstile: manifest\.forms\.spam\?\.includes\("turnstile"\) \?\? false \},/u,
   );
+  // Behind an external proxy, posts from the public host are the Site's own,
+  // and the proxy's addresses (GQ_TRUSTED_PROXIES) may forward the visitor's.
+  assert.match(
+    route,
+    /const siteOrigins = \[manifest\.domains\?\.frontend, manifest\.domains\?\.frontendTarget\]/u,
+  );
+  assert.match(route, /cmsOrigin,\s*siteOrigins,/u);
+  assert.match(route, /const \{ GQ_TRUSTED_PROXIES: proxies \} = await bindings\(\);/u);
+  assert.match(route, /\.\.\.trustedProxies\(proxies\),\n {2}\}\);/u);
   assert.match(route, /import ops from "\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/gq\.ops\.json";/u);
   assert.match(route, /const ddevProject = "acme-admin";/u);
   // No form logic: validation, spam and submission are the package's.

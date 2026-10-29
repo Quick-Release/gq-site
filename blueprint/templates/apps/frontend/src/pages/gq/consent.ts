@@ -18,21 +18,45 @@ import ops from "../../../../../gq.ops.json";
 
 export const prerender = false;
 
+const domains = (ops as { domains?: { frontend: string; frontendTarget?: string } }).domains;
+// The Site's public origin (domains.frontend) and the Worker's own host when
+// it is another (domains.frontendTarget): behind an external proxy, the
+// Worker sees the latter while visitors' browsers post from the former.
+const siteOrigins = [domains?.frontend, domains?.frontendTarget]
+  .filter((host): host is string => Boolean(host))
+  .map((host) => `https://${host}`);
+
 // The deployed Worker's bindings (infra/frontend.run.ts declares them).
 // Outside workerd there are none, and the Runtime answers 503.
 const bindings = async () =>
   ((await import("cloudflare:workers").catch(() => null))?.env ?? {}) as ConsentBindings & {
     CONSENT_RETENTION_DAYS?: string;
+    GQ_TRUSTED_PROXIES?: string;
   };
+
+// The Site's reverse proxy's addresses, from GQ_TRUSTED_PROXIES (comma-separated;
+// infra/frontend.run.ts binds it for gq.ops.json domains.frontendProxy): the
+// visitor's address is read from its X-Forwarded-For only when it is them.
+// @getquick/content takes trustedProxies from the release of gq-content #55;
+// spread in, an older one ignores it.
+const trustedProxies = (value: string | undefined) => {
+  const list = (value ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return list.length > 0 ? { trustedProxies: list } : {};
+};
 
 let consent: ConsentServer | undefined;
 
 export const ALL: APIRoute = async ({ request }) => {
-  const { CONSENT_RETENTION_DAYS: retention } = await bindings();
+  const { CONSENT_RETENTION_DAYS: retention, GQ_TRUSTED_PROXIES: proxies } = await bindings();
   consent ??= createConsentServer({
     siteId: ops.project,
+    siteOrigins,
     bindings,
     retentionDays: retention ? Number(retention) : undefined,
+    ...trustedProxies(proxies),
   });
   return (await consent.handle(request)) ?? new Response(null, { status: 404 });
 };

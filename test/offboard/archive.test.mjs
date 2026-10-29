@@ -189,6 +189,34 @@ function assertLog(log, expected) {
   );
 }
 
+test("offboard --archive leaves an external proxy and the public hostname's DNS to the operator", async () => {
+  const ops = {
+    ...OPS,
+    domains: {
+      ...OPS.domains,
+      frontend: "www.client.example",
+      frontendTarget: "fixture-fe.example.test",
+      frontendProxy: { trustedProxies: ["192.0.2.10"] },
+    },
+  };
+  const { fixture, account } = await cutSite({ ops });
+
+  const result = await fixture.run(["offboard", "--archive", "--dry-run"], {
+    env: ENV,
+    ...account,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const lines = planLines(result.stdout);
+  assert.ok(
+    lines.includes(
+      "  ! Frontend: remove www.client.example's site from the external reverse proxy that serves it (and its certificate there); ask whoever runs www.client.example's DNS to remove its records",
+    ),
+    lines.join("\n"),
+  );
+  assert.ok(!lines.some((line) => line.includes("Cloudflare for SaaS")), lines.join("\n"));
+});
+
 test("offboard --archive --yes archives everything, verifies it, then deletes in order and records it", async () => {
   const { fixture, account } = await cutSite();
   const { state } = account;

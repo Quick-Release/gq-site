@@ -28,8 +28,8 @@ site root. Every site-relative path resolves from there. `--project <dir>` or
 ([ADR 0002](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0002-generate-sites-from-a-versioned-manifest.md)):
 `schemaVersion`, `project` and `variant` (`content` or `commerce`) are
 required, `domains` has the roles `admin` and `frontend`, an optional
-`docs`, and an optional `frontendTarget` for a Frontend on the client's own
-domain (see below), and an unknown or misspelt key fails by its path. The blocks each
+`docs`, and an optional `frontendTarget` (and `frontendProxy`) for a
+Frontend on the client's own domain (see below), and an unknown or misspelt key fails by its path. The blocks each
 command reads (`ploi`, `cloudflare`, `releases`, `media`, `backups`, `local`,
 `artifacts`, `ci`, `github`, `sigillo`, `consent`, `forms`, `wordpress.plugins`,
 `wordpress.graphqlPath`, `wordpress.locale`, `wordpress.languages`) are optional; a command names
@@ -58,6 +58,15 @@ names the Frontend's hostname in `cloudflare.zoneName`. That hostname is the
 Worker's Custom Domain and the CNAME target of the public one, which is served as a Cloudflare for SaaS custom hostname. It
 must be in the zone, and `domains.frontend` must not be. See
 [A Frontend on the client's own domain](../guides/provisioning.md#a-frontend-on-the-clients-own-domain).
+`domains.frontendProxy` changes how the public hostname is served: a reverse
+proxy we run outside Cloudflare serves it, with its own certificate, and
+forwards to `frontendTarget` with `Host` and SNI `frontendTarget`. It needs
+`frontendTarget`. The Worker then gets no route, and there is no custom
+hostname. `frontendProxy.trustedProxies` lists the addresses (IPv4 or IPv6,
+or CIDRs, never a `/0`) the proxy reaches Cloudflare from. It is bound to the
+production Worker as `GQ_TRUSTED_PROXIES`, so the form and consent endpoints
+believe its `X-Forwarded-For`. See
+[A Frontend behind an external proxy](../guides/provisioning.md#a-frontend-behind-an-external-proxy).
 `forms` turns on headless Gravity Forms: `provider` is `"gravityforms"`, and
 `spam` lists the spam controls the Site relies on, `"honeypot"` and/or
 `"turnstile"`, each at most once. It needs `contentRuntime: "package"` and

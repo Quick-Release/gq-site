@@ -80,8 +80,16 @@ test("gq new wires a Site to the pinned pair: keys, routes, migrations and ident
   assert.match(consentRoute, /retentionDays: retention \? Number\(retention\) : undefined,/u);
   assert.match(
     consentRoute,
-    /const \{ CONSENT_RETENTION_DAYS: retention \} = await bindings\(\);/u,
+    /const \{ CONSENT_RETENTION_DAYS: retention, GQ_TRUSTED_PROXIES: proxies \} = await bindings\(\);/u,
   );
+  // Posts from the public host count as the Site's own behind an external
+  // proxy, and so does the visitor's address its trusted proxies forward.
+  assert.match(
+    consentRoute,
+    /const siteOrigins = \[domains\?\.frontend, domains\?\.frontendTarget\]/u,
+  );
+  assert.match(consentRoute, /siteId: ops\.project,\s*siteOrigins,/u);
+  assert.match(consentRoute, /\.\.\.trustedProxies\(proxies\),\n {2}\}\);/u);
   assert.match(consentRoute, /from "@getquick\/content\/consent\/server"/u);
   assert.match(consentRoute, /\.handle\(request\)\) \?\? new Response\(null, \{ status: 404 \}\)/u);
   assert.match(await readSite(root, CONSENT_ROUTES[1]), /from "\.\.\/consent"/u);

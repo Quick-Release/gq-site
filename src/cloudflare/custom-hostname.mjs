@@ -24,7 +24,7 @@
 //   gq cloudflare custom-hostname status [--json]
 
 import { createReporter } from "../cli/reporter.mjs";
-import { frontendCustomHostname } from "../manifest/schema.mjs";
+import { frontendCustomHostname, frontendProxy } from "../manifest/schema.mjs";
 import { frontendWorker } from "../offboard/names.mjs";
 import { createCloudflareAccountClient } from "./account-client.mjs";
 import { managerToken, tokenName, withTemporaryToken, zonePolicy } from "./tokens.mjs";
@@ -62,6 +62,13 @@ function saasHint(zone) {
 }
 
 function settings(ops) {
+  // Behind an external proxy, Cloudflare never sees the public hostname.
+  const proxy = frontendProxy(ops);
+  if (proxy) {
+    throw new Error(
+      `gq.ops.json sets domains.frontendProxy: https://${proxy.hostname} is served by a reverse proxy outside Cloudflare, which forwards to the Worker's Custom Domain ${proxy.target}. There is no Cloudflare for SaaS custom hostname to create or check: the proxy's certificate and ${proxy.hostname}'s DNS are set up where the proxy runs (docs/guides/provisioning.md, "A Frontend behind an external proxy").`,
+    );
+  }
   const custom = frontendCustomHostname(ops);
   const { accountId, zoneId, zoneName } = ops.cloudflare ?? {};
   if (!custom || !accountId || !zoneId) {

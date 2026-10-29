@@ -140,6 +140,47 @@ test("gq.ops.json domains.frontendTarget names the Frontend's host in the zone, 
   );
 });
 
+const PROXY = Object.freeze({ trustedProxies: ["192.0.2.10", "2001:db8:1:2::/64"] });
+
+test("gq.ops.json domains.frontendProxy forwards domains.frontend to frontendTarget from its trusted addresses", () => {
+  const proxied = { ...OPS, domains: { ...OPS.domains, frontendProxy: PROXY } };
+  assert.equal(manifestSchema.safeParse(proxied).success, true);
+  const issues = (domains) =>
+    manifestSchema
+      .safeParse({ ...OPS, domains })
+      .error?.issues.map(({ path, message }) => `${path.join(".")}: ${message}`) ?? [];
+  assert.match(
+    issues({
+      admin: "cms.example.test",
+      frontend: "www.example.test",
+      frontendProxy: PROXY,
+    }).join("\n"),
+    /domains\.frontendProxy: needs domains\.frontendTarget/u,
+  );
+  for (const address of [
+    "proxy.example.test",
+    "192.0.2.10/33",
+    "0.0.0.0/0",
+    "::/0",
+    "2001:db8::/x",
+  ]) {
+    assert.match(
+      issues({ ...OPS.domains, frontendProxy: { trustedProxies: [address] } }).join("\n"),
+      /domains\.frontendProxy\.trustedProxies\.0: must be an IPv4 or IPv6 address or CIDR/u,
+      address,
+    );
+  }
+  assert.match(
+    issues({ ...OPS.domains, frontendProxy: { trustedProxies: [] } }).join("\n"),
+    /domains\.frontendProxy\.trustedProxies/u,
+  );
+  // The in-zone checks hold behind a proxy too.
+  assert.match(
+    issues({ ...proxied.domains, frontendTarget: "fixture.other.test" }).join("\n"),
+    /must be a hostname in example\.test/u,
+  );
+});
+
 test("cloudflare custom-hostname creates the custom hostname and prints the client's records", async () => {
   const fixture = await site();
   const { fetch, state } = fakeCloudflare({ fallback: FALLBACK });
@@ -274,6 +315,30 @@ test("cloudflare custom-hostname needs domains.frontendTarget", async () => {
   assert.equal(result.code, 1);
   assert.match(result.stderr, /domains\.frontendTarget/u);
 });
+
+for (const command of [
+  ["cloudflare", "custom-hostname"],
+  ["cloudflare", "custom-hostname", "status"],
+]) {
+  test(`${command.join(" ")} refuses a Frontend behind an external proxy, asking Cloudflare nothing`, async () => {
+    const fixture = await site({
+      ...OPS,
+      domains: { ...OPS.domains, frontendProxy: PROXY },
+    });
+    const fetch = recordingFetch();
+
+    const result = await fixture.run(command, { env: ENV, fetch });
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /gq\.ops\.json sets domains\.frontendProxy/u);
+    assert.match(
+      result.stderr,
+      /https:\/\/www\.client\.example is served by a reverse proxy outside Cloudflare, which forwards to the Worker's Custom Domain fixture\.example\.test/u,
+    );
+    assert.match(result.stderr, /no Cloudflare for SaaS custom hostname/u);
+    assert.deepEqual(fetch.requests, []);
+  });
+}
 
 const ACTIVE = {
   fallback: FALLBACK,
