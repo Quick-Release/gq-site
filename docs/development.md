@@ -274,6 +274,17 @@ page, a form its page doesn't reference is refused, neither post reaches the
 CMS, and other paths under `/gq/forms/` are 404s. No run has used a real
 Gravity Forms install; that is the first adopting Site's work.
 
+The `0.26.0` release adopts the published `0.4.2` pair (`trustedProxies` on
+the form and consent servers, IPv6 /64 rate-limit keys) from source/tag
+`043afbebc06ff5d047ca0906e08d1f7208c8827b`. Its npm archive SHA-256 is
+`1d2add1a11fea4807816984282fc1a1823870ac681e62ac8acc8086d63e2aab9` (SRI
+`sha512-Phkk8tZ/…SivQ==`, as in the npm lock), and its CMS ZIP SHA-256 is
+`a0a28adda5ef17d09574bb65174fde553fefd70171b2382521bc0bbce2d1baa7`. Both
+match the release's `release-manifest.json`. The root suite passes 822 tests
+and `frontend-check.sh` passes, forms leg included. A generated TanStack Site
+with `forms` and `domains.frontendProxy` passes `tsc` against 0.4.2, and a
+misspelt `trustedProxies` fails it.
+
 ## Releasing
 
 1. Bump `version` in `package.json`, add its section to `CHANGELOG.md`, and

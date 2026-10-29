@@ -37,15 +37,12 @@ const bindings = async () =>
 // The Site's reverse proxy's addresses, from GQ_TRUSTED_PROXIES (comma-separated;
 // infra/frontend.run.ts binds it for gq.ops.json domains.frontendProxy): the
 // visitor's address is read from its X-Forwarded-For only when it is them.
-// @getquick/content takes trustedProxies from the release of gq-content #55;
-// spread in, an older one ignores it.
-const trustedProxies = (value: string | undefined) => {
-  const list = (value ?? "")
+// Empty, CF-Connecting-IP is the visitor.
+const trustedProxies = (value: string | undefined) =>
+  (value ?? "")
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
-  return list.length > 0 ? { trustedProxies: list } : {};
-};
 
 let forms: FormsServer | undefined;
 
@@ -61,7 +58,7 @@ const handle = async ({ request }: { request: Request }) => {
     bindings,
     // The handler's own messages, in the Site's main language (pt_PT → pt-PT).
     language: manifest.wordpress?.locale?.split("_").slice(0, 2).join("-"),
-    ...trustedProxies(proxies),
+    trustedProxies: trustedProxies(proxies),
   });
   return (await forms.handle(request)) ?? new Response(null, { status: 404 });
 };

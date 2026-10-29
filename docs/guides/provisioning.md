@@ -427,10 +427,8 @@ and `gq site check`. What changes:
   form and consent endpoints read the visitor's address from
   `X-Forwarded-For` (else `X-Real-IP`) only when the request comes from one of
   those addresses. Rate limits then stay per visitor. List only proxies we
-  run: a listed address can claim to be any visitor. This needs the
-  `@getquick/content` release with `trustedProxies`
-  ([gq-content #55](https://github.com/Quick-Release/gq-content/pull/55)). An
-  older one ignores the binding, and all visitors share one rate limit.
+  run: a listed address can claim to be any visitor. `trustedProxies` is in
+  the pinned pair from `@getquick/content` 0.4.2.
 - **`gq cloudflare custom-hostname`** refuses: there is no custom hostname.
 
 What the proxy must do:

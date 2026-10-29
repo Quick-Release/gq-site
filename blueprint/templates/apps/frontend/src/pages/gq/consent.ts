@@ -37,15 +37,12 @@ const bindings = async () =>
 // The Site's reverse proxy's addresses, from GQ_TRUSTED_PROXIES (comma-separated;
 // infra/frontend.run.ts binds it for gq.ops.json domains.frontendProxy): the
 // visitor's address is read from its X-Forwarded-For only when it is them.
-// @getquick/content takes trustedProxies from the release of gq-content #55;
-// spread in, an older one ignores it.
-const trustedProxies = (value: string | undefined) => {
-  const list = (value ?? "")
+// Empty, CF-Connecting-IP is the visitor.
+const trustedProxies = (value: string | undefined) =>
+  (value ?? "")
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
-  return list.length > 0 ? { trustedProxies: list } : {};
-};
 
 let consent: ConsentServer | undefined;
 
@@ -56,7 +53,7 @@ export const ALL: APIRoute = async ({ request }) => {
     siteOrigins,
     bindings,
     retentionDays: retention ? Number(retention) : undefined,
-    ...trustedProxies(proxies),
+    trustedProxies: trustedProxies(proxies),
   });
   return (await consent.handle(request)) ?? new Response(null, { status: 404 });
 };

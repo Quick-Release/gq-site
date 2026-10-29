@@ -20,13 +20,19 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   `frontendProxy.trustedProxies` lists the proxy's addresses (IPv4 or IPv6,
   or CIDRs). The production Worker gets them as `GQ_TRUSTED_PROXIES`, and the
   form and consent routes pass them to `@getquick/content` as
-  `trustedProxies`. That takes effect with the gq-content release from
-  [gq-content #55](https://github.com/Quick-Release/gq-content/pull/55); an
-  older one ignores them.
+  `trustedProxies`.
   `gq cloudflare custom-hostname` refuses such a Site and says why. `gq
 offboard` cuts no route for it, and lists the proxy and the public
   hostname's DNS as manual steps. See
   [A Frontend behind an external proxy](docs/guides/provisioning.md#a-frontend-behind-an-external-proxy).
+
+### Changed
+
+- The content package pair moves to **0.4.2** (`getquick/gq-content` and
+  `@getquick/content`, tag `v0.4.2`). It adds `trustedProxies` to
+  `createFormsServer` and `createConsentServer`, and its rate limits key an
+  IPv6 visitor by its /64. See
+  [0.4.0 to 0.4.2](docs/guides/content-pair-migration.md#040-to-042-getquicksite-0260).
 
 ### Fixed
 

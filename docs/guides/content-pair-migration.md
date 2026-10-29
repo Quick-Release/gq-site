@@ -7,7 +7,7 @@ plugin `getquick/gq-content` and the npm package `@getquick/content`, pinned
 to one version
 ([ADR 0020](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)).
 This guide moves an existing Site onto the pair at the blueprint's pin,
-0.4.0. Nothing moves it
+0.4.2. Nothing moves it
 for you: until its `gq.ops.json` says `"contentRuntime": "package"`, `gq sync`
 leaves the copy alone.
 
@@ -322,6 +322,22 @@ Upgrade the root `@getquick/site` pin to `0.24.0`, run `pnpm install`, then
 doesn't opt in: no migration, no new binding and no new route. Its CMS
 module stays dormant without Gravity Forms. To use forms, follow
 [Headless Gravity Forms](forms.md). Release the CMS and the Frontend together.
+
+### 0.4.0 to 0.4.2 (`@getquick/site` 0.26.0)
+
+Upgrade the root `@getquick/site` pin to `0.26.0`, run `pnpm install`, then
+`pnpm exec gq sync`. Sync updates both managed content keys to exactly
+`0.4.2`. Run `pnpm install` again and, in `apps/cms`,
+`composer update getquick/gq-content`. Review and commit `gq.lock.json`,
+`pnpm-lock.yaml` and `apps/cms/composer.lock`, then check
+`pnpm exec gq sync --check`.
+
+0.4.2 adds `trustedProxies` to the form and consent servers, for a Frontend
+behind an external proxy (`domains.frontendProxy`, see
+[A Frontend behind an external proxy](provisioning.md#a-frontend-behind-an-external-proxy)).
+Their rate limits now key an IPv6 visitor by its /64, with or without a
+proxy. Nothing else changes: no migration, no new route, and no new binding
+for a Site without `frontendProxy`. Release the CMS and the Frontend together.
 
 ## Rolling back
 
