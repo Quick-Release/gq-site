@@ -523,6 +523,48 @@ test("offboard removes a custom hostname's route, keeps the custom hostname, and
   assert.deepEqual(await readOps(fixture), ops);
 });
 
+test("offboard cuts a Frontend behind an external proxy at its Custom Domain, with no route, and leaves the proxy to the operator", async () => {
+  const ops = {
+    ...OPS,
+    domains: {
+      ...OPS.domains,
+      frontend: "www.client.example",
+      frontendTarget: "fixture-fe.example.test",
+      frontendProxy: { trustedProxies: ["192.0.2.10"] },
+    },
+  };
+  const fixture = await offboardingSite({ ops });
+  const account = fakeAccount();
+
+  const cut = await fixture.run(["offboard", "--yes"], { env: ENV, ...account });
+
+  assert.equal(cut.code, 0, cut.stderr);
+  assert.ok(!account.state.workerDomains.some(({ service }) => service === "fixture-fe"));
+  assert.deepEqual(
+    account.state.workerRoutes.map(({ pattern }) => pattern),
+    ["www.other.example/*"],
+  );
+  assert.equal((await readOps(fixture)).offboarded.cut.workerRoutes, undefined);
+  assert.doesNotMatch(cut.stdout, /Cloudflare for SaaS/u);
+  assert.match(
+    cut.stdout,
+    /! Frontend: https:\/\/www\.client\.example is served by an external reverse proxy to fixture-fe\.example\.test, outside Cloudflare: it answers errors once fixture-fe\.example\.test is detached\. Take www\.client\.example down at the proxy/u,
+  );
+
+  const restore = await fixture.run(["offboard", "--restore", "--yes"], { env: ENV, ...account });
+
+  assert.equal(restore.code, 0, restore.stderr);
+  assert.ok(
+    account.state.log.includes("worker domain fixture-fe.example.test attached to fixture-fe"),
+    account.state.log.join("\n"),
+  );
+  assert.match(
+    restore.stdout,
+    /! Frontend: https:\/\/www\.client\.example is served by an external reverse proxy to fixture-fe\.example\.test, outside Cloudflare: put it back at the proxy if it was taken down/u,
+  );
+  assert.deepEqual(await readOps(fixture), ops);
+});
+
 test("offboard --restore puts the CI Worker's workers.dev and preview URLs back as they were", async () => {
   const exposed = fakeAccount().state;
   const { account } = await cutAndRestore({

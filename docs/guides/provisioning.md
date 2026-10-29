@@ -384,6 +384,86 @@ nothing from the client. `gq offboard --archive` lists deleting it as a step don
 by hand; the zone's fallback origin stays
 ([Offboarding](offboarding.md)).
 
+### A Frontend behind an external proxy
+
+Use this when the public hostname needs a certificate Cloudflare can't
+serve on our plan: the client mandates a certificate authority Cloudflare
+doesn't issue from (it issues from Let's Encrypt, Google Trust Services
+and SSL.com). Nomia's `bioeconomia.apambiente.pt`
+is the first case: its certificate must be HARICA's. A reverse proxy we run
+outside Cloudflare (nginx on a VPS) then holds that certificate, serves the
+public hostname and forwards every request to the Worker's Custom Domain
+in the zone. `domains.frontendProxy` says so, with the addresses the
+proxy reaches Cloudflare from:
+
+```json
+{
+  "domains": {
+    "admin": "nomia-cms.bnq.pt",
+    "frontend": "bioeconomia.apambiente.pt",
+    "frontendTarget": "nomia.bnq.pt",
+    "frontendProxy": { "trustedProxies": ["2.31.143.228", "2a01:4f8:c016:e5cd::/64"] }
+  }
+}
+```
+
+As with Cloudflare for SaaS, `frontendTarget` must be in the zone and
+`frontend` must not, and `domains.frontend` stays the Site's public,
+canonical origin: the Astro `site` URL (canonicals, hreflang), the CMS's
+`GETQUICK_FRONTEND_URL` and `GRAPHQL_CORS_ORIGINS`, `gq frontend refresh`
+and `gq site check`. What changes:
+
+- **The Worker**: the production deploy gives it the Custom Domain
+  `frontendTarget` and no route. Nothing on Cloudflare knows the public
+  hostname.
+- **Forms and consent**: the Worker sees `Host: <frontendTarget>`, while
+  browsers post from `https://<domains.frontend>`. The managed `/gq/forms/`
+  and `/gq/consent` routes pass both origins to `@getquick/content` as
+  `siteOrigins`, so those posts count as the Site's own. Without this they
+  get a 403.
+- **Client IP**: every request reaches Cloudflare from the proxy, so
+  `CF-Connecting-IP` is the proxy's address for every visitor. The production
+  Worker gets `trustedProxies` as `GQ_TRUSTED_PROXIES` (comma-separated). The
+  form and consent endpoints read the visitor's address from
+  `X-Forwarded-For` (else `X-Real-IP`) only when the request comes from one of
+  those addresses. Rate limits then stay per visitor. List only proxies we
+  run: a listed address can claim to be any visitor. `trustedProxies` is in
+  the pinned pair from `@getquick/content` 0.4.2.
+- **`gq cloudflare custom-hostname`** refuses: there is no custom hostname.
+
+What the proxy must do:
+
+- Serve `domains.frontend` over HTTPS with its own certificate, and redirect
+  HTTP to HTTPS.
+- Connect to `https://<frontendTarget>` with **SNI and `Host` set to
+  `frontendTarget`**, and verify Cloudflare's certificate (nginx:
+  `proxy_ssl_server_name on`, `proxy_ssl_name`, `proxy_ssl_verify on`,
+  `proxy_set_header Host`).
+- Set, not append, `X-Forwarded-For` and `X-Real-IP` to the visitor's
+  address, and set `X-Forwarded-Host` to the public hostname and
+  `X-Forwarded-Proto` to `https`. Cloudflare overwrites `CF-Connecting-IP`
+  whatever the proxy sends.
+- Rewrite the Worker's absolute redirects and cookie domains from
+  `frontendTarget` to the public hostname (nginx: `proxy_redirect`,
+  `proxy_cookie_domain`).
+- Add no `X-Frame-Options`: the CMS's block previews frame the Frontend.
+
+The public hostname's DNS points at the proxy, wherever that DNS is.
+`frontendTarget` keeps serving the Frontend directly. Canonicals name the
+public hostname; redirecting other visitors from `frontendTarget` is the
+Site's choice. On an Astro Frontend, Astro's own cross-site form check
+compares `Origin` with the Worker's host. That only matters for browsers
+that send no `Sec-Fetch-Site`. A proxy can cover them by rewriting
+`Origin: https://<domains.frontend>` to `https://<frontendTarget>`.
+Nomia's nginx configuration (`deploy/apa-proxy/` in nomia-bnq) does all of
+this.
+
+`gq offboard` detaches `frontendTarget` as it does any Custom Domain, so the
+proxy answers errors. Taking the public hostname down at the proxy is a
+manual step, and so is putting it back after `--restore`. `gq offboard
+--archive` lists removing the proxy's site, its certificate and the
+public hostname's DNS records as manual steps.
+
 ## Independent media
 
 A content site's WordPress uploads live on R2 (Human Made S3 Uploads), on a

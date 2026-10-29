@@ -47,9 +47,27 @@
           "description": "The production Frontend's public hostname: its canonical URL, which the CMS links and allows. Outside the Cloudflare zone, it needs frontendTarget."
         },
         "frontendTarget": {
-          "description": "Set only when domains.frontend is a hostname outside the Cloudflare zone, served through Cloudflare for SaaS: the production Frontend's hostname inside the zone (cloudflare.zoneName). It is the Worker's Custom Domain and what domains.frontend's DNS points at (a CNAME). Left out, domains.frontend is in the zone.",
+          "description": "Set only when domains.frontend is a hostname outside the Cloudflare zone: the production Frontend's hostname inside the zone (cloudflare.zoneName). It is the Worker's Custom Domain, which domains.frontend reaches through Cloudflare for SaaS, or through frontendProxy. Left out, domains.frontend is in the zone.",
           "type": "string",
           "minLength": 1
+        },
+        "frontendProxy": {
+          "description": "Set when a reverse proxy we run outside Cloudflare serves domains.frontend (with a certificate of its own, e.g. one the client's CA issues) and forwards to frontendTarget, with Host and SNI frontendTarget. Needs frontendTarget. The Worker gets no route and gq makes no Cloudflare for SaaS custom hostname. Left out, a domains.frontend outside the zone is a Cloudflare for SaaS custom hostname.",
+          "type": "object",
+          "properties": {
+            "trustedProxies": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The addresses the proxy reaches Cloudflare from (addresses or CIDRs, IPv4 or IPv6): the Frontend's form and consent endpoints believe its X-Forwarded-For only from them, so each visitor keeps their own rate limit. Bound to the production Worker as GQ_TRUSTED_PROXIES. List only proxies we run: a listed address can claim any visitor's."
+            }
+          },
+          "required": [
+            "trustedProxies"
+          ],
+          "additionalProperties": false
         },
         "docs": {
           "type": "string",

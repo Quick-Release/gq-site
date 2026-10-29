@@ -51,11 +51,11 @@ test("new defaults to Start with managed Runtime endpoints, no copied runtime, a
     assert.equal(files[`apps/cms/web/app/mu-plugins/${name}.php`], undefined);
   }
   const composer = JSON.parse(files["apps/cms/composer.json"].content);
-  assert.equal(composer.require["getquick/gq-content"], "0.4.0");
+  assert.equal(composer.require["getquick/gq-content"], "0.4.2");
   assert.equal(composer.require["getquick/gq-config"], "0.4.3");
   assert.match(files["apps/cms/config/application.php"].content, /GQ_CONTENT_SITE_ID/u);
   const pkg = JSON.parse(files["apps/frontend/package.json"].content);
-  assert.equal(pkg.dependencies["@getquick/content"], "0.4.0");
+  assert.equal(pkg.dependencies["@getquick/content"], "0.4.2");
   assert.equal(pkg.dependencies.astro, undefined);
   const deploy = files["infra/frontend.run.ts"].content;
   assert.match(deploy, /Website.Vite/u);

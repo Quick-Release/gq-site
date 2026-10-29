@@ -454,3 +454,46 @@ test("the Frontend deploy refuses Turnstile without its keys and a partial Acces
   });
   assert.equal(honeypot.script().url, "https://cms.example.test/wp/graphql");
 });
+
+// A public hostname outside the zone: the Worker's Custom Domain is the
+// in-zone hostname either way; only Cloudflare for SaaS gets a route.
+const OUTSIDE_ZONE = {
+  domains: {
+    admin: "cms.example.test",
+    frontend: "www.client.example",
+    frontendTarget: "fixture.example.test",
+  },
+  cloudflare: { accountId: "fixture-account", zoneId: "zone-1" },
+};
+
+test("a Cloudflare for SaaS custom hostname gets the in-zone Custom Domain and a route on the zone", async () => {
+  const deploy = await generatedDeploy({ ops: OUTSIDE_ZONE });
+
+  const website = deploy.website();
+
+  assert.equal(website.domain, "fixture.example.test");
+  assert.deepEqual(website.routes, [{ pattern: "www.client.example/*", zoneId: "zone-1" }]);
+  assert.equal(website.env.GQ_TRUSTED_PROXIES, undefined);
+});
+
+test("a Frontend behind an external proxy gets the in-zone Custom Domain, no route, and its proxy's addresses", async () => {
+  const deploy = await generatedDeploy({
+    ops: {
+      ...OUTSIDE_ZONE,
+      domains: {
+        ...OUTSIDE_ZONE.domains,
+        frontendProxy: { trustedProxies: ["192.0.2.10", "2001:db8:1:2::/64"] },
+      },
+    },
+  });
+
+  const website = deploy.website();
+  assert.equal(website.domain, "fixture.example.test");
+  assert.equal(website.routes, undefined);
+  assert.equal(website.env.GQ_TRUSTED_PROXIES, "192.0.2.10,2001:db8:1:2::/64");
+
+  // Only production is behind the proxy.
+  const staging = deploy.website({ TEST_STAGE: "staging" });
+  assert.equal(staging.domain, undefined);
+  assert.equal(staging.env.GQ_TRUSTED_PROXIES, undefined);
+});

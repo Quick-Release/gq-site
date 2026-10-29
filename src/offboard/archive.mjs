@@ -29,6 +29,7 @@ import { text } from "node:stream/consumers";
 import { isArtifactsOnly } from "../ci/git-artifacts.mjs";
 import { webhookUrl } from "../ci/github-setup.mjs";
 import { updateManifest } from "../manifest/manifest.mjs";
+import { frontendCustomHostname, frontendProxy } from "../manifest/schema.mjs";
 import { VERSION } from "../version.mjs";
 import {
   artifactsRepositoryName,
@@ -95,8 +96,9 @@ export async function inspectArchive(providers, { now = () => new Date() } = {})
   // The records at the Site's own hosts; none at the zone's apex, which
   // carries the zone's own (mail, verification) whatever serves it.
   const zoneName = await cloudflare.zoneName();
-  // A Frontend on a Cloudflare for SaaS custom hostname has its records at
-  // its in-zone host (domains.frontendTarget); the client's are elsewhere.
+  // A Frontend on a Cloudflare for SaaS custom hostname or behind an
+  // external proxy has its records at its in-zone host
+  // (domains.frontendTarget); the public hostname's are elsewhere.
   const hosts = [
     ops.domains.admin,
     ops.domains.frontendTarget ?? ops.domains.frontend,
@@ -832,14 +834,21 @@ function deletionItems(site, { configPath }) {
       ),
     ),
     ...frontend.unclear.map((worker) => unclearStage("Frontend", ops.project, worker)),
-    ...(ops.domains.frontendTarget
+    ...(frontendProxy(ops)
       ? [
           manual(
             "Frontend",
-            `delete the custom hostname ${ops.domains.frontend} (Cloudflare for SaaS) in the dashboard (SSL/TLS → Custom Hostnames); ask the client to remove its DNS records for ${ops.domains.frontend}`,
+            `remove ${ops.domains.frontend}'s site from the external reverse proxy that serves it (and its certificate there); ask whoever runs ${ops.domains.frontend}'s DNS to remove its records`,
           ),
         ]
-      : []),
+      : frontendCustomHostname(ops)
+        ? [
+            manual(
+              "Frontend",
+              `delete the custom hostname ${ops.domains.frontend} (Cloudflare for SaaS) in the dashboard (SSL/TLS → Custom Hostnames); ask the client to remove its DNS records for ${ops.domains.frontend}`,
+            ),
+          ]
+        : []),
     ...frontend.unbound.map((d1) =>
       manual(
         "Frontend",

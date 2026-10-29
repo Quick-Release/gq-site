@@ -296,6 +296,16 @@ secrets only to the release step.
 `ci/commands.test.mjs` checks secret-store forwarding. These are explicit
 behavioral baseline changes, not a snapshot refresh.
 
+A Frontend behind an external proxy
+([#134](https://github.com/Quick-Release/gq-site/issues/134)) updates the
+content site's `infra/frontend.run.ts` baseline alongside its source:
+`domains.frontendProxy` leaves the Worker its Custom Domain on
+`domains.frontendTarget` with no Cloudflare for SaaS route, and binds its
+`trustedProxies` to production as `GQ_TRUSTED_PROXIES`. The content site's
+manifest has neither key, so its deploy is unchanged.
+`sync/graphql-path.test.mjs` exercises both modes. Written by hand and
+reviewed against the templates, not regenerated.
+
 ## Preservation
 
 - Preserve fixture paths, contents and version identifiers during organization,

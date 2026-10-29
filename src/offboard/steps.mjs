@@ -21,7 +21,7 @@ import { tokenName } from "../cloudflare/tokens.mjs";
 import { parseDotenv } from "../dotenv-text.mjs";
 import { retryCrontab } from "../ploi/events.mjs";
 import { updateManifest } from "../manifest/manifest.mjs";
-import { frontendCustomHostname } from "../manifest/schema.mjs";
+import { frontendCustomHostname, frontendProxy } from "../manifest/schema.mjs";
 import {
   artifactsRepositoryName,
   frontendWorker,
@@ -352,6 +352,7 @@ export function cutPlan(site, { configPath, now = () => new Date() }) {
         : done("Frontend", `the Worker ${frontend.worker}'s workers.dev and preview URLs are off`),
     ]),
     ...customHostnameCut(site, cut),
+    ...proxyCut(site.ops),
     ...site.unclearStages.map((worker) => unclearStage("Frontend", ops.project, worker)),
     !isOwn(ops.project, "mediaBucket", media.bucket)
       ? manual(
@@ -416,6 +417,20 @@ function silenceArtifacts(site, disableToken) {
             },
           )
         : done("CI", `no active git token for the Artifacts repository ${repository}`),
+  ];
+}
+
+// A public hostname behind an external reverse proxy has no route to cut: the
+// proxy forwards to the in-zone hostname, whose Custom Domain goes with the
+// others. The proxy and the public hostname's DNS are outside Cloudflare.
+function proxyCut(ops) {
+  const proxy = frontendProxy(ops);
+  if (!proxy) return [];
+  return [
+    manual(
+      "Frontend",
+      `https://${proxy.hostname} is served by an external reverse proxy to ${proxy.target}, outside Cloudflare: it answers errors once ${proxy.target} is detached. Take ${proxy.hostname} down at the proxy (or serve a notice there), and keep its DNS and certificate unless the Site won't come back`,
+    ),
   ];
 }
 
@@ -535,6 +550,14 @@ export function restorePlan(site, { configPath }) {
             p.cloudflare.attachWorkerRoute({ pattern, service, zoneId }),
           ),
     ),
+    ...(frontendProxy(ops)
+      ? [
+          manual(
+            "Frontend",
+            `https://${ops.domains.frontend} is served by an external reverse proxy to ${ops.domains.frontendTarget}, outside Cloudflare: put it back at the proxy if it was taken down`,
+          ),
+        ]
+      : []),
     ...Object.entries(cut.workersDev ?? {})
       .filter(([worker]) => worker !== ci.worker)
       .map(([worker, setting]) =>

@@ -3,6 +3,47 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **A Frontend behind an external proxy**
+  ([#134](https://github.com/Quick-Release/gq-site/issues/134)). The new
+  optional `gq.ops.json` key `domains.frontendProxy` (with
+  `domains.frontendTarget`) says that a reverse proxy we run outside
+  Cloudflare serves `domains.frontend`, with a certificate of its own, and
+  forwards to `frontendTarget`, with `Host` and SNI `frontendTarget`. Use
+  it when the client requires a certificate authority Cloudflare can't serve.
+  The production Frontend deploy (Astro and TanStack) then gives the Worker
+  the Custom Domain `frontendTarget` and no Cloudflare for SaaS route.
+  `domains.frontend` stays the public, canonical origin.
+  `frontendProxy.trustedProxies` lists the proxy's addresses (IPv4 or IPv6,
+  or CIDRs). The production Worker gets them as `GQ_TRUSTED_PROXIES`, and the
+  form and consent routes pass them to `@getquick/content` as
+  `trustedProxies`.
+  `gq cloudflare custom-hostname` refuses such a Site and says why. `gq
+offboard` cuts no route for it, and lists the proxy and the public
+  hostname's DNS as manual steps. See
+  [A Frontend behind an external proxy](docs/guides/provisioning.md#a-frontend-behind-an-external-proxy).
+
+### Changed
+
+- The content package pair moves to **0.4.2** (`getquick/gq-content` and
+  `@getquick/content`, tag `v0.4.2`). It adds `trustedProxies` to
+  `createFormsServer` and `createConsentServer`, and its rate limits key an
+  IPv6 visitor by its /64. See
+  [0.4.0 to 0.4.2](docs/guides/content-pair-migration.md#040-to-042-getquicksite-0260).
+
+### Fixed
+
+- The managed `/gq/forms/` and `/gq/consent` routes pass `siteOrigins` (the
+  origins of `domains.frontend` and `domains.frontendTarget`) to
+  `@getquick/content`. Behind an external proxy, a browser's post from the
+  public hostname is then the Site's own, not a cross-site 403. A TanStack
+  Site's consent handler is in `apps/frontend/src/site.server.ts`, which `gq
+sync` creates once and doesn't update: an existing TanStack Site adds
+  `siteOrigins` and `trustedProxies` to its `createConsentServer` call by hand.
+
 ## 0.25.0 — 2026-10-27
 
 ### Added
