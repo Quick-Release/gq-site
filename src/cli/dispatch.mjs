@@ -18,6 +18,8 @@ import {
 } from "../release/commands.mjs";
 import { isSigilloCommand, runSigilloCommand, SIGILLO_USAGE } from "../sigillo/commands.mjs";
 import { CMS_USAGE, isCmsCommand, runCmsCommand } from "../cms/commands.mjs";
+import { CONTENT_USAGE, isContentCommand, runContentCommand } from "../content/commands.mjs";
+import { isWpCommand, runWpCommand, WP_USAGE } from "../wp/commands.mjs";
 import {
   isPloiWorkflow,
   ploiWorkflowOptions,
@@ -92,6 +94,12 @@ export async function runCli(
   if (isSigilloCommand(argv)) return runSigilloCommand(argv.slice(1), { cwd, env, exec });
   // So do the local CMS commands, whose extra arguments go to DDEV or Composer.
   if (isCmsCommand(argv)) return runCmsCommand(argv.slice(1), { cwd, env, exec, io, interactive });
+  // And the production CMS's content commands, which take a post ID, and
+  // break-glass WP-CLI, whose arguments after `--` belong to WP-CLI.
+  if (isContentCommand(argv)) {
+    return runContentCommand(argv.slice(1), { cwd, env, fetch, exec, io, interactive });
+  }
+  if (isWpCommand(argv)) return runWpCommand(argv, { cwd, env, fetch, io, interactive });
   // And the workspace runners (setup, doctor, verify), with their own flags.
   if (isWorkspaceCommand(argv)) return runWorkspaceCommand(argv, { cwd, env, fetch, exec, io });
   // And gq sync, which reads a manifest older than the other commands accept.
@@ -536,6 +544,12 @@ ${CI_USAGE.map((usage) => `  ${usage}`).join("\n")}
 
 Local CMS (DDEV):
 ${CMS_USAGE.map((usage) => `  ${usage}`).join("\n")}
+
+Production CMS content (agent REST route behind Access):
+${CONTENT_USAGE.map((usage) => `  ${usage}`).join("\n")}
+
+Break-glass WP-CLI (through Ploi, backup first):
+${WP_USAGE.map((usage) => `  ${usage}`).join("\n")}
 
 Database (live → local only):
 ${DB_USAGE.map((usage) => `  ${usage}`).join("\n")}

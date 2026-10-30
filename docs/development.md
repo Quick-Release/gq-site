@@ -128,6 +128,15 @@ with Polylang and GQ Polylang for WPGraphQL, read over GraphQL.
 `/gf/v2/forms/<id>/submissions` reaches its route while gq-content's forms
 module has Gravity Forms active (a stand-in for both), and the REST index,
 reading forms or entries, method overrides and every other route stay 401.
+`scripts/smoke/cms-content.sh` proves the agent's content route
+(`gq content`, [gq-platform ADR 0011](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0011-agent-access-to-production-cms-content.md))
+on a real WordPress over HTTP, behind the generated `content-api.php`, as an
+Editor agent user with an application password: `get`, `diff` and `put`
+over REST with a new revision confirmed, the block editor's validation in a
+headless Chrome (valid, invalid, deprecated and unregistered blocks), and the
+server script `gq wp` sends for a break-glass `post update`. It needs PHP,
+curl and Chrome or Chromium (`CHROMIUM`), and runs locally. `gq content
+validate`'s DDEV wiring is covered by the package suite with stand-ins.
 `scripts/smoke/ci-composer.sh` builds a generated
 site's Cloudflare CI image with Docker and runs its install step's Composer
 command as the image's root user on a clean CMS (see

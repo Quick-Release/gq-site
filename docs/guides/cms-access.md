@@ -10,11 +10,12 @@ this package. This integration neither installs that plugin nor changes policies
 
 Keep these optional pairs in the Site's Sigillo **production** environment:
 
-| Identity              | Secret names                                                       | Consumers                                                                            |
-| --------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| Public-content reader | `GQ_AUTH_GRAPHQL_CLIENT_ID`, `GQ_AUTH_GRAPHQL_CLIENT_SECRET`       | Frontend server publication reads; CLI `/graphql` and `/wp/graphql` readiness probes |
-| Automation            | `GQ_AUTH_AUTOMATION_CLIENT_ID`, `GQ_AUTH_AUTOMATION_CLIENT_SECRET` | CLI REST media POST/delete probes; CMS root/login probes                             |
-| Form submitter        | `GQ_FORMS_ACCESS_CLIENT_ID`, `GQ_FORMS_ACCESS_CLIENT_SECRET`       | The Frontend's `/gq/forms/` route: `POST /wp-json/gf/v2/forms/<id>/submissions` only |
+| Identity              | Secret names                                                         | Consumers                                                                            |
+| --------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Public-content reader | `GQ_AUTH_GRAPHQL_CLIENT_ID`, `GQ_AUTH_GRAPHQL_CLIENT_SECRET`         | Frontend server publication reads; CLI `/graphql` and `/wp/graphql` readiness probes |
+| Automation            | `GQ_AUTH_AUTOMATION_CLIENT_ID`, `GQ_AUTH_AUTOMATION_CLIENT_SECRET`   | CLI REST media POST/delete probes; CMS root/login probes                             |
+| Form submitter        | `GQ_FORMS_ACCESS_CLIENT_ID`, `GQ_FORMS_ACCESS_CLIENT_SECRET`         | The Frontend's `/gq/forms/` route: `POST /wp-json/gf/v2/forms/<id>/submissions` only |
+| Agent content         | `GQ_CMS_AGENT_ACCESS_CLIENT_ID`, `GQ_CMS_AGENT_ACCESS_CLIENT_SECRET` | `gq content`: a page's or post's REST resource, its revisions and one revision only  |
 
 They become `CF-Access-Client-Id` and `CF-Access-Client-Secret` HTTP headers,
 never WordPress login credentials. Reads remain anonymous to WordPress: the
@@ -32,6 +33,16 @@ readiness does not receive production credentials when its origin differs from
 `domains.admin`. Provider APIs, unrelated CMS paths, third-party requests and
 media assets receive neither pair. Credentialed CMS calls never follow redirects;
 fix the configured endpoint instead. Transport failures do not expose raw errors.
+
+The agent content pair is the edge half of an agent's route to production
+page content; its WordPress half is the Site's agent user,
+`GQ_CMS_AGENT_USERNAME` / `GQ_CMS_AGENT_APPLICATION_PASSWORD`, sent as
+`Authorization: Basic` beside it. `gq content` sends all four, by the same
+rules (exact origin, no redirects, values never shown), only to
+`/wp-json/wp/v2/pages/<id>`, `/wp-json/wp/v2/posts/<id>`, their `/revisions`
+and `/revisions/<id>`. Without the Access pair it uses a person's
+`cloudflared access login` session instead. See
+[Agent access to production CMS content](cms-content.md).
 
 The form submitter is needed only by a Site with
 [headless Gravity Forms](forms.md) whose Access policy also covers Gravity

@@ -4,18 +4,19 @@
 
 ## Site guides
 
-| Document                                                              | Use it for                                                                                                                                                          |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Generate and sync a site](guides/sites.md)                           | New content sites, managed-file ownership, locks, sync conflicts and create-once files.                                                                             |
-| [Local site development](guides/local-development.md)                 | Setup, doctor, verify, DDEV, Composer and a local design-plugin checkout.                                                                                           |
-| [Sigillo secrets](guides/secrets.md)                                  | Per-command secret injection and checkout login without downloading environments.                                                                                   |
-| [Provisioning and deployment](guides/provisioning.md)                 | The new content Site flow and readiness, Ploi provisioning/releases/media, database backup and live-to-local sync, Cloudflare tokens/buckets, CI and GitHub wiring. |
-| [Move a Site onto the content pair](guides/content-pair-migration.md) | Moving a Site generated before 0.20.0 off its copied content runtime onto `getquick/gq-content` and `@getquick/content`.                                            |
-| [Consent and legal pages](guides/consent.md)                          | The consent database (in the EU), its secrets and purge, the doctor and readiness checks, wiring the consent Runtime, and adopting it on an existing Site.          |
-| [Headless Gravity Forms](guides/forms.md)                             | Declaring `forms`, the managed `/gq/forms/` route, rendering the block, Turnstile keys, Access, and the doctor and readiness checks.                                |
-| [Offboarding a Site](guides/offboarding.md)                           | Cutting a leaving client's public URLs and credentials, the guards while it is offboarded, restoring it, and archiving it before deleting its infrastructure.       |
-| [Agent skills](guides/skills.md)                                      | Register, update, lock and safely check upstream agent skills under `.agents/skills`.                                                                               |
-| [Agent scope](guides/agent-scope.md)                                  | The hooks that keep an agent session in its own repository: the router and the write fence.                                                                         |
+| Document                                                              | Use it for                                                                                                                                                            |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Generate and sync a site](guides/sites.md)                           | New content sites, managed-file ownership, locks, sync conflicts and create-once files.                                                                               |
+| [Local site development](guides/local-development.md)                 | Setup, doctor, verify, DDEV, Composer and a local design-plugin checkout.                                                                                             |
+| [Sigillo secrets](guides/secrets.md)                                  | Per-command secret injection and checkout login without downloading environments.                                                                                     |
+| [Provisioning and deployment](guides/provisioning.md)                 | The new content Site flow and readiness, Ploi provisioning/releases/media, database backup and live-to-local sync, Cloudflare tokens/buckets, CI and GitHub wiring.   |
+| [Move a Site onto the content pair](guides/content-pair-migration.md) | Moving a Site generated before 0.20.0 off its copied content runtime onto `getquick/gq-content` and `@getquick/content`.                                              |
+| [Consent and legal pages](guides/consent.md)                          | The consent database (in the EU), its secrets and purge, the doctor and readiness checks, wiring the consent Runtime, and adopting it on an existing Site.            |
+| [Headless Gravity Forms](guides/forms.md)                             | Declaring `forms`, the managed `/gq/forms/` route, rendering the block, Turnstile keys, Access, and the doctor and readiness checks.                                  |
+| [Agent access to production CMS content](guides/cms-content.md)       | An agent's REST route to a page's block markup behind Access: the `GQ_CMS_AGENT_*` credentials, `gq content` get/diff/validate/put, rollback and break-glass `gq wp`. |
+| [Offboarding a Site](guides/offboarding.md)                           | Cutting a leaving client's public URLs and credentials, the guards while it is offboarded, restoring it, and archiving it before deleting its infrastructure.         |
+| [Agent skills](guides/skills.md)                                      | Register, update, lock and safely check upstream agent skills under `.agents/skills`.                                                                                 |
+| [Agent scope](guides/agent-scope.md)                                  | The hooks that keep an agent session in its own repository: the router and the write fence.                                                                           |
 
 [CMS dependency patches](guides/dependency-patches.md) covers the wpgraphql-blocks
 warning fix, existing-Site adoption and Nomia extension retirement.
