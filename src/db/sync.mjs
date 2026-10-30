@@ -466,27 +466,39 @@ export function exportLiveDatabase(client, ops, uploadUrl) {
   return runExport(client, script, { user: ops.ploi.systemUser, marker });
 }
 
-async function runExport(client, script, { user, marker, pollMs = 3000, timeoutMs = 900_000 }) {
-  const started = await client.request("POST", "/scripts/run", {
-    content: assertExportOnly(script),
+async function runExport(client, script, { user, marker }) {
+  const execution = await runServerScript(client, assertExportOnly(script), {
     user,
+    what: "the export script",
   });
+  const result = parseExportMarker(execution.output, marker);
+  if (execution.exit_code === 0 && result) return result;
+  const tail = (execution.output ?? "").trim().split("\n").slice(-15).join("\n");
+  throw new Error(`The export failed (exit ${execution.exit_code}):\n${tail}`);
+}
+
+// Runs `content` on the server as `user` (a Ploi one-off script) and resolves
+// to the finished execution ({ exit_code, output }). The caller checks the
+// script before it is sent; `what` names it in errors.
+export async function runServerScript(
+  client,
+  content,
+  { user, what = "the script", pollMs = 3000, timeoutMs = 900_000 },
+) {
+  const started = await client.request("POST", "/scripts/run", { content, user });
   const id = started.data?.id ?? started.id;
   if (!id) throw new Error("Ploi did not return a script execution id.");
 
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const execution = (await client.request("GET", `/scripts/run/${id}`)).data ?? {};
-    if (execution.status === "failed") throw new Error("Ploi could not run the export script.");
-    if (execution.status === "finished") {
-      const result = parseExportMarker(execution.output, marker);
-      if (execution.exit_code === 0 && result) return result;
-      const tail = (execution.output ?? "").trim().split("\n").slice(-15).join("\n");
-      throw new Error(`The export failed (exit ${execution.exit_code}):\n${tail}`);
-    }
+    if (execution.status === "failed") throw new Error(`Ploi could not run ${what}.`);
+    if (execution.status === "finished") return execution;
     await sleep(pollMs);
   }
-  throw new Error("The export did not finish within 15 minutes.");
+  throw new Error(
+    `${what[0].toUpperCase()}${what.slice(1)} did not finish within ${timeoutMs / 60_000} minutes.`,
+  );
 }
 
 // Confirms the import from both sides: WordPress (in DDEV, through the .env

@@ -3,6 +3,34 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **Agent access to production CMS content**
+  ([#137](https://github.com/Quick-Release/gq-site/issues/137),
+  [gq-platform ADR 0011](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0011-agent-access-to-production-cms-content.md)).
+  `gq content get|diff|validate|put` read and write one page's or post's raw
+  block markup over REST, as the Site's agent user (an Editor, by an
+  application password) behind Cloudflare Access: with the agent's service
+  token or a person's `cloudflared access login` session. `get` writes
+  `content.raw` or its parsed block tree (`.json`), which is what an edit
+  changes; `validate` writes the result to the same post in the Site's DDEV
+  CMS and fails if KSES changes it or the block editor (in a headless Chrome)
+  marks any block invalid or unregistered; `put` refuses bytes that didn't
+  pass `validate` and a post changed since `get`, writes once and confirms
+  the new revision, the rollback. The Sigillo names `GQ_CMS_AGENT_USERNAME`,
+  `GQ_CMS_AGENT_APPLICATION_PASSWORD`, `GQ_CMS_AGENT_ACCESS_CLIENT_ID` and
+  `GQ_CMS_AGENT_ACCESS_CLIENT_SECRET` go only to the configured CMS origin
+  and the page, post and revision routes, never through a redirect.
+  `gq wp` is break-glass WP-CLI: the host comes from `gq.ops.json` or Ploi,
+  the command runs as a Ploi one-off script from an allowlist (no raw SQL,
+  PHP or bulk or destructive commands), and a write runs `gq db backup`
+  first; `post update <id> <file>` confirms the stored bytes and the new
+  revision. `scripts/smoke/cms-content.sh` proves the route on a real
+  WordPress. See
+  [Agent access to production CMS content](docs/guides/cms-content.md).
+
 ## 0.26.0 — 2026-10-29
 
 ### Added

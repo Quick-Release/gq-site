@@ -52,6 +52,12 @@ gq cms stop | describe [ddev arguments...]
 gq cms composer install | update | reinstall | test | lint | lint:fix [arguments...]
 gq cms design [refresh]
 
+gq content get <id> --out <file> [--type page|post] [--revision <id>]
+gq content diff <id> --file <file> [--type page|post]
+gq content validate <id> --file <file> [--type page|post]
+gq content put <id> --file <file> [--type page|post] [--yes] [--without-validation]
+gq wp [--yes] -- <wp-cli command>
+
 gq cloudflare accounts list
 gq cloudflare zones list [--account <id>]
 gq cloudflare zone show [--zone <id>]
@@ -132,6 +138,13 @@ project's name, elsewhere `--yes`. An Artifacts-only Site (no
 revokes the repository's git tokens instead of the webhook, and its archive
 keeps its code as `code.bundle`, a git bundle of every ref. See
 [Offboarding a Site](../guides/offboarding.md).
+`gq content get|diff|validate|put` read and write one page's or post's raw
+block markup on the production CMS over REST, as the Site's agent user
+behind Cloudflare Access; `put` refuses bytes without a passing `validate`
+(the Site's block editor, in its DDEV CMS) and a post changed since `get`, and
+confirms the new revision. `gq wp` is break-glass WP-CLI through a Ploi
+one-off script, from an allowlist, with a `gq db backup` before any write. See
+[Agent access to production CMS content](../guides/cms-content.md).
 `gq packages check|propose` read the blueprint, not a Site, and are documented
 in [Blueprint packages](packages.md).
 `gq skills update` works from any Git repository and is documented in the

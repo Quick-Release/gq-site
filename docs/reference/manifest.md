@@ -160,7 +160,9 @@ as Redacted Worker secrets after Website initialization. Username cannot contain
 never trimmed; internal application-password spaces are preserved. These
 authenticate a dedicated trusted Site CMS identity using Basic Authorization on both redeem and render POSTs.
 Use a dedicated subscriber with no agent-authoring grant, `edit_pages`, or
-super-admin rights. Never reuse the agent's application password, GraphQL or
+super-admin rights. Never reuse the agent's application password
+(`GQ_CMS_AGENT_APPLICATION_PASSWORD`, see
+[Agent access to production CMS content](../guides/cms-content.md)), GraphQL or
 other automation credentials. Configure the CMS option
 `getquick_design_preview_server` with that account's integer `userId` and the
 application password UUID as `credential`; the option holds identities, never
