@@ -18,17 +18,17 @@ exits 0). It prints its provisioning sequence and runs none of it.
 
 ## What differs from a content site
 
-| Part                   | Commerce site                                                                                                                                                          |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `wordpress.plugins`    | `gq-design`, `woocommerce`, `getquick-ecommerce`, `gq-support`, `s3-uploads`, `simple-history`, `cimo-image-optimizer`, `safe-svg`, in that order. No WPGraphQL.       |
-| CMS skeleton           | Bedrock with WooCommerce and GQ eCommerce; no content API or publication-event mu-plugins. Its `.env.production.example` has `GETQUICK_STOREFRONT_PROXY_SECRET`.       |
-| `deploy/ploi/admin.sh` | The same script; after activating the plugins it runs WooCommerce's database update (`wp wc update`).                                                                  |
-| Frontend skeleton      | A minimal TanStack Start app (`apps/frontend`) on Vite+: `vp dev` at <http://localhost:3000>, `vp build`, `vp test`, a type check. Its presentation is the site's own. |
-| Frontend deploy        | `infra/frontend.run.ts` deploys it with Alchemy's `Cloudflare.Website.Vite`; `infra/storefront-bindings.ts` applies what the storefront Runtime declares.              |
-| `.npmrc`               | Names GitHub Packages for `@quick-release/*`, without a token.                                                                                                         |
-| Default checks         | Content's, plus `pnpm run build`. Required files: `apps/frontend/{package.json,vite.config.ts}` instead of `astro.config.mjs`.                                         |
-| Content delivery       | None: no publication store, publication or settings events, reconciliation or refresh.                                                                                 |
-| Languages              | `wordpress.locale` only; `wordpress.languages` is refused until multilingual commerce is decided.                                                                      |
+| Part                   | Commerce site                                                                                                                                                           |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wordpress.plugins`    | `gq-design`, `woocommerce`, `getquick-ecommerce`, `gq-support`, `s3-uploads`, `simple-history`, `cimo-image-optimizer`, `safe-svg`, in that order. No WPGraphQL.        |
+| CMS skeleton           | Bedrock with WooCommerce and GQ eCommerce; no content API or publication-event mu-plugins. Its `.env.production.example` has `GETQUICK_STOREFRONT_PROXY_SECRET`.        |
+| `deploy/ploi/admin.sh` | The same script; after activating the plugins it runs WooCommerce's database update (`wp wc update`), and it skips the content CMS's wpgraphql-blocks dependency patch. |
+| Frontend skeleton      | A minimal TanStack Start app (`apps/frontend`) on Vite+: `vp dev` at <http://localhost:3000>, `vp build`, `vp test`, a type check. Its presentation is the site's own.  |
+| Frontend deploy        | `infra/frontend.run.ts` deploys it with Alchemy's `Cloudflare.Website.Vite`; `infra/storefront-bindings.ts` applies what the storefront Runtime declares.               |
+| `.npmrc`               | Names GitHub Packages for `@quick-release/*`, without a token.                                                                                                          |
+| Default checks         | Content's, plus `pnpm run build`. Required files: `apps/frontend/{package.json,vite.config.ts}` instead of `astro.config.mjs`.                                          |
+| Content delivery       | None: no publication store, publication or settings events, reconciliation or refresh, and no gq-content consent wiring.                                                |
+| Languages              | `wordpress.locale` only; `wordpress.languages` is refused until multilingual commerce is decided.                                                                       |
 
 ## No readiness yet
 

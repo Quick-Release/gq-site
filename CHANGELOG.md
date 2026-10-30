@@ -3,6 +3,39 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **`gq new --variant commerce` generates a commerce Site**
+  ([#89](https://github.com/Quick-Release/gq-site/issues/89) slices 1–5,
+  [ADR 0017](docs/adr/0017-generate-commerce-sites-from-the-variant-alone.md)).
+  The variant alone selects a Site's skeletons and managed files:
+  `ownership.json` entries take `variants`. A commerce Site gets a Bedrock CMS
+  with WooCommerce 11.2.1 and GQ eCommerce 0.3.5 and no WPGraphQL, a minimal
+  TanStack Start Frontend on Vite+ (no storefront Runtime yet), an Alchemy
+  `Website.Vite` deploy that applies the bindings the storefront Runtime's
+  `infra.json` declares once the Frontend depends on it, and a token-free
+  `.npmrc` for `@quick-release`. `gq.ops.json` gains
+  `cloudflare.rateLimitNamespaces` and refuses `wordpress.languages` on
+  commerce. On commerce, `gq frontend secrets` generates the storefront's
+  proxy secret and keyrings, `gq ploi provision` gives the CMS the proxy
+  secret, `gq ci deploy` forwards the storefront secrets and
+  `GITHUB_PACKAGES_TOKEN`, and `gq db sync` (still live-to-local only)
+  anonymises customers and orders before WordPress reads the copy. `gq site
+check`, `gq frontend refresh`, `gq frontend events check` and `gq ploi
+events` refuse a commerce Site: it has no readiness yet
+  ([#26](https://github.com/Quick-Release/gq-site/issues/26)), and passing
+  `gq verify` doesn't make it ready. CI's `generated-commerce` job proves a
+  generated commerce Site installs with a frozen lockfile, stays in sync and
+  verifies. See [Commerce sites](docs/guides/commerce-sites.md).
+
+### Changed
+
+- The shared `deploy/ploi/admin.sh` records `SITE_VARIANT`; on commerce it
+  runs `wp wc update` after activating the plugins and skips the
+  wpgraphql-blocks dependency patch. Content Sites run as before.
+
 ## 0.27.0 — 2026-10-30
 
 ### Added
