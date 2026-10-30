@@ -105,7 +105,11 @@ its Frontend dependencies (the networked step) and runs its tests,
 `astro check`, lint and format check. These generated sites install
 `@getquick/site` from this checkout, packed into a tarball
 (`scripts/smoke/this-checkout.sh`), not from npm, so a release push is tested
-before npm serves the release. `scripts/smoke/content-pair.sh` proves that
+before npm serves the release. `scripts/smoke/commerce-check.sh` generates a disposable commerce site
+([ADR 0017](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0017-generate-commerce-sites-from-the-variant-alone.md)),
+installs it twice (the second with a frozen lockfile) and runs `gq sync
+--check` and `gq verify`; that proves generation and the skeleton's checks,
+never commerce readiness. `scripts/smoke/content-pair.sh` proves that
 a generated site wires the pinned content runtime
 ([ADR 0020](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)):
 its pins and their published integrity, the crontab's command against the
@@ -144,7 +148,7 @@ command as the image's root user on a clean CMS (see
 wiring proof also installs the CI Worker's dependencies for Wrangler's local
 workerd runtime. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
 three generated-site proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
-`frontend-check.sh`, `content-pair.sh`, `consent.sh`, `cms-rest-gate.sh` and `ci-composer.sh` on every push; the
+`frontend-check.sh`, `commerce-check.sh`, `content-pair.sh`, `consent.sh`, `cms-rest-gate.sh` and `ci-composer.sh` on every push; the
 real-WordPress Polylang proof, which also needs PHP and downloads, runs locally, and the live gate is the
 gq-smoke wizard ([A new content Site, end to end](guides/provisioning.md#a-new-content-site-end-to-end)).
 

@@ -4,7 +4,9 @@
 `variant: "content" | "commerce"`. Omission means Astro, including migrated
 manifests and Sites on `contentRuntime: "package"`. `gq new` defaults to
 `tanstack`; `--framework astro` explicitly creates the supported Astro skeleton.
-Commerce creation remains unsupported. TanStack content Frontends require
+A commerce Site's Frontend is TanStack Start whatever `framework` says
+([ADR 0017](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0017-generate-commerce-sites-from-the-variant-alone.md)):
+`gq new --variant commerce` records `tanstack` and refuses `--framework astro`. TanStack content Frontends require
 `contentRuntime: "package"`; new Sites already select that paired Runtime.
 
 The TanStack skeleton uses React, Start and Router. `gq sync` manages its
