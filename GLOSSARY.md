@@ -48,8 +48,13 @@ site's plugins, such as activating its theme.
 _Avoid_: deploy hook (hooks are the Git hooks)
 
 **Variant**:
-The kind of site the blueprint supports: content or commerce. Ekis is a
-commerce site.
+The kind of site the blueprint supports: content or commerce. A Site's
+variant is chosen when it is created and never changes; it decides the
+Site's app skeletons, managed files and defaults, with `framework` choosing
+only between content Frontends. A commerce Site's Frontend is its
+storefront, and WooCommerce is its only commerce authority. Ekis,
+FPA Shop and Bruaa are commerce sites.
+_Avoid_: frontend variant, flavour
 
 **Reference Site**:
 The live content Site the blueprint is tested against: Cooldown Gaming. A
@@ -162,7 +167,8 @@ refresh, the CMS's scheduler having it reconcile, and an upload proving
 independent media. A multilingual Site's holds in every language: each
 exists in the CMS, and its front page, chrome and homepage are served. A
 running Worker, a running DDEV, an HTTP 200 or a matching title is not
-readiness.
+readiness. A commerce Site has no readiness defined yet: nothing it passes,
+formatting and manifest validation included, makes it ready.
 _Avoid_: up, healthy, deployed (for a ready Site)
 
 **Cold lookup**:
