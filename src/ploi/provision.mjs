@@ -1,5 +1,6 @@
 // Provisions a site's admin on Ploi from gq.ops.json, idempotently: system user → site → custom deployments (no
-// git) → database + .env → deploy script → SSL. Every resource is looked up
+// git) → database + .env (on a commerce Site, with the storefront's proxy
+// secret from the secret store, ADR 0017) → deploy script → SSL. Every resource is looked up
 // first and only created when missing; nothing that already exists is
 // recreated or overwritten. Deploys are `gq ploi release` (release archive on
 // R2).
@@ -13,11 +14,17 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import { applyEnv } from "../dotenv-text.mjs";
 import { updateManifest } from "../manifest/manifest.mjs";
+import { isCommerce } from "../manifest/variant.mjs";
 import { createReporter } from "../cli/reporter.mjs";
 import { createPloiServerClient } from "./server-client.mjs";
 
 const placeholderPattern = /replace-me|replace-with/u;
+// What the storefront's BFF proves itself to GQ eCommerce with: the CMS and
+// the Frontend hold the same per-Site value (gq frontend secrets).
+export const STOREFRONT_PROXY_SECRET = "GETQUICK_STOREFRONT_PROXY_SECRET";
+const MINIMUM_PROXY_SECRET_LENGTH = 32;
 // Layout default; gq.ops.json ploi.envTemplate overrides it.
 const defaultEnvTemplate = "apps/cms/.env.production.example";
 
@@ -105,6 +112,7 @@ export async function inspect(client, config, resolveHost) {
     database: databases.find((database) => database.name === config.database) ?? null,
     repository: null,
     envReady: false,
+    env: null,
     deployScript: null,
     certificate: null,
     dnsAddresses: [],
@@ -130,7 +138,8 @@ export async function inspect(client, config, resolveHost) {
     ]);
     state.site = site.data ?? state.site;
     state.repository = repository?.data?.repository ?? null;
-    state.envReady = isEnvReady(env?.data ?? env?.env, config.database);
+    state.env = env?.data ?? env?.env ?? null;
+    state.envReady = isEnvReady(state.env, config.database);
     state.deployScript = deployScript.deploy_script ?? "";
     state.certificate =
       certificates.find((certificate) => certificate.type === "letsencrypt") ?? null;
@@ -206,6 +215,36 @@ export function planActions(config, state) {
       "database-credentials",
       `database ${config.database} exists but the site .env doesn't use it: recreate its user with a new password and write the .env (data kept)`,
     );
+  }
+
+  // A commerce Site's CMS shares the storefront's proxy secret. The value
+  // comes from the secret store, and is never shown.
+  if (config.storefrontProxySecret !== undefined) {
+    const secret = config.storefrontProxySecret;
+    if (!secret) {
+      add(
+        "warn",
+        "storefront-proxy-secret",
+        `${STOREFRONT_PROXY_SECRET} isn't in Sigillo staging: run pnpm frontend:secrets, then re-run`,
+      );
+    } else if (secret.length < MINIMUM_PROXY_SECRET_LENGTH) {
+      add(
+        "warn",
+        "storefront-proxy-secret",
+        `${STOREFRONT_PROXY_SECRET} is shorter than ${MINIMUM_PROXY_SECRET_LENGTH} characters, which the storefront refuses: run pnpm frontend:secrets`,
+      );
+    } else if (
+      state.envReady &&
+      applyEnv(state.env, { [STOREFRONT_PROXY_SECRET]: secret }).changed.length === 0
+    ) {
+      add("ok", "storefront-proxy-secret", `site .env has the storefront's proxy secret`);
+    } else {
+      add(
+        "update",
+        "storefront-proxy-secret",
+        `site .env ${STOREFRONT_PROXY_SECRET} ← Sigillo staging (value not shown)`,
+      );
+    }
   }
 
   if (site && state.deployScript?.trim() === config.deployScript.trim()) {
@@ -365,6 +404,15 @@ export async function applyAction(action, context) {
       ).data;
       return;
     }
+    case "storefront-proxy-secret": {
+      const envPath = `/sites/${siteId()}/env`;
+      const current = await client.request("GET", envPath);
+      const { output, changed } = applyEnv(current?.data ?? current?.env ?? "", {
+        [STOREFRONT_PROXY_SECRET]: config.storefrontProxySecret,
+      });
+      if (changed.length > 0) await client.request("PATCH", envPath, { content: output });
+      return;
+    }
     case "deploy-script":
       await client.request("PATCH", `/sites/${siteId()}/deploy/script`, {
         deploy_script: config.deployScript,
@@ -442,6 +490,9 @@ const symbols = { ok: "✓", create: "+", update: "~", warn: "!" };
 // `gq ploi provision [--dry-run] [--yes]`. Resolves to an exit code.
 export async function runProvision({ context, parsed, fetch, lookup, io, interactive }) {
   const config = readProvisionConfig(context.projectRoot, context.config, context.configPath);
+  if (isCommerce(context.config)) {
+    config.storefrontProxySecret = context.env[STOREFRONT_PROXY_SECRET]?.trim() ?? "";
+  }
   const client = createPloiServerClient({
     token: context.env.PLOI_API_TOKEN,
     serverId: config.serverId,

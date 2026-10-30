@@ -55,6 +55,14 @@ export const optionalWorkerSecrets = Object.freeze({
   TURNSTILE_SITE_KEY: "TURNSTILE_SITE_KEY",
   GQ_FORMS_ACCESS_CLIENT_ID: "GQ_FORMS_ACCESS_CLIENT_ID",
   GQ_FORMS_ACCESS_CLIENT_SECRET: "GQ_FORMS_ACCESS_CLIENT_SECRET",
+  // A commerce Site's storefront Runtime secrets (gq frontend secrets;
+  // Turnstile's from Cloudflare), and the read:packages token CI installs
+  // @quick-release packages with. A content Site has none of them.
+  GETQUICK_STOREFRONT_PROXY_SECRET: "GETQUICK_STOREFRONT_PROXY_SECRET",
+  GETQUICK_AUTH_COOKIE_SECRET: "GETQUICK_AUTH_COOKIE_SECRET",
+  GETQUICK_CART_SESSION_SECRET: "GETQUICK_CART_SESSION_SECRET",
+  TURNSTILE_SECRET: "TURNSTILE_SECRET",
+  GITHUB_PACKAGES_TOKEN: "GITHUB_PACKAGES_TOKEN",
 });
 
 export function secretsPayload(environment, { github = true } = {}) {

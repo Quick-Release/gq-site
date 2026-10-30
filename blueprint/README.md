@@ -15,6 +15,12 @@ is discovered and installed from, and its upgrade policy. It holds no version
 constraints; those stay in `templates/apps/cms/composer.json`. See
 [Blueprint packages](../docs/reference/packages.md).
 
+An entry with `variants` applies only to sites of those variants (ADR 0017);
+one without applies to both. Two entries may share a `path` when each names its
+own variants, so a commerce site's file comes from its own template. Commerce
+sources live under `templates/commerce/`, mirroring the site's layout as the
+rest of `templates/` does.
+
 ## Whole-file sources and fragments
 
 Most of `templates/` follows the site's directory layout. Keep `apps/`, `infra/`,

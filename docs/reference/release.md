@@ -22,8 +22,9 @@ The `content` defaults:
 - required files: `apps/cms` `composer.json` and `.ddev/config.yaml`,
   `apps/frontend` `package.json` and `astro.config.mjs`.
 
-`commerce` has no defaults, so a commerce site declares everything as
-additions.
+`commerce` has content's defaults, with the Frontend's `pnpm run build`
+after `test`, and requires `apps/frontend` `vite.config.ts` instead of
+`astro.config.mjs` (ADR 0017).
 
 ```json
 {

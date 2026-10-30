@@ -88,8 +88,10 @@ not the current command reference.
 
 Phases 1–3 of the rollout (extraction, content-site generation, and adoption
 by an existing content site) have passed. Managed-file changes originate here;
-a site takes them by bumping its pin and running `gq sync`. Commerce-site generation is not supported;
-commerce adoption and fleet rollout are gated work.
+a site takes them by bumping its pin and running `gq sync`. `gq new --variant commerce`
+generates a commerce site without the storefront Runtime yet
+([ADR 0017](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0017-generate-commerce-sites-from-the-variant-alone.md));
+a commerce site has no readiness check, and commerce adoption and fleet rollout are gated work.
 See the [rollout record](https://github.com/Quick-Release/gq-site/blob/main/docs/plans/getquick-blueprint-rollout.md#phases-and-gates)
 for evidence and remaining gates, and
 [ADR 0001](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0001-the-getquick-site-blueprint.md)

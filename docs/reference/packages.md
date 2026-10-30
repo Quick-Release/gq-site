@@ -41,6 +41,12 @@ from that file and from the registry's `satis.json` and
 `release-packages.json`. Packages the registry serves for other projects are
 not added.
 
+The commerce CMS skeleton (`blueprint/templates/commerce/apps/cms/composer.json`)
+isn't read by `gq packages` yet. A test requires each requirement it shares
+with the content skeleton to have the same constraint, so after a `--write`,
+copy the new pins there by hand. Its own pins, WooCommerce and
+`getquick/getquick-ecommerce`, are manual.
+
 The blueprint's required GETQUICK packages use `manual` policy. They use exact
 versions except GQ Design, whose `*@stable` constraint accepts any stable
 release available in the registry, including new major versions. Updating a

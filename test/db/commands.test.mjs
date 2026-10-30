@@ -80,6 +80,8 @@ function fakeProviders({ marker = "FIXTURE_DB_EXPORT", prefix = "wp_", dump = DU
     if (url.startsWith(`${HOME}/wp/graphql?`)) {
       return { data: { generalSettings: { url: HOME } } };
     }
+    // A commerce CMS's Store API.
+    if (url === `${HOME}/wp-json/wc/store/v1/products?per_page=1`) return [];
     const route = `${method} ${pathname}`;
     if (route === "POST /api/servers/12/scripts/run") {
       scripts.push(JSON.parse(body));
@@ -120,6 +122,9 @@ function fakeLocal({ status = "running", userExists = false, overrides = () => u
     }
     if (line.startsWith("wp user get")) return userExists ? { stdout: "1\n" } : { code: 1 };
     if (line === "wp core version") return { stdout: "7.1.2\n" };
+    if (line.startsWith("mysql -N -B -e ")) {
+      return { stdout: "wp_users\nwp_usermeta\nwp_wc_orders\nwp_woocommerce_sessions\n" };
+    }
     if (args[0] === "wp" && args[1] === "eval") {
       return { stdout: JSON.stringify({ home: HOME, dev: true }) };
     }
@@ -223,6 +228,61 @@ test("db sync's post-import check keeps the local path without production Access
   assert.equal(new URL(local[0].url).pathname, "/wp/graphql");
   assert.equal(local[0].headers["CF-Access-Client-Id"], undefined);
   assert.equal(local[0].headers["CF-Access-Client-Secret"], undefined);
+});
+
+test("a commerce db sync anonymises customers and orders before WordPress reads the copy", async () => {
+  const fixture = await site({
+    ops: { ...OPS, variant: "commerce", local: { adminEmail: "admin@fixture.test" } },
+  });
+  const { fetch, scripts } = fakeProviders();
+  const exec = fakeLocal();
+
+  const result = await fixture.run(["db", "sync", "--yes"], {
+    env: ENV,
+    fetch,
+    exec,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  assertOnlyExportsOnPloi(fetch, scripts);
+  const lines = ddevLines(exec);
+  const imported = lines.findIndex((line) => line.startsWith("import-db"));
+  const anonymised = exec.calls
+    .filter(({ command }) => command === "ddev")
+    .findIndex(({ args, input }) => args.join(" ") === "mysql" && input !== undefined);
+  const firstWp = lines.findIndex((line) => line.startsWith("wp "));
+  assert.ok(imported !== -1 && imported < anonymised && anonymised < firstWp, lines.join("\n"));
+  const { input } = exec.calls.filter(({ command }) => command === "ddev")[anonymised];
+  // Only the tables the copy has.
+  assert.match(input, /UPDATE `wp_users` SET user_email = CONCAT\('customer-', ID/u);
+  assert.match(input, /UPDATE `wp_wc_orders` SET billing_email/u);
+  assert.match(input, /DELETE FROM `wp_woocommerce_sessions`/u);
+  assert.doesNotMatch(input, /wp_wc_order_addresses|wp_postmeta/u);
+  assert.match(result.stdout, /Anonymising customers and orders/u);
+
+  // Its CMS has no WPGraphQL: the check reads the Store API.
+  const local = fetch.requests.filter(({ url }) => new URL(url).origin === HOME);
+  assert.deepEqual(
+    local.map(({ url }) => new URL(url).pathname),
+    ["/wp-json/wc/store/v1/products"],
+  );
+  // WordPress permalinks point at the storefront's dev server.
+  assert.ok(
+    lines.includes(
+      "wp search-replace https://www.example.test http://localhost:3000 --all-tables-with-prefix --skip-columns=guid --report-changed-only --quiet",
+    ),
+    lines.join("\n"),
+  );
+});
+
+test("a content db sync anonymises nothing", async () => {
+  const fixture = await site();
+  const { fetch } = fakeProviders();
+  const exec = fakeLocal();
+  const result = await fixture.run(["db", "sync", "--yes"], { env: ENV, fetch, exec });
+  assert.equal(result.code, 0, result.stderr);
+  assert.ok(!ddevLines(exec).some((line) => line.startsWith("mysql")));
+  assert.doesNotMatch(result.stdout, /Anonymising/u);
 });
 
 test("db sync installs the language packs of gq.ops.json's wordpress.locale", async () => {
