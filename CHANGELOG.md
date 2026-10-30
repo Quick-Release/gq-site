@@ -23,6 +23,23 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   Content Sites' files are unchanged. A commerce Site still has no readiness
   ([#26](https://github.com/Quick-Release/gq-site/issues/26)).
 
+- **GQ Design is pinned as one lockstep group**
+  ([#93](https://github.com/Quick-Release/gq-site/issues/93),
+  [ADR 0018](docs/adr/0018-ship-gq-designs-contract-and-renderer-as-lockstep-packages.md)).
+  `getquick/gq-design` is pinned exactly at `0.9.4` in both CMS skeletons
+  (was `*@stable`), and a commerce Frontend's managed keys pin
+  `@quick-release/design-contract` and `@quick-release/design-renderer` at
+  the same version, so `gq sync` adds them to a commerce Site's
+  `apps/frontend/package.json` (run `pnpm install` afterwards). The package
+  catalogue gains npm packages (`ecosystem: "npm"`, discovered on GitHub
+  Packages with `GITHUB_PACKAGES_TOKEN` or the user's npm config), the
+  `exact` policy and `lockstep` groups: `gq packages check` reports the
+  newest version every member's registry serves and names a lagging member,
+  and `gq packages propose` moves the whole group or none of it. `gq doctor`
+  fails a Site whose `composer.lock` and `pnpm-lock.yaml` lock GQ Design at
+  different versions, naming both; a content Site, which locks no design
+  package, passes. No renderer adapter is generated yet.
+
 ### Fixed
 
 - A commerce deploy before provisioning names the missing

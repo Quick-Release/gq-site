@@ -23,7 +23,11 @@ The runners are shared; what they check is the site's.
   pin, pnpm against `packageManager`, git, the files each app must have
   (the variant's defaults plus `doctor.requiredFiles`,
   `{ "<app path>": ["<file>", …] }`),
-  installed dependencies, a leftover Artifacts push URL (with
+  installed dependencies, GQ Design's lockstep (a Site that locks
+  `@quick-release/design-contract` or `design-renderer` in `pnpm-lock.yaml`
+  fails unless `apps/cms/composer.lock` locks `getquick/gq-design` at the
+  same version, naming both; a content Site locks neither and passes), a
+  leftover Artifacts push URL (with
   `gq.ops.json` `artifacts`), the apps' `.env` files, Sigillo's project and
   login (with `sigillo`), the Artifacts namespace's jurisdiction against
   `artifacts.jurisdiction` (read with `ARTIFACTS_API_TOKEN` from the

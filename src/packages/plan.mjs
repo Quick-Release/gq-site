@@ -1,9 +1,13 @@
 // What discovery means for each catalogued package: its current blueprint
 // constraint, the newest stable upstream and installable registry versions,
 // the proposed target and what blocks anything newer. A proposal only moves
-// a caret constraint's floor up inside its range, to a version the canonical
-// registry serves; everything else is reported for review. Discovery proves
-// availability, not that the newest combination of packages works together.
+// a caret constraint's floor up inside its range, or an exact pin to a newer
+// version, to a version the canonical registry serves; everything else is
+// reported for review. A lockstep group (ADR 0018) is planned as one: its
+// target is the newest version every member's registry serves, and either
+// every member moves to it or none does. Discovery proves availability, not
+// that the newest combination of packages works together.
+import { blueprintPin, lockstepGroups } from "./catalogue.mjs";
 import {
   compareVersions,
   minimumOf,
@@ -20,13 +24,27 @@ const WRITE_BLOCKERS = new Set([
 ]);
 
 // One report row per catalogue entry, in catalogue order.
-export function planPackages(catalogue, composer, discoveries) {
-  return catalogue.packages.map((pkg, index) => planPackage(pkg, composer, discoveries[index]));
+export function planPackages(catalogue, composer, discoveries, npm = null) {
+  const installable = new Map();
+  const rows = catalogue.packages.map((pkg, index) =>
+    planPackage(pkg, composer, npm, discoveries[index], installable),
+  );
+  for (const [group, members] of lockstepGroups(catalogue)) {
+    planLockstep(
+      group,
+      members.map((pkg) => {
+        const index = catalogue.packages.indexOf(pkg);
+        return { pkg, row: rows[index], installable: installable.get(pkg) ?? null };
+      }),
+      composer,
+    );
+  }
+  return rows;
 }
 
-function planPackage(pkg, composer, { upstream, registry }) {
+function planPackage(pkg, composer, npm, { upstream, registry }, installableByPackage) {
   const require = composer.require ?? {};
-  const current = require[pkg.name] ?? null;
+  const current = blueprintPin(pkg, composer, npm);
   const blockers = [];
   const notes = [];
   const block = (code, message) => blockers.push({ code, message });
@@ -100,6 +118,7 @@ function planPackage(pkg, composer, { upstream, registry }) {
 
   const row = {
     name: pkg.name,
+    ecosystem: pkg.ecosystem ?? "composer",
     requirement: pkg.requirement,
     variants: pkg.variants,
     policy: pkg.policy,
@@ -129,6 +148,11 @@ function planPackage(pkg, composer, { upstream, registry }) {
       block("hold", `Held below ${hold.from}: ${hold.reason}`);
     }
   }
+  // A lockstep member's target is its group's (planLockstep).
+  if (pkg.lockstep) {
+    installableByPackage.set(pkg, installable);
+    return row;
+  }
   const newestInstallable = installable.at(-1) ?? null;
   if (!newestInstallable) {
     block(
@@ -154,6 +178,8 @@ function planPackage(pkg, composer, { upstream, registry }) {
     phpBlock(composer, newestInstallable, block);
     return finish(row);
   }
+
+  if (pkg.policy === "exact") return planExact(row, composer, current, newestInstallable, block);
 
   const caret = parseCaret(current);
   if (!caret) {
@@ -198,6 +224,127 @@ function planPackage(pkg, composer, { upstream, registry }) {
   return finish(row);
 }
 
+// An exact pin moves to the newest installable version.
+function planExact(row, composer, current, newestInstallable, block) {
+  const pinned = parseVersion(current);
+  if (!pinned || pinned.text !== current) {
+    block("unsupported-constraint", `${current} isn't an exact version; change it by hand.`);
+    return finish(row);
+  }
+  if (compareVersions(parseVersion(newestInstallable.version), pinned) <= 0) return finish(row);
+  if (phpBlock(composer, newestInstallable, block)) {
+    row.action = "blocked";
+    return finish(row);
+  }
+  if (row.blockers.some((blocker) => WRITE_BLOCKERS.has(blocker.code))) {
+    row.action = "blocked";
+    return finish(row);
+  }
+  row.target = newestInstallable.version;
+  row.proposed = newestInstallable.version;
+  row.action = "upgrade";
+  return finish(row);
+}
+
+// A lockstep group: the newest version installable for every member, which
+// every member moves to, or none does. Each row names the group, its target
+// and any member that lags behind the others' newest version.
+function planLockstep(group, members, composer) {
+  const names = members.map(({ pkg }) => pkg.name);
+  const sets = members.map(({ installable }) =>
+    installable === null ? null : new Map(installable.map((release) => [release.version, release])),
+  );
+  const readable = sets.every((set) => set !== null);
+  const all = [...new Set(sets.flatMap((set) => (set ? [...set.keys()] : [])))]
+    .map(parseVersion)
+    .sort(compareVersions);
+  const newestAny = all.at(-1) ?? null;
+  const common = readable
+    ? all.filter((version) => sets.every((set) => set.has(version.text)))
+    : [];
+  const target = common.at(-1) ?? null;
+  const lagging =
+    readable && newestAny
+      ? members.filter((_, index) => !sets[index].has(newestAny.text)).map(({ pkg }) => pkg.name)
+      : [];
+  const pins = new Set(members.map(({ row }) => row.current));
+  const [pin] = pins;
+  const current = pins.size === 1 && pin !== null ? parseVersion(pin) : null;
+
+  const groupBlockers = [];
+  const notes = [];
+  if (!readable) {
+    const failed = members.filter(({ installable }) => installable === null);
+    groupBlockers.push({
+      code: "lockstep",
+      message: `${failed.map(({ pkg }) => pkg.name).join(", ")} couldn't be planned, so ${group} can't move.`,
+    });
+  } else if (!target) {
+    groupBlockers.push({
+      code: "not-installable",
+      message: `No version of ${group} is installable for every member (${names.join(", ")}).`,
+    });
+  }
+  if (lagging.length > 0) {
+    notes.push({
+      code: "lockstep-lag",
+      message: `${newestAny.text} is installable for ${names.filter((name) => !lagging.includes(name)).join(", ")} but not for ${lagging.join(", ")}: ${group} ${target ? `stays at ${target.text} or below` : "can't move"}.`,
+    });
+  }
+  if (pins.size > 1) {
+    groupBlockers.push({
+      code: "lockstep-drift",
+      message: `${group} is pinned to different versions: ${members.map(({ row }) => `${row.name} ${row.current ?? "unpinned"}`).join(", ")}.`,
+    });
+  } else if (pin !== null && (!current || current.text !== pin)) {
+    groupBlockers.push({
+      code: "unsupported-constraint",
+      message: `${group} is pinned to ${pin}, not an exact version; change it by hand.`,
+    });
+  }
+  const unrequired = members.filter(({ pkg }) => pkg.requirement !== "blueprint");
+  if (unrequired.length > 0) {
+    groupBlockers.push({
+      code: "lockstep",
+      message: `${unrequired.map(({ pkg }) => pkg.name).join(", ")} ${unrequired.length > 1 ? "aren't" : "isn't"} pinned by the blueprint, so ${group} moves only by hand.`,
+    });
+  }
+  const moving = target && (!current || compareVersions(target, current) > 0);
+  if (moving) {
+    for (const { pkg, row } of members) {
+      const release = sets[members.findIndex((member) => member.pkg === pkg)].get(target.text);
+      phpBlock(composer, release, (code, message) => row.blockers.push({ code, message }));
+    }
+  }
+  const held = members.filter(({ row }) =>
+    row.blockers.some((blocker) => WRITE_BLOCKERS.has(blocker.code) || blocker.code === "php"),
+  );
+  if (moving && held.length > 0) {
+    groupBlockers.push({
+      code: "lockstep",
+      message: `${held.map(({ pkg }) => pkg.name).join(", ")} can't move to ${target.text}, so no member of ${group} does.`,
+    });
+  }
+
+  for (const { row } of members) {
+    row.lockstep = {
+      group,
+      members: names,
+      target: target?.text ?? null,
+      lagging,
+    };
+    row.blockers.push(...groupBlockers);
+    row.notes.push(...notes);
+    row.target = target?.text ?? null;
+    if (moving && groupBlockers.length === 0 && held.length === 0) {
+      row.proposed = target.text;
+      row.action = "upgrade";
+    } else {
+      row.action = row.blockers.length > 0 ? "blocked" : "none";
+    }
+  }
+}
+
 function phpBlock(composer, release, block) {
   const needed = minimumOf(release.php);
   const allowed = minimumOf(composer.require?.php);
@@ -230,14 +377,23 @@ function short(reference) {
 // Only `"<name>": "<from>"` inside the top-level "require" object changes;
 // every other byte, key and its formatting stays. Throws rather than guess.
 export function applyRequirements(text, changes) {
+  return applyPins(text, changes, "require", "The blueprint's composer.json");
+}
+
+// npmFile's text with each change's dependencies value replaced, the same way.
+export function applyDependencies(text, changes) {
+  return applyPins(text, changes, "dependencies", "The blueprint's npm pins");
+}
+
+function applyPins(text, changes, section, label) {
   const before = JSON.parse(text);
-  const block = /("require"\s*:\s*\{)([^{}]*)(\})/u.exec(text);
-  if (!block) throw new Error("The blueprint's composer.json has no require object gq can edit.");
+  const block = new RegExp(`("${section}"\\s*:\\s*\\{)([^{}]*)(\\})`, "u").exec(text);
+  if (!block) throw new Error(`${label} has no ${section} object gq can edit.`);
   let body = block[2];
   for (const change of [...changes].sort((left, right) => left.name.localeCompare(right.name))) {
-    if (before.require?.[change.name] !== change.from) {
+    if (before[section]?.[change.name] !== change.from) {
       throw new Error(
-        `${change.name} is ${before.require?.[change.name] ?? "not required"}, not ${change.from}; run gq packages propose again.`,
+        `${change.name} is ${before[section]?.[change.name] ?? "not required"}, not ${change.from}; run gq packages propose again.`,
       );
     }
     const pattern = new RegExp(
@@ -258,9 +414,9 @@ export function applyRequirements(text, changes) {
   // Nothing but the requested values changed.
   const after = JSON.parse(output);
   const expected = structuredClone(before);
-  for (const change of changes) expected.require[change.name] = change.to;
+  for (const change of changes) expected[section][change.name] = change.to;
   if (JSON.stringify(after) !== JSON.stringify(expected)) {
-    throw new Error("Editing composer.json would change more than the proposed requirements.");
+    throw new Error(`Editing ${label} would change more than the proposed requirements.`);
   }
   return output;
 }

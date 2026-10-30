@@ -284,6 +284,11 @@
       "template": "templates/fragments/frontend-package.keys.json",
       "contentRuntime": "package",
       "variants": ["content"]
+    },
+    {
+      "path": "apps/frontend/package.json",
+      "template": "templates/fragments/commerce-frontend-package.keys.json",
+      "variants": ["commerce"]
     }
   ],
   "createOnce": [

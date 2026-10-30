@@ -1,7 +1,8 @@
 {
-  "$comment": "GETQUICK Composer packages the blueprint knows, for gq packages check|propose. It holds no version constraints: the blueprint's pins are the require keys of composerFile. See docs/reference/packages.md.",
+  "$comment": "GETQUICK packages the blueprint knows, for gq packages check|propose. It holds no version constraints: the blueprint's pins are the require keys of composerFile and the dependencies of npmFile (the commerce Frontend's managed keys). See docs/reference/packages.md.",
   "schemaVersion": 1,
   "composerFile": "templates/apps/cms/composer.json",
+  "npmFile": "templates/fragments/commerce-frontend-package.keys.json",
   "packages": [
     {
       "name": "getquick/gq-config",
@@ -22,12 +23,34 @@
     },
     {
       "name": "getquick/gq-design",
-      "upstream": { "repository": "Quick-Release/getquick-design", "discovery": "tags" },
+      "upstream": { "repository": "Quick-Release/gq-design", "discovery": "tags" },
       "install": { "registry": "getquick" },
-      "variants": ["content"],
+      "variants": ["content", "commerce"],
       "requirement": "blueprint",
-      "policy": "manual",
-      "formerNames": ["getquick/getquick-design"]
+      "policy": "exact",
+      "lockstep": "gq-design",
+      "formerNames": ["getquick/getquick-design"],
+      "note": "Released with @quick-release/design-contract and @quick-release/design-renderer from one gq-design tag at one version (ADR 0018). The commerce CMS skeleton's pin follows this one."
+    },
+    {
+      "name": "@quick-release/design-contract",
+      "ecosystem": "npm",
+      "upstream": { "repository": "Quick-Release/gq-design", "discovery": "tags" },
+      "install": { "registry": "github-packages" },
+      "variants": ["commerce"],
+      "requirement": "blueprint",
+      "policy": "exact",
+      "lockstep": "gq-design"
+    },
+    {
+      "name": "@quick-release/design-renderer",
+      "ecosystem": "npm",
+      "upstream": { "repository": "Quick-Release/gq-design", "discovery": "tags" },
+      "install": { "registry": "github-packages" },
+      "variants": ["commerce"],
+      "requirement": "blueprint",
+      "policy": "exact",
+      "lockstep": "gq-design"
     },
     {
       "name": "getquick/gq-support",

@@ -281,6 +281,61 @@ test("gq doctor reports the toolchain pins, the gq version and a healthy site", 
   assert.ok(actions(exec).includes("sigillo me --api-url https://secrets.example.test"));
 });
 
+// pnpm-lock.yaml (v9) and composer.lock as a commerce Site's would lock GQ
+// Design's npm packages and plugin.
+function designLocks({ npm = "0.9.4", plugin = "0.9.4" } = {}) {
+  return {
+    "pnpm-lock.yaml": [
+      "lockfileVersion: '9.0'",
+      "",
+      "packages:",
+      "",
+      `  '@quick-release/design-contract@${npm}':`,
+      "    resolution: {integrity: sha512-x}",
+      "",
+      `  '@quick-release/design-renderer@${npm}':`,
+      "    resolution: {integrity: sha512-y}",
+      "",
+      "  react@19.3.1:",
+      "    resolution: {integrity: sha512-z}",
+      "",
+    ].join("\n"),
+    "apps/cms/composer.lock": JSON.stringify({
+      packages: [
+        { name: "getquick/gq-design", version: plugin },
+        { name: "roots/wordpress", version: "7.1.3" },
+      ],
+    }),
+  };
+}
+
+test("gq doctor fails a Site whose GQ Design plugin and npm packages are locked apart", async () => {
+  const apart = await healthySite(designLocks({ npm: "0.9.5", plugin: "v0.9.4" }));
+  const failed = await apart.run(["doctor"], { exec: machine() });
+  assert.equal(failed.code, 1, failed.stdout);
+  assert.match(
+    failed.stdout,
+    /✗ apps\/cms\/composer\.lock locks getquick\/gq-design 0\.9\.4 but pnpm-lock\.yaml locks @quick-release\/design-contract 0\.9\.5, @quick-release\/design-renderer 0\.9\.5: gq-design releases them in lockstep \(ADR 0018\)/u,
+  );
+
+  const together = await healthySite(designLocks());
+  const passed = await together.run(["doctor"], { exec: machine() });
+  assert.equal(passed.code, 0, passed.stdout);
+  assert.match(passed.stdout, /✓ gq-design is locked at 0\.9\.4 in both lockfiles/u);
+
+  // A content Site locks no design package: nothing to compare.
+  const content = await healthySite({
+    "pnpm-lock.yaml":
+      "lockfileVersion: '9.0'\n\npackages:\n\n  react@19.3.1:\n    resolution: {integrity: sha512-z}\n",
+    "apps/cms/composer.lock": JSON.stringify({
+      packages: [{ name: "getquick/gq-design", version: "0.9.3" }],
+    }),
+  });
+  const plain = await content.run(["doctor"], { exec: machine() });
+  assert.equal(plain.code, 0, plain.stdout);
+  assert.doesNotMatch(plain.stdout, /gq-design/u);
+});
+
 test("gq doctor fails when Node is below the site's engines minimum", async () => {
   const fixture = await healthySite();
   const result = await fixture.run(["doctor"], { exec: machine({ node: "v20.11.0" }) });

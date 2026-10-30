@@ -207,9 +207,9 @@ Footer with the site chrome, as `chrome.header` and `chrome.footer`
 [release notes](https://github.com/Quick-Release/gq-content/blob/v0.3.0/docs/releases/0.3.0.md)).
 There is no new D1 migration.
 
-1. **Require GQ Design 0.4.1 or newer.** The blueprint requires
-   `getquick/gq-design` at `*@stable`, so the Site's `composer.lock` decides
-   its version: `composer update getquick/gq-design` in `apps/cms` if it is
+1. **Require GQ Design 0.4.1 or newer.** The blueprint then required
+   `getquick/gq-design` at `*@stable` (it pins an exact version since
+   0.29.0), so the Site's `composer.lock` decides its version: `composer update getquick/gq-design` in `apps/cms` if it is
    older. With GQ Design 0.2.17 to 0.4.0 both regions are null and the Site
    keeps its own header and footer; before 0.2.17 the chrome is still served,
    both null, with a warning that names the version needed.

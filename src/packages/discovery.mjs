@@ -4,11 +4,21 @@
 // The two are kept apart: an upstream release is not installable until the
 // registry serves it, and the registry is never bypassed through GitHub.
 //
+// An npm package's registry is GitHub Packages (npm.pkg.github.com): its
+// packument lists the versions it can install.
+//
 // Credentials come from the environment gq already uses: GITHUB_TOKEN or
-// GH_TOKEN for GitHub, and COMPOSER_AUTH (from `gq sigillo run`) for the
-// registry. They go only into request headers, never into results or errors.
+// GH_TOKEN for GitHub, COMPOSER_AUTH (from `gq sigillo run`) for the
+// Composer registry, and GITHUB_PACKAGES_TOKEN (Sigillo's name) or else the
+// user's npm config for GitHub Packages. They go only into request headers,
+// never into results or errors.
 // A failure resolves to { status: "error", error: { code, message } } with
 // one of DISCOVERY_ERRORS.
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { isNpm } from "./catalogue.mjs";
 import { compareVersions, isStable, newest, parseVersion } from "./versions.mjs";
 
 export const DISCOVERY_ERRORS = [
@@ -24,6 +34,7 @@ const PER_PAGE = 100;
 // At most this many pages of tags or releases per package.
 const MAX_PAGES = 3;
 const GITHUB_API = "https://api.github.com";
+const GITHUB_PACKAGES_URL = "https://npm.pkg.github.com";
 
 class DiscoveryError extends Error {
   constructor(code, message) {
@@ -36,7 +47,11 @@ class DiscoveryError extends Error {
 export async function discoverPackage(pkg, { composer, env, fetch }) {
   const [upstream, registry] = await Promise.all([
     settle(() => discoverUpstream(pkg, { env, fetch })),
-    settle(() => discoverRegistry(pkg, { composer, env, fetch })),
+    settle(() =>
+      isNpm(pkg)
+        ? discoverNpmRegistry(pkg, { env, fetch })
+        : discoverRegistry(pkg, { composer, env, fetch }),
+    ),
   ]);
   return { upstream, registry };
 }
@@ -102,7 +117,9 @@ async function discoverUpstream(pkg, { env, fetch }) {
   const stable = releases.filter((release) => isStable(release.version));
   const latest = newestRelease(stable);
   let declaredName = null;
-  if (latest) {
+  // An npm package's name is checked against its registry's packument; the
+  // repository's root composer.json names the plugin released beside it.
+  if (latest && !isNpm(pkg)) {
     // The Composer name the latest release declares, to catch a rename.
     declaredName = await composerNameAt(github, repository, latest.tag);
   }
@@ -275,6 +292,122 @@ async function discoverRegistry(pkg, { composer, env, fetch }) {
       .map((release) => ({ ...describe(release), php: release.php })),
     declaredNames: [...names].sort(),
   };
+}
+
+// GitHub Packages: the packument at /<@scope>%2f<name> lists every version.
+async function discoverNpmRegistry(pkg, { env, fetch }) {
+  const token = githubPackagesToken(env);
+  if (!token) {
+    throw new DiscoveryError(
+      "missing-credentials",
+      "No read:packages token for npm.pkg.github.com: set GITHUB_PACKAGES_TOKEN (Sigillo) or log in to it in your user-level npm config.",
+    );
+  }
+  const url = `${GITHUB_PACKAGES_URL}/${pkg.name.replace("/", "%2f")}`;
+  const headers = { Accept: "application/json", Authorization: `Bearer ${token}` };
+  const response = await bounded(fetch, url, headers, "GitHub Packages");
+  if (response.status === 401 || response.status === 403) {
+    throw new DiscoveryError(
+      "permission-denied",
+      `GitHub Packages refused ${pkg.name} to this token: it needs read:packages and access to the package.`,
+    );
+  }
+  if (response.status === 404) {
+    throw new DiscoveryError("not-found", `GitHub Packages doesn't serve ${pkg.name}.`);
+  }
+  const packument = await parseBody(response, "GitHub Packages");
+  if (!packument || typeof packument.versions !== "object" || packument.versions === null) {
+    throw new DiscoveryError(
+      "malformed",
+      `GitHub Packages' metadata for ${pkg.name} has no version list.`,
+    );
+  }
+  const releases = [];
+  const ignored = [];
+  const names = new Set(typeof packument.name === "string" ? [packument.name] : []);
+  for (const [text, manifest] of Object.entries(packument.versions)) {
+    if (typeof manifest?.name === "string") names.add(manifest.name);
+    const version = parseVersion(text);
+    if (!version) {
+      ignored.push(text);
+      continue;
+    }
+    releases.push({
+      version,
+      tag: text,
+      provenance: {
+        ...(typeof manifest?.dist?.integrity === "string"
+          ? { integrity: manifest.dist.integrity }
+          : {}),
+        ...(typeof manifest?.gitHead === "string" ? { reference: manifest.gitHead } : {}),
+      },
+      php: null,
+    });
+  }
+  const stable = releases.filter((release) => isStable(release.version));
+  const latest = newestRelease(stable);
+  return {
+    source: `npm:${pkg.install.registry}`,
+    url: GITHUB_PACKAGES_URL,
+    latest: latest ? { ...describe(latest), php: null } : null,
+    versions: stable.map((release) => release.version.text).sort(byVersionText),
+    prereleases: releases
+      .filter((release) => !isStable(release.version))
+      .map((release) => release.version.text)
+      .sort(byVersionText),
+    ignored: ignored.sort(),
+    releases: stable
+      .sort((left, right) => compareVersions(left.version, right.version))
+      .map((release) => ({ ...describe(release), php: null })),
+    declaredNames: [...names].sort(),
+  };
+}
+
+// A read:packages token for npm.pkg.github.com: GITHUB_PACKAGES_TOKEN (the
+// name Sigillo and CI use), else the user-level npm config's _authToken for
+// the registry, or the output of its tokenHelper, as pnpm reads them. The
+// repository's .npmrc is never read: it names the registry, never a token.
+export function githubPackagesToken(env) {
+  const direct = env.GITHUB_PACKAGES_TOKEN?.trim();
+  if (direct) return direct;
+  const userconfig =
+    env.NPM_CONFIG_USERCONFIG ||
+    env.npm_config_userconfig ||
+    (env.HOME && join(env.HOME, ".npmrc"));
+  if (!userconfig) return null;
+  let text;
+  try {
+    text = readFileSync(userconfig, "utf8");
+  } catch {
+    return null;
+  }
+  const settings = new Map();
+  for (const line of text.split(/\r?\n/u)) {
+    const match = /^\s*\/\/npm\.pkg\.github\.com\/:(_authToken|tokenHelper)\s*=\s*(.*?)\s*$/u.exec(
+      line,
+    );
+    if (match) settings.set(match[1], match[2].replace(/^(["'])(.*)\1$/u, "$2"));
+  }
+  const configured = settings.get("_authToken");
+  if (configured) {
+    const expanded = configured.replaceAll(/\$\{(\w+)\}/gu, (_, name) => env[name] ?? "").trim();
+    if (expanded) return expanded;
+  }
+  const helper = settings.get("tokenHelper");
+  if (helper) {
+    try {
+      const output = execFileSync(helper, [], {
+        encoding: "utf8",
+        env,
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: REQUEST_TIMEOUT_MS,
+      });
+      return output.trim().replace(/^Bearer\s+/u, "") || null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 // Basic auth for `host` from COMPOSER_AUTH's http-basic, as Composer reads it.
