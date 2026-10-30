@@ -10,33 +10,53 @@
 
 import { Route as rootRouteImport } from "./routes/__root";
 import { Route as IndexRouteImport } from "./routes/index";
+import { Route as ApiAuthSplatRouteImport } from "./routes/api.auth.$";
+import { Route as ApiStoreSplatRouteImport } from "./routes/api.store.$";
 
 const IndexRoute = IndexRouteImport.update({
   id: "/",
   path: "/",
   getParentRoute: () => rootRouteImport,
 } as any);
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: "/api/auth/$",
+  path: "/api/auth/$",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ApiStoreSplatRoute = ApiStoreSplatRouteImport.update({
+  id: "/api/store/$",
+  path: "/api/store/$",
+  getParentRoute: () => rootRouteImport,
+} as any);
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
+  "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/store/$": typeof ApiStoreSplatRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
+  "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/store/$": typeof ApiStoreSplatRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
+  "/api/auth/$": typeof ApiAuthSplatRoute;
+  "/api/store/$": typeof ApiStoreSplatRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/";
+  fullPaths: "/" | "/api/auth/$" | "/api/store/$";
   fileRoutesByTo: FileRoutesByTo;
-  to: "/";
-  id: "__root__" | "/";
+  to: "/" | "/api/auth/$" | "/api/store/$";
+  id: "__root__" | "/" | "/api/auth/$" | "/api/store/$";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute;
+  ApiStoreSplatRoute: typeof ApiStoreSplatRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -48,11 +68,27 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof IndexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/api/auth/$": {
+      id: "/api/auth/$";
+      path: "/api/auth/$";
+      fullPath: "/api/auth/$";
+      preLoaderRoute: typeof ApiAuthSplatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/api/store/$": {
+      id: "/api/store/$";
+      path: "/api/store/$";
+      fullPath: "/api/store/$";
+      preLoaderRoute: typeof ApiStoreSplatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiStoreSplatRoute: ApiStoreSplatRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

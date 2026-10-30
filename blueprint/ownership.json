@@ -80,11 +80,23 @@
     },
     {
       "path": "infra/ci/cloudflare.ci.ts",
-      "template": "templates/infra/ci/cloudflare.ci.ts"
+      "template": "templates/infra/ci/cloudflare.ci.ts",
+      "variants": ["content"]
+    },
+    {
+      "path": "infra/ci/cloudflare.ci.ts",
+      "template": "templates/commerce/infra/ci/cloudflare.ci.ts",
+      "variants": ["commerce"]
     },
     {
       "path": "infra/ci/env.ts",
-      "template": "templates/infra/ci/env.ts"
+      "template": "templates/infra/ci/env.ts",
+      "variants": ["content"]
+    },
+    {
+      "path": "infra/ci/env.ts",
+      "template": "templates/commerce/infra/ci/env.ts",
+      "variants": ["commerce"]
     },
     {
       "path": "infra/ci/github.ts",
@@ -720,6 +732,24 @@
     {
       "path": "apps/frontend/src/site.ts",
       "template": "templates/commerce/apps/frontend/src/site.ts",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
+    },
+    {
+      "path": "apps/frontend/src/storefront.server.ts",
+      "template": "templates/commerce/apps/frontend/src/storefront.server.ts",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
+    },
+    {
+      "path": "apps/frontend/src/routes/api.auth.$.ts",
+      "template": "templates/commerce/apps/frontend/src/routes/api.auth.$.ts",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
+    },
+    {
+      "path": "apps/frontend/src/routes/api.store.$.ts",
+      "template": "templates/commerce/apps/frontend/src/routes/api.store.$.ts",
       "app": "apps/frontend",
       "variants": ["commerce"]
     },

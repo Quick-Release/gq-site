@@ -107,9 +107,19 @@ its Frontend dependencies (the networked step) and runs its tests,
 (`scripts/smoke/this-checkout.sh`), not from npm, so a release push is tested
 before npm serves the release. `scripts/smoke/commerce-check.sh` generates a disposable commerce site
 ([ADR 0017](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0017-generate-commerce-sites-from-the-variant-alone.md)),
-installs it twice (the second with a frozen lockfile) and runs `gq sync
---check` and `gq verify`; that proves generation and the skeleton's checks,
-never commerce readiness. `scripts/smoke/content-pair.sh` proves that
+installs it twice (the second with a frozen lockfile, with no git or Ekis
+path) and runs `gq sync --check` and `gq verify`, then proves the storefront
+Runtime is mounted (the built Frontend's `/api/store/*` and `/api/auth/*`
+answer from it), that the deploy plan declares every binding the installed
+package's `infra.json` requires, and that the deploy refuses without them.
+That proves generation and the skeleton's checks, never commerce readiness.
+A commerce Frontend installs private `@quick-release` packages from GitHub
+Packages, so the script needs a `read:packages` token that can read them:
+`GITHUB_PACKAGES_TOKEN`, or your user-level npm config. Without one it
+refuses (exit 3) before generating anything; it never passes without
+installing. CI gives it the workflow's `GITHUB_TOKEN` (`packages: read`),
+which reads a package only while that package grants this repository
+Actions access. `scripts/smoke/content-pair.sh` proves that
 a generated site wires the pinned content runtime
 ([ADR 0020](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)):
 its pins and their published integrity, the crontab's command against the

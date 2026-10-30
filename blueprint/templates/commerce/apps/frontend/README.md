@@ -26,8 +26,18 @@ so the type check doesn't need a build first.
 ## The storefront Runtime
 
 The catalog, cart, checkout and sign-in come from the GETQUICK storefront
-Runtime, `@quick-release/storefront`, mounted at `/api/store/*` and
-`/api/auth/*` behind this Worker (a same-origin BFF). It isn't installed yet:
-see the `@getquick/site` guide on adding the storefront Runtime. Once it is a
-dependency here, the managed deploy declares the Cloudflare bindings it needs
-(its cart-session database, rate limiters, secrets and variables).
+Runtime, `@quick-release/storefront`, mounted behind this Worker (a
+same-origin BFF): `src/routes/api.store.$.ts` serves `/api/store/*` and
+`src/routes/api.auth.$.ts` serves `/api/auth/*`, both through
+`src/storefront.server.ts`. The router gives every route the Runtime's Query
+client (`src/router.tsx`); `@quick-release/storefront/client` has the cart,
+checkout and auth calls and hooks to build pages with.
+
+The managed deploy (`infra/frontend.run.ts`) declares the bindings the
+Runtime's `infra.json` lists: its cart-session database, rate limiters,
+secrets and variables. Under `vp dev` and in tests there are none, so
+`/api/store/*` and `/api/auth/*` answer 503 there.
+
+`@quick-release/*` packages come from GitHub Packages: installing needs a
+`read:packages` token in your user-level `~/.npmrc`
+(`//npm.pkg.github.com/:_authToken=…`), never in this repository.

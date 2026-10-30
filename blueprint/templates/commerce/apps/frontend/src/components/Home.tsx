@@ -2,7 +2,7 @@ import { site } from "../site";
 
 // The storefront's homepage, and the Site's own presentation: nothing here
 // comes from the blueprint again. The catalog, cart and sign-in come from
-// @quick-release/storefront once it is added (docs/guides in @getquick/site).
+// the storefront Runtime, behind /api/store and /api/auth (storefront.server.ts).
 export function Home() {
   return (
     <main>
