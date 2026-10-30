@@ -1,14 +1,15 @@
 // gq packages check|propose: discovery and upgrade proposals for the GETQUICK
-// Composer packages in the blueprint's catalogue (catalogue.mjs). Both are
-// read-only; `propose --write` changes only the proposed require values of
-// the blueprint's CMS composer.json, in a gq-site checkout. Neither resolves
-// a lockfile, touches a Site, or approves a combination's runtime
-// compatibility. Exits 1 when any source couldn't be read.
+// packages in the blueprint's catalogue (catalogue.mjs): Composer packages and
+// npm packages on GitHub Packages. Both are read-only; `propose --write`
+// changes only the proposed pins of the blueprint's CMS composer.json and npm
+// pins, in a gq-site checkout. Neither resolves a lockfile, touches a Site,
+// or approves a combination's runtime compatibility. Exits 1 when any source
+// couldn't be read.
 import { rename, writeFile } from "node:fs/promises";
 
-import { loadCatalogue, locateBlueprint } from "./catalogue.mjs";
+import { isNpm, loadCatalogue, locateBlueprint } from "./catalogue.mjs";
 import { discoverPackage } from "./discovery.mjs";
-import { applyRequirements, planPackages } from "./plan.mjs";
+import { applyDependencies, applyRequirements, planPackages } from "./plan.mjs";
 
 export const PACKAGES_USAGE = [
   "gq packages check [--json]",
@@ -38,7 +39,8 @@ export async function runPackagesCommand(argv, { cwd, env, fetch, io }) {
   for (const pkg of loaded.catalogue.packages) {
     discoveries.push(await discoverPackage(pkg, { composer: loaded.composer, env, fetch }));
   }
-  const packages = planPackages(loaded.catalogue, loaded.composer, discoveries);
+  const packages = planPackages(loaded.catalogue, loaded.composer, discoveries, loaded.npm);
+  const files = [loaded.composerFile, loaded.npmFile].filter(Boolean);
   const failed = packages.some((row) =>
     row.blockers.some((blocker) => blocker.code === "discovery-failed"),
   );
@@ -47,12 +49,17 @@ export async function runPackagesCommand(argv, { cwd, env, fetch, io }) {
     if (options.json)
       io.out(
         JSON.stringify(
-          { composerFile: loaded.composerFile, packages, compatibility: COMPATIBILITY },
+          {
+            composerFile: loaded.composerFile,
+            npmFile: loaded.npmFile,
+            packages,
+            compatibility: COMPATIBILITY,
+          },
           null,
           2,
         ),
       );
-    else printCheck(io, loaded.composerFile, packages);
+    else printCheck(io, files, packages);
     return failed ? 1 : 0;
   }
 
@@ -64,16 +71,30 @@ export async function runPackagesCommand(argv, { cwd, env, fetch, io }) {
     .map((row) => ({ name: row.name, action: row.action, blockers: row.blockers }));
   let written = false;
   if (options.write && changes.length > 0) {
-    const output = applyRequirements(loaded.composerText, changes);
-    if (output !== loaded.composerText) {
-      const temporary = `${loaded.composerPath}.gq-packages.tmp`;
+    const npmNames = new Set(
+      loaded.catalogue.packages.filter((pkg) => isNpm(pkg)).map((pkg) => pkg.name),
+    );
+    // Both files are edited in memory first, so a refusal writes neither.
+    const edits = [
+      [loaded.composerPath, loaded.composerText, applyRequirements, false],
+      [loaded.npmPath, loaded.npmText, applyDependencies, true],
+    ].flatMap(([path, text, apply, npm]) => {
+      const own = changes.filter((change) => npmNames.has(change.name) === npm);
+      if (own.length === 0) return [];
+      const output = apply(text, own);
+      return output === text ? [] : [[path, output]];
+    });
+    for (const [path, output] of edits) {
+      const temporary = `${path}.gq-packages.tmp`;
       await writeFile(temporary, output);
-      await rename(temporary, loaded.composerPath);
+      await rename(temporary, path);
       written = true;
     }
   }
   const proposal = {
     composerFile: loaded.composerFile,
+    npmFile: loaded.npmFile,
+    files,
     changes,
     blocked,
     written,
@@ -101,8 +122,8 @@ function parsePackagesArguments(argv) {
   return options;
 }
 
-function printCheck(io, composerFile, packages) {
-  io.out(`Blueprint requirements: ${composerFile}`);
+function printCheck(io, files, packages) {
+  io.out(`Blueprint requirements: ${files.join(", ")}`);
   for (const row of packages) {
     io.out("");
     io.out(
@@ -112,6 +133,11 @@ function printCheck(io, composerFile, packages) {
     io.out(`  upstream    ${describeSource(row.upstream, "upstream")}`);
     io.out(`  registry    ${describeSource(row.registry, "registry")}`);
     io.out(`  target      ${describeTarget(row)}`);
+    if (row.lockstep) {
+      io.out(
+        `  lockstep    ${row.lockstep.group}: ${row.lockstep.members.join(", ")} at ${row.lockstep.target ?? "no common version"}`,
+      );
+    }
     for (const blocker of row.blockers) io.out(`  ✗ ${blocker.code}: ${blocker.message}`);
     for (const note of row.notes) io.out(`  ! ${note.code}: ${note.message}`);
   }
@@ -121,14 +147,14 @@ function printCheck(io, composerFile, packages) {
 
 function printProposal(io, proposal, write) {
   if (proposal.changes.length === 0) {
-    io.out(`No safe upgrades to propose for ${proposal.composerFile}.`);
+    io.out(`No safe upgrades to propose for ${proposal.files.join(", ")}.`);
   } else {
     const verb = !write
       ? "Proposed (not applied; --write applies them)"
       : proposal.written
         ? "Wrote"
         : "Already applied";
-    io.out(`${verb}: ${proposal.composerFile}`);
+    io.out(`${verb}: ${proposal.files.join(", ")}`);
     for (const change of proposal.changes)
       io.out(`  ${change.name}  ${change.from} → ${change.to}`);
   }
@@ -159,11 +185,18 @@ function describeSource(source, kind) {
       : [
           latest.reference && `reference ${String(latest.reference).slice(0, 12)}`,
           latest.shasum && `sha1 ${latest.shasum}`,
+          latest.integrity && `integrity ${latest.integrity}`,
         ].filter(Boolean);
   return `${latest.version} — ${source.source}${provenance.length ? `, ${provenance.join(", ")}` : ""}`;
 }
 
 function describeTarget(row) {
+  if (row.action === "upgrade" && row.lockstep) {
+    return `${row.proposed} (from ${row.current}, with ${row.lockstep.group})`;
+  }
+  if (row.action === "upgrade" && row.proposed === row.target) {
+    return `${row.proposed} (from ${row.current})`;
+  }
   if (row.action === "upgrade") return `${row.proposed} (upgrade inside ${row.current})`;
   if (row.action === "report")
     return `${row.target} (reported only: ${row.requirement === "site" ? "site-owned" : "not required"})`;

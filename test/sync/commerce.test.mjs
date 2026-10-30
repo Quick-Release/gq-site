@@ -154,6 +154,13 @@ test("a commerce site gets the storefront skeleton and none of the content Front
   assert.equal(frontend.dependencies["@quick-release/auth-contract"], "0.1.9");
   assert.ok(frontend.dependencies["@tanstack/react-query"]);
   assert.doesNotMatch(JSON.stringify(frontend), /ekis|github:|git\+|file:|link:/iu);
+  // GQ Design's npm packages, as managed keys, at its plugin's version (ADR 0018).
+  const plugin = JSON.parse(await readSite(site.root, "apps/cms/composer.json")).require[
+    "getquick/gq-design"
+  ];
+  assert.equal(plugin, "0.9.4");
+  assert.equal(frontend.dependencies["@quick-release/design-contract"], plugin);
+  assert.equal(frontend.dependencies["@quick-release/design-renderer"], plugin);
   assert.equal(frontend.scripts.build, "vp build");
   // Mounted at /api/auth/* and /api/store/*, with the Runtime's Query client.
   for (const [route, handler] of [

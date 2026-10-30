@@ -2,9 +2,9 @@
 
 [Documentation](../README.md)
 
-`gq packages` finds new releases of the GETQUICK Composer packages (WordPress
-plugins and themes) that the blueprint knows about, and proposes upgrades to
-the blueprint's version pins. It covers this repository's blueprint only. It
+`gq packages` finds new releases of the GETQUICK packages the blueprint knows
+about, Composer packages (WordPress plugins and themes) and npm packages on
+GitHub Packages, and proposes upgrades to the blueprint's version pins. It covers this repository's blueprint only. It
 never changes a Site, a lockfile, the registry or any other repository.
 
 ```sh
@@ -20,23 +20,32 @@ checkout they run in, or else the blueprint of the installed `@getquick/site`.
 [`blueprint/packages.json`](https://github.com/Quick-Release/gq-site/blob/main/blueprint/packages.json)
 lists each package with these fields:
 
-| Key           | Meaning                                                                                                                                                              |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`        | The Composer name. A package keeps it: a rename is a migration, not an upgrade.                                                                                      |
-| `upstream`    | The GitHub repository and how releases are discovered there: `tags` (Satis `vcs` packages), or `releases` with the release `asset` the registry mirrors.             |
-| `install`     | The canonical install source: the name of a Composer repository in the CMS `composer.json` (`getquick`, the private registry's proxy). There is no fallback.         |
-| `variants`    | The Site variants that install it.                                                                                                                                   |
-| `requirement` | `blueprint` (the CMS `composer.json` requires it and gq proposes it), `site` (a Site requires it itself and it is only reported) or `none` (no variant installs it). |
-| `policy`      | `caret` proposes the newest installable version inside the current caret range. `manual` only reports.                                                               |
-| `holds`       | `{ from, reason }`: versions from `from` upwards are never proposed.                                                                                                 |
-| `formerNames` | Earlier Composer names. If one is required again, discovery stops until a migration exists.                                                                          |
-| `migrations`  | Explicit rename, replace, remove or activate steps, with their status. Any listed migration blocks automatic proposals.                                              |
+| Key           | Meaning                                                                                                                                                               |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | The Composer or npm name. A package keeps it: a rename is a migration, not an upgrade.                                                                                |
+| `ecosystem`   | `composer` (the default) or `npm`.                                                                                                                                    |
+| `upstream`    | The GitHub repository and how releases are discovered there: `tags` (Satis `vcs` packages), or `releases` with the release `asset` the registry mirrors.              |
+| `install`     | The canonical install source: a Composer repository in the CMS `composer.json` (`getquick`, the private registry's proxy), or `github-packages` for npm. No fallback. |
+| `variants`    | The Site variants that install it.                                                                                                                                    |
+| `requirement` | `blueprint` (the CMS `composer.json` requires it and gq proposes it), `site` (a Site requires it itself and it is only reported) or `none` (no variant installs it).  |
+| `policy`      | `caret` proposes the newest installable version inside the current caret range, `exact` the newest installable version as an exact pin. `manual` only reports.        |
+| `lockstep`    | A group released together at one version by one upstream: pinned to that version and moved together, or not at all.                                                   |
+| `holds`       | `{ from, reason }`: versions from `from` upwards are never proposed.                                                                                                  |
+| `formerNames` | Earlier Composer names. If one is required again, discovery stops until a migration exists.                                                                           |
+| `migrations`  | Explicit rename, replace, remove or activate steps, with their status. Any listed migration blocks automatic proposals.                                               |
 
-The catalogue holds **no version constraints**. The pins live in one place:
-the `require` keys of `blueprint/templates/apps/cms/composer.json`. A test
-checks that the catalogue and that file agree. Every `blueprint` package must
-be required there, no `site` or `none` package may be, and every requirement
-served by a catalogued registry must be catalogued. The initial entries come
+The catalogue holds **no version constraints**. The pins live in two places:
+Composer packages in the `require` keys of
+`blueprint/templates/apps/cms/composer.json` (`composerFile`), and npm
+packages in the `dependencies` of `npmFile`,
+`blueprint/templates/fragments/commerce-frontend-package.keys.json`, the
+commerce Frontend's managed keys (so `gq sync` sets them in a commerce Site's
+`apps/frontend/package.json`). A test checks that the catalogue and both
+files agree. Every `blueprint` package must be pinned there, no `site` or
+`none` package may be, every requirement served by a catalogued Composer
+registry and every `@quick-release` dependency in `npmFile` must be
+catalogued, and a lockstep group's members must be pinned to one exact
+version. The initial entries come
 from that file and from the registry's `satis.json` and
 `release-packages.json`. Packages the registry serves for other projects are
 not added.
@@ -47,12 +56,40 @@ with the content skeleton to have the same constraint, so after a `--write`,
 copy the new pins there by hand. Its own pins, WooCommerce and
 `getquick/getquick-ecommerce`, are manual.
 
-The blueprint's required GETQUICK packages use `manual` policy. They use exact
-versions except GQ Design, whose `*@stable` constraint accepts any stable
-release available in the registry, including new major versions. Updating a
-Site's lockfile selects its version; `composer install` keeps the locked version.
-`check` still reports new releases; `propose --write` does not change these
-constraints. The `caret` policy is available for requirements using caret ranges.
+The blueprint's required GETQUICK Composer packages use exact versions. Most
+use `manual` policy: `check` reports new releases and `propose --write` does
+not change them. The `caret` policy is available for requirements using caret
+ranges.
+
+### The GQ Design lockstep group
+
+GQ Design releases its plugin, `getquick/gq-design`, and its npm packages,
+`@quick-release/design-contract` and `@quick-release/design-renderer`, from
+one tag at one version
+([ADR 0018](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0018-ship-gq-designs-contract-and-renderer-as-lockstep-packages.md)).
+All three are catalogued with `lockstep: "gq-design"` and `exact` policy, and
+pinned to one version: the plugin in both CMS skeletons' `composer.json`
+(content and commerce), the npm packages in the commerce Frontend's managed
+keys. Content Sites install no design package and need no GitHub Packages
+token.
+
+- `gq packages check` reports the group's target: the newest stable version
+  that **every** member's registry serves, the Composer registry for the
+  plugin and GitHub Packages for the packages. A member that hasn't got the
+  others' newest version is named as lagging (`lockstep-lag`).
+- `gq packages propose` moves the whole group to that target, or nothing. A
+  member blocked for any reason (a failed read, its identity, a reference
+  mismatch, PHP) holds every member (`lockstep`), and so do members pinned to
+  different versions (`lockstep-drift`). `--write` edits both pin files, each
+  in memory first, so a refusal writes neither.
+- `gq doctor` fails a Site whose `apps/cms/composer.lock` locks
+  `getquick/gq-design` at another version than `pnpm-lock.yaml` locks the npm
+  packages, naming both. It warns when there is no `composer.lock` yet, or the
+  plugin is locked to a branch. A Site that locks no design package passes.
+
+The pin is `0.9.4`: the newest version the Composer registry serves (built
+from tag `v0.9.4`, commit `812919e`) that GitHub Packages also serves for both
+packages.
 
 `getquick/gq-theme` is catalogued as `none`/`manual`. It is a separate
 package from `getquick/getquick-theme`, which registers the primary menu
@@ -90,19 +127,24 @@ never prints them.
   requested at all.
 - **GitHub:** `GITHUB_TOKEN` or `GH_TOKEN`. Public repositories can be read
   without one.
+- **GitHub Packages:** a `read:packages` token from `GITHUB_PACKAGES_TOKEN`
+  (the name Sigillo staging and CI use), else your user-level npm config's
+  `//npm.pkg.github.com/:_authToken` (or its `tokenHelper`), as pnpm reads
+  it. The repository's `.npmrc` is never read for one. Without a token GitHub
+  Packages isn't requested.
 
 ### Failures
 
 Each request times out after 15 seconds. Each package reads at most 300 tags
 or releases. Failures are classified as follows:
 
-| Code                  | Meaning                                                                  |
-| --------------------- | ------------------------------------------------------------------------ |
-| `missing-credentials` | No `COMPOSER_AUTH` login, or a private repository read without a token   |
-| `permission-denied`   | The login or token was rejected or can't read the source                 |
-| `not-found`           | The registry doesn't serve the package, or GitHub has no such repository |
-| `malformed`           | The response isn't valid JSON, or doesn't have the expected shape        |
-| `unavailable`         | Timeout, network failure, 5xx, or GitHub's rate limit                    |
+| Code                  | Meaning                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------ |
+| `missing-credentials` | No `COMPOSER_AUTH` login, no GitHub Packages token, or a private repository read without a token |
+| `permission-denied`   | The login or token was rejected or can't read the source                                         |
+| `not-found`           | The registry doesn't serve the package, or GitHub has no such repository                         |
+| `malformed`           | The response isn't valid JSON, or doesn't have the expected shape                                |
+| `unavailable`         | Timeout, network failure, 5xx, or GitHub's rate limit                                            |
 
 ## `gq packages propose --latest`
 
@@ -121,11 +163,15 @@ It is held back when any of these apply:
 - **`reference-mismatch`:** the registry's build of a version comes from a
   different commit than the upstream tag.
 - **`discovery-failed`:** either source couldn't be read.
-- **`unsupported-constraint`:** the constraint isn't a caret constraint.
+- **`unsupported-constraint`:** the constraint isn't a caret constraint (or,
+  for `exact` policy, an exact version).
+- **`lockstep`, `lockstep-drift`:** a lockstep group member can't move, so none
+  does; or the group's members are pinned to different versions.
 
-`--write` applies the proposed changes to the blueprint's CMS `composer.json`.
-It works only in a gq-site checkout, never in an installed package or a Site.
-Only the string values of the proposed `require["getquick/…"]` keys change.
+`--write` applies the proposed changes to the blueprint's CMS `composer.json`
+and npm pins. It works only in a gq-site checkout, never in an installed
+package or a Site. Only the string values of the proposed `require` and
+`dependencies` keys change.
 Every other byte stays as it was, including other keys, `require-dev`,
 formatting and site-specific entries. gq checks this before it writes, and it
 writes atomically. Running it again changes nothing.
@@ -177,4 +223,6 @@ None of them is implemented:
   by variant.
 - Opening PRs, Renovate integration, rollout state, health gates and
   promotion.
-- Frontend npm packages, WordPress core, and third-party plugins.
+- npm packages other than GQ Design's lockstep group (the storefront Runtime
+  is pinned in the commerce Frontend skeleton by hand), WordPress core, and
+  third-party plugins.

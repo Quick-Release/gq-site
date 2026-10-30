@@ -6,6 +6,7 @@ import test from "node:test";
 
 import ownCatalogue from "../../blueprint/packages.json" with { type: "json" };
 import ownComposer from "../../blueprint/templates/apps/cms/composer.json" with { type: "json" };
+import ownNpm from "../../blueprint/templates/fragments/commerce-frontend-package.keys.json" with { type: "json" };
 import { catalogueProblems } from "../../src/packages/catalogue.mjs";
 import { compareVersions, parseCaret, parseVersion } from "../../src/packages/versions.mjs";
 import { json, recordingFetch, runGq, temporaryDirectory } from "../support/fixture-site.mjs";
@@ -135,6 +136,22 @@ function worldFetch(world) {
         });
       }
     }
+    if (url.origin === "https://npm.pkg.github.com") {
+      const name = decodeURIComponent(url.pathname.slice(1));
+      if (typeof world.npmRespond === "function") return world.npmRespond(name, request);
+      const versions = world.npm?.[name];
+      if (!versions) return json({ error: "not found" }, 404);
+      return json({
+        name,
+        "dist-tags": { latest: versions.at(-1) },
+        versions: Object.fromEntries(
+          versions.map((version) => [
+            version,
+            { name, version, dist: { integrity: `sha512-${sha(`${name}@${version}`)}` } },
+          ]),
+        ),
+      });
+    }
     if (url.origin === REGISTRY) {
       const name = url.pathname.replace(/^\/p2\//u, "").replace(/\.json$/u, "");
       if (typeof world.registryRespond === "function") return world.registryRespond(name);
@@ -188,7 +205,7 @@ function sha(text) {
 
 // A temporary gq-site checkout: package.json, blueprint/packages.json and the
 // CMS composer.json template.
-async function checkout({ catalogue = CATALOGUE, composerText = COMPOSER_TEXT } = {}) {
+async function checkout({ catalogue = CATALOGUE, composerText = COMPOSER_TEXT, npmText } = {}) {
   const root = await temporaryDirectory();
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")),
@@ -198,6 +215,7 @@ async function checkout({ catalogue = CATALOGUE, composerText = COMPOSER_TEXT } 
     "package.json": JSON.stringify({ name: "@getquick/site" }),
     "blueprint/packages.json": JSON.stringify(catalogue, null, 2),
     "blueprint/templates/apps/cms/composer.json": composerText,
+    ...(npmText === undefined ? {} : { "blueprint/templates/fragments/npm.keys.json": npmText }),
   };
   for (const [path, content] of Object.entries(files)) {
     await mkdir(dirname(join(root, path)), { recursive: true });
@@ -207,6 +225,7 @@ async function checkout({ catalogue = CATALOGUE, composerText = COMPOSER_TEXT } 
   return {
     root,
     composer: () => readFile(composerPath, "utf8"),
+    npm: () => readFile(join(root, "blueprint/templates/fragments/npm.keys.json"), "utf8"),
     run: (argv, { world = defaultWorld(), env = ENV, fetch = worldFetch(world) } = {}) =>
       runGq(argv, { cwd: root, env, fetch }).then((result) => ({ ...result, fetch })),
   };
@@ -523,11 +542,277 @@ test("--write refuses outside a gq-site checkout, and propose states its strateg
 });
 
 test("the shipped catalogue agrees with the blueprint's composer.json and holds no constraints", () => {
-  assert.deepEqual(catalogueProblems(ownCatalogue, ownComposer), []);
+  assert.deepEqual(catalogueProblems(ownCatalogue, ownComposer, ownNpm), []);
   assert.ok(!JSON.stringify(ownCatalogue).includes('"^'), "constraints live only in composer.json");
   const gqTheme = ownCatalogue.packages.find((pkg) => pkg.name === "getquick/gq-theme");
   assert.equal(gqTheme.requirement, "none");
   assert.equal(gqTheme.policy, "manual");
   assert.ok(!Object.hasOwn(ownComposer.require, "getquick/gq-theme"));
   assert.ok(Object.hasOwn(ownComposer.require, "getquick/getquick-theme"));
+});
+
+// --- npm packages and lockstep groups (ADR 0018, #93) -------------------------
+
+const PACKAGES_TOKEN = "ghp_fixture-packages-token";
+const LOCKSTEP_ENV = { ...ENV, GITHUB_PACKAGES_TOKEN: PACKAGES_TOKEN };
+const LOCKSTEP_COMPOSER = COMPOSER_TEXT.replace(
+  '"getquick/beta": "^1.2.0",',
+  '"getquick/beta": "^1.2.0",\n    "getquick/design":   "0.9.4",',
+);
+// Uneven formatting and an unrelated pin, which --write keeps.
+const LOCKSTEP_NPM = `{
+  "dependencies": {
+    "@quick-release/design-contract":  "0.9.4",
+    "@quick-release/design-renderer": "0.9.4",
+    "react": "^19.3.1"
+  }
+}
+`;
+const designMember = (name) => ({
+  name,
+  ecosystem: "npm",
+  upstream: { repository: "Quick-Release/design", discovery: "tags" },
+  install: { registry: "github-packages" },
+  variants: ["commerce"],
+  requirement: "blueprint",
+  policy: "exact",
+  lockstep: "design",
+});
+const LOCKSTEP_CATALOGUE = {
+  ...CATALOGUE,
+  npmFile: "templates/fragments/npm.keys.json",
+  packages: [
+    ...CATALOGUE.packages,
+    {
+      name: "getquick/design",
+      upstream: { repository: "Quick-Release/design", discovery: "tags" },
+      install: { registry: "getquick" },
+      variants: ["content", "commerce"],
+      requirement: "blueprint",
+      policy: "exact",
+      lockstep: "design",
+    },
+    designMember("@quick-release/design-contract"),
+    designMember("@quick-release/design-renderer"),
+  ],
+};
+
+// 0.9.5 is out everywhere: the plugin's registry and both npm packages.
+function lockstepWorld() {
+  const world = defaultWorld();
+  world.github["Quick-Release/design"] = { tags: ["v0.9.5", "v0.9.4"], name: "getquick/design" };
+  world.registry["getquick/design"] = ["0.9.4", "0.9.5"];
+  world.npm = {
+    "@quick-release/design-contract": ["0.9.4", "0.9.5-nightly.1", "0.9.5"],
+    "@quick-release/design-renderer": ["0.9.4", "0.9.5"],
+  };
+  return world;
+}
+
+function lockstepCheckout() {
+  return checkout({
+    catalogue: LOCKSTEP_CATALOGUE,
+    composerText: LOCKSTEP_COMPOSER,
+    npmText: LOCKSTEP_NPM,
+  });
+}
+
+const DESIGN = [
+  "getquick/design",
+  "@quick-release/design-contract",
+  "@quick-release/design-renderer",
+];
+
+test("the catalogue's npm entries agree with the npm pins, and a lockstep group is pinned as one", () => {
+  const composer = JSON.parse(LOCKSTEP_COMPOSER);
+  const npm = JSON.parse(LOCKSTEP_NPM);
+  assert.deepEqual(catalogueProblems(LOCKSTEP_CATALOGUE, composer, npm), []);
+
+  const without = { dependencies: { "@quick-release/design-contract": "0.9.4", extra: "1.0.0" } };
+  assert.deepEqual(catalogueProblems(LOCKSTEP_CATALOGUE, composer, without), [
+    "@quick-release/design-renderer is a blueprint requirement but isn't in templates/fragments/npm.keys.json.",
+    "Lockstep group design is pinned to different versions: getquick/design 0.9.4, @quick-release/design-contract 0.9.4, @quick-release/design-renderer null.",
+  ]);
+  const drift = {
+    dependencies: {
+      "@quick-release/design-contract": "0.9.5",
+      "@quick-release/design-renderer": "^0.9.4",
+      "@quick-release/storefront": "0.2.2",
+    },
+  };
+  assert.deepEqual(catalogueProblems(LOCKSTEP_CATALOGUE, composer, drift), [
+    "@quick-release/storefront is pinned in templates/fragments/npm.keys.json but isn't catalogued.",
+    "@quick-release/design-renderer is in lockstep group design, so its pin must be exact, not ^0.9.4.",
+    "Lockstep group design is pinned to different versions: getquick/design 0.9.4, @quick-release/design-contract 0.9.5, @quick-release/design-renderer ^0.9.4.",
+  ]);
+  const unpinned = structuredClone(LOCKSTEP_CATALOGUE);
+  unpinned.packages.at(-1).requirement = "none";
+  assert.deepEqual(catalogueProblems(unpinned, composer, npm), [
+    '@quick-release/design-renderer is in templates/fragments/npm.keys.json but the catalogue says requirement "none".',
+  ]);
+  const { npmFile, ...noFile } = LOCKSTEP_CATALOGUE;
+  assert.ok(npmFile);
+  assert.match(
+    catalogueProblems(noFile, composer, null)[0],
+    /design-contract is an npm package, but the catalogue names no npmFile/u,
+  );
+
+  // The shipped group: GQ Design's plugin and both npm packages, one exact version.
+  const group = ownCatalogue.packages.filter((pkg) => pkg.lockstep === "gq-design");
+  assert.deepEqual(
+    group.map((pkg) => pkg.name),
+    ["getquick/gq-design", "@quick-release/design-contract", "@quick-release/design-renderer"],
+  );
+  const pin = ownComposer.require["getquick/gq-design"];
+  assert.equal(parseVersion(pin).text, pin, "an exact pin, not *@stable");
+  assert.equal(ownNpm.dependencies["@quick-release/design-contract"], pin);
+  assert.equal(ownNpm.dependencies["@quick-release/design-renderer"], pin);
+});
+
+test("gq packages check reports a lockstep group's newest version every registry serves", async () => {
+  const site = await lockstepCheckout();
+  const world = lockstepWorld();
+  world.npm["@quick-release/design-renderer"] = ["0.9.4"];
+  const { code, report, fetch } = await checkJson(site, { world, env: LOCKSTEP_ENV });
+
+  assert.equal(code, 0);
+  for (const name of DESIGN) {
+    const member = row(report, name);
+    assert.deepEqual(member.lockstep, {
+      group: "design",
+      members: DESIGN,
+      target: "0.9.4",
+      lagging: ["@quick-release/design-renderer"],
+    });
+    assert.equal(member.action, "none", name);
+    assert.match(
+      member.notes.find((note) => note.code === "lockstep-lag").message,
+      /0\.9\.5 is installable for getquick\/design, @quick-release\/design-contract but not for @quick-release\/design-renderer/u,
+    );
+  }
+  const contract = row(report, "@quick-release/design-contract");
+  assert.equal(contract.ecosystem, "npm");
+  assert.equal(contract.registry.latest.version, "0.9.5");
+  assert.deepEqual(contract.registry.prereleases, ["0.9.5-nightly.1"]);
+  // The npm registry is read with the packages token, in a header only.
+  const npmRequest = fetch.requests.find((request) =>
+    request.url.startsWith("https://npm.pkg.github.com/"),
+  );
+  assert.equal(npmRequest.url, "https://npm.pkg.github.com/@quick-release%2fdesign-contract");
+  assert.equal(npmRequest.headers.Authorization, `Bearer ${PACKAGES_TOKEN}`);
+  const text = await site.run(["packages", "check"], { world, env: LOCKSTEP_ENV });
+  assert.match(
+    text.stdout,
+    /lockstep {4}design: getquick\/design, @quick-release\/design-contract, @quick-release\/design-renderer at 0\.9\.4/u,
+  );
+  assert.ok(!(text.stdout + text.stderr).includes(PACKAGES_TOKEN));
+});
+
+test("gq packages propose moves a lockstep group together, and --write pins both files", async () => {
+  const site = await lockstepCheckout();
+  const world = lockstepWorld();
+  const proposed = await site.run(["packages", "propose", "--latest", "--json"], {
+    world,
+    env: LOCKSTEP_ENV,
+  });
+  const proposal = JSON.parse(proposed.stdout);
+  assert.deepEqual(
+    proposal.changes.filter((change) => DESIGN.includes(change.name)),
+    DESIGN.map((name) => ({ name, from: "0.9.4", to: "0.9.5" })),
+  );
+
+  const first = await site.run(["packages", "propose", "--latest", "--write"], {
+    world,
+    env: LOCKSTEP_ENV,
+  });
+  assert.equal(first.code, 0, first.stderr);
+  assert.match(first.stdout, /getquick\/design {2}0\.9\.4 → 0\.9\.5/u);
+  assert.equal(
+    await site.npm(),
+    LOCKSTEP_NPM.replaceAll('"0.9.4"', '"0.9.5"'),
+    "only the group's values change",
+  );
+  assert.match(await site.composer(), /"getquick\/design": {3}"0\.9\.5"/u);
+  const again = await site.run(["packages", "propose", "--latest", "--write"], {
+    world,
+    env: LOCKSTEP_ENV,
+  });
+  assert.equal(again.code, 0, again.stderr);
+  assert.doesNotMatch(again.stdout, /design/u);
+});
+
+test("a lockstep group moves all or nothing: a lagging or blocked member holds every member", async () => {
+  const site = await lockstepCheckout();
+
+  // The renderer isn't published at 0.9.5 yet.
+  const lagging = lockstepWorld();
+  lagging.npm["@quick-release/design-renderer"] = ["0.9.4"];
+  const held = JSON.parse(
+    (
+      await site.run(["packages", "propose", "--latest", "--json"], {
+        world: lagging,
+        env: LOCKSTEP_ENV,
+      })
+    ).stdout,
+  );
+  assert.ok(!held.changes.some((change) => DESIGN.includes(change.name)));
+
+  // The plugin's 0.9.5 build isn't from the upstream tag: nothing moves.
+  const mismatch = lockstepWorld();
+  mismatch.registry["getquick/design"] = ["0.9.4", { version: "0.9.5", reference: "f".repeat(40) }];
+  const result = await site.run(["packages", "propose", "--latest", "--write", "--json"], {
+    world: mismatch,
+    env: LOCKSTEP_ENV,
+  });
+  const proposal = JSON.parse(result.stdout);
+  assert.ok(!proposal.changes.some((change) => DESIGN.includes(change.name)));
+  for (const name of ["@quick-release/design-contract", "@quick-release/design-renderer"]) {
+    const blocked = proposal.blocked.find((entry) => entry.name === name);
+    assert.match(
+      blocked.blockers.find((blocker) => blocker.code === "lockstep").message,
+      /getquick\/design can't move to 0\.9\.5, so no member of design does/u,
+    );
+  }
+  assert.equal(await site.npm(), LOCKSTEP_NPM);
+  assert.match(await site.composer(), /"getquick\/design": {3}"0\.9\.4"/u);
+
+  // Without a packages token GitHub Packages isn't requested, and the group can't move.
+  const anonymous = await checkJson(site, { world: lockstepWorld(), env: ENV });
+  assert.equal(anonymous.code, 1);
+  const contract = row(anonymous.report, "@quick-release/design-contract");
+  assert.equal(contract.registry.error.code, "missing-credentials");
+  assert.equal(row(anonymous.report, "getquick/design").action, "blocked");
+  assert.ok(
+    anonymous.fetch.requests.every(
+      (request) => !request.url.startsWith("https://npm.pkg.github.com"),
+    ),
+  );
+});
+
+test("the GitHub Packages token comes from GITHUB_PACKAGES_TOKEN or the user's npm config, never the output", async () => {
+  const site = await lockstepCheckout();
+  const home = await temporaryDirectory();
+  await writeFile(
+    join(home, ".npmrc"),
+    "//registry.npmjs.org/:_authToken=npm-public\n//npm.pkg.github.com/:_authToken=${FROM_ENV}\n",
+  );
+  const env = { ...ENV, HOME: home, FROM_ENV: PACKAGES_TOKEN };
+  const { code, fetch, stdout, stderr } = await site.run(["packages", "check"], {
+    world: lockstepWorld(),
+    env,
+  });
+  assert.equal(code, 0, stderr);
+  const npmRequest = fetch.requests.find((request) =>
+    request.url.startsWith("https://npm.pkg.github.com/"),
+  );
+  assert.equal(npmRequest.headers.Authorization, `Bearer ${PACKAGES_TOKEN}`);
+  assert.ok(!(stdout + stderr).includes(PACKAGES_TOKEN));
+
+  const refused = lockstepWorld();
+  refused.npmRespond = () => json({ error: "permission_denied" }, 403);
+  const denied = await checkJson(site, { world: refused, env: LOCKSTEP_ENV });
+  assert.equal(
+    row(denied.report, "@quick-release/design-renderer").registry.error.code,
+    "permission-denied",
+  );
 });

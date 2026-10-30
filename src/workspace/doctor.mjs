@@ -10,7 +10,9 @@
 // consent databases' jurisdiction (ADR 0019), with CLOUDFLARE_API_TOKEN
 // from either. A Site that declares `forms` (gq-platform ADR 0009) has the
 // managed form route, a content runtime that reads form descriptors, and,
-// when it chose Turnstile, Turnstile's keys in Sigillo staging.
+// when it chose Turnstile, Turnstile's keys in Sigillo staging. A Site that
+// locks GQ Design's npm packages must lock its plugin at the same version
+// (ADR 0018).
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -32,6 +34,7 @@ import {
   MANIFEST_FILENAME,
 } from "../manifest/schema.mjs";
 import { localMediaReadiness } from "../media/readiness.mjs";
+import { lockstepLocks } from "../packages/lockstep-locks.mjs";
 import {
   hasReleaseConfig,
   RELEASE_CONFIG_FILENAME,
@@ -105,6 +108,10 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
       `${CMS_PATH} Composer dependencies installed, but Composer is not — pnpm verify and the pre-push hook skip the PHP checks`,
     );
   } else ok(`${CMS_PATH} Composer dependencies installed`);
+  for (const { group, npm, problem } of await lockstepLocks(root)) {
+    if (!problem) ok(`${group} is locked at ${npm[0].version} in both lockfiles`);
+    else (problem.level === "fail" ? fail : warn)(problem.message);
+  }
 
   if (context.config.artifacts) {
     io.out("\nGit remotes:");

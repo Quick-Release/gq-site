@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@quick-release/design-contract": "0.9.4",
+    "@quick-release/design-renderer": "0.9.4"
+  }
+}
