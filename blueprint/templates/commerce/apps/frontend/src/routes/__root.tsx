@@ -1,9 +1,11 @@
+import type { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
+import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from "@tanstack/react-router";
 
 import { site } from "../site";
 
-export const Route = createRootRoute({
+// Every route's loader can reach the storefront's Query client (router.tsx).
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
       { charSet: "utf-8" },

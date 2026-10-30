@@ -3,7 +3,8 @@
 // deploy, a second sync writes nothing, a managed edit is refused, and the
 // content site's wiring (Astro, WPGraphQL, the publication store) is absent.
 import assert from "node:assert/strict";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { access, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -109,6 +110,9 @@ test("a commerce site gets the storefront skeleton and none of the content Front
     "apps/frontend/src/routes/__root.tsx",
     "apps/frontend/src/routes/index.tsx",
     "apps/frontend/src/components/Home.tsx",
+    "apps/frontend/src/storefront.server.ts",
+    "apps/frontend/src/routes/api.auth.$.ts",
+    "apps/frontend/src/routes/api.store.$.ts",
     "infra/frontend.run.ts",
     "infra/storefront-bindings.ts",
     "infra/scripts/deploy-frontend.mjs",
@@ -144,10 +148,29 @@ test("a commerce site gets the storefront skeleton and none of the content Front
   assert.equal(frontend.name, "@shop/frontend");
   assert.ok(frontend.dependencies["@tanstack/react-start"]);
   assert.equal(frontend.dependencies.astro, undefined);
-  // The storefront Runtime isn't released with its auth contract yet: the
-  // skeleton installs without it (ADR 0017).
-  assert.equal(frontend.dependencies["@quick-release/storefront"], undefined);
+  // The storefront Runtime and its auth contract, pinned exactly, from
+  // GitHub Packages (#89 slice 6); nothing from Ekis.
+  assert.equal(frontend.dependencies["@quick-release/storefront"], "0.2.2");
+  assert.equal(frontend.dependencies["@quick-release/auth-contract"], "0.1.9");
+  assert.ok(frontend.dependencies["@tanstack/react-query"]);
+  assert.doesNotMatch(JSON.stringify(frontend), /ekis|github:|git\+|file:|link:/iu);
   assert.equal(frontend.scripts.build, "vp build");
+  // Mounted at /api/auth/* and /api/store/*, with the Runtime's Query client.
+  for (const [route, handler] of [
+    ["api.auth.$.ts", "handleAuthRequest"],
+    ["api.store.$.ts", "handleStoreApiRequest"],
+  ]) {
+    const source = await readSite(site.root, `apps/frontend/src/routes/${route}`);
+    assert.match(source, new RegExp(`\\(await storefront\\(\\)\\)\\.${handler}\\(request\\)`, "u"));
+  }
+  assert.match(
+    await readSite(site.root, "apps/frontend/src/storefront.server.ts"),
+    /createStorefrontRuntime\(\{/u,
+  );
+  assert.match(
+    await readSite(site.root, "apps/frontend/src/router.tsx"),
+    /const queryClient = createStorefrontQueryClient\(\);/u,
+  );
   assert.match(
     await readSite(site.root, "infra/frontend.run.ts"),
     /Cloudflare\.Website\.Vite\(\n {2}"ShopFrontend",/u,
@@ -358,6 +381,77 @@ test("the storefront deploy names every binding it is missing, and none without 
   );
   const plainPackage = pathToFileURL(join(plain.root, "apps/frontend/package.json"));
   assert.equal(plainBindings.findStorefrontRuntime(plainPackage), undefined);
+});
+
+test("a deploy before provisioning names the domain the auth upstream needs", async () => {
+  const { bindings, frontendPackage } = await siteWithRuntime();
+  const found = bindings.findStorefrontRuntime(frontendPackage);
+  const { missing, vars } = bindings.storefrontBindings({
+    ops: { project: "shop" },
+    ...found,
+    stage: "prod",
+    env: { GETQUICK_STOREFRONT_PROXY_SECRET: "proxy-secret" },
+  });
+  assert.ok(missing.includes("gq.ops.json domains.admin"), missing.join(", "));
+  assert.equal(vars.GETQUICK_AUTH_UPSTREAM_URL, undefined);
+});
+
+test("a commerce site's CI installs @quick-release packages with the packages token and deploys the storefront's secrets", async () => {
+  const site = await newCommerceSite();
+  const ci = await readSite(site.root, "infra/ci/cloudflare.ci.ts");
+  const env = await readSite(site.root, "infra/ci/env.ts");
+  for (const name of [
+    "GETQUICK_STOREFRONT_PROXY_SECRET",
+    "GETQUICK_AUTH_COOKIE_SECRET",
+    "GETQUICK_CART_SESSION_SECRET",
+    "TURNSTILE_SECRET",
+  ]) {
+    assert.match(ci, new RegExp(`^ {2}"${name}",$`, "mu"), name);
+    assert.match(env, new RegExp(`^ {2}${name}\\?: string;$`, "mu"), name);
+  }
+  assert.match(env, /^ {2}GITHUB_PACKAGES_TOKEN\?: string;$/mu);
+  // The content Frontend's secrets aren't a storefront's.
+  assert.doesNotMatch(ci, /PUBLICATION_EVENT_SECRET|FRONTEND_REFRESH_TOKEN/u);
+  assert.match(
+    ci,
+    /secrets: \["COMPOSER_AUTH", \.\.\.\(packagesToken \? \["GITHUB_PACKAGES_TOKEN"\] : \[\]\)\]/u,
+  );
+  assert.match(ci, /`\$\{packagesLogin\} && ` \+\n\s+"pnpm install --frozen-lockfile && "/u);
+
+  // The install step's login, run as the step's shell would.
+  const [, expression] = /const packagesLogin =([\s\S]*?);\n/u.exec(ci);
+  const login = new Function(`return (${expression});`)();
+  const home = await temporaryDirectory();
+  const shell = (extra) =>
+    spawnSync("sh", ["-c", login], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH, HOME: home, ...extra },
+    });
+  const refused = shell({});
+  assert.equal(refused.status, 1);
+  assert.match(
+    refused.stderr,
+    /GITHUB_PACKAGES_TOKEN is missing: .*Sigillo staging and run pnpm ci:deploy/u,
+  );
+  assert.ok(!(await exists(home, ".npmrc")));
+  const token = "ghp_fixture-packages-token";
+  const written = shell({ GITHUB_PACKAGES_TOKEN: token });
+  assert.equal(written.status, 0, written.stderr);
+  assert.equal(
+    await readFile(join(home, ".npmrc"), "utf8"),
+    `//npm.pkg.github.com/:_authToken=${token}\n`,
+  );
+  assert.equal((await stat(join(home, ".npmrc"))).mode & 0o777, 0o600);
+  assert.ok(
+    !login.includes(token) && !written.stdout.includes(token) && !written.stderr.includes(token),
+  );
+
+  // A content site's CI is unchanged: none of this.
+  const content = await newSite();
+  assert.doesNotMatch(
+    await readSite(content.root, "infra/ci/cloudflare.ci.ts"),
+    /GITHUB_PACKAGES_TOKEN|GETQUICK_/u,
+  );
 });
 
 // The gated foundation FPA Shop and Bruaa started from: gq.ops.json, root

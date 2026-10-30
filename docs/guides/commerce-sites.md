@@ -23,7 +23,7 @@ exits 0). It prints its provisioning sequence and runs none of it.
 | `wordpress.plugins`    | `gq-design`, `woocommerce`, `getquick-ecommerce`, `gq-support`, `s3-uploads`, `simple-history`, `cimo-image-optimizer`, `safe-svg`, in that order. No WPGraphQL.        |
 | CMS skeleton           | Bedrock with WooCommerce and GQ eCommerce; no content API or publication-event mu-plugins. Its `.env.production.example` has `GETQUICK_STOREFRONT_PROXY_SECRET`.        |
 | `deploy/ploi/admin.sh` | The same script; after activating the plugins it runs WooCommerce's database update (`wp wc update`), and it skips the content CMS's wpgraphql-blocks dependency patch. |
-| Frontend skeleton      | A minimal TanStack Start app (`apps/frontend`) on Vite+: `vp dev` at <http://localhost:3000>, `vp build`, `vp test`, a type check. Its presentation is the site's own.  |
+| Frontend skeleton      | A minimal TanStack Start app (`apps/frontend`) on Vite+ with the storefront Runtime mounted: `vp dev` at <http://localhost:3000>, `vp build`, `vp test`, a type check.  |
 | Frontend deploy        | `infra/frontend.run.ts` deploys it with Alchemy's `Cloudflare.Website.Vite`; `infra/storefront-bindings.ts` applies what the storefront Runtime declares.               |
 | `.npmrc`               | Names GitHub Packages for `@quick-release/*`, without a token.                                                                                                          |
 | Default checks         | Content's, plus `pnpm run build`. Required files: `apps/frontend/{package.json,vite.config.ts}` instead of `astro.config.mjs`.                                          |
@@ -56,8 +56,10 @@ and each refuses there, saying why.
 - There is no `ploi:events`, `frontend:refresh` or `site:check`.
 
 `pnpm ci:deploy` gives the CI Worker the storefront's secrets and a
-`GITHUB_PACKAGES_TOKEN` when Sigillo staging has them. CI starts using them
-once the Frontend depends on the storefront Runtime.
+`GITHUB_PACKAGES_TOKEN` when Sigillo staging has them. CI's install step
+writes the token to the container's user-level npm config, so pnpm can
+install the `@quick-release` packages, and refuses without it; the release
+step hands the storefront's secrets to the Frontend's deploy.
 
 ## Local data
 
@@ -98,23 +100,38 @@ without them and names each missing one.
 
 ## Private packages
 
-`@quick-release/*` packages come from GitHub Packages. Keep a token with
-`read:packages` in your user-level `~/.npmrc`
-(`//npm.pkg.github.com/:_authToken=…`): pnpm ignores tokens in a repository's
-`.npmrc`, and the generated one never holds one.
+`@quick-release/*` packages come from GitHub Packages, and a commerce
+Frontend depends on two: the storefront Runtime and its auth contract. So,
+unlike a content site, installing a commerce site needs a GitHub token with
+`read:packages` that can read them; generating one doesn't.
+
+- **Locally:** keep the token in your user-level `~/.npmrc`
+  (`//npm.pkg.github.com/:_authToken=…`): pnpm ignores tokens in a
+  repository's `.npmrc`, and the generated one never holds one.
+- **Cloudflare CI:** `GITHUB_PACKAGES_TOKEN` in Sigillo staging, given to the
+  CI Worker by `pnpm ci:deploy` (see above).
+- **GitHub Actions in the site's own repository:** the workflow's
+  `GITHUB_TOKEN` with `packages: read` reads a package only once that
+  package grants the repository Actions access (the package's settings,
+  _Manage Actions access_, by an organization admin); otherwise use a
+  `read:packages` token as a repository secret.
 
 ## The storefront Runtime
 
 The catalog, cart, checkout and sign-in come from the storefront Runtime,
 `@quick-release/storefront`, mounted behind the Frontend's own Worker at
-`/api/store/*` and `/api/auth/*` (a same-origin BFF). The skeleton doesn't
-install it yet: it can't be installed from a registry until GQ eCommerce
-releases `@getquick/auth-contract`
-([#89](https://github.com/Quick-Release/gq-site/issues/89)). When it can, a
-site adds it to `apps/frontend` itself, since the app is the site's own. The
-managed deploy then finds it and declares its cart-session D1 database
-(retained in production, migrations applied before the Worker), its rate
-limiters, and its secrets and variables, and refuses a deploy missing any.
+`/api/store/*` and `/api/auth/*` (a same-origin BFF). The skeleton depends on
+it and on its auth contract, `@quick-release/auth-contract`, both pinned
+exactly; `src/storefront.server.ts` configures it from `gq.ops.json`, two
+server routes mount it, and the router gives every route its Query client.
+The app stays the site's own: `gq sync` never rewrites it.
+
+The managed deploy finds the installed Runtime and declares what its
+`infra.json` lists: the cart-session D1 database (retained in production,
+migrations applied before the Worker), its rate limiters, and its secrets and
+variables, and refuses a deploy missing any, naming each. A site generated
+before 0.29.0 adds the Runtime itself: see
+[Add the storefront Runtime](storefront-runtime.md).
 
 ## Adopting from a gated foundation
 
@@ -128,4 +145,8 @@ its own repository:
 2. Set `wordpress.plugins` to the list above and remove the blocked check
    from `verify.checks`.
 3. Bump `@getquick/site` and run `gq sync`. It creates `apps/cms` and
-   `apps/frontend` (neither exists yet) and the managed files.
+   `apps/frontend` (neither exists yet), with the storefront Runtime mounted,
+   and the managed files.
+4. Run `pnpm install` with a `read:packages` token in your user-level npm
+   config (see [Private packages](#private-packages)), commit the lockfile,
+   and run `pnpm verify`.

@@ -102,15 +102,23 @@ export function storefrontBindings({
   }
 
   // Variables gq knows the value of; any other comes from the environment.
+  // A Site not yet provisioned has no domains: the auth upstream then names
+  // the domain it is missing, rather than crashing.
+  const admin = (ops.domains as Ops["domains"] | undefined)?.admin;
   const known: Record<string, string> = {
-    GETQUICK_AUTH_UPSTREAM_URL: `https://${ops.domains.admin}/wp-json/getquick-config/v1/woocommerce/auth`,
+    ...(admin
+      ? { GETQUICK_AUTH_UPSTREAM_URL: `https://${admin}/wp-json/getquick-config/v1/woocommerce/auth` }
+      : {}),
     GETQUICK_ENVIRONMENT: production ? "production" : stage,
   };
   const vars: Record<string, string> = {};
   for (const declared of infra.vars) {
     const value = env[declared.name]?.trim() || known[declared.name];
     if (value) vars[declared.name] = value;
-    else if (declared.required === true) missing.push(declared.name);
+    else if (declared.required !== true) continue;
+    else if (declared.name === "GETQUICK_AUTH_UPSTREAM_URL" && !admin) {
+      missing.push("gq.ops.json domains.admin");
+    } else missing.push(declared.name);
   }
 
   return { databases, rateLimits, secrets, vars, missing };
