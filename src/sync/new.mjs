@@ -118,7 +118,9 @@ export async function runNewCommand(args, { cwd, env, exec, stdin, io, interacti
   }
   if (!LOCALE_PATTERN.test(locale)) throw new Error(`--locale must be ${LOCALE_HINT}: ${locale}`);
   if (variant === "commerce" && options.framework === "astro") {
-    throw new Error("--framework astro is for content Sites: a commerce Frontend is TanStack Start.");
+    throw new Error(
+      "--framework astro is for content Sites: a commerce Frontend is TanStack Start.",
+    );
   }
   const manifest = validateManifest({
     $schema: SCHEMA_URL,

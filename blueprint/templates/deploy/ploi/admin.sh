@@ -61,7 +61,10 @@ composer_install() {
   done
   # Verify after restoring shipped plugins too. Runs in full and Composer-only
   # deployments, before PHP reload or any WordPress activation/database work.
-  php scripts/patch-dependencies.php
+  # The patched dependency (wpgraphql-blocks) is content-only.
+  if [ "$SITE_VARIANT" != commerce ]; then
+    php scripts/patch-dependencies.php
+  fi
 }
 
 cleanup() {

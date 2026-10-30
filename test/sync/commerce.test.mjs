@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
+import { deploy } from "../support/deploy-script.mjs";
 import { runGq, temporaryDirectory } from "../support/fixture-site.mjs";
 import { newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
@@ -70,6 +71,33 @@ test("gq new --variant commerce writes a WooCommerce CMS without WPGraphQL", asy
   assert.match(await readSite(content.root, "deploy/ploi/admin.sh"), /^SITE_VARIANT="content"$/mu);
 });
 
+test("a commerce CMS deploy updates WooCommerce's database and patches no content dependency", async () => {
+  const site = await newCommerceSite();
+  const script = await readSite(site.root, "deploy/ploi/admin.sh");
+  for (const composerOnly of [false, true]) {
+    const result = await deploy(script, { composerOnly });
+    assert.equal(result.code, 0, result.output);
+    assert.ok(
+      !result.calls.some(([tool, arg]) => tool === "php" && /patch-dependencies/u.test(arg)),
+    );
+    const updates = result.calls.filter(
+      ([tool, ...args]) => tool === "wp" && args.join(" ") === "wc update",
+    );
+    assert.equal(updates.length, composerOnly ? 0 : 1);
+  }
+});
+
+test("gq new refuses an Astro commerce Frontend", async () => {
+  const parent = await temporaryDirectory();
+  const result = await runGq(
+    ["new", "shop", "--project", "shop", "--variant", "commerce", "--framework", "astro"],
+    { cwd: parent },
+  );
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /--framework astro is for content Sites/u);
+  assert.ok(!(await exists(parent, "shop")));
+});
+
 test("a commerce site gets the storefront skeleton and none of the content Frontend", async () => {
   const site = await newCommerceSite();
 
@@ -96,9 +124,21 @@ test("a commerce site gets the storefront skeleton and none of the content Front
     "apps/cms/web/app/mu-plugins/publication-events.php",
     "apps/cms/web/app/mu-plugins/settings-events.php",
     "apps/cms/web/app/mu-plugins/delivery-retries.php",
+    // The content Runtime's wiring: consent, its purge Worker, the
+    // TanStack content routes and the wpgraphql-blocks patch.
+    "infra/consent.ts",
+    "apps/frontend/workers",
+    "apps/frontend/src/routes/gq.events.ts",
+    "apps/frontend/src/routes/gq.refresh.ts",
+    "apps/frontend/src/lib/content.ts",
+    "apps/cms/scripts/patch-dependencies.php",
+    "apps/cms/patches",
   ]) {
     assert.ok(!(await exists(site.root, path)), path);
   }
+  const ops = JSON.parse(await readSite(site.root, "gq.ops.json"));
+  assert.equal(ops.framework, "tanstack");
+  assert.equal(ops.contentRuntime, undefined);
 
   const frontend = JSON.parse(await readSite(site.root, "apps/frontend/package.json"));
   assert.equal(frontend.name, "@shop/frontend");
@@ -408,5 +448,9 @@ test("the commerce CMS skeleton pins every shared requirement as the content one
   }
   assert.deepEqual(commerce.repositories, content.repositories);
   assert.deepEqual(commerce.config, content.config);
-  assert.deepEqual(commerce.scripts, content.scripts);
+  // Less the wpgraphql-blocks patch, a dependency commerce doesn't install.
+  const shared = { ...content.scripts };
+  delete shared["patch:dependencies"];
+  delete shared["post-autoload-dump"];
+  assert.deepEqual(commerce.scripts, shared);
 });
