@@ -117,9 +117,11 @@ A commerce Frontend installs private `@quick-release` packages from GitHub
 Packages, so the script needs a `read:packages` token that can read them:
 `GITHUB_PACKAGES_TOKEN`, or your user-level npm config. Without one it
 refuses (exit 3) before generating anything; it never passes without
-installing. CI gives it the workflow's `GITHUB_TOKEN` (`packages: read`),
-which reads a package only while that package grants this repository
-Actions access. `scripts/smoke/content-pair.sh` proves that
+installing; `--probe` stops after that check. CI gives it the workflow's
+`GITHUB_TOKEN` (`packages: read`), which reads a package only while that
+package grants this repository Actions access: the `commerce-packages` job
+probes first, and without access `generated-commerce` is skipped, not
+passed, with a warning naming each package. `scripts/smoke/content-pair.sh` proves that
 a generated site wires the pinned content runtime
 ([ADR 0020](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0020-wire-new-content-sites-to-the-gq-content-package-pair.md)):
 its pins and their published integrity, the crontab's command against the

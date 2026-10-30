@@ -19,7 +19,7 @@
 # user-level npm config, never to the site), otherwise the caller's own npm
 # config. Without one that can read them, the script refuses before
 # generating anything (exit 3), naming what is missing: it never passes
-# without installing.
+# without installing. `--probe` stops after that check.
 #
 # The site installs @getquick/site from this checkout, not npm
 # (this-checkout.sh). Generation stays offline and secret-free; only
@@ -44,16 +44,24 @@ if [[ -n "${GITHUB_PACKAGES_TOKEN:-}" ]]; then
   export NPM_CONFIG_USERCONFIG="$parent/user.npmrc"
 fi
 
-# Every @quick-release package the skeleton pins must be readable, or the
-# install below can't run.
-skeleton="$repo/blueprint/templates/commerce/apps/frontend/package.json"
+# Every @quick-release package the Frontend pins (its skeleton, and any
+# managed keys gq sync sets) must be readable, or the install below can't run.
+pins=("$repo/blueprint/templates/commerce/apps/frontend/package.json")
+fragment="$repo/blueprint/templates/fragments/commerce-frontend-package.keys.json"
+[[ -f "$fragment" ]] && pins+=("$fragment")
 unreadable=()
 for spec in $(node -e '
-  const { dependencies } = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
-  for (const [name, version] of Object.entries(dependencies))
-    if (name.startsWith("@quick-release/")) console.log(`${name}@${version}`);
-' "$skeleton"); do
-  if ! (cd "$parent" && pnpm view "$spec" version --registry=https://npm.pkg.github.com >/dev/null 2>&1); then
+  const fs = require("node:fs");
+  for (const file of process.argv.slice(1)) {
+    const { dependencies } = JSON.parse(fs.readFileSync(file, "utf8"));
+    for (const [name, version] of Object.entries(dependencies))
+      if (name.startsWith("@quick-release/")) console.log(`${name}@${version}`);
+  }
+' "${pins[@]}"); do
+  if (cd "$parent" && pnpm view "$spec" version --registry=https://npm.pkg.github.com >/dev/null 2>&1); then
+    echo "GitHub Packages: $spec readable"
+  else
+    echo "GitHub Packages: $spec NOT readable"
     unreadable+=("$spec")
   fi
 done
@@ -65,6 +73,8 @@ if ((${#unreadable[@]} > 0)); then
   echo "Actions access. Nothing was generated, installed or verified." >&2
   exit 3
 fi
+# --probe: only whether the packages are readable (CI decides whether to run).
+[[ "${1:-}" == --probe ]] && exit 0
 
 cd "$parent"
 node "$repo/bin/gq.mjs" new "$project" --project "$project" --variant commerce --locale pt_PT_ao90 >/dev/null
