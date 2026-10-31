@@ -4,19 +4,26 @@
 
 A Site that lists Composer packages in `gq.ops.json`
 `deployment.guardedPackages` (see [Deployment policy](deployment-policy.md))
-deploys them only as stated in `deploy/ploi/package-expectations.json`, and
-only once an authenticated approval service confirms them.
+prepares and deploys them only with an approval looked up from an
+authenticated, read-only approval service. Two inputs are kept apart:
 
-**The file is an expectation, not an approval.** Anyone who can change the
-Site can edit it. gq-site ships no approval service, verification key or
-signature format, so until one is wired into `run()` (the `approvals`
-adapter), every deploy of a Site guarding a package refuses with:
+- **The Site's expectation**, `deploy/ploi/package-expectations.json`: what
+  the Site's reviewed source expects. Anyone who can change the Site can edit
+  it, so it is never authority.
+- **The approval record** (`gq-support.composer-approval/v1`), which the
+  `approvals` adapter passed to `run()` looks up. It is the only authority, and
+  its exact file list is what the server verifies.
+
+gq-site ships no adapter, verification key or signature format. Without an
+adapter, every guarded preparation and deploy refuses:
 
 ```
-No authenticated package approval service is configured, so gq can't confirm getquick/gq-support 0.1.11 (v0.1.11) is approved; a guarded deploy refuses. deploy/ploi/package-expectations.json is an expectation the server checks, not an approval.
+No authenticated package approval service is configured, so gq can't look up getquick/gq-support 0.1.11 (phase deploy); a guarded package refuses. deploy/ploi/package-expectations.json is an expectation, not an approval.
 ```
 
-## Contract v1
+No command-line flag, typed digest or boolean stands in for it.
+
+## The Site's expectation (v1)
 
 ```json
 {
@@ -25,117 +32,134 @@ No authenticated package approval service is configured, so gq can't confirm get
     {
       "name": "getquick/gq-support",
       "version": "0.1.11",
-      "tag": "v0.1.11",
-      "tagCommit": "<40-hex commit the published tag points at>",
       "lockReference": "<the reference composer.lock records for this version>",
       "installPath": "web/app/plugins/gq-support",
-      "tree": {
-        "normalization": "gq-tree-v1",
-        "digest": "<sha256 of the listing below>",
-        "files": [{ "path": "gq-support.php", "sha256": "<sha256 of the file>" }]
-      },
-      "sourceCommit": "<optional: the source commit the release was built from>"
+      "filesDigest": "<gq-support.files/v1 digest of the approved files>"
     }
   ]
 }
 ```
 
-Every object is strict: an unknown key (`approved`, `signature`, …) fails
-validation, so the file can't claim authority it doesn't have.
+Every object is strict: an unknown key (`approved`, `signature`, …) fails.
+`gq release package --to` writes the entry for a guarded package (below);
+review it with the lock change.
 
-| Field              | Compared with                                                                                                                                  |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`          | The `apps/cms/composer.lock` entry's version, in `packages` (a dev package isn't installed by the server's `--no-dev` install).                |
-| `lockReference`    | Every reference the lock entry records (`dist.reference`, `source.reference`): all must equal it.                                              |
-| `tag`, `tagCommit` | Sent to the approval service as the published identity. Not compared locally.                                                                  |
-| `sourceCommit`     | Nothing. The source repository's main commit differs from the published tag commit, and is never compared with the lock or the files.          |
-| `installPath`      | Where Composer installs the package, relative to `apps/cms`: `web/app/plugins/<slug>`, `web/app/mu-plugins/<slug>` or `web/app/themes/<slug>`. |
-| `tree`             | The installed files on the server, after `composer install`.                                                                                   |
+| Field           | Checked against                                                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`       | The `apps/cms/composer.lock` entry in `packages` (the server's `--no-dev` install skips `packages-dev`), and the approval record's `package.version`.            |
+| `lockReference` | Every reference the lock entry records (`dist.reference`, `source.reference`). It is the published package's reference, not the source repository's main commit. |
+| `installPath`   | Where Composer installs the package, relative to `apps/cms`: `web/app/plugins/<slug>`, `web/app/mu-plugins/<slug>` or `web/app/themes/<slug>`.                   |
+| `filesDigest`   | The approval record's `files_digest`.                                                                                                                            |
 
-The tree is compared, not the package archive: the registry may repack a
-package's ZIP, so its bytes and `dist.shasum` can differ while the installed
-files are the same, and the same bytes say nothing about files changed after
-installation.
+## The approval record (gq-support.composer-approval/v1, provisional)
 
-### gq-tree-v1
+```json
+{
+  "stage": "…",
+  "slot": "…",
+  "phase": "prepare | deploy",
+  "release_id": "…",
+  "package": { "name": "getquick/gq-support", "version": "0.1.11", "zip_sha256": "<64 hex>" },
+  "provenance": { "source_commit": "<40 hex>", "release_run": "…" },
+  "files": { "gq-support.php": "<sha256>", "…": "…" },
+  "files_digest": "<64 hex>",
+  "normalization": "gq-support.files/v1",
+  "observed_at": "<ISO 8601>"
+}
+```
 
-The installed tree's regular files, paths relative to `installPath` (POSIX,
-no empty, `.` or `..` parts, no backslash or control character), sorted by
-their bytes, one `sha256sum` line each (`<64 hex>  <path>\n`). The digest is
-the sha256 of those lines concatenated. Directories are implied; a symlink or
-any other non-regular file fails the check. It is what
-`find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum` prints in
-the install directory, without each path's leading `./`.
+gq acts on a record only when it is for the phase, package and exact version
+asked; its `files` hash to its `files_digest`; and its `observed_at` is
+within five minutes of now (and at most one minute ahead). An optional
+`schema` must be `gq-support.composer-approval/v1`. Other keys are dropped,
+never trusted. `zip_sha256` and `provenance` identify the release to the
+service; gq never compares the source commit with the lock, and never
+compares a registry ZIP's bytes, which a repack can change while the files
+stay the same.
 
-gq refuses a file whose `digest` doesn't match its own `files`.
+### gq-support.files/v1
 
-## What a guarded release does
+gq-support's own `filesDigest`: every regular file the package ships, no
+exclusions. Paths are relative to the package root, ASCII segments of letters,
+digits, `.`, `_` and `-` not starting with a dot, joined by `/` (no
+traversal, spaces or empty segments). Each file's SHA-256 is of its raw
+bytes. The digest is the SHA-256 of the `<path>\0<sha256>\n` lines sorted by
+path bytes. File modes don't count; a symlink or any other non-regular
+installed file fails, as does any extra, missing or changed file.
 
-Before anything is uploaded (`gq ploi release`, and so `gq release package`
-and the CI release step):
+## The adapter
 
-1. it reads `deploy/ploi/package-expectations.json` and `apps/cms/composer.lock`
-   **from the release commit**, and refuses when either is missing, the file is
-   invalid, a guarded package isn't stated, or the lock doesn't install the
-   stated version at the stated reference;
-2. it refuses unless the release commit's deploy script carries the same
-   `GUARDED_PACKAGES="…"` line `gq sync` renders from `gq.ops.json` (so the
-   server checks again);
-3. it asks the approval service to confirm each stated package
-   (`approvals.confirm(request)`, below), and refuses when it doesn't;
-4. it ships the checked expectations in the release archive as
-   `PACKAGE_EXPECTATIONS`, with the sha256 of the lock it checked, under an
-   archive key that includes that file's digest (so an archive packed before
-   is never reused).
+```js
+await run(argv, { approvals: { lookup }, ... });
+// lookup({ phase, project, releaseCommit?, package: { name, version } })
+//   → the service's current record for that package and phase, or a rejection
+//     (never approved, withdrawn, unreachable).
+```
 
-On the server, `deploy/ploi/admin.sh` runs after `composer install`, after
-restoring shipped plugins and after the dependency patch, and **before**
-PHP-FPM reloads and any WP-CLI activation, database update, deploy
-extension or rewrite flush (a full deploy has already turned maintenance mode
-on, as before; a Composer-only deploy runs no WP-CLI at all). It refuses when:
+The adapter authenticates to the service, maps `project` to its stage and
+slot, and resolves the published package identity against the approved
+contents. None of that is in gq-site.
+
+## Preparing a guarded package
+
+`gq release package <package> --to <version> [--expect-before <version>] [--reference <ref>] --no-deploy`
+(see [release package](release.md)):
+
+1. looks up a fresh `phase: "prepare"` record for exactly `<version>`, before
+   Composer runs; no record means nothing changes;
+2. pins and updates only that package in the lock (the usual guards);
+3. sets the package's entry in `deploy/ploi/package-expectations.json`:
+   `<version>`, the reference the lock now records, the install path (kept, or
+   `web/app/plugins/<name>` for a new entry) and the record's `files_digest`;
+4. commits `composer.json`, `composer.lock` and the expectations file, and
+   nothing else. With `--no-deploy` no provider is called.
+
+Preparing isn't permission to deploy. The version is any exact version: the
+same command moves forward or back (a recovery from 0.1.12 to 0.1.11 is
+`--to 0.1.11 --expect-before 0.1.12`).
+
+## Deploying a guarded package
+
+`gq ploi release` (and so `gq release package` without `--no-deploy`, and the
+CI release step):
+
+1. reads the expectations and `composer.lock` **from the release commit**, and
+   refuses when either is missing, a guarded package isn't stated, or the lock
+   doesn't install the stated version at the stated reference;
+2. refuses unless the release commit's deploy script carries the
+   `GUARDED_PACKAGES="…"` line `gq sync` renders, so the server checks again;
+3. looks up a `phase: "deploy"` record for each package (with the release
+   commit), and refuses unless its `files_digest` is the expectation's;
+4. uploads the archive with `PACKAGE_EXPECTATIONS`: the record's file list and
+   the sha256 of the lock it checked, under an archive key that includes that
+   file's digest;
+5. **looks every record up again, fresh, right before changing the Ploi site**
+   (the deploy script sync, then the deploy). A withdrawn, unreachable, stale
+   or changed record (`release_id`, `files_digest`, `package.zip_sha256`)
+   stops the release with the Ploi site unchanged. The first lookup is not
+   permission.
+
+On the server, `deploy/ploi/admin.sh` runs after `composer install`, the
+restore of shipped plugins and the dependency patch, and **before** PHP-FPM
+reloads and any WP-CLI activation, database update, deploy extension or
+rewrite flush. (A full deploy has already turned maintenance mode on, as
+before; a Composer-only deploy runs no WP-CLI at all.) It refuses when:
 
 - the Site guards a package and the archive has no `PACKAGE_EXPECTATIONS`, or
   doesn't state that package;
 - `apps/cms/composer.lock` isn't the lock gq checked;
 - a stated package's installed files differ: each `missing`, `changed` or
-  `extra` path is listed.
+  `extra` path is listed, or a non-regular file is there.
 
-A refusal fails the deploy (`<PROJECT>_DEPLOY_STATUS=failed`), and
+A refusal fails the deploy (`<PROJECT>_DEPLOY_STATUS=failed`) and
 `gq ploi release` exits 1. The files Composer already replaced stay on disk,
 not yet loaded by a PHP-FPM reload; redeploying the previous release commit
 restores them.
 
-### Approval request
+### Remaining gaps
 
-```json
-{
-  "project": "<gq.ops.json project>",
-  "releaseCommit": "<the Site's release commit>",
-  "package": {
-    "name": "getquick/gq-support",
-    "version": "0.1.11",
-    "tag": "v0.1.11",
-    "tagCommit": "<40 hex>",
-    "lockReference": "<as in the lock>",
-    "installPath": "web/app/plugins/gq-support",
-    "tree": { "normalization": "gq-tree-v1", "digest": "<64 hex>", "fileCount": 42 }
-  }
-}
-```
-
-`approvals.confirm(request)` resolves when an authenticated service confirms
-this package identity and tree are approved for this project, and rejects
-otherwise. What the service checks, how it authenticates and where its
-records live (the Operator's D1 approvals) belong to that service; gq-site
-defines only this request and refuses without an answer.
-
-## Preparing a guarded package
-
-`gq release package <package> --to <version> [--reference <ref>] [--expect-before <version>] --no-deploy`
-pins the exact version, updates only that package in the lock and commits
-it without deploying; see [release package](release.md). It doesn't write
-the expectations file: that comes from the package's published release, and
-its authority from the approval service. The version inputs are generic:
-the same command moves a package forward or back (a recovery from 0.1.12
-to 0.1.11 is `--to 0.1.11 --expect-before 0.1.12`), and refuses when doing
-so would change any package that depends on it.
+- The server can't reach the approval service: the fresh lookup is gq's,
+  immediately before it triggers the deploy, and Ploi's deploy then runs
+  within minutes. The server verifies the files against that record.
+- No adapter exists in gq-site; `bin/gq.mjs` passes none, so guarded Sites
+  stay unable to prepare or deploy their guarded packages until one does.

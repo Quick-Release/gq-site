@@ -13,7 +13,7 @@ const code = await run(["ploi", "site", "show", "--json"], {
   fetch, // every provider request
   exec, // every child process: (command, args, { cwd, env, input, stdio, timeout, background, stdout, stderr }) => { code, stdout, stderr, pid? }
   lookup, // every DNS lookup, as node:dns/promises' lookup
-  approvals, // { confirm(request) }: a guarded package's approval (none by default)
+  approvals, // { lookup(request) }: a guarded package's approval record (none by default)
   stdin, // a readable stream, for git's credential request
   stdout, // anything with write()
   stderr,

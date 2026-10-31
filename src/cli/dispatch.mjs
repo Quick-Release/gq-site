@@ -147,7 +147,17 @@ export async function runCli(
   const [provider, resource, action = "list"] = parsed.command;
 
   if (isReleaseCommand(parsed.command)) {
-    return runReleaseCommand({ parsed, context, env, fetch, exec, io, interactive, approvals });
+    return runReleaseCommand({
+      parsed,
+      context,
+      env,
+      fetch,
+      exec,
+      io,
+      interactive,
+      approvals,
+      clock,
+    });
   }
 
   if (isPloiWorkflow(parsed.command)) {
@@ -159,6 +169,7 @@ export async function runCli(
       exec,
       lookup,
       approvals,
+      clock,
       io,
       interactive,
     });

@@ -7,9 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { ploiReleaseShippedPaths } from "../../src/index.mjs";
-import { createHash } from "node:crypto";
-
-import { renderServerExpectations, treeDigest } from "../../src/ploi/package-expectations.mjs";
+import { renderServerExpectations } from "../../src/ploi/package-expectations.mjs";
 
 import { createFixtureSite } from "../support/fixture-site.mjs";
 import { deploy, recordingExtension } from "../support/deploy-script.mjs";
@@ -404,41 +402,23 @@ const SUPPORT_PATH = "apps/cms/web/app/plugins/gq-support";
 // The tree package-expectations.test.mjs pins with coreutils' digest.
 const SUPPORT_TREE = {
   "gq-support.php": "hello\n",
-  "src/a b.php": "abc",
+  "src/a-b.php": "abc",
   "Z.txt": "Z",
 };
-const SUPPORT_EXPECTATIONS = {
-  schemaVersion: 1,
-  packages: [
-    {
-      name: "getquick/gq-support",
-      version: "0.2.0",
-      tag: "v0.2.0",
-      tagCommit: "a".repeat(40),
-      lockReference: "b".repeat(40),
-      installPath: "web/app/plugins/gq-support",
-      tree: {
-        normalization: "gq-tree-v1",
-        digest: "b63f13b4a4b3da7f94a6f27e00506c7a6a051d3e542e5c9a1531d1d4040a7bdb",
-        files: [
-          {
-            path: "gq-support.php",
-            sha256: "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
-          },
-          {
-            path: "src/a b.php",
-            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-          },
-          {
-            path: "Z.txt",
-            sha256: "bbeebd879e1dff6918546dc0c179fdde505f2a21591c9a9c96e36b054ec5af83",
-          },
-        ],
-      },
-    },
-  ],
+// The approved package, files from its approval record; the digest is
+// gq-support.files/v1's, from printf '<path>\0<sha256>\n' ... | sha256sum.
+const SUPPORT = {
+  name: "getquick/gq-support",
+  version: "0.1.11",
+  installPath: "web/app/plugins/gq-support",
+  filesDigest: "57661d4dc252d72859e8ac659219b6948230f73e2916aa631a04761219bf77d3",
+  files: {
+    "gq-support.php": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+    "src/a-b.php": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    "Z.txt": "bbeebd879e1dff6918546dc0c179fdde505f2a21591c9a9c96e36b054ec5af83",
+  },
 };
-const LOCK = '{"packages":[{"name":"getquick/gq-support","version":"0.2.0"}]}\n';
+const LOCK = '{"packages":[{"name":"getquick/gq-support","version":"0.1.11"}]}\n';
 
 async function guardedScript() {
   const fixture = await createFixtureSite({
@@ -473,7 +453,7 @@ function guardedDeploy(
     releaseFiles: {
       "apps/cms/composer.lock": lock,
       ...(expectations
-        ? { PACKAGE_EXPECTATIONS: renderServerExpectations(SUPPORT_EXPECTATIONS, releasedLock) }
+        ? { PACKAGE_EXPECTATIONS: renderServerExpectations([SUPPORT], releasedLock) }
         : {}),
     },
     siteFiles: Object.fromEntries(
@@ -501,7 +481,7 @@ test("a guarded deploy verifies the installed tree after Composer and before the
   for (const composerOnly of [false, true]) {
     const result = await guardedDeploy(script, { composerOnly });
     assert.equal(result.code, 0, result.output);
-    assert.match(result.stdout, /Verified getquick\/gq-support 0\.2\.0: 3 files match b63f13b4/u);
+    assert.match(result.stdout, /Verified getquick\/gq-support 0\.1\.11: 3 files match 57661d4d/u);
     const composer = result.calls.findIndex(([tool]) => tool === "composer");
     const reload = result.calls.findIndex(([tool]) => tool === "sudo");
     assert.ok(composer !== -1 && reload > composer);
@@ -521,7 +501,7 @@ test("a guarded deploy refuses an extra, missing or changed file before the relo
   const script = await guardedScript();
   const cases = [
     [{ ...SUPPORT_TREE, "src/backdoor.php": "<?php" }, /extra\s+src\/backdoor\.php/u],
-    [{ "gq-support.php": "hello\n", "Z.txt": "Z" }, /missing\s+src\/a b\.php/u],
+    [{ "gq-support.php": "hello\n", "Z.txt": "Z" }, /missing\s+src\/a-b\.php/u],
     [{ ...SUPPORT_TREE, "Z.txt": "changed" }, /changed\s+Z\.txt/u],
   ];
   for (const [tree, message] of cases) {
@@ -557,30 +537,16 @@ test("a guarded deploy refuses another lock than the one gq checked, or a releas
   assertStoppedBeforeWordPress(missing);
 });
 
-test("a guarded deploy keeps every space of a file's path", async () => {
+test("a guarded deploy refuses an installed file whose name the approval can't hold", async () => {
   const script = await guardedScript();
-  const tree = { "two  spaces .txt": "x", "gq-support.php": "hello\n" };
-  const files = Object.entries(tree).map(([path, content]) => ({
-    path,
-    sha256: createHash("sha256").update(content).digest("hex"),
-  }));
-  const [pkg] = SUPPORT_EXPECTATIONS.packages;
-  const expectations = {
-    ...SUPPORT_EXPECTATIONS,
-    packages: [{ ...pkg, tree: { ...pkg.tree, files, digest: treeDigest(files) } }],
-  };
-  const result = await deploy(script, {
+  // gq-support's paths have no spaces: such a file is never approved.
+  const result = await guardedDeploy(script, {
+    tree: { ...SUPPORT_TREE, "src/a b.php": "abc" },
     composerOnly: true,
-    releaseFiles: {
-      "apps/cms/composer.lock": LOCK,
-      PACKAGE_EXPECTATIONS: renderServerExpectations(expectations, LOCK),
-    },
-    siteFiles: Object.fromEntries(
-      Object.entries(tree).map(([path, content]) => [`${SUPPORT_PATH}/${path}`, content]),
-    ),
   });
-  assert.equal(result.code, 0, result.output);
-  assert.match(result.stdout, /Verified getquick\/gq-support 0\.2\.0: 2 files match/u);
+  assert.notEqual(result.code, 0, result.output);
+  assert.match(result.stderr, /extra\s+src\/a b\.php/u);
+  assertStoppedBeforeWordPress(result);
 });
 
 test("an unguarded Site's deploy ignores package expectations it doesn't guard", async () => {

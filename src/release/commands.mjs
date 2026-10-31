@@ -5,6 +5,13 @@ import { CMS_PATH, composerDependencyChange } from "../cms/local.mjs";
 import { COMPOSER_PACKAGE_NAME } from "../manifest/schema.mjs";
 import { loadSiteSettings } from "../manifest/site-settings.mjs";
 import { assertDeploymentAllowed, guardedPackages } from "../ploi/deployment-policy.mjs";
+import {
+  PACKAGE_EXPECTATIONS_PATH,
+  lockedReference,
+  lookUpApproval,
+  packageExpectationsText,
+  parsePackageExpectations,
+} from "../ploi/package-expectations.mjs";
 import { runRelease } from "../ploi/release.mjs";
 
 const SEMVER =
@@ -68,6 +75,7 @@ export async function runReleaseCommand({
   io,
   interactive,
   approvals,
+  clock,
 }) {
   const argument = parsed.command[2];
   const release = createRelease({
@@ -94,6 +102,7 @@ export async function runReleaseCommand({
       io,
       interactive,
       approvals,
+      clock,
     });
   }
   if (command === "release tag") {
@@ -353,10 +362,15 @@ function createRelease({ config, root, env, exec, io }) {
 // and composer.lock, when the update changes any other locked package, the
 // version or the reference isn't the one asked for, or a file other than
 // those two changed. A package in gq.ops.json deployment.guardedPackages is
-// only ever prepared this way, with --to.
+// only ever prepared this way, with --to, and only once the approval service
+// returns a fresh phase "prepare" record for that exact version (looked up
+// before Composer runs; without a service it refuses). Its entry in
+// deploy/ploi/package-expectations.json then takes the approved files' digest
+// and the lock's new reference, and is committed with the lock. Preparing
+// isn't permission to deploy: the deploy looks the approval up again.
 async function releasePackage(
   name,
-  { release, parsed, context, env, fetch, exec, io, interactive, approvals },
+  { release, parsed, context, env, fetch, exec, io, interactive, approvals, clock },
 ) {
   const root = context.projectRoot;
   const options = packageOptions(parsed, name, context.config);
@@ -387,13 +401,47 @@ async function releasePackage(
   if (options.guarded && !before) {
     throw new Error(`${COMPOSER_LOCK} doesn't lock ${name}; nothing changed.`);
   }
+  // A guarded package moves only to a version the approval service approves
+  // for preparation, asked before Composer runs; without a service, never.
+  const expectationsPath = join(root, PACKAGE_EXPECTATIONS_PATH);
+  const expectationsText = options.guardedPackage
+    ? await readFile(expectationsPath, "utf8").catch((error) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      })
+    : null;
+  const approval = options.guardedPackage
+    ? await lookUpApproval(
+        approvals,
+        {
+          phase: "prepare",
+          project: context.config.project,
+          package: { name, version: options.to },
+        },
+        clock,
+      ).catch((error) => {
+        error.message += " Nothing changed.";
+        throw error;
+      })
+    : null;
 
   // Put back what this command changed, when a guard refuses the result.
   const restore = async () => {
     await writeFile(composerPath, composerText);
     if (lockText === null) await rm(lockPath, { force: true });
     else await writeFile(lockPath, lockText);
+    if (!options.guardedPackage) return;
+    if (expectationsText === null) await rm(expectationsPath, { force: true });
+    else await writeFile(expectationsPath, expectationsText);
   };
+  const restored = options.guardedPackage
+    ? `${COMPOSER_JSON}, ${COMPOSER_LOCK} and ${PACKAGE_EXPECTATIONS_PATH} are restored`
+    : `${COMPOSER_JSON} and ${COMPOSER_LOCK} are restored`;
+  const allowed = new Set([
+    COMPOSER_JSON,
+    COMPOSER_LOCK,
+    ...(options.guardedPackage ? [PACKAGE_EXPECTATIONS_PATH] : []),
+  ]);
 
   io.out(`Updating ${name} in ${COMPOSER_LOCK}.`);
   let after;
@@ -410,10 +458,27 @@ async function releasePackage(
     after = lockedPackage(afterLock, name);
     if (!after) throw new Error(`${COMPOSER_LOCK} has no ${name} after composer update.`);
     if (options.guarded) checkLockChange(beforeLock, afterLock, name, options);
+    // The Site's expectation follows: the approved files' digest and the
+    // reference the lock now records, for review with the lock change.
+    if (approval) {
+      const existing = expectationsText ? parsePackageExpectations(expectationsText).packages : [];
+      const previous = existing.find((pkg) => pkg.name === name);
+      const entry = {
+        name,
+        version: options.to,
+        lockReference: lockedReference(afterLock, name),
+        installPath: previous?.installPath ?? `web/app/plugins/${name.split("/")[1]}`,
+        filesDigest: approval.files_digest,
+      };
+      await writeFile(
+        expectationsPath,
+        packageExpectationsText([...existing.filter((pkg) => pkg.name !== name), entry]),
+      );
+    }
   } catch (error) {
     if (options.guarded) {
       await restore();
-      error.message += ` ${COMPOSER_JSON} and ${COMPOSER_LOCK} are restored; nothing was committed.`;
+      error.message += ` ${restored}; nothing was committed.`;
     }
     throw error;
   }
@@ -426,11 +491,11 @@ async function releasePackage(
   const changed = changedPaths(await release.git(["status", "--porcelain"]));
   if (changed.length > 0) {
     if (options.guarded) {
-      const unexpected = changed.filter((path) => path !== COMPOSER_JSON && path !== COMPOSER_LOCK);
+      const unexpected = changed.filter((path) => !allowed.has(path));
       if (unexpected.length > 0) {
         await restore();
         throw new Error(
-          `Preparing ${name} changed ${unexpected.join(", ")} too; only ${COMPOSER_JSON} and ${COMPOSER_LOCK} may change. ${COMPOSER_JSON} and ${COMPOSER_LOCK} are restored; nothing was committed.`,
+          `Preparing ${name} changed ${unexpected.join(", ")} too; only ${[...allowed].join(", ")} may change. ${restored}; nothing was committed.`,
         );
       }
       await release.runCommand("git", ["add", "--", ...changed]);
@@ -465,6 +530,7 @@ async function releasePackage(
     io,
     interactive,
     approvals,
+    clock,
   });
   if (code === 0) {
     io.out("Deployed. Push the commit to the default branch so the site's history keeps it.");
@@ -495,7 +561,8 @@ function packageOptions(parsed, name, ops) {
   if (options.noDeploy && options.composerOnly) {
     throw new Error("--composer-only is how a deploy runs; --no-deploy doesn't deploy.");
   }
-  if (guardedPackages(ops).includes(name) && !options.to) {
+  options.guardedPackage = guardedPackages(ops).includes(name);
+  if (options.guardedPackage && !options.to) {
     throw new Error(
       `${name} is guarded (gq.ops.json deployment.guardedPackages): name its exact version with --to.`,
     );

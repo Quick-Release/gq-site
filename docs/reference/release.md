@@ -102,7 +102,10 @@ version.
   changes any other `packages` or `packages-dev` entry, leaves the package at
   another version or reference, or changes any file besides those two. It
   commits just those two files. A package in `gq.ops.json`
-  `deployment.guardedPackages` is only prepared with `--to`. `--no-deploy` is
+  `deployment.guardedPackages` is only prepared with `--to`, and only from a
+  fresh `prepare` approval looked up before Composer runs; its expectation
+  in `deploy/ploi/package-expectations.json` is committed with the lock (see
+  [Package expectations](package-expectations.md)). `--no-deploy` is
   allowed on a paused or reserved Site; deploying is not (see
   [Deployment policy](deployment-policy.md)).
 

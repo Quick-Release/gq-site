@@ -74,12 +74,13 @@ composer_install() {
 }
 
 # Runs from $APP_PATH after composer install: each package the release's
-# PACKAGE_EXPECTATIONS states must be installed with exactly its files (the
-# gq-tree-v1 listing: regular files only, `sha256sum` lines sorted by path
-# bytes, whose sha256 is the package's digest), from the very composer.lock
-# gq checked. Any difference fails the deploy before PHP-FPM reloads and
-# before any WP-CLI activation or database step. A release without the file
-# is fine unless the Site guards packages.
+# PACKAGE_EXPECTATIONS states (its files come from the approval record gq
+# looked up) must be installed with exactly those regular files and no
+# others, and their gq-support.files/v1 digest (the sha256 of
+# "<path>\0<sha256>\n" lines sorted by path bytes) must be the approved one,
+# from the very composer.lock gq checked. Any difference fails the deploy
+# before PHP-FPM reloads and before any WP-CLI activation or database step.
+# A release without the file is fine unless the Site guards packages.
 verify_package_expectations() {
   local expectations="$tmp_dir/release/PACKAGE_EXPECTATIONS"
   local line key package_line lock="" name="" count=0 verified=" " guarded
@@ -129,6 +130,15 @@ verify_package_expectations() {
   done
 }
 
+# files_digest <listing>: the gq-support.files/v1 digest of a sorted
+# `sha256sum` listing ("<sha256>  <path>" lines).
+files_digest() {
+  local line
+  while IFS= read -r line; do
+    printf '%s\0%s\n' "${line:66}" "${line:0:64}"
+  done <"$1" | sha256sum | cut -c1-64
+}
+
 # verify_package_tree <name> <n>: the package's installed files against
 # $tmp_dir/expected-<n>, its version, path and digest in $tmp_dir/package-<n>.
 verify_package_tree() {
@@ -145,7 +155,7 @@ verify_package_tree() {
   (cd "$install_path" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum) \
     | sed 's#^\([0-9a-f]\{64\}\)  \./#\1  #' >"$actual"
   if grep -qv '^[0-9a-f]\{64\}  ' "$actual" || ! cmp -s "$tmp_dir/expected-$n" "$actual" \
-    || [ "$(sha256sum <"$actual" | cut -c1-64)" != "$digest" ]; then
+    || [ "$(files_digest "$actual")" != "$digest" ]; then
     echo "$name's installed files don't match its expected $version tree ($digest):" >&2
     awk 'NR == FNR { want[substr($0, 67)] = substr($0, 1, 64); next }
       { have[substr($0, 67)] = substr($0, 1, 64) }

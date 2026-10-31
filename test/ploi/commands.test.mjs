@@ -407,11 +407,15 @@ const GUARDED_OPS = Object.freeze({
   deployment: { protected: true, state: "authorized", guardedPackages: ["getquick/gq-support"] },
 });
 const GUARDED_SCRIPT = `#!/usr/bin/env bash\nGUARDED_PACKAGES="getquick/gq-support"\necho deploy\n`;
-const TAG_COMMIT = "a".repeat(40);
 const PUBLISHED_REFERENCE = "b".repeat(40);
-// gq-support.php ("hello\n") alone; digest from sha256sum.
-const SUPPORT_FILE = "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03";
-const SUPPORT_DIGEST = "b75641369e2c56d591209ab97110e2573d8ec16bcbac8d15161eccfec18aaab1";
+// gq-support.php ("hello\n") alone, and its gq-support.files/v1 digest, from
+// printf 'gq-support.php\0<sha256>\n' | sha256sum.
+const SUPPORT_FILES = Object.freeze({
+  "gq-support.php": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+});
+const SUPPORT_DIGEST = "335b71ade6b432f03f1858a221294a017f4d6dc1f635a504e85194dcf30b26ce";
+// fakeClock's now.
+const OBSERVED = "2026-10-01T09:00:00Z";
 
 function expectationsFile(overrides = {}) {
   return `${JSON.stringify(
@@ -420,16 +424,10 @@ function expectationsFile(overrides = {}) {
       packages: [
         {
           name: "getquick/gq-support",
-          version: "0.2.0",
-          tag: "v0.2.0",
-          tagCommit: TAG_COMMIT,
+          version: "0.1.11",
           lockReference: PUBLISHED_REFERENCE,
           installPath: "web/app/plugins/gq-support",
-          tree: {
-            normalization: "gq-tree-v1",
-            digest: SUPPORT_DIGEST,
-            files: [{ path: "gq-support.php", sha256: SUPPORT_FILE }],
-          },
+          filesDigest: SUPPORT_DIGEST,
           ...overrides,
         },
       ],
@@ -439,7 +437,41 @@ function expectationsFile(overrides = {}) {
   )}\n`;
 }
 
-function releaseLock({ version = "0.2.0", reference = PUBLISHED_REFERENCE } = {}) {
+// A gq-support.composer-approval/v1 record, as the approval service returns it.
+function approvalRecord(overrides = {}) {
+  return {
+    schema: "gq-support.composer-approval/v1",
+    stage: "production",
+    slot: "fixture",
+    phase: "deploy",
+    release_id: "release-0.1.11",
+    package: { name: "getquick/gq-support", version: "0.1.11", zip_sha256: "f".repeat(64) },
+    provenance: { source_commit: "c".repeat(40), release_run: "run-42" },
+    files: SUPPORT_FILES,
+    files_digest: SUPPORT_DIGEST,
+    normalization: "gq-support.files/v1",
+    observed_at: OBSERVED,
+    ...overrides,
+  };
+}
+
+// An approval adapter answering each lookup with the next of `answers` (a
+// record, or an Error it rejects with), noting each request and, when given
+// `fetch`, the provider requests made before it.
+function scriptedApprovals(answers, fetch) {
+  const requests = [];
+  return {
+    requests,
+    async lookup(request) {
+      requests.push({ ...request, before: fetch?.requests.map(requestLine) });
+      const answer = answers[Math.min(requests.length - 1, answers.length - 1)];
+      if (answer instanceof Error) throw answer;
+      return answer;
+    },
+  };
+}
+
+function releaseLock({ version = "0.1.11", reference = PUBLISHED_REFERENCE } = {}) {
   return JSON.stringify({
     packages: [{ name: "getquick/gq-support", version, dist: { type: "zip", reference } }],
     "packages-dev": [],
@@ -457,17 +489,14 @@ function guardedGit({ files = {}, script = GUARDED_SCRIPT } = {}) {
   });
 }
 
-function recordingApprovals() {
-  const requests = [];
-  return {
-    requests,
-    async confirm(request) {
-      requests.push(request);
-    },
-  };
-}
+const changesPloiSite = (lines) =>
+  lines.filter(
+    (line) =>
+      line === "PATCH /api/servers/12/sites/34/deploy/script" ||
+      line === "POST /api/servers/12/sites/34/deploy",
+  );
 
-test("a guarded Site's release refuses without an approval service, before any provider call", async () => {
+test("a guarded Site's release refuses without an approval adapter, before any provider call", async () => {
   const fixture = await site({ ops: GUARDED_OPS });
   const { fetch } = fakeProviders();
 
@@ -479,11 +508,12 @@ test("a guarded Site's release refuses without an approval service, before any p
 
   assert.equal(result.code, 1);
   assert.match(result.stderr, /No authenticated package approval service is configured/u);
+  assert.match(result.stderr, /\(phase deploy\)/u);
   assert.match(result.stderr, /not an approval/u);
   assert.deepEqual(fetch.requests, []);
 });
 
-test("a guarded Site's release refuses missing or mismatched expectations before asking for approval", async () => {
+test("a guarded Site's release refuses missing or mismatched expectations before looking anything up", async () => {
   const cases = [
     [
       { "deploy/ploi/package-expectations.json": undefined },
@@ -493,7 +523,7 @@ test("a guarded Site's release refuses missing or mismatched expectations before
     [
       { "apps/cms/composer.lock": releaseLock({ version: "0.1.10" }) },
       {},
-      /locks getquick\/gq-support 0\.1\.10, not the expected 0\.2\.0/u,
+      /locks getquick\/gq-support 0\.1\.10, not the expected 0\.1\.11/u,
     ],
     [
       { "apps/cms/composer.lock": releaseLock({ reference: "c".repeat(40) }) },
@@ -514,7 +544,7 @@ test("a guarded Site's release refuses missing or mismatched expectations before
   for (const [files, options, message] of cases) {
     const fixture = await site({ ops: GUARDED_OPS });
     const { fetch } = fakeProviders();
-    const approvals = recordingApprovals();
+    const approvals = scriptedApprovals([approvalRecord()]);
 
     const result = await fixture.run(["ploi", "release"], {
       env: RELEASE_ENV,
@@ -530,11 +560,51 @@ test("a guarded Site's release refuses missing or mismatched expectations before
   }
 });
 
-test("a confirmed guarded release ships the expectations the server verifies, under its own archive key", async () => {
+test("a guarded Site's release refuses an approval that is stale, for preparation, or for other files", async () => {
+  const cases = [
+    [approvalRecord({ observed_at: "2026-10-01T08:50:00Z" }), /not within 5 minutes of now/u],
+    [approvalRecord({ phase: "prepare" }), /is for phase prepare, not deploy/u],
+    [
+      approvalRecord({
+        files: { ...SUPPORT_FILES, "extra.php": "0".repeat(64) },
+        files_digest: "4".repeat(64),
+      }),
+      /says its files hash to 4{64}/u,
+    ],
+    [
+      // Self-consistent, but not the files the Site expects.
+      approvalRecord({
+        files: { "gq-support.php": "1".repeat(64) },
+        files_digest: "f3f43a16353df5832b31aa745cc4de1368172cea3259d51ab3eb0746169f9980",
+      }),
+      new RegExp(
+        `approved getquick/gq-support 0\\.1\\.11 files hash to f3f43a16[0-9a-f]{56}, not the ${SUPPORT_DIGEST}`,
+        "u",
+      ),
+    ],
+  ];
+  for (const [record, message] of cases) {
+    const fixture = await site({ ops: GUARDED_OPS });
+    const { fetch } = fakeProviders();
+
+    const result = await fixture.run(["ploi", "release"], {
+      env: RELEASE_ENV,
+      fetch,
+      exec: guardedGit(),
+      approvals: scriptedApprovals([record]),
+    });
+
+    assert.equal(result.code, 1, String(message));
+    assert.match(result.stderr, message);
+    assert.deepEqual(fetch.requests, []);
+  }
+});
+
+test("a guarded release looks its deploy approval up again right before changing the Ploi site, and ships the approved files", async () => {
   const fixture = await site({ ops: GUARDED_OPS });
   const { fetch, state } = fakeProviders({ state: { deployScript: GUARDED_SCRIPT } });
   const exec = guardedGit();
-  const approvals = recordingApprovals();
+  const approvals = scriptedApprovals([approvalRecord()], fetch);
 
   const result = await fixture.run(["ploi", "release", "--composer-only"], {
     env: RELEASE_ENV,
@@ -544,21 +614,24 @@ test("a confirmed guarded release ships the expectations the server verifies, un
   });
 
   assert.equal(result.code, 0, result.stderr);
-  assert.deepEqual(approvals.requests, [
-    {
-      project: "fixture",
-      releaseCommit: SHA,
-      package: {
-        name: "getquick/gq-support",
-        version: "0.2.0",
-        tag: "v0.2.0",
-        tagCommit: TAG_COMMIT,
-        lockReference: PUBLISHED_REFERENCE,
-        installPath: "web/app/plugins/gq-support",
-        tree: { normalization: "gq-tree-v1", digest: SUPPORT_DIGEST, fileCount: 1 },
+  assert.equal(approvals.requests.length, 2);
+  for (const request of approvals.requests) {
+    assert.deepEqual(
+      { ...request, before: undefined },
+      {
+        phase: "deploy",
+        project: "fixture",
+        releaseCommit: SHA,
+        package: { name: "getquick/gq-support", version: "0.1.11" },
+        before: undefined,
       },
-    },
-  ]);
+    );
+  }
+  // The first lookup comes before any provider call; the fresh one after the
+  // upload and before the script sync or the deploy.
+  assert.deepEqual(approvals.requests[0].before, []);
+  assert.ok(approvals.requests[1].before.some((line) => line.startsWith("PUT ")));
+  assert.deepEqual(changesPloiSite(approvals.requests[1].before), []);
   const archive = exec.calls.find(({ args }) => args[0] === "archive").args;
   const shipped = archive.find((argument) =>
     argument.startsWith("--add-virtual-file=PACKAGE_EXPECTATIONS:"),
@@ -566,11 +639,48 @@ test("a confirmed guarded release ships the expectations the server verifies, un
   assert.ok(shipped, archive.join("\n"));
   assert.match(
     shipped,
-    /\npackage getquick\/gq-support 0\.2\.0 web\/app\/plugins\/gq-support [0-9a-f]{64}\nfile 5891b5b5[0-9a-f]{56} gq-support\.php\n$/u,
+    new RegExp(
+      `\\npackage getquick/gq-support 0\\.1\\.11 web/app/plugins/gq-support ${SUPPORT_DIGEST}\\nfile ${SUPPORT_FILES["gq-support.php"]} gq-support\\.php\\n$`,
+      "u",
+    ),
   );
   const put = fetch.requests.find(({ method }) => method === "PUT");
   assert.match(new URL(put.url).pathname, /\/admin\/v1\.4\.0-0123456789ab-[0-9a-f]{12}\.tar\.gz$/u);
   assert.equal(state.deployed.composer_only, "true");
+});
+
+test("a guarded release whose approval is withdrawn or changed before the deploy doesn't change the Ploi site", async () => {
+  const cases = [
+    [
+      new Error("gq-support 0.1.11 was withdrawn"),
+      /no longer approved for deploy \(gq-support 0\.1\.11 was withdrawn\); the Ploi site was not changed/u,
+    ],
+    [
+      approvalRecord({ release_id: "release-0.1.11-b" }),
+      /approval changed since this release checked it \(release_id release-0\.1\.11 → release-0\.1\.11-b\)/u,
+    ],
+    [
+      approvalRecord({ observed_at: "2026-10-01T08:00:00Z" }),
+      /no longer approved for deploy .*not within 5 minutes/u,
+    ],
+  ];
+  for (const [fresh, message] of cases) {
+    const fixture = await site({ ops: GUARDED_OPS });
+    const { fetch, state } = fakeProviders({ state: { deployScript: "echo stale\n" } });
+
+    const result = await fixture.run(["ploi", "release"], {
+      env: RELEASE_ENV,
+      fetch,
+      exec: guardedGit(),
+      approvals: scriptedApprovals([approvalRecord(), fresh]),
+    });
+
+    assert.equal(result.code, 1, String(message));
+    assert.match(result.stderr, message);
+    assert.deepEqual(changesPloiSite(fetch.requests.map(requestLine)), []);
+    assert.equal(state.deployed, undefined);
+    assert.equal(state.deployScript, "echo stale\n");
+  }
 });
 
 // --- gq release package (a package redeploy through ploi release) ---------
@@ -989,6 +1099,99 @@ test("release package rolls a package back to an exact earlier version without t
     await readFile(fixture.path("apps/cms/composer.json"), "utf8"),
     composer.replace('"0.1.12"', '"0.1.11"'),
   );
+});
+
+// A Site guarding gq-support, and Composer moving it to 0.1.11.
+const GUARDED_SUPPORT = Object.freeze({
+  deployment: { protected: true, state: "authorized", guardedPackages: [SUPPORT] },
+});
+const prepareRecord = () => approvalRecord({ phase: "prepare" });
+const guardedPrepare = (fixture, options = {}) =>
+  supportExec(fixture, {
+    lock: supportLock({ version: "0.1.11" }),
+    extra: ["deploy/ploi/package-expectations.json"],
+    ...options,
+  });
+const PREPARE = ["release", "package", SUPPORT, "--to", "0.1.11", "--no-deploy"];
+
+test("release package refuses to prepare a guarded package without an approval adapter, before Composer runs", async () => {
+  const fixture = await supportSite(GUARDED_SUPPORT);
+  const exec = guardedPrepare(fixture);
+
+  const result = await fixture.run(PREPARE, { env: RELEASE_ENV, exec });
+
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stderr,
+    /No authenticated package approval service is configured.*\(phase prepare\).*Nothing changed\./u,
+  );
+  assert.ok(!exec.calls.some(({ command }) => command === "composer"));
+  assert.equal(await readFile(fixture.path("apps/cms/composer.json"), "utf8"), SUPPORT_COMPOSER);
+});
+
+test("release package prepares a guarded package from a fresh prepare approval and commits its expectation with the lock", async () => {
+  const fixture = await supportSite(GUARDED_SUPPORT);
+  const { fetch } = fakeProviders();
+  const exec = guardedPrepare(fixture);
+  const approvals = scriptedApprovals([prepareRecord()]);
+
+  const result = await fixture.run(PREPARE, { env: RELEASE_ENV, fetch, exec, approvals });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(fetch.requests, [], "preparing calls no provider");
+  assert.deepEqual(approvals.requests, [
+    {
+      phase: "prepare",
+      project: "fixture",
+      package: { name: SUPPORT, version: "0.1.11" },
+      before: undefined,
+    },
+  ]);
+  const lines = commandLines(exec);
+  assert.ok(
+    lines.includes(
+      "git add -- apps/cms/composer.json apps/cms/composer.lock deploy/ploi/package-expectations.json",
+    ),
+    lines.join("\n"),
+  );
+  assert.deepEqual(
+    JSON.parse(await readFile(fixture.path("deploy/ploi/package-expectations.json"), "utf8")),
+    {
+      schemaVersion: 1,
+      packages: [
+        {
+          name: SUPPORT,
+          version: "0.1.11",
+          lockReference: NEW_REF,
+          installPath: "web/app/plugins/gq-support",
+          filesDigest: SUPPORT_DIGEST,
+        },
+      ],
+    },
+  );
+  assert.match(result.stdout, /without deploying/u);
+});
+
+test("release package doesn't prepare a guarded package from a deploy-phase record or past a lock surprise", async () => {
+  const deployPhase = await supportSite(GUARDED_SUPPORT);
+  const wrongPhase = await deployPhase.run(PREPARE, {
+    env: RELEASE_ENV,
+    exec: guardedPrepare(deployPhase),
+    approvals: scriptedApprovals([approvalRecord()]),
+  });
+  assert.equal(wrongPhase.code, 1);
+  assert.match(wrongPhase.stderr, /is for phase deploy, not prepare\. Nothing changed\./u);
+
+  const surprise = await supportSite(GUARDED_SUPPORT);
+  const changed = await surprise.run(PREPARE, {
+    env: RELEASE_ENV,
+    exec: guardedPrepare(surprise, { lock: supportLock({ version: "0.1.11", design: "0.9.5" }) }),
+    approvals: scriptedApprovals([prepareRecord()]),
+  });
+  assert.equal(changed.code, 1);
+  assert.match(changed.stderr, /changed getquick\/gq-design in packages/u);
+  assert.match(changed.stderr, /package-expectations\.json are restored; nothing was committed/u);
+  await assert.rejects(readFile(surprise.path("deploy/ploi/package-expectations.json"), "utf8"));
 });
 
 test("release package --no-deploy prepares a commit on a paused Site without calling a provider", async () => {

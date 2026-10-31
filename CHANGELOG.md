@@ -15,14 +15,17 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   lifts a hold; a reviewed Site change does. A Site without the block deploys
   as before. See [Deployment policy](docs/reference/deployment-policy.md).
   `gq sync` updates `scripts/ci-release.mjs`.
-- **Guarded Composer packages.** `deployment.guardedPackages` makes a release
-  check the release commit's `deploy/ploi/package-expectations.json`
-  (contract v1: version, tag identity, lock reference and the exact
-  `gq-tree-v1` file tree) against its `composer.lock`, ask an approval
-  service, and ship the expectations; the deploy script then verifies the
-  installed files after `composer install`, before PHP-FPM reloads or any
-  WP-CLI or database step. gq-site ships no approval service, so a Site
-  guarding a package refuses to deploy until one is integrated. See
+- **Guarded Composer packages.** `deployment.guardedPackages` makes a
+  release check the release commit's `deploy/ploi/package-expectations.json`
+  (the Site's expectation: version, lock reference, install path and files
+  digest) against its `composer.lock`, look up a `phase: "deploy"` approval
+  record (`gq-support.composer-approval/v1`) through `run()`'s `approvals`
+  adapter, ship the approved file list, and look the record up again, fresh,
+  right before changing the Ploi site. The deploy script then verifies the
+  installed files (`gq-support.files/v1`) and the lock after
+  `composer install`, before PHP-FPM reloads or any WP-CLI or database step.
+  gq-site ships no adapter, so a Site guarding a package refuses to prepare or
+  deploy it until one is integrated. See
   [Package expectations](docs/reference/package-expectations.md). `gq sync`
   updates `deploy/ploi/admin.sh`; a Site guarding nothing deploys as before.
 - **Guarded single-package preparation.** `gq release package` takes

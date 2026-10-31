@@ -22,6 +22,7 @@ import { assertDeploymentAllowed, guardedPackages } from "./deployment-policy.mj
 import {
   SERVER_EXPECTATIONS_FILE,
   prepareGuardedRelease,
+  revalidateGuardedRelease,
   unconfiguredApprovals,
 } from "./package-expectations.mjs";
 import { deploy, syncDeployScript } from "./provision.mjs";
@@ -68,7 +69,8 @@ export function releaseManifest({ version, sha, ref }) {
 // `gq ploi release [--ref <ref>] [--git-dir <dir>] [--composer-only]`.
 // Resolves to an exit code.
 // `approvals` is the package approval seam (package-expectations.mjs); only
-// a Site with guarded packages consults it.
+// a Site with guarded packages consults it, with `clock` to judge how fresh
+// its records are.
 export async function runRelease({
   context,
   parsed,
@@ -78,6 +80,7 @@ export async function runRelease({
   io,
   interactive,
   approvals = unconfiguredApprovals,
+  clock = { now: () => Date.now() },
 }) {
   const ops = context.config;
   // A paused or reserved Site refuses before anything else.
@@ -110,15 +113,16 @@ export async function runRelease({
       `${deployScriptPath} at ${sha.slice(0, 12)} doesn't verify ${guarded.join(", ")} after composer install (no ${serverGuard} line): run gq sync and commit it; nothing was uploaded or deployed.`,
     );
   }
-  const expectations = guarded.length
+  const { expectations = null, records = [] } = guarded.length
     ? await prepareGuardedRelease({
         project: ops.project,
         guarded,
         sha,
         show: (path) => git(["show", `${sha}:${path}`]),
         approvals,
+        clock,
       })
-    : null;
+    : {};
   const key = releaseKey(prefix, version, sha, expectations);
   // Fail before uploading anything if the registry login is missing.
   deployVariables("", context.env.COMPOSER_AUTH);
@@ -156,6 +160,12 @@ export async function runRelease({
       serverId: ops.ploi.serverId,
       fetch,
     });
+    // The approval that let this release upload isn't permission to change
+    // the site: look it up again, fresh, right before the first change.
+    if (records.length) {
+      step.message("Revalidating the guarded packages' deploy approval");
+      await revalidateGuardedRelease({ project: ops.project, sha, records, approvals, clock });
+    }
     step.message(`Syncing the Ploi deploy script with ${deployScriptPath}`);
     deployScriptUpdated = await syncDeployScript(client, ops.ploi.siteId, deployScript);
 

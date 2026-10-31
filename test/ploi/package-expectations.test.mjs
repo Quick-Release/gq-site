@@ -1,123 +1,150 @@
-// The guarded-package expectations contract (deploy/ploi/package-expectations.json,
-// v1): its validation, the gq-tree-v1 digest and the lock identity check.
-// Expected digests come from coreutils (find | LC_ALL=C sort | sha256sum),
-// the tools the deploy script uses, not from the module under test.
+// Guarded packages: the Site's expectations file (deploy/ploi/package-expectations.json,
+// v1), the approval record gq acts on (gq-support.composer-approval/v1), the
+// gq-support.files/v1 digest and the lock identity check. Expected digests
+// come from coreutils (printf '<path>\0<sha256>\n' ... | sha256sum), not from
+// the module under test.
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  checkApprovalRecord,
   checkLockedIdentity,
+  filesDigest,
   parsePackageExpectations,
   renderServerExpectations,
-  treeDigest,
   unconfiguredApprovals,
 } from "../../src/ploi/package-expectations.mjs";
 
-// A tree of gq-support.php ("hello\n"), src/a b.php ("abc") and Z.txt ("Z").
-export const FILES = Object.freeze([
-  {
-    path: "gq-support.php",
-    sha256: "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
-  },
-  {
-    path: "src/a b.php",
-    sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-  },
-  { path: "Z.txt", sha256: "bbeebd879e1dff6918546dc0c179fdde505f2a21591c9a9c96e36b054ec5af83" },
-]);
-const DIGEST = "b63f13b4a4b3da7f94a6f27e00506c7a6a051d3e542e5c9a1531d1d4040a7bdb";
-const TAG_COMMIT = "a".repeat(40);
-const REFERENCE = "b".repeat(40);
+// gq-support.php ("hello\n"), src/a-b.php ("abc") and Z.txt ("Z").
+const FILES = Object.freeze({
+  "gq-support.php": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+  "src/a-b.php": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+  "Z.txt": "bbeebd879e1dff6918546dc0c179fdde505f2a21591c9a9c96e36b054ec5af83",
+});
+const DIGEST = "57661d4dc252d72859e8ac659219b6948230f73e2916aa631a04761219bf77d3";
+const NOW = Date.parse("2026-10-31T12:00:00Z");
+const REQUEST = Object.freeze({ phase: "deploy", name: "getquick/gq-support", version: "0.1.11" });
 
-function contract(overrides = {}, tree = {}) {
+function record(overrides = {}) {
   return {
+    schema: "gq-support.composer-approval/v1",
+    stage: "production",
+    slot: "nomia",
+    phase: "deploy",
+    release_id: "release-0.1.11",
+    package: { name: "getquick/gq-support", version: "0.1.11", zip_sha256: "f".repeat(64) },
+    provenance: { source_commit: "c".repeat(40), release_run: "run-42" },
+    files: FILES,
+    files_digest: DIGEST,
+    normalization: "gq-support.files/v1",
+    observed_at: "2026-10-31T11:59:00Z",
+    ...overrides,
+  };
+}
+
+test("the gq-support.files/v1 digest hashes path NUL sha256 LF lines sorted by path bytes", () => {
+  assert.equal(filesDigest(FILES), DIGEST);
+  assert.equal(filesDigest(Object.fromEntries(Object.entries(FILES).reverse())), DIGEST);
+});
+
+test("an approval record is acted on only for its phase, package and version, fresh and self-consistent", () => {
+  assert.equal(checkApprovalRecord(record(), REQUEST, NOW).files_digest, DIGEST);
+
+  const refusals = [
+    [record({ phase: "prepare" }), /is for phase prepare, not deploy/u],
+    [
+      record({
+        package: { name: "getquick/gq-support", version: "0.1.12", zip_sha256: "f".repeat(64) },
+      }),
+      /approves getquick\/gq-support 0\.1\.12 instead/u,
+    ],
+    [record({ files: { ...FILES, "Z.txt": "0".repeat(64) } }), /says its files hash to 57661d4d/u],
+    [record({ files: { ...FILES, "extra.php": "0".repeat(64) } }), /says its files hash to/u],
+    [record({ observed_at: "2026-10-31T11:54:59Z" }), /not within 5 minutes of now/u],
+    [record({ observed_at: "2026-10-31T12:02:00Z" }), /not within 5 minutes of now/u],
+    [record({ normalization: "gq-tree-v1" }), /normalization/u],
+    [record({ schema: "gq-support.composer-approval/v2" }), /schema/u],
+    [record({ files: {} }), /lists no files/u],
+  ];
+  for (const [candidate, message] of refusals) {
+    assert.throws(() => checkApprovalRecord(candidate, REQUEST, NOW), message);
+  }
+});
+
+test("an approval record refuses package paths gq-support refuses", () => {
+  for (const path of [
+    "../wp-config.php",
+    "/etc/passwd",
+    "a//b",
+    ".hidden",
+    "a b.php",
+    "src/",
+    "é.php",
+  ]) {
+    assert.throws(
+      () => checkApprovalRecord(record({ files: { [path]: "0".repeat(64) } }), REQUEST, NOW),
+      /is invalid: files\./u,
+      path,
+    );
+  }
+});
+
+test("a lookup's own approval-looking keys grant nothing", () => {
+  assert.throws(
+    () => checkApprovalRecord({ approved: true, signature: "x" }, REQUEST, NOW),
+    /is invalid/u,
+  );
+  const extra = checkApprovalRecord(record({ approved: true }), REQUEST, NOW);
+  assert.equal(Object.hasOwn(extra, "approved"), false);
+});
+
+test("the Site's expectations file is strict and refuses approval-looking fields", () => {
+  const valid = {
     schemaVersion: 1,
     packages: [
       {
         name: "getquick/gq-support",
-        version: "0.2.0",
-        tag: "v0.2.0",
-        tagCommit: TAG_COMMIT,
-        lockReference: REFERENCE,
+        version: "0.1.11",
+        lockReference: "b".repeat(40),
         installPath: "web/app/plugins/gq-support",
-        tree: { normalization: "gq-tree-v1", digest: DIGEST, files: FILES, ...tree },
-        ...overrides,
+        filesDigest: DIGEST,
       },
     ],
   };
-}
-
-test("the gq-tree-v1 digest is sha256sum's listing of the files sorted by their bytes", () => {
-  assert.equal(treeDigest(FILES), DIGEST);
-  assert.equal(treeDigest([...FILES].reverse()), DIGEST);
-});
-
-test("an expectations file is accepted only when its digest matches its files", () => {
-  assert.equal(
-    parsePackageExpectations(JSON.stringify(contract())).packages[0].tree.digest,
-    DIGEST,
-  );
-
-  assert.throws(
-    () => parsePackageExpectations(JSON.stringify(contract({}, { digest: "0".repeat(64) }))),
-    /tree\.digest is 0{64}, but its files hash to b63f13b4/u,
-  );
-  const changed = FILES.map((file, index) =>
-    index === 0 ? { ...file, sha256: "1".repeat(64) } : file,
-  );
-  assert.throws(
-    () => parsePackageExpectations(JSON.stringify(contract({}, { files: changed }))),
-    /its files hash to/u,
-  );
-});
-
-test("an expectations file refuses unsafe paths, unknown keys and approval-looking fields", () => {
-  for (const path of ["../wp-config.php", "/etc/passwd", "a//b", "./a", "a\\b", "a\nb"]) {
-    assert.throws(
-      () =>
-        parsePackageExpectations(
-          JSON.stringify(contract({}, { files: [{ path, sha256: FILES[0].sha256 }] })),
-        ),
-      /relative POSIX path/u,
-      path,
-    );
+  assert.equal(parsePackageExpectations(JSON.stringify(valid)).packages[0].filesDigest, DIGEST);
+  for (const [change, message] of [
+    [{ approved: true }, /approved/u],
+    [{ installPath: "vendor/x" }, /installPath/u],
+    [{ filesDigest: "x" }, /filesDigest/u],
+  ]) {
+    const candidate = { ...valid, packages: [{ ...valid.packages[0], ...change }] };
+    assert.throws(() => parsePackageExpectations(JSON.stringify(candidate)), message);
   }
   assert.throws(
-    () => parsePackageExpectations(JSON.stringify(contract({ approved: true }))),
-    /approved/u,
-  );
-  assert.throws(
-    () => parsePackageExpectations(JSON.stringify({ ...contract(), signature: "x" })),
+    () => parsePackageExpectations(JSON.stringify({ ...valid, signature: "x" })),
     /signature/u,
-  );
-  assert.throws(
-    () => parsePackageExpectations(JSON.stringify(contract({ installPath: "vendor/x" }))),
-    /installPath/u,
-  );
-  assert.throws(
-    () => parsePackageExpectations(JSON.stringify({ ...contract(), schemaVersion: 2 })),
-    /schemaVersion/u,
   );
 });
 
 test("the lock must install the expected version at the expected reference, not as a dev package", () => {
-  const [pkg] = contract().packages;
+  const pkg = { name: "getquick/gq-support", version: "0.1.11", lockReference: "b".repeat(40) };
   const lock = (entry, section = "packages") => ({ [section]: [{ name: pkg.name, ...entry }] });
 
-  checkLockedIdentity(lock({ version: "0.2.0", dist: { reference: REFERENCE } }), pkg);
-  checkLockedIdentity(lock({ version: "v0.2.0", source: { reference: REFERENCE } }), pkg);
+  checkLockedIdentity(lock({ version: "0.1.11", dist: { reference: "b".repeat(40) } }), pkg);
+  checkLockedIdentity(lock({ version: "v0.1.11", source: { reference: "b".repeat(40) } }), pkg);
 
   assert.throws(
-    () => checkLockedIdentity(lock({ version: "0.2.1", dist: { reference: REFERENCE } }), pkg),
-    /locks getquick\/gq-support 0\.2\.1, not the expected 0\.2\.0/u,
+    () =>
+      checkLockedIdentity(lock({ version: "0.1.12", dist: { reference: "b".repeat(40) } }), pkg),
+    /locks getquick\/gq-support 0\.1\.12, not the expected 0\.1\.11/u,
   );
   // The source repository's main commit is not the published reference.
   assert.throws(
     () =>
       checkLockedIdentity(
         lock({
-          version: "0.2.0",
-          dist: { reference: REFERENCE },
+          version: "0.1.11",
+          dist: { reference: "b".repeat(40) },
           source: { reference: "c".repeat(40) },
         }),
         pkg,
@@ -125,40 +152,48 @@ test("the lock must install the expected version at the expected reference, not 
     /at reference b{40} \/ c{40}, not the expected b{40}/u,
   );
   assert.throws(
-    () => checkLockedIdentity(lock({ version: "0.2.0" }), pkg),
-    /at reference \(none\)/u,
-  );
-  assert.throws(
     () =>
       checkLockedIdentity(
-        lock({ version: "0.2.0", dist: { reference: REFERENCE } }, "packages-dev"),
+        lock({ version: "0.1.11", dist: { reference: "b".repeat(40) } }, "packages-dev"),
         pkg,
       ),
     /only as a dev package/u,
   );
 });
 
-test("the server's expectations are line-based: the lock's hash, then each package and its files in order", () => {
-  const text = renderServerExpectations(contract(), "lock-text");
+test("the server's expectations are line-based: the lock's hash, then each package and its files by path bytes", () => {
+  const text = renderServerExpectations(
+    [
+      {
+        name: "getquick/gq-support",
+        version: "0.1.11",
+        installPath: "web/app/plugins/gq-support",
+        filesDigest: DIGEST,
+        files: FILES,
+      },
+    ],
+    "lock-text",
+  );
   assert.equal(
     text,
     [
       "gq-package-expectations 1",
       // sha256 of "lock-text"
       "lock 486a33b99612507fb51379417b0e23f09dda895132650a8612a629bc53aefadb",
-      `package getquick/gq-support 0.2.0 web/app/plugins/gq-support ${DIGEST}`,
-      `file ${FILES[2].sha256} Z.txt`,
-      `file ${FILES[0].sha256} gq-support.php`,
-      `file ${FILES[1].sha256} src/a b.php`,
+      `package getquick/gq-support 0.1.11 web/app/plugins/gq-support ${DIGEST}`,
+      `file ${FILES["Z.txt"]} Z.txt`,
+      `file ${FILES["gq-support.php"]} gq-support.php`,
+      `file ${FILES["src/a-b.php"]} src/a-b.php`,
       "",
     ].join("\n"),
   );
 });
 
-test("without an approval service, every confirmation refuses and says the file isn't an approval", async () => {
+test("without an approval service, every lookup refuses and says the file isn't an approval", async () => {
   await assert.rejects(
-    unconfiguredApprovals.confirm({
-      package: { name: "getquick/gq-support", version: "0.2.0", tag: "v0.2.0" },
+    unconfiguredApprovals.lookup({
+      phase: "deploy",
+      package: { name: "getquick/gq-support", version: "0.1.11" },
     }),
     /No authenticated package approval service is configured.*not an approval/u,
   );
