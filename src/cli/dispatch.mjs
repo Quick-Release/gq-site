@@ -69,7 +69,7 @@ import {
   runOffboardCommand,
 } from "../offboard/commands.mjs";
 import { refuseWhenOffboarded } from "../offboard/guard.mjs";
-import { approvalsFor } from "../ploi/approval-command.mjs";
+import { unconfiguredApprovals } from "../ploi/package-expectations.mjs";
 import { VERSION } from "../version.mjs";
 
 const COMMAND_OPTIONS = new Map([
@@ -88,7 +88,7 @@ const COMMAND_OPTIONS = new Map([
 // otherwise to undefined for success.
 export async function runCli(
   argv,
-  { cwd, env, fetch, exec, lookup, clock, approvals, stdin, io, interactive },
+  { cwd, env, fetch, exec, lookup, clock, approvals, approvalLookup, stdin, io, interactive },
 ) {
   // The Sigillo wrapper parses its own arguments: everything after `--` belongs
   // to the wrapped command, not to gq.
@@ -145,14 +145,13 @@ export async function runCli(
   });
   // An offboarded Site refuses whatever would expose it again (ADR 0011).
   refuseWhenOffboarded(parsed, context.config);
-  // A guarded package's approval lookup: the injected one, else the one this
-  // machine's own configuration names (never the Site's .env or Sigillo
-  // values), else none: every guarded package refuses.
-  approvals ??= approvalsFor({
-    env,
-    project: context.config.project,
-    projectRoot: context.projectRoot,
-  });
+  // A guarded package's approval lookup: the injected adapter, else the one
+  // the caller's `approvalLookup` builds for this Site (bin/gq.mjs: the
+  // Operator CLI this machine configures), else none: every guarded package
+  // refuses.
+  approvals ??= approvalLookup
+    ? approvalLookup({ project: context.config.project, projectRoot: context.projectRoot })
+    : unconfiguredApprovals;
   const [provider, resource, action = "list"] = parsed.command;
 
   if (isReleaseCommand(parsed.command)) {

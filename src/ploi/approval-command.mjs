@@ -5,15 +5,22 @@
 //   <command> [<args>...] composer-approval <slot> <release-id> <artifact-dir> <prepare|deploy>
 //     --stage <stage> --account-id <id> --database-id <id> --ledger-database-id <id>
 //
-// Trust comes only from the Operator's machine, never from a Site: the
-// configuration is the file APPROVAL_CONFIG_FILE under the invoking
-// process's XDG_CONFIG_HOME (else HOME/.config), outside the Site, never a
-// Site's .env, ops.env or Sigillo values. It names an absolute command and
-// the gq-support checkout it runs in, both outside the Site; the checkout
-// must be clean at OPERATOR_COMMIT, the reviewed gq-support commit. It binds
-// each project to its approval target: stage, slot, Cloudflare account, main
-// and ledger database IDs. A lookup refuses unless the Site's reviewed
-// gq.ops.json deployment.approval names that same stage and slot.
+// Trust comes only from the Operator's machine, never from a Site: only
+// bin/gq.mjs wires this adapter in, from its own process environment, and
+// the configuration is the file GQ_SUPPORT_APPROVAL_CONFIG names (an
+// absolute path), else APPROVAL_CONFIG_FILE under XDG_CONFIG_HOME (else
+// HOME/.config); outside the Site, never a Site's .env, ops.env, Sigillo
+// values or gq.ops.json. It names an absolute command and the gq-support
+// checkout it runs in, both outside the Site; the checkout must be clean at
+// OPERATOR_COMMIT, the reviewed gq-support commit. It binds each project to
+// its approval target: stage, slot, Cloudflare account, main and ledger
+// database IDs, and for each gq-support version it may look up, the approved
+// release's ID and its downloaded artifact directory. A lookup refuses unless
+// the Site's reviewed gq.ops.json deployment.approval names that same stage
+// and slot, and the request names that version and release. No saved record
+// is ever accepted: every lookup runs the CLI. Its logins are the Operator's
+// own Wrangler and gh ones; gq holds no key or secret for it. Refusals name
+// no path from the configuration.
 //
 // The command runs without a shell, in its own process group, for at most
 // APPROVAL_TIMEOUT_MS and MAX_OUTPUT_BYTES of output (bounded-process.mjs),
@@ -34,6 +41,9 @@ import { parseStrictJson } from "./strict-json.mjs";
 // 154's merge. A new pin is a reviewed gq-site change.
 export const OPERATOR_COMMIT = "29de3c7ec66ad96d6726bae20766c2acc7fcc312";
 export const APPROVAL_CONFIG_FILE = "gq/support-approval.json";
+export const APPROVAL_CONFIG_VARIABLE = "GQ_SUPPORT_APPROVAL_CONFIG";
+// The one package the Operator CLI approves.
+export const OPERATOR_PACKAGE = "getquick/gq-support";
 export const APPROVAL_TIMEOUT_MS = 120_000;
 export const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const GIT_TIMEOUT_MS = 30_000;
@@ -65,7 +75,6 @@ const configSchema = z.strictObject({
   command: absolute,
   args: z.array(z.string()).default([]),
   checkout: absolute,
-  artifactDir: absolute,
   targets: z.record(
     text,
     z.strictObject({
@@ -74,51 +83,65 @@ const configSchema = z.strictObject({
       accountId: text,
       databaseId: text,
       ledgerDatabaseId: text,
+      // gq-support version -> the approved release it is, and where its
+      // downloaded release artifact is.
+      releases: z.record(
+        text,
+        z.strictObject({ releaseId: z.number().int().positive(), artifactDir: absolute }),
+      ),
     }),
   ),
 });
 
 // The approvals adapter this machine configures for `project` (whose Site is
 // at `projectRoot`), from the invoking process's environment `env`:
-// unconfiguredApprovals without the configuration file, else a command
+// unconfiguredApprovals without a configuration file, else a command
 // adapter, or one that refuses every lookup when the configuration can't be
 // trusted.
 export function approvalsFor({ env, project, projectRoot, operatorCommit = OPERATOR_COMMIT }) {
+  const explicit = env[APPROVAL_CONFIG_VARIABLE]?.trim();
+  if (explicit && !isAbsolute(explicit)) {
+    return refusing(`${APPROVAL_CONFIG_VARIABLE} isn't an absolute path`);
+  }
   const base = env.XDG_CONFIG_HOME?.trim() || (env.HOME?.trim() && join(env.HOME, ".config"));
-  if (!base || !isAbsolute(base)) return unconfiguredApprovals;
-  const path = join(base, APPROVAL_CONFIG_FILE);
+  const path = explicit || (base && isAbsolute(base) ? join(base, APPROVAL_CONFIG_FILE) : null);
+  if (!path) return unconfiguredApprovals;
   let source;
   try {
     source = readFileSync(path, "utf8");
   } catch (error) {
-    if (error.code === "ENOENT") return unconfiguredApprovals;
-    return refusing(`${path} can't be read`);
+    if (error.code === "ENOENT" && !explicit) return unconfiguredApprovals;
+    return refusing("the approval configuration can't be read");
   }
   const site = realpathOrNull(projectRoot);
   if (!site || inside(realpathOrNull(path) ?? path, site)) {
-    return refusing(`${path} is inside the Site, which can't configure its own approvals`);
+    return refusing(
+      "the approval configuration is inside the Site, which can't configure its own approvals",
+    );
   }
   let config;
   try {
     config = configSchema.parse(parseStrictJson(source));
   } catch {
-    return refusing(`${path} isn't a valid approval configuration`);
+    return refusing("the approval configuration isn't valid");
   }
   const target = Object.hasOwn(config.targets, project) ? config.targets[project] : null;
-  if (!target) return refusing(`${path} binds no approval target for ${project}`);
+  if (!target)
+    return refusing(`the approval configuration binds no approval target for ${project}`);
   for (const [name, configured] of [
     ["command", config.command],
     ["checkout", config.checkout],
+    ...Object.values(target.releases).map(({ artifactDir }) => ["artifact directory", artifactDir]),
   ]) {
     const real = realpathOrNull(configured);
-    if (!real) return refusing(`${path}'s ${name} doesn't exist`);
-    if (inside(real, site)) return refusing(`${path}'s ${name} is inside the Site`);
+    if (!real) return refusing(`the approval configuration's ${name} doesn't exist`);
+    if (inside(real, site))
+      return refusing(`the approval configuration's ${name} is inside the Site`);
   }
   return createCommandApprovals({
     command: config.command,
     args: config.args,
     checkout: config.checkout,
-    artifactDir: config.artifactDir,
     target,
     operatorCommit,
     env: childEnvironment(env),
@@ -130,7 +153,6 @@ export function createCommandApprovals({
   command,
   args = [],
   checkout,
-  artifactDir,
   target,
   operatorCommit = OPERATOR_COMMIT,
   env,
@@ -141,6 +163,17 @@ export function createCommandApprovals({
       const label = `The approval lookup for ${pkg.name} ${pkg.version} (release ${releaseId}, phase ${phase})`;
       if (!Number.isSafeInteger(releaseId) || releaseId < 1) {
         throw new Error(`${label} needs the approved release's ID.`);
+      }
+      if (pkg.name !== OPERATOR_PACKAGE) {
+        throw new Error(`${label} refused: the Operator CLI approves only ${OPERATOR_PACKAGE}.`);
+      }
+      const release = Object.hasOwn(target.releases, pkg.version)
+        ? target.releases[pkg.version]
+        : null;
+      if (!release || release.releaseId !== releaseId) {
+        throw new Error(
+          `${label} refused: this machine binds ${release ? `release ${release.releaseId}` : "no release"} for ${pkg.name} ${pkg.version}.`,
+        );
       }
       if (stage !== target.stage || slot !== target.slot) {
         throw new Error(
@@ -157,7 +190,7 @@ export function createCommandApprovals({
             "composer-approval",
             target.slot,
             String(releaseId),
-            artifactDir,
+            release.artifactDir,
             phase,
             "--stage",
             target.stage,

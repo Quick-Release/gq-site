@@ -13,6 +13,7 @@ import {
   recordingFetch,
   temporaryDirectory,
 } from "../support/fixture-site.mjs";
+import { approvalsFor } from "../../src/ploi/approval-command.mjs";
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const DEPLOY_SCRIPT = "#!/usr/bin/env bash\necho deploy v1.4.0\n";
@@ -1670,14 +1671,20 @@ test("release package prepares a guarded package from a fresh prepare approval a
 });
 
 test("release package takes its approval configuration only from the Operator's machine, never the Site", async () => {
-  // The Site's own .env can't configure a lookup.
+  // The lookup the caller wires in (bin/gq.mjs: the Operator CLI) reads the
+  // caller's environment, never the Site's .env.
+  const machineLookup = (env) => (site) => approvalsFor({ env, ...site });
   const fixture = await supportSite(GUARDED_SUPPORT);
   await writeFile(
     fixture.path(".env"),
-    "GQ_SUPPORT_APPROVAL_COMMAND=./forged\nXDG_CONFIG_HOME=.\n",
+    "GQ_SUPPORT_APPROVAL_CONFIG=/tmp/forged.json\nXDG_CONFIG_HOME=.\n",
   );
   const exec = guardedPrepare(fixture);
-  const unconfigured = await fixture.run(PREPARE, { env: RELEASE_ENV, exec });
+  const unconfigured = await fixture.run(PREPARE, {
+    env: RELEASE_ENV,
+    exec,
+    approvalLookup: machineLookup(RELEASE_ENV),
+  });
   assert.equal(unconfigured.code, 1);
   assert.match(unconfigured.stderr, /No package approval lookup is configured/u);
   assert.ok(!exec.calls.some(({ command }) => command === "composer"));
@@ -1698,28 +1705,31 @@ test("release package takes its approval configuration only from the Operator's 
       schemaVersion: 1,
       command: process.execPath,
       checkout,
-      artifactDir: "/data/artifacts/gq-support-0.1.11",
       targets: {
         fixture: {
           ...APPROVAL,
           accountId: "account-1",
           databaseId: "db-main",
           ledgerDatabaseId: "db-ledger",
+          releases: { "0.1.11": { releaseId: 11, artifactDir: home } },
         },
       },
     }),
   );
   const machine = await supportSite(GUARDED_SUPPORT);
   const machineExec = guardedPrepare(machine);
+  const env = { ...RELEASE_ENV, HOME: home, PATH: process.env.PATH };
   const unpinned = await machine.run(PREPARE, {
-    env: { ...RELEASE_ENV, HOME: home, PATH: process.env.PATH },
+    env,
     exec: machineExec,
+    approvalLookup: machineLookup(env),
   });
   assert.equal(unpinned.code, 1);
   assert.match(
     unpinned.stderr,
     /the gq-support checkout isn't clean at the reviewed commit 29de3c7ec66a/u,
   );
+  assert.doesNotMatch(unpinned.stderr, new RegExp(home.replaceAll("/", "\\/"), "u"));
   assert.ok(!machineExec.calls.some(({ command }) => command === "composer"));
 });
 

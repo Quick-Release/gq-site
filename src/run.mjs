@@ -8,8 +8,9 @@ import { runCli } from "./cli/dispatch.mjs";
 // through `lookup` (node:dns/promises' signature), every wait through
 // `clock` ({ now(), sleep(ms) }), the input a command reads
 // (git's credential request) from `stdin`, a guarded package's approval
-// record through `approvals` ({ lookup }; without it, the Operator CLI the
-// environment configures, else none, so a guarded package refuses), and
+// record through `approvals` ({ lookup }), else the adapter
+// `approvalLookup({ project, projectRoot })` builds for the Site (bin/gq.mjs
+// passes the Operator CLI's), else none, so a guarded package refuses; and
 // every value a command needs from its surroundings comes from `cwd` and
 // `env`; no command reads the process's own environment or directory.
 // bin/gq.mjs is the only caller that wires in the real ones. Resolves to the process exit code.
@@ -23,6 +24,7 @@ export async function run(
     lookup = unavailable("lookup"),
     clock = SYSTEM_CLOCK,
     approvals,
+    approvalLookup,
     stdin,
     stdout,
     stderr,
@@ -50,6 +52,7 @@ export async function run(
         lookup,
         clock,
         approvals,
+        approvalLookup,
         stdin,
         io,
         interactive,

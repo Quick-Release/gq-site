@@ -50,6 +50,16 @@ test("a runaway writer is killed as soon as it passes the output bound", async (
   assert.ok(Date.now() - started < 10_000, "it didn't wait for the timeout");
 });
 
+test("a runaway stderr writer is killed too, its output never kept", async () => {
+  const { path } = await script(
+    'const block = "secret".repeat(10000); setInterval(() => process.stderr.write(block), 0);',
+  );
+  await assert.rejects(
+    runBounded(process.execPath, [path], { env: ENV, timeoutMs: 20_000, maxBytes: 1024 * 1024 }),
+    /^Error: printed too much$/u,
+  );
+});
+
 test("a hung command and its descendants are killed at the timeout", async () => {
   const { directory, path } = await script(`
     import { spawn } from "node:child_process";

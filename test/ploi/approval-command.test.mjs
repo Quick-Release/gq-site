@@ -4,7 +4,7 @@
 // repository), so the bounds, the pin and the environment are what they
 // would be in use.
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
@@ -19,6 +19,7 @@ const TARGET = Object.freeze({
   accountId: "account-1",
   databaseId: "db-main",
   ledgerDatabaseId: "db-ledger",
+  releases: { "0.1.11": { releaseId: 11, artifactDir: "/data/artifacts/gq-support-0.1.11" } },
 });
 const REQUEST = Object.freeze({
   phase: "deploy",
@@ -59,7 +60,9 @@ async function machine({ stdout = JSON.stringify(RECORD), stderr = "", code = 0 
   );
   const site = join(root, "site");
   await mkdir(site);
-  return { root, checkout, commit, operator, recorded, site, git };
+  const artifacts = join(root, "artifacts");
+  await mkdir(artifacts);
+  return { root, checkout, commit, operator, recorded, site, git, artifacts };
 }
 
 function adapterOn(m, overrides = {}) {
@@ -67,7 +70,6 @@ function adapterOn(m, overrides = {}) {
     command: process.execPath,
     args: [m.operator],
     checkout: m.checkout,
-    artifactDir: "/data/artifacts/gq-support-0.1.11",
     target: TARGET,
     operatorCommit: m.commit,
     env: { PATH: process.env.PATH },
@@ -161,8 +163,9 @@ test("the CLI gets only the environment its logins need, never deploy credential
       command: process.execPath,
       args: [m.operator],
       checkout: m.checkout,
-      artifactDir: "/data/artifacts/gq-support-0.1.11",
-      targets: { nomia: TARGET },
+      targets: {
+        nomia: { ...TARGET, releases: { "0.1.11": { releaseId: 11, artifactDir: m.artifacts } } },
+      },
     }),
   );
   const approvals = approvalsFor({
@@ -198,13 +201,13 @@ test("the CLI gets only the environment its logins need, never deploy credential
 
 test("only the Operator's machine configures a lookup: never one inside the Site, relative, or for another project", async () => {
   const m = await machine();
+  const target = { ...TARGET, releases: { "0.1.11": { releaseId: 11, artifactDir: m.artifacts } } };
   const config = (overrides = {}) => ({
     schemaVersion: 1,
     command: process.execPath,
     args: [m.operator],
     checkout: m.checkout,
-    artifactDir: "/data/artifacts",
-    targets: { nomia: TARGET },
+    targets: { nomia: target },
     ...overrides,
   });
   async function lookupWith(content, { home } = {}) {
@@ -233,18 +236,169 @@ test("only the Operator's machine configures a lookup: never one inside the Site
   await mkdir(join(m.site, "bin"));
   await writeFile(join(m.site, "bin", "operator"), "");
   const cases = [
-    [config({ command: "operator" }), /isn't a valid approval configuration/u],
-    [config({ command: join(m.site, "bin", "operator") }), /'s command is inside the Site/u],
-    [config({ checkout: m.site }), /'s checkout is inside the Site/u],
-    [config({ command: "/nonexistent/pnpm" }), /'s command doesn't exist/u],
-    [config({ targets: { ekis: TARGET } }), /binds no approval target for nomia/u],
-    [config({ approved: true }), /isn't a valid approval configuration/u],
-    ['{"schemaVersion":1,"schemaVersion":1}', /isn't a valid approval configuration/u],
+    [config({ command: "operator" }), /the approval configuration isn't valid/u],
+    [
+      config({ command: join(m.site, "bin", "operator") }),
+      /configuration's command is inside the Site/u,
+    ],
+    [config({ checkout: m.site }), /configuration's checkout is inside the Site/u],
+    [
+      config({
+        targets: {
+          nomia: { ...target, releases: { "0.1.11": { releaseId: 11, artifactDir: m.site } } },
+        },
+      }),
+      /configuration's artifact directory is inside the Site/u,
+    ],
+    [config({ command: "/nonexistent/pnpm" }), /configuration's command doesn't exist/u],
+    [config({ targets: { ekis: target } }), /binds no approval target for nomia/u],
+    [config({ approved: true }), /the approval configuration isn't valid/u],
+    [config({ artifactDir: m.artifacts }), /the approval configuration isn't valid/u],
+    ['{"schemaVersion":1,"schemaVersion":1}', /the approval configuration isn't valid/u],
   ];
   for (const [content, message] of cases) {
-    await assert.rejects(lookupWith(content), message);
+    const error = await lookupWith(content).then(
+      () => null,
+      (rejection) => rejection,
+    );
+    assert.match(error?.message ?? "", message);
+    // Refusals name no path from the Operator's machine.
+    assert.doesNotMatch(error.message, new RegExp(m.root.replaceAll("/", "\\/"), "u"));
   }
   // A Site can't hold the configuration: HOME inside it.
   await assert.rejects(lookupWith(config(), { home: m.site }), /is inside the Site/u);
+  await assert.rejects(readFile(m.recorded, "utf8"), { code: "ENOENT" });
+});
+
+test("a lookup names the version and release this machine binds, for gq-support only", async () => {
+  const m = await machine();
+  for (const [request, message] of [
+    [
+      { ...REQUEST, package: { name: "getquick/gq-support", version: "0.1.12" } },
+      /binds no release for getquick\/gq-support 0\.1\.12/u,
+    ],
+    [{ ...REQUEST, releaseId: 12 }, /binds release 11 for getquick\/gq-support 0\.1\.11/u],
+    [
+      { ...REQUEST, package: { name: "getquick/gq-design", version: "0.1.11" } },
+      /approves only getquick\/gq-support/u,
+    ],
+  ]) {
+    await assert.rejects(adapterOn(m).lookup(request), message);
+  }
+  await assert.rejects(readFile(m.recorded, "utf8"), { code: "ENOENT" });
+});
+
+test("an explicit configuration location wins, must be absolute, and must exist", async () => {
+  const m = await machine();
+  const explicit = join(m.root, "operator-approval.json");
+  await writeFile(
+    explicit,
+    JSON.stringify({
+      schemaVersion: 1,
+      command: process.execPath,
+      args: [m.operator],
+      checkout: m.checkout,
+      targets: {
+        nomia: { ...TARGET, releases: { "0.1.11": { releaseId: 11, artifactDir: m.artifacts } } },
+      },
+    }),
+  );
+  const lookup = (env) =>
+    approvalsFor({
+      env: { PATH: process.env.PATH, HOME: "/nonexistent", ...env },
+      project: "nomia",
+      projectRoot: m.site,
+      operatorCommit: m.commit,
+    }).lookup(REQUEST);
+
+  assert.deepEqual(await lookup({ GQ_SUPPORT_APPROVAL_CONFIG: explicit }), RECORD);
+  await assert.rejects(
+    lookup({ GQ_SUPPORT_APPROVAL_CONFIG: "operator-approval.json" }),
+    /GQ_SUPPORT_APPROVAL_CONFIG isn't an absolute path/u,
+  );
+  await assert.rejects(
+    lookup({ GQ_SUPPORT_APPROVAL_CONFIG: join(m.root, "missing.json") }),
+    /the approval configuration can't be read/u,
+  );
+});
+
+// bin/gq.mjs wires the Operator CLI adapter in from its own environment: a
+// real gq process, in a committed guarded Site, with no configuration (no
+// lookup), and with one whose checkout isn't the reviewed commit (refused
+// before Composer).
+test("bin/gq.mjs looks guarded packages up through the Operator CLI its environment configures", async () => {
+  const { createFixtureSite } = await import("../support/fixture-site.mjs");
+  const m = await machine();
+  const fixture = await createFixtureSite({
+    ops: {
+      schemaVersion: 1,
+      project: "nomia",
+      variant: "content",
+      deployment: {
+        protected: true,
+        state: "authorized",
+        guardedPackages: ["getquick/gq-support"],
+        approval: { stage: "prod", slot: "nomia/production" },
+      },
+    },
+    files: {
+      VERSION: "1.0.0\n",
+      "package.json": '{ "name": "nomia", "version": "1.0.0", "private": true }\n',
+      "apps/frontend/package.json": '{ "name": "frontend", "version": "1.0.0" }\n',
+      "apps/cms/composer.json": '{ "require": { "getquick/gq-support": "^0.1.3" } }\n',
+      "apps/cms/composer.lock":
+        '{ "packages": [{ "name": "getquick/gq-support", "version": "0.1.10" }], "packages-dev": [] }\n',
+    },
+  });
+  const git = (...args) =>
+    execFileSync("git", ["-C", fixture.root, ...args], { env: GIT_ENV, encoding: "utf8" });
+  git("add", "-A");
+  git("-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "--quiet", "-m", "site");
+  const config = join(m.root, "operator-approval.json");
+  await writeFile(
+    config,
+    JSON.stringify({
+      schemaVersion: 1,
+      command: process.execPath,
+      args: [m.operator],
+      checkout: m.checkout,
+      targets: {
+        nomia: { ...TARGET, releases: { "0.1.11": { releaseId: 11, artifactDir: m.artifacts } } },
+      },
+    }),
+  );
+  const gq = (env) =>
+    spawnSync(
+      process.execPath,
+      [
+        new URL("../../bin/gq.mjs", import.meta.url).pathname,
+        "release",
+        "package",
+        "getquick/gq-support",
+        "--to",
+        "0.1.11",
+        "--release-id",
+        "11",
+        "--no-deploy",
+      ],
+      {
+        cwd: fixture.root,
+        encoding: "utf8",
+        env: { PATH: process.env.PATH, HOME: m.root, COMPOSER_AUTH: "{}", ...env },
+      },
+    );
+
+  const unconfigured = gq({});
+  assert.equal(unconfigured.status, 1, unconfigured.stderr);
+  assert.match(unconfigured.stderr, /No package approval lookup is configured/u);
+
+  const unpinned = gq({ GQ_SUPPORT_APPROVAL_CONFIG: config });
+  assert.equal(unpinned.status, 1, unpinned.stderr);
+  assert.match(
+    unpinned.stderr,
+    /the gq-support checkout isn't clean at the reviewed commit 29de3c7ec66a/u,
+  );
+  assert.doesNotMatch(unpinned.stderr, new RegExp(m.root.replaceAll("/", "\\/"), "u"));
+  // The CLI never ran.
   await assert.rejects(readFile(m.recorded, "utf8"), { code: "ENOENT" });
 });

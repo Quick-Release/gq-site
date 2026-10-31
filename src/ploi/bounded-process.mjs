@@ -1,9 +1,10 @@
 // Runs a trusted local command with hard bounds, for the package approval
 // lookup: no shell, its own process group (so a descendant can't keep it
 // alive or hold its pipes open), at most `timeoutMs`, and at most `maxBytes`
-// of stdout, streamed and counted as it arrives. When the command exits, or
-// a bound is hit, the whole group is killed and its pipes closed. stderr is
-// drained and discarded: a refusal never carries the command's own output.
+// each of stdout and stderr, streamed and counted as it arrives. When the
+// command exits, or a bound is hit, the whole group is killed and its pipes
+// closed. stderr is counted and discarded: a refusal never carries the
+// command's own output.
 //
 // Resolves to { code, stdout } (code null when a signal ended it); rejects
 // with a fixed message ("timed out", "printed too much", "couldn't start").
@@ -49,7 +50,11 @@ export async function runBounded(command, args, { cwd, env, timeoutMs, maxBytes 
       if (bytes > maxBytes) stop("printed too much");
       else chunks.push(chunk);
     });
-    child.stderr.on("data", () => {});
+    let errorBytes = 0;
+    child.stderr.on("data", (chunk) => {
+      errorBytes += chunk.length;
+      if (errorBytes > maxBytes) stop("printed too much");
+    });
     child.on("error", () => {
       killGroup();
       settle(() => reject(new Error(failure ?? "couldn't start")));
