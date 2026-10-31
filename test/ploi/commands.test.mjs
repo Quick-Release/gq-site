@@ -1673,12 +1673,10 @@ test("release package prepares a guarded package from a fresh prepare approval a
 test("release package takes its approval configuration only from the Operator's machine, never the Site", async () => {
   // The lookup the caller wires in (bin/gq.mjs: the Operator CLI) reads the
   // caller's environment, never the Site's .env.
-  const machineLookup = (env) => (site) => approvalsFor({ env, ...site });
+  const machineLookup = (env) => (site) =>
+    approvalsFor({ env, homedir: "/nonexistent-home", username: "operator", ...site });
   const fixture = await supportSite(GUARDED_SUPPORT);
-  await writeFile(
-    fixture.path(".env"),
-    "GQ_SUPPORT_APPROVAL_CONFIG=/tmp/forged.json\nXDG_CONFIG_HOME=.\n",
-  );
+  await writeFile(fixture.path(".env"), "HOME=.\nXDG_CONFIG_HOME=.\n");
   const exec = guardedPrepare(fixture);
   const unconfigured = await fixture.run(PREPARE, {
     env: RELEASE_ENV,
@@ -1689,8 +1687,9 @@ test("release package takes its approval configuration only from the Operator's 
   assert.match(unconfigured.stderr, /No package approval lookup is configured/u);
   assert.ok(!exec.calls.some(({ command }) => command === "composer"));
 
-  // The machine's configuration, whose gq-support checkout isn't the reviewed
-  // commit: refused before Composer runs.
+  // The machine's configuration (in the user database's home, here a
+  // temporary one), whose gq-support checkout isn't the reviewed commit:
+  // refused before Composer runs.
   const home = await temporaryDirectory();
   const checkout = join(home, "gq-support");
   await mkdir(checkout);
@@ -1698,12 +1697,14 @@ test("release package takes its approval configuration only from the Operator's 
     Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")),
   );
   execFileSync("git", ["-C", checkout, "init", "--quiet"], { env: gitEnv });
+  const git = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
   await mkdir(join(home, ".config", "gq"), { recursive: true });
   await writeFile(
     join(home, ".config", "gq", "support-approval.json"),
     JSON.stringify({
-      schemaVersion: 1,
-      command: process.execPath,
+      schemaVersion: 2,
+      node: process.execPath,
+      git,
       checkout,
       targets: {
         fixture: {
@@ -1718,11 +1719,11 @@ test("release package takes its approval configuration only from the Operator's 
   );
   const machine = await supportSite(GUARDED_SUPPORT);
   const machineExec = guardedPrepare(machine);
-  const env = { ...RELEASE_ENV, HOME: home, PATH: process.env.PATH };
   const unpinned = await machine.run(PREPARE, {
-    env,
+    env: RELEASE_ENV,
     exec: machineExec,
-    approvalLookup: machineLookup(env),
+    approvalLookup: (site) =>
+      approvalsFor({ env: RELEASE_ENV, homedir: home, username: "operator", ...site }),
   });
   assert.equal(unpinned.code, 1);
   assert.match(

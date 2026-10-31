@@ -2,6 +2,7 @@
 // so a runaway writer, a hung command and a descendant holding the pipe open
 // are what they would be in use.
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -110,4 +111,36 @@ test("a command that can't start rejects with a fixed message", async () => {
     runBounded("/nonexistent/operator", [], { env: ENV, timeoutMs: 1000, maxBytes: 1024 }),
     /^Error: couldn't start$/u,
   );
+});
+
+test("when gq itself is terminated mid-lookup, the command and its descendants go with it", async () => {
+  const { directory, path: child } = await script(`
+    import { spawn } from "node:child_process";
+    import { writeFileSync } from "node:fs";
+    const grandchild = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "inherit" });
+    writeFileSync("PIDS", JSON.stringify({ child: process.pid, grandchild: grandchild.pid }));
+    setInterval(() => {}, 1000);
+  `);
+  const parent = join(directory, "parent.mjs");
+  await writeFile(
+    parent,
+    `import { runBounded } from ${JSON.stringify(new URL("../../src/ploi/bounded-process.mjs", import.meta.url).href)};
+     await runBounded(process.execPath, [${JSON.stringify(child)}], { cwd: ${JSON.stringify(directory)}, env: { PATH: process.env.PATH }, timeoutMs: 60_000, maxBytes: 1024 });`,
+  );
+  const gq = spawn(process.execPath, [parent], { stdio: "ignore" });
+  const exited = new Promise((resolve) =>
+    gq.on("exit", (code, signal) => resolve({ code, signal })),
+  );
+  let pids;
+  for (let attempt = 0; attempt < 100 && !pids; attempt += 1) {
+    await sleep(50);
+    pids = await readFile(join(directory, "PIDS"), "utf8").then(JSON.parse, () => null);
+  }
+  assert.ok(pids, "the command started");
+
+  gq.kill("SIGTERM");
+  assert.deepEqual(await exited, { code: null, signal: "SIGTERM" });
+  await sleep(100);
+  assert.equal(alive(pids.child), false, "the command is gone");
+  assert.equal(alive(pids.grandchild), false, "its descendant is gone");
 });

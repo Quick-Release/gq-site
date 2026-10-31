@@ -1,35 +1,47 @@
 // The package approval lookup adapter: runs gq-support's read-only Operator
-// CLI from a reviewed gq-support checkout, with the Operator's own
-// Cloudflare and GitHub logins:
+// CLI, exactly as its reviewed `operator` script does, from a gq-support
+// checkout clean at OPERATOR_COMMIT:
 //
-//   <command> [<args>...] composer-approval <slot> <release-id> <artifact-dir> <prepare|deploy>
+//   <node> --import <checkout>/worker/node_modules/alchemy/bin/register-oxc.js \
+//     scripts/operator.ts composer-approval <slot> <release-id> <artifact-dir> <prepare|deploy> \
 //     --stage <stage> --account-id <id> --database-id <id> --ledger-database-id <id>
 //
-// Trust comes only from the Operator's machine, never from a Site: only
-// bin/gq.mjs wires this adapter in, from its own process environment, and
-// the configuration is the file GQ_SUPPORT_APPROVAL_CONFIG names (an
-// absolute path), else APPROVAL_CONFIG_FILE under XDG_CONFIG_HOME (else
-// HOME/.config); outside the Site, never a Site's .env, ops.env, Sigillo
-// values or gq.ops.json. It names an absolute command and the gq-support
-// checkout it runs in, both outside the Site; the checkout must be clean at
-// OPERATOR_COMMIT, the reviewed gq-support commit. It binds each project to
-// its approval target: stage, slot, Cloudflare account, main and ledger
-// database IDs, and for each gq-support version it may look up, the approved
-// release's ID and its downloaded artifact directory. A lookup refuses unless
-// the Site's reviewed gq.ops.json deployment.approval names that same stage
-// and slot, and the request names that version and release. No saved record
-// is ever accepted: every lookup runs the CLI. Its logins are the Operator's
-// own Wrangler and gh ones; gq holds no key or secret for it. Refusals name
-// no path from the configuration.
+// in <checkout>/worker. Nothing about the command is configurable: no
+// command, argument or entry point comes from configuration.
 //
-// The command runs without a shell, in its own process group, for at most
-// APPROVAL_TIMEOUT_MS and MAX_OUTPUT_BYTES of output (bounded-process.mjs),
-// with only the environment its logins need: no Composer, Ploi, R2 or other
-// deploy credentials. Every refusal is a fixed message: none carries the
-// command's own output. The caller checks the record itself
-// (package-expectations.mjs checkApprovalRecord).
+// Trust comes only from the Operator's machine, never from a Site or the
+// environment gq runs in (which `gq sigillo run` and a Site's own tools can
+// set): the configuration is APPROVAL_CONFIG_FILE under the home directory
+// of the user running gq, as the system's user database has it
+// (os.userInfo), never HOME, XDG_CONFIG_HOME, a Site's .env or Sigillo
+// values. An environment that tries to select another configuration
+// (APPROVAL_CONFIG_VARIABLE) is refused, not ignored. The configuration
+// names absolute `node` and `git` executables and the checkout, all outside
+// the Site, and binds each project to its approval target and the releases
+// it may look up.
+//
+// Before each lookup, with that `git` and a fixed environment (no PATH a
+// Site could shadow, no user or system git configuration, no hooks or
+// fsmonitor): the checkout's HEAD must be OPERATOR_COMMIT, its work tree
+// clean (untracked files count), and worker/scripts/operator.ts a tracked
+// regular file. Its dependencies (node_modules, ignored by git) are a trusted
+// prerequisite the Operator installs with `pnpm install --frozen-lockfile`
+// at that commit: gq checks pnpm recorded installing exactly the tracked
+// pnpm-lock.yaml and that the loader resolves inside the checkout's
+// node_modules, which is evidence of the install, not a verification of
+// every installed file.
+//
+// The command runs without a shell, in its own process group, bounded in
+// time and in stdout and stderr (bounded-process.mjs), with a fixed
+// environment: HOME and the user from the user database, PATH from the
+// configured node's directory and /usr/bin:/bin, a fixed locale and TMPDIR.
+// Its logins are the Operator's own Wrangler and gh ones under that HOME; gq
+// holds no key or secret. No saved record is ever accepted: every lookup
+// runs the command. Refusals are fixed messages naming no configured path
+// and carrying no command output.
 import { readFileSync, realpathSync } from "node:fs";
-import { isAbsolute, join, relative } from "node:path";
+import { userInfo } from "node:os";
+import { dirname, isAbsolute, join, relative } from "node:path";
 
 import { z } from "zod";
 
@@ -40,53 +52,38 @@ import { parseStrictJson } from "./strict-json.mjs";
 // The reviewed gq-support commit whose Operator CLI gq trusts: gq-support PR
 // 154's merge. A new pin is a reviewed gq-site change.
 export const OPERATOR_COMMIT = "29de3c7ec66ad96d6726bae20766c2acc7fcc312";
-export const APPROVAL_CONFIG_FILE = "gq/support-approval.json";
+// The pinned commit's `operator` script, relative to its checkout.
+export const OPERATOR_DIRECTORY = "worker";
+export const OPERATOR_ENTRY = "worker/scripts/operator.ts";
+export const OPERATOR_LOADER = "worker/node_modules/alchemy/bin/register-oxc.js";
+export const APPROVAL_CONFIG_FILE = ".config/gq/support-approval.json";
 export const APPROVAL_CONFIG_VARIABLE = "GQ_SUPPORT_APPROVAL_CONFIG";
 // The one package the Operator CLI approves.
 export const OPERATOR_PACKAGE = "getquick/gq-support";
 export const APPROVAL_TIMEOUT_MS = 120_000;
 export const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const GIT_TIMEOUT_MS = 30_000;
-// What the CLI's Wrangler and gh logins and its runtime need, and nothing
-// else: never a Site's or a deploy's credentials.
-export const CHILD_ENVIRONMENT = Object.freeze([
-  "PATH",
-  "HOME",
-  "USER",
-  "LOGNAME",
-  "LANG",
-  "LC_ALL",
-  "LC_CTYPE",
-  "TZ",
-  "TMPDIR",
-  "XDG_CONFIG_HOME",
-  "XDG_DATA_HOME",
-  "XDG_CACHE_HOME",
-  "XDG_STATE_HOME",
-  "NODE_EXTRA_CA_CERTS",
-  "SSL_CERT_FILE",
-  "SSL_CERT_DIR",
-]);
 
-const text = z.string().trim().min(1);
-const absolute = text.refine((path) => isAbsolute(path), "must be an absolute path");
+// A string with no surrounding whitespace: compared exactly, never trimmed.
+const exact = z.string().regex(/^\S(?:.*\S)?$/u, "must not be empty or padded");
+const absolute = exact.refine((path) => isAbsolute(path), "must be an absolute path");
 const configSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  command: absolute,
-  args: z.array(z.string()).default([]),
+  schemaVersion: z.literal(2),
+  node: absolute,
+  git: absolute,
   checkout: absolute,
   targets: z.record(
-    text,
+    exact,
     z.strictObject({
-      stage: text,
-      slot: text,
-      accountId: text,
-      databaseId: text,
-      ledgerDatabaseId: text,
+      stage: exact,
+      slot: exact,
+      accountId: exact,
+      databaseId: exact,
+      ledgerDatabaseId: exact,
       // gq-support version -> the approved release it is, and where its
       // downloaded release artifact is.
       releases: z.record(
-        text,
+        exact,
         z.strictObject({ releaseId: z.number().int().positive(), artifactDir: absolute }),
       ),
     }),
@@ -94,23 +91,31 @@ const configSchema = z.strictObject({
 });
 
 // The approvals adapter this machine configures for `project` (whose Site is
-// at `projectRoot`), from the invoking process's environment `env`:
-// unconfiguredApprovals without a configuration file, else a command
-// adapter, or one that refuses every lookup when the configuration can't be
-// trusted.
-export function approvalsFor({ env, project, projectRoot, operatorCommit = OPERATOR_COMMIT }) {
-  const explicit = env[APPROVAL_CONFIG_VARIABLE]?.trim();
-  if (explicit && !isAbsolute(explicit)) {
-    return refusing(`${APPROVAL_CONFIG_VARIABLE} isn't an absolute path`);
+// at `projectRoot`): unconfiguredApprovals without a configuration file,
+// else a command adapter, or one that refuses every lookup when the
+// configuration can't be trusted. `env` is only checked for an attempt to
+// select another configuration; `homedir` and `username` default to the
+// user database's.
+export function approvalsFor({
+  env,
+  project,
+  projectRoot,
+  operatorCommit = OPERATOR_COMMIT,
+  homedir = userInfo().homedir,
+  username = userInfo().username,
+}) {
+  if (env[APPROVAL_CONFIG_VARIABLE] !== undefined) {
+    return refusing(
+      `${APPROVAL_CONFIG_VARIABLE} is set, but only ~/${APPROVAL_CONFIG_FILE} of the user running gq configures the lookup`,
+    );
   }
-  const base = env.XDG_CONFIG_HOME?.trim() || (env.HOME?.trim() && join(env.HOME, ".config"));
-  const path = explicit || (base && isAbsolute(base) ? join(base, APPROVAL_CONFIG_FILE) : null);
-  if (!path) return unconfiguredApprovals;
+  if (!homedir || !isAbsolute(homedir)) return unconfiguredApprovals;
+  const path = join(homedir, APPROVAL_CONFIG_FILE);
   let source;
   try {
     source = readFileSync(path, "utf8");
   } catch (error) {
-    if (error.code === "ENOENT" && !explicit) return unconfiguredApprovals;
+    if (error.code === "ENOENT") return unconfiguredApprovals;
     return refusing("the approval configuration can't be read");
   }
   const site = realpathOrNull(projectRoot);
@@ -126,38 +131,52 @@ export function approvalsFor({ env, project, projectRoot, operatorCommit = OPERA
     return refusing("the approval configuration isn't valid");
   }
   const target = Object.hasOwn(config.targets, project) ? config.targets[project] : null;
-  if (!target)
+  if (!target) {
     return refusing(`the approval configuration binds no approval target for ${project}`);
+  }
   for (const [name, configured] of [
-    ["command", config.command],
+    ["node", config.node],
+    ["git", config.git],
     ["checkout", config.checkout],
     ...Object.values(target.releases).map(({ artifactDir }) => ["artifact directory", artifactDir]),
   ]) {
     const real = realpathOrNull(configured);
     if (!real) return refusing(`the approval configuration's ${name} doesn't exist`);
-    if (inside(real, site))
+    if (inside(real, site)) {
       return refusing(`the approval configuration's ${name} is inside the Site`);
+    }
   }
   return createCommandApprovals({
-    command: config.command,
-    args: config.args,
+    node: config.node,
+    git: config.git,
     checkout: config.checkout,
     target,
     operatorCommit,
-    env: childEnvironment(env),
+    homedir,
+    username,
   });
 }
 
-// A lookup adapter running the Operator CLI from `checkout` for `target`.
+// A lookup adapter running the pinned Operator CLI from `checkout` for
+// `target`, with the `node` and `git` executables given.
 export function createCommandApprovals({
-  command,
-  args = [],
+  node,
+  git,
   checkout,
   target,
   operatorCommit = OPERATOR_COMMIT,
-  env,
+  homedir,
+  username,
   timeoutMs = APPROVAL_TIMEOUT_MS,
 }) {
+  const env = {
+    HOME: homedir,
+    USER: username,
+    LOGNAME: username,
+    PATH: `${dirname(node)}:/usr/bin:/bin`,
+    LANG: "C.UTF-8",
+    TMPDIR: "/tmp",
+  };
   return {
     async lookup({ phase, stage, slot, releaseId, package: pkg }) {
       const label = `The approval lookup for ${pkg.name} ${pkg.version} (release ${releaseId}, phase ${phase})`;
@@ -180,13 +199,21 @@ export function createCommandApprovals({
           `${label} refused: this Site names ${stage} slot ${slot}, but this machine binds ${target.stage} slot ${target.slot} for it.`,
         );
       }
-      await requireReviewedCheckout(checkout, operatorCommit, env, label);
+      const loader = await requireReviewedCheckout({
+        git,
+        checkout,
+        commit: operatorCommit,
+        homedir,
+        label,
+      });
       let result;
       try {
         result = await runBounded(
-          command,
+          node,
           [
-            ...args,
+            "--import",
+            loader,
+            "scripts/operator.ts",
             "composer-approval",
             target.slot,
             String(releaseId),
@@ -201,7 +228,12 @@ export function createCommandApprovals({
             "--ledger-database-id",
             target.ledgerDatabaseId,
           ],
-          { cwd: checkout, env, timeoutMs, maxBytes: MAX_OUTPUT_BYTES },
+          {
+            cwd: join(checkout, OPERATOR_DIRECTORY),
+            env,
+            timeoutMs,
+            maxBytes: MAX_OUTPUT_BYTES,
+          },
         );
       } catch (error) {
         // runBounded's messages are fixed ("timed out"): no command output.
@@ -222,40 +254,61 @@ export function createCommandApprovals({
   };
 }
 
-// Refuses unless `checkout` is a git work tree at exactly `commit` with no
-// tracked or untracked change (ignored files, such as dependencies, aside).
-async function requireReviewedCheckout(checkout, commit, env, label) {
-  const git = async (args) => {
-    const result = await runBounded("git", ["-C", checkout, ...args], {
-      env,
-      timeoutMs: GIT_TIMEOUT_MS,
-      maxBytes: 1024 * 1024,
-    });
+// Refuses unless `checkout` is a git work tree at exactly `commit`, clean,
+// with the Operator entry point a tracked regular file and its dependencies
+// installed from the tracked lockfile. Resolves to the loader's real path.
+async function requireReviewedCheckout({ git, checkout, commit, homedir, label }) {
+  const refuse = (what) => new Error(`${label} refused: the gq-support checkout ${what}.`);
+  const run = async (args) => {
+    const result = await runBounded(
+      git,
+      ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", checkout, ...args],
+      {
+        env: {
+          HOME: homedir,
+          PATH: "/usr/bin:/bin",
+          GIT_CONFIG_NOSYSTEM: "1",
+          GIT_CONFIG_GLOBAL: "/dev/null",
+          LANG: "C.UTF-8",
+        },
+        timeoutMs: GIT_TIMEOUT_MS,
+        maxBytes: 1024 * 1024,
+      },
+    );
     if (result.code !== 0) throw new Error("git failed");
     return result.stdout;
   };
   let head;
   let status;
+  let entry;
   try {
-    head = (await git(["rev-parse", "HEAD"])).trim();
-    status = await git(["status", "--porcelain", "--untracked-files=normal"]);
+    head = (await run(["rev-parse", "HEAD"])).trim();
+    status = await run(["status", "--porcelain", "--untracked-files=normal"]);
+    entry = await run(["ls-files", "--stage", "--", OPERATOR_ENTRY]);
   } catch {
     head = null;
   }
   if (head !== commit || status !== "") {
-    throw new Error(
-      `${label} refused: the gq-support checkout isn't clean at the reviewed commit ${commit.slice(0, 12)}.`,
-    );
+    throw refuse(`isn't clean at the reviewed commit ${commit.slice(0, 12)}`);
   }
-}
-
-function childEnvironment(env) {
-  return Object.fromEntries(
-    CHILD_ENVIRONMENT.filter((name) => typeof env[name] === "string").map((name) => [
-      name,
-      env[name],
-    ]),
-  );
+  if (!/^100(644|755) [0-9a-f]{40} 0\t/u.test(entry)) {
+    throw refuse(`doesn't track ${OPERATOR_ENTRY} as a regular file`);
+  }
+  let installed;
+  try {
+    installed = readFileSync(join(checkout, "node_modules/.pnpm/lock.yaml")).equals(
+      readFileSync(join(checkout, "pnpm-lock.yaml")),
+    );
+  } catch {
+    installed = false;
+  }
+  if (!installed) throw refuse("isn't installed from its pnpm-lock.yaml");
+  const loader = realpathOrNull(join(checkout, OPERATOR_LOADER));
+  const modules = realpathOrNull(join(checkout, "node_modules"));
+  if (!loader || !modules || !inside(loader, modules)) {
+    throw refuse("has no installed Operator loader");
+  }
+  return loader;
 }
 
 function refusing(reason) {

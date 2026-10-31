@@ -149,9 +149,19 @@ export async function runCli(
   // the caller's `approvalLookup` builds for this Site (bin/gq.mjs: the
   // Operator CLI this machine configures), else none: every guarded package
   // refuses.
-  approvals ??= approvalLookup
-    ? approvalLookup({ project: context.config.project, projectRoot: context.projectRoot })
-    : unconfiguredApprovals;
+  // Built only when a guarded package is looked up: an unrelated command
+  // never reads the Operator's configuration.
+  if (!approvals && approvalLookup) {
+    let built;
+    approvals = {
+      lookup: (request) =>
+        (built ??= approvalLookup({
+          project: context.config.project,
+          projectRoot: context.projectRoot,
+        })).lookup(request),
+    };
+  }
+  approvals ??= unconfiguredApprovals;
   const [provider, resource, action = "list"] = parsed.command;
 
   if (isReleaseCommand(parsed.command)) {

@@ -10,6 +10,46 @@
 // with a fixed message ("timed out", "printed too much", "couldn't start").
 import { spawn } from "node:child_process";
 
+// The process groups still running: if gq itself exits or is interrupted or
+// terminated meanwhile, they are killed first, then the signal takes its
+// usual effect. The handlers are installed only while a group runs.
+const groups = new Set();
+const SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
+
+function killGroups() {
+  for (const pid of groups) {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
+function onSignal(signal) {
+  killGroups();
+  groups.clear();
+  uninstall();
+  process.kill(process.pid, signal);
+}
+
+function track(pid) {
+  if (groups.size === 0) {
+    process.on("exit", killGroups);
+    for (const signal of SIGNALS) process.on(signal, onSignal);
+  }
+  groups.add(pid);
+}
+
+function untrack(pid) {
+  if (groups.delete(pid) && groups.size === 0) uninstall();
+}
+
+function uninstall() {
+  process.removeListener("exit", killGroups);
+  for (const signal of SIGNALS) process.removeListener(signal, onSignal);
+}
+
 export async function runBounded(command, args, { cwd, env, timeoutMs, maxBytes }) {
   return new Promise((resolve, reject) => {
     let child;
@@ -19,11 +59,13 @@ export async function runBounded(command, args, { cwd, env, timeoutMs, maxBytes 
       reject(new Error("couldn't start"));
       return;
     }
+    if (child.pid) track(child.pid);
     let settled = false;
     const settle = (finish) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (child.pid) untrack(child.pid);
       finish();
     };
     const chunks = [];
