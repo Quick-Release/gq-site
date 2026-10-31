@@ -168,12 +168,13 @@ gq uses the credentials it already uses elsewhere. It never stores them and
 never prints them.
 
 - **Registry:** `COMPOSER_AUTH`'s `http-basic` login for the registry host.
-  Run gq through `gq sigillo run` to get it. Without it the registry is not
-  requested at all.
+  Run gq through `gq sigillo run`, which reads the fleet's from GQ Platform
+  `ops`. Without it the registry is not requested at all.
 - **GitHub:** `GITHUB_TOKEN` or `GH_TOKEN`. Public repositories can be read
   without one.
 - **GitHub Packages:** a `read:packages` token from `GITHUB_PACKAGES_TOKEN`
-  (the name Sigillo staging and CI use), else your user-level npm config's
+  (the fleet's, which `gq sigillo run` reads from GQ Platform `ops`, and CI's
+  name for it), else your user-level npm config's
   `//npm.pkg.github.com/:_authToken` (or its `tokenHelper`), as pnpm reads
   it. The repository's `.npmrc` is never read for one. Without a token GitHub
   Packages isn't requested.

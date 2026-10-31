@@ -1,7 +1,10 @@
 // Deploys the site's Cloudflare CI Worker and its secrets with the Worker
 // directory's own Wrangler. Runs through
 // `gq sigillo run`, so every secret comes from the secret store; they reach
-// Wrangler as JSON over stdin, never a file or argv.
+// Wrangler as JSON over stdin, never a file or argv. The registry credentials,
+// COMPOSER_AUTH and GITHUB_PACKAGES_TOKEN, are the fleet's, which
+// `gq sigillo run` reads from GQ Platform `ops` (gq-platform ADR 0013): after
+// rotating one there, run gq ci deploy again.
 //
 //   gq ci deploy
 //   gq ci runs      # recent CI Workflow runs (wrangler workflows instances list)
@@ -12,6 +15,8 @@
 import { join } from "node:path";
 
 import { cmsAccessHeaders } from "../cms/access.mjs";
+import { isCommerce } from "../manifest/variant.mjs";
+import { REGISTRY_PROBLEM_VARIABLE, REGISTRY_SECRETS } from "../sigillo/registry-credentials.mjs";
 
 export const DEFAULT_CI_DIRECTORY = "infra/ci";
 
@@ -24,7 +29,7 @@ export const workerSecrets = Object.freeze({
   PLOI_API_TOKEN: "PLOI_API_TOKEN",
   RELEASES_R2_ACCESS_KEY_ID: "R2_ACCESS_KEY_ID",
   RELEASES_R2_SECRET_ACCESS_KEY: "R2_SECRET_ACCESS_KEY",
-  // The site's login to the GETQUICK Composer registry.
+  // The fleet's login to the GETQUICK Composer registry (GQ Platform ops).
   COMPOSER_AUTH: "COMPOSER_AUTH",
 });
 
@@ -71,7 +76,8 @@ export const optionalWorkerSecrets = Object.freeze({
   GQ_FORMS_ACCESS_CLIENT_SECRET: "GQ_FORMS_ACCESS_CLIENT_SECRET",
   // A commerce Site's storefront Runtime secrets (gq frontend secrets;
   // Turnstile's from Cloudflare), and the read:packages token CI installs
-  // @quick-release packages with. A content Site has none of them.
+  // @quick-release packages with (GQ Platform ops; a commerce Site requires
+  // it, see commerceWorkerSecrets). A content Site has none of them.
   GETQUICK_STOREFRONT_PROXY_SECRET: "GETQUICK_STOREFRONT_PROXY_SECRET",
   GETQUICK_AUTH_COOKIE_SECRET: "GETQUICK_AUTH_COOKIE_SECRET",
   GETQUICK_CART_SESSION_SECRET: "GETQUICK_CART_SESSION_SECRET",
@@ -79,7 +85,13 @@ export const optionalWorkerSecrets = Object.freeze({
   GITHUB_PACKAGES_TOKEN: "GITHUB_PACKAGES_TOKEN",
 });
 
-export function secretsPayload(environment, { github = true } = {}) {
+// A commerce Site's CI install refuses without the packages token, so its
+// deploy requires it.
+export const commerceWorkerSecrets = Object.freeze({
+  GITHUB_PACKAGES_TOKEN: "GITHUB_PACKAGES_TOKEN",
+});
+
+export function secretsPayload(environment, { github = true, commerce = false } = {}) {
   // Validate the optional pair without sending it anywhere or printing values.
   cmsAccessHeaders({
     env: environment,
@@ -87,11 +99,25 @@ export function secretsPayload(environment, { github = true } = {}) {
     url: "https://cms.invalid/graphql",
   });
   const githubSecrets = usesGithubApp(environment) ? githubAppWorkerSecrets : githubWorkerSecrets;
-  const required = { ...workerSecrets, ...(github ? githubSecrets : {}) };
+  const required = {
+    ...workerSecrets,
+    ...(github ? githubSecrets : {}),
+    ...(commerce ? commerceWorkerSecrets : {}),
+  };
   const missing = Object.values(required).filter((name) => !environment[name]);
   if (missing.length > 0) {
+    const site = missing.filter((name) => !REGISTRY_SECRETS.includes(name));
+    const fleet = missing.filter((name) => REGISTRY_SECRETS.includes(name));
+    const problem = environment[REGISTRY_PROBLEM_VARIABLE];
     throw new Error(
-      `Missing in the secret store: ${missing.join(", ")} (see gq cloudflare ci / cloudflare releases / github setup [--app]).`,
+      [
+        site.length > 0 &&
+          `Missing in the secret store: ${site.join(", ")} (see gq cloudflare ci / cloudflare releases / github setup [--app]).`,
+        fleet.length > 0 &&
+          `Missing: ${fleet.join(", ")}, which gq sigillo run reads from GQ Platform ops${problem ? `, and ${problem}` : ""}.`,
+      ]
+        .filter(Boolean)
+        .join(" "),
     );
   }
   const optional = Object.entries(optionalWorkerSecrets).filter(([, from]) =>
@@ -153,6 +179,7 @@ export async function runCiDeploy({ context, env, exec, io }) {
   const target = ciTarget(context, env);
   const payload = secretsPayload(context.env, {
     github: Boolean(context.config.github?.repository),
+    commerce: isCommerce(context.config),
   });
   await wrangler(exec, target, ["deploy"], { stdio: "inherit" });
   await wrangler(exec, target, ["secret", "bulk"], {

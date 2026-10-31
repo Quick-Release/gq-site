@@ -91,6 +91,35 @@ test("refuses to deploy with missing secrets", () => {
   assert.throws(() => secretsPayload({}), /Missing in the secret store: CLOUDFLARE_API_TOKEN/u);
 });
 
+test("names a missing registry credential as the fleet's, from GQ Platform ops, with why", () => {
+  const { COMPOSER_AUTH, ...withoutLogin } = STORE;
+  void COMPOSER_AUTH;
+  assert.throws(
+    () => secretsPayload(withoutLogin),
+    /^Error: Missing: COMPOSER_AUTH, which gq sigillo run reads from GQ Platform ops\.$/u,
+  );
+  assert.throws(
+    () =>
+      secretsPayload({
+        ...withoutLogin,
+        GQ_REGISTRY_CREDENTIALS_PROBLEM: "your Sigillo login can't read GQ Platform ops",
+      }),
+    /reads from GQ Platform ops, and your Sigillo login can't read GQ Platform ops\./u,
+  );
+});
+
+test("a commerce Site's CI needs the fleet's packages token; a content Site's doesn't", () => {
+  assert.throws(
+    () => secretsPayload(STORE, { commerce: true }),
+    /Missing: GITHUB_PACKAGES_TOKEN, which gq sigillo run reads from GQ Platform ops/u,
+  );
+  const commerce = JSON.parse(
+    secretsPayload({ ...STORE, GITHUB_PACKAGES_TOKEN: "ghp_fleet" }, { commerce: true }),
+  );
+  assert.equal(commerce.GITHUB_PACKAGES_TOKEN, "ghp_fleet");
+  assert.equal(JSON.parse(secretsPayload(STORE)).GITHUB_PACKAGES_TOKEN, undefined);
+});
+
 test("needs the GitHub secrets only for a site on GitHub", () => {
   assert.throws(
     () => secretsPayload(ARTIFACTS_ONLY_STORE),

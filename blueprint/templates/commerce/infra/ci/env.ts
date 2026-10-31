@@ -10,7 +10,8 @@ export type Bindings = CiBindings & {
   PLOI_API_TOKEN: string;
   RELEASES_R2_ACCESS_KEY_ID: string;
   RELEASES_R2_SECRET_ACCESS_KEY: string;
-  // GETQUICK Composer registry login: CI's composer install and the Ploi deploy.
+  // The fleet's GETQUICK Composer registry login (GQ Platform ops): CI's
+  // composer install and the Ploi deploy.
   COMPOSER_AUTH: string;
   CLOUDFLARE_DEPLOY_ACCOUNT_ID: string;
   // GitHub (pnpm github:setup): the webhook secret, and either the GETQUICK
@@ -25,9 +26,9 @@ export type Bindings = CiBindings & {
   GITHUB_REPOSITORY: string;
   ARTIFACTS_NAMESPACE: string;
   ARTIFACTS_REPO: string;
-  // A commerce Site's read:packages token: the install step writes it to
-  // user-level npm config, so pnpm installs the @quick-release packages from
-  // GitHub Packages. Set once the Frontend depends on one.
+  // The fleet's read:packages token (GQ Platform ops, gq-platform ADR 0013;
+  // pnpm ci:deploy sets it): the install step writes it to user-level npm
+  // config, so pnpm installs the @quick-release packages from GitHub Packages.
   GITHUB_PACKAGES_TOKEN?: string;
   // The storefront Runtime's secrets (pnpm frontend:secrets; Turnstile's from
   // Cloudflare): the release step passes them to the Frontend's deploy.

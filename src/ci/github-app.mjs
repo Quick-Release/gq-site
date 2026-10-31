@@ -9,7 +9,7 @@
 
 import { createPrivateKey } from "node:crypto";
 
-import { sigilloProjectSecrets } from "../sigillo/commands.mjs";
+import { PLATFORM_SIGILLO, platformSecrets } from "../sigillo/platform.mjs";
 import { appJwt, BROKER_WORKER, samePermissions } from "./broker/broker.mjs";
 
 export const APP_NAME = "GETQUICK CI";
@@ -22,11 +22,9 @@ export const APP_PERMISSIONS = Object.freeze({
   metadata: "read",
 });
 
-export const PLATFORM_SIGILLO = Object.freeze({
-  // GQ Platform.
-  projectId: "01M5Z0QYDH1PPN7N3C4A7KZAXJ",
-  environment: "ops",
-});
+// GQ Platform `ops` (src/sigillo/platform.mjs), re-exported for the App's
+// commands.
+export { PLATFORM_SIGILLO, platformSecrets };
 
 // GQ Platform `ops` secret names.
 export const APP_SECRETS = Object.freeze({
@@ -46,25 +44,6 @@ export const SITE_BROKER_SECRETS = Object.freeze({
 
 export function brokerUrl(subdomain) {
   return `https://${BROKER_WORKER}.${subdomain}.workers.dev`;
-}
-
-export async function platformSecrets(dependencies) {
-  const secrets = await sigilloProjectSecrets(dependencies, PLATFORM_SIGILLO);
-  let names;
-  return {
-    ...secrets,
-    name: `GQ Platform ${PLATFORM_SIGILLO.environment}`,
-    // The environment's names, read once (names, never values).
-    names: async () => {
-      names ??= new Set(
-        (await secrets.list())
-          .split(/\r?\n/u)
-          .map((line) => line.trim())
-          .filter(Boolean),
-      );
-      return names;
-    },
-  };
 }
 
 // GitHub's PEM (PKCS#1) as base64 PKCS#8 DER.

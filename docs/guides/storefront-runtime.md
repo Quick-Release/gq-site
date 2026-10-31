@@ -22,17 +22,19 @@ other checks pass ([Readiness](commerce-sites.md#readiness)).
   `infra/scripts/deploy-frontend.mjs`) and the Cloudflare CI Worker that
   installs private packages and hands the storefront's secrets to the
   Frontend's deploy (`infra/ci/cloudflare.ci.ts`, `infra/ci/env.ts`).
-- Keep a GitHub token with `read:packages` in your **user-level** npm config,
-  never the repository's (pnpm ignores tokens there, and the generated
-  `.npmrc` only names the registry):
+- Have read access to GQ Platform `ops` in Sigillo. It holds the fleet's
+  `read:packages` token, `GITHUB_PACKAGES_TOKEN`, and `gq sigillo run` and
+  `gq setup` hand it to pnpm in its environment
+  ([secrets](secrets.md#gq-platform-ops-the-registry-credentials)):
 
   ```sh
-  npm config set --location=user //npm.pkg.github.com/:_authToken <token>
-  pnpm view @quick-release/storefront version   # 0.2.2 or later: you can read it
+  gq sigillo run local -- pnpm install
+  gq sigillo run local -- pnpm view @quick-release/storefront version   # 0.2.2 or later
   ```
 
-  The token's owner must be able to read the `@quick-release/storefront` and
-  `@quick-release/auth-contract` packages in the Quick-Release organization.
+  A plain `pnpm install` needs a token in your **user-level** npm config
+  instead, never the repository's (pnpm ignores tokens there, and the
+  generated `.npmrc` only names the registry).
 
 ## 1. Depend on it
 
@@ -204,8 +206,9 @@ missing, until the Site has:
   eCommerce reads it.
 - **`domains.admin`** in `gq.ops.json`, from which the deploy sets
   `GETQUICK_AUTH_UPSTREAM_URL`.
-- **CI's packages token:** a `read:packages` token as `GITHUB_PACKAGES_TOKEN`
-  in Sigillo staging, then `pnpm ci:deploy`. CI's install step writes it to
-  the container's user-level npm config, and refuses with that instruction
-  without it; the release step hands the storefront's secrets to the
-  Frontend's deploy.
+- **CI's packages token:** `pnpm ci:deploy` gives the Worker the fleet's
+  `GITHUB_PACKAGES_TOKEN` from GQ Platform `ops` (nothing goes in the Site's
+  Sigillo), and refuses on a commerce Site without it. CI's install step
+  writes it to the container's user-level npm config, and refuses with that
+  instruction without it; the release step hands the storefront's secrets to
+  the Frontend's deploy.

@@ -8,9 +8,9 @@
 // packument lists the versions it can install.
 //
 // Credentials come from the environment gq already uses: GITHUB_TOKEN or
-// GH_TOKEN for GitHub, COMPOSER_AUTH (from `gq sigillo run`) for the
-// Composer registry, and GITHUB_PACKAGES_TOKEN (Sigillo's name) or else the
-// user's npm config for GitHub Packages. They go only into request headers,
+// GH_TOKEN for GitHub, COMPOSER_AUTH for the Composer registry, and
+// GITHUB_PACKAGES_TOKEN or else the user's npm config for GitHub Packages
+// (`gq sigillo run` reads both from GQ Platform `ops`, gq-platform ADR 0013). They go only into request headers,
 // never into results or errors.
 // A failure resolves to { status: "error", error: { code, message } } with
 // one of DISCOVERY_ERRORS.
@@ -18,6 +18,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { missingRegistryCredential } from "../sigillo/registry-credentials.mjs";
 import { coveredBy, isNpm } from "./catalogue.mjs";
 import { compareVersions, isStable, newest, parseVersion } from "./versions.mjs";
 
@@ -313,7 +314,7 @@ async function discoverNpmRegistry(pkg, { env, fetch }) {
   if (!token) {
     throw new DiscoveryError(
       "missing-credentials",
-      "No read:packages token for npm.pkg.github.com: set GITHUB_PACKAGES_TOKEN (Sigillo) or log in to it in your user-level npm config.",
+      `No read:packages token for npm.pkg.github.com. ${missingRegistryCredential("GITHUB_PACKAGES_TOKEN", env)} Or log in to it in your user-level npm config.`,
     );
   }
   const url = `${GITHUB_PACKAGES_URL}/${pkg.name.replace("/", "%2f")}`;
@@ -377,7 +378,7 @@ async function discoverNpmRegistry(pkg, { env, fetch }) {
 }
 
 // A read:packages token for npm.pkg.github.com: GITHUB_PACKAGES_TOKEN (the
-// name Sigillo and CI use), else the user-level npm config's _authToken for
+// name GQ Platform `ops` and CI use), else the user-level npm config's _authToken for
 // the registry, or the output of its tokenHelper, as pnpm reads them. The
 // repository's .npmrc is never read: it names the registry, never a token.
 export function githubPackagesToken(env) {
@@ -428,7 +429,7 @@ function registryAuthorization(env, host) {
   if (!env.COMPOSER_AUTH) {
     throw new DiscoveryError(
       "missing-credentials",
-      `COMPOSER_AUTH is missing: run this through gq sigillo run, which holds the registry login for ${host}.`,
+      `${missingRegistryCredential("COMPOSER_AUTH", env)} It holds the registry login for ${host}.`,
     );
   }
   let auth;

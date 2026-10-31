@@ -3,6 +3,56 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Changed
+
+- **The registry credentials are the fleet's, read at use from GQ Platform
+  `ops`**
+  ([gq-platform ADR 0013](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0013-fleet-registry-credentials-read-at-use-from-gq-platform-ops.md)).
+  `COMPOSER_AUTH` (the GETQUICK Composer registry login) and
+  `GITHUB_PACKAGES_TOKEN` (a classic `read:packages` token for
+  `@quick-release/*`) live once in the GQ Platform Sigillo project
+  (`01M5Z0QYDH1PPN7N3C4A7KZAXJ`), environment `ops`, instead of a copy in
+  every Site's `staging` and `dev`. `gq sigillo run` reads both with the
+  operator's own Sigillo login before it starts the command and puts them in
+  its environment (pnpm also gets the token as
+  `npm_config_//npm.pkg.github.com/:_authToken`, so
+  `gq sigillo run local -- pnpm install` needs no `~/.npmrc` token). That
+  covers `cms:composer`, `db:sync`, `ploi:release`, `release:package`,
+  `ci:deploy` (into the CI Worker), package discovery and `site:check`.
+  `gq setup` installs a Site whose `.npmrc` names GitHub Packages with the
+  token in pnpm's environment, never a file. A new Site's onboarding copies
+  neither; rotating one is a change in GQ Platform `ops` plus
+  `pnpm ci:deploy` per Site.
+- **GQ Platform `ops` wins over a Site's own copy.** A Site's copy (its
+  Sigillo environment or the shell) is used only while GQ Platform `ops`
+  can't be read or lacks the name, and `gq sigillo run` then warns, naming
+  the secret, never its value. Existing Sites keep working mid-upgrade.
+- **`gq ci deploy` requires `GITHUB_PACKAGES_TOKEN` on a commerce Site**
+  (its CI install refuses without it), and a missing registry credential's
+  error says it comes from GQ Platform `ops` and why gq couldn't read it. So
+  do `gq cms composer`, `gq ploi release` and package discovery.
+- **The commerce CI install's refusal** points to `pnpm ci:deploy` and GQ
+  Platform `ops` instead of Sigillo staging (`infra/ci/cloudflare.ci.ts`,
+  `infra/ci/env.ts`; `gq sync` updates them).
+
+### Added
+
+- **`gq doctor` checks the registry credentials:** whether GQ Platform `ops`
+  can be read and holds both (with the remedy when it can't: ask a GQ
+  Platform admin for access), and a warning for every copy the Site's own
+  Sigillo environments still hold, with the
+  `gq sigillo secrets <environment> delete <name>` that removes it.
+
+### Upgrading
+
+Bump the pin, `pnpm install`, `gq sync`, then make sure whoever runs the
+Site's commands can read GQ Platform `ops` (`pnpm doctor`). Run
+`pnpm ci:deploy` so the CI Worker gets the fleet's values. Then delete the
+Site's copies `pnpm doctor` lists (`COMPOSER_AUTH` and
+`GITHUB_PACKAGES_TOKEN` in `staging`, `COMPOSER_AUTH` in `dev`).
+
 ## 0.31.1 — 2026-10-31
 
 ### Fixed

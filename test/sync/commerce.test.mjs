@@ -490,7 +490,7 @@ test("a commerce site's CI installs @quick-release packages with the packages to
   assert.equal(refused.status, 1);
   assert.match(
     refused.stderr,
-    /GITHUB_PACKAGES_TOKEN is missing: .*Sigillo staging and run pnpm ci:deploy/u,
+    /GITHUB_PACKAGES_TOKEN is missing: .*Run pnpm ci:deploy, which gives this Worker the fleet token from GQ Platform ops/u,
   );
   assert.ok(!(await exists(home, ".npmrc")));
   const token = "ghp_fixture-packages-token";

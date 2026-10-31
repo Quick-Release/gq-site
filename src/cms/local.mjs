@@ -7,6 +7,7 @@ import { platform } from "node:os";
 import { join } from "node:path";
 
 import { applyEnv, parseDotenv } from "../dotenv-text.mjs";
+import { missingRegistryCredential } from "../sigillo/registry-credentials.mjs";
 import { runDesignCommand, withDesignRegistryInstall } from "./local-design.mjs";
 
 // Layout: where the Bedrock app lives in a site.
@@ -99,10 +100,8 @@ export function ensureCmsEnv(cmsRoot, project, defaults) {
 }
 
 // Why `composer install` can't run here, or null when it can.
-export function installProblem({ composerAuth, hasComposer }, os = platform()) {
-  if (!composerAuth) {
-    return "COMPOSER_AUTH is missing: run this through gq sigillo run, which holds the GETQUICK registry login.";
-  }
+export function installProblem({ composerAuth, hasComposer, env = {} }, os = platform()) {
+  if (!composerAuth) return missingRegistryCredential("COMPOSER_AUTH", env);
   if (!hasComposer) {
     return `Installing needs the host Composer (the registry login doesn't reach DDEV's container). ${
       os === "darwin"
@@ -132,6 +131,7 @@ export async function composerDependencyChange(
 ) {
   const problem = installProblem({
     composerAuth: env.COMPOSER_AUTH,
+    env,
     hasComposer: await commandExists(exec, "composer", env),
   });
   if (problem) throw new Error(problem);

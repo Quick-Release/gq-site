@@ -17,8 +17,8 @@
 # The Frontend depends on private @quick-release packages (the storefront
 # Runtime and its auth contract) on GitHub Packages, so installing needs a
 # read:packages token: GITHUB_PACKAGES_TOKEN when set (written to a throwaway
-# user-level npm config, never to the site), otherwise the caller's own npm
-# config. Without one that can read them, the script refuses before
+# user-level npm config, never to the site; `gq sigillo run` sets the fleet's
+# from GQ Platform ops), otherwise the caller's own npm config. Without one that can read them, the script refuses before
 # generating anything (exit 3), naming what is missing: it never passes
 # without installing. `--probe` stops after that check.
 #
@@ -69,7 +69,8 @@ done
 if ((${#unreadable[@]} > 0)); then
   echo "REFUSED: can't read ${unreadable[*]} from GitHub Packages (npm.pkg.github.com)." >&2
   echo "A commerce Site's Frontend installs them, so this check needs a read:packages token" >&2
-  echo "that can read them: set GITHUB_PACKAGES_TOKEN, or log in to npm.pkg.github.com in your" >&2
+  echo "that can read them: set GITHUB_PACKAGES_TOKEN (from any Site, gq sigillo run staging --" >&2
+  echo "<gq-site>/scripts/smoke/commerce-check.sh sets the fleet's), or log in to npm.pkg.github.com in your" >&2
   echo "user-level npm config. In GitHub Actions, each package must grant this repository" >&2
   echo "Actions access. Nothing was generated, installed or verified." >&2
   exit 3
