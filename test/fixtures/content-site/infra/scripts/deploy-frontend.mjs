@@ -28,7 +28,7 @@ const policy = ops.deployment;
 if (policy && policy.state !== "authorized") {
   const who = policy.state === "reserved" ? ` is reserved by ${policy.holder}` : " is paused";
   console.error(
-    `${ops.project}${who} (gq.ops.json deployment.state: ${policy.state}): ${policy.reason}. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the hold.`,
+    `${ops.project}${who} (gq.ops.json deployment.state: ${policy.state}): ${policy.reason}. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the deployment hold.`,
   );
   process.exit(1);
 }

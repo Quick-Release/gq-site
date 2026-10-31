@@ -105,7 +105,7 @@ function refuseOffboarded(ops) {
 // A protected Site (gq.ops.json deployment) is released only while its
 // deployment.state is "authorized": a paused or reserved one refuses before
 // the CMS or the Frontend deploys. gq ploi release refuses the same way;
-// a reviewed Site change lifts the hold, never a flag.
+// a reviewed Site change lifts the deployment hold, never a flag.
 export function deploymentRefusal(ops) {
   const policy = ops.deployment;
   if (!policy || policy.state === "authorized") return null;
@@ -113,7 +113,7 @@ export function deploymentRefusal(ops) {
   return (
     `${ops.project}${who} (gq.ops.json deployment.state: ${policy.state}): ${policy.reason}. ` +
     "Nothing was uploaded, synced or deployed. " +
-    'A reviewed Site change that sets deployment.state to "authorized" lifts the hold.'
+    'A reviewed Site change that sets deployment.state to "authorized" lifts the deployment hold.'
   );
 }
 

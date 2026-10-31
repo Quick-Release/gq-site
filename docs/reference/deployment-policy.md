@@ -43,7 +43,7 @@ is started:
 The refusal reads, for example:
 
 ```
-acme is reserved by nightly pipeline (the default branch's gq.ops.json deployment.state: reserved): Nightly update running. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the hold.
+acme is reserved by nightly pipeline (the default branch's gq.ops.json deployment.state: reserved): Nightly update running. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the deployment hold.
 ```
 
 No flag or environment variable lifts a deployment hold (the

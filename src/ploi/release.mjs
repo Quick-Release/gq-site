@@ -20,7 +20,6 @@ import { createR2Client } from "../r2.mjs";
 import { createReporter } from "../cli/reporter.mjs";
 import {
   assertDeploymentAllowed,
-  readDefaultBranchManifest,
   releasePolicy,
 } from "./deployment-policy.mjs";
 import { validateManifest } from "../manifest/manifest.mjs";
@@ -111,13 +110,15 @@ export async function runRelease({
   const git = gitRunner(exec, gitDir ?? context.projectRoot, siteEnv);
   // The policies are read with a system git and an environment gq builds
   // (trusted-git.mjs), never PATH's git or the caller's GIT_*. The default
-  // branch is read from origin; in CI that is Artifacts, whose token
-  // (ARTIFACTS_TOKEN) goes in a header for those origin reads only.
+  // branch is read from origin on an operator's machine; in CI only from
+  // ARTIFACTS_REMOTE (which origin must name), in a repository gq creates,
+  // the token (ARTIFACTS_TOKEN) in a header scoped to that URL.
   const policy = policyGit({
     exec,
     cwd: gitDir ?? context.projectRoot,
     env,
     token: context.env.ARTIFACTS_TOKEN,
+    remote: context.env.ARTIFACTS_REMOTE,
   });
   const ref = parsed.ref ?? (await defaultRef(git));
   const sha = (await git(["rev-parse", `${ref}^{commit}`])).trim();
@@ -133,7 +134,7 @@ export async function runRelease({
       source: `release ${sha.slice(0, 12)}'s ${manifestPath}`,
     },
     {
-      ops: await readDefaultBranchManifest(policy.origin, manifestPath, policy.local),
+      ops: await policy.defaultBranchManifest(manifestPath),
       source: `the default branch's ${manifestPath}`,
     },
   ]);

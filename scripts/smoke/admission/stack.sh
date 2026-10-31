@@ -506,7 +506,7 @@ NGINX
   code=0
   deploy r2 "$WORK/recover-killed.log" || code=$?
   status=$(request "https://$HOST/wp/wp-login.php")
-  check "recovery after the kill: the next guarded deploy restores core and lifts the hold" \
+  check "recovery after the kill: the next guarded deploy restores core and lifts the admission hold" \
     "$({ [ "$code" = 0 ] && [ -f "$WEB/wp/wp-settings.php" ] && is_open && [ "$status" = 200 ]; } && echo ok)" \
     "exit $code, $status: $(tail -n 3 "$WORK/recover-killed.log")"
   check_held_window "recovery after the kill" "$WORK/recover-killed.log"

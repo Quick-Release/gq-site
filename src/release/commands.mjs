@@ -6,7 +6,7 @@ import { COMPOSER_PACKAGE_NAME } from "../manifest/schema.mjs";
 import { loadSiteSettings } from "../manifest/site-settings.mjs";
 import { parseVersion, satisfiesConstraint } from "../packages/versions.mjs";
 import { composerContentHash } from "../cms/composer-content-hash.mjs";
-import { readDefaultBranchManifest, releasePolicy } from "../ploi/deployment-policy.mjs";
+import { releasePolicy } from "../ploi/deployment-policy.mjs";
 import { policyGit } from "../ploi/trusted-git.mjs";
 import {
   PACKAGE_EXPECTATIONS_PATH,
@@ -398,12 +398,18 @@ async function releasePackage(
   // preparing a commit without deploying it is still allowed. A package
   // either guards is guarded.
   const manifestPath = relative(context.projectRoot, context.configPath);
-  const policy = policyGit({ exec, cwd: root, env, token: context.env.ARTIFACTS_TOKEN });
+  const policy = policyGit({
+    exec,
+    cwd: root,
+    env,
+    token: context.env.ARTIFACTS_TOKEN,
+    remote: context.env.ARTIFACTS_REMOTE,
+  });
   const { guarded, target } = releasePolicy(
     [
       { ops: context.config, source: "gq.ops.json" },
       {
-        ops: await readDefaultBranchManifest(policy.origin, manifestPath, policy.local),
+        ops: await policy.defaultBranchManifest(manifestPath),
         source: `the default branch's ${manifestPath}`,
       },
     ],

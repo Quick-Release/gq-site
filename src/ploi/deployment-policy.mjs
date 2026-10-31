@@ -2,7 +2,7 @@
 // docs/reference/deployment-policy.md). A Site without the block deploys as
 // it always has. A protected Site states its state explicitly: only
 // "authorized" deploys; "paused" and "reserved" refuse every deploy, before
-// anything is uploaded, synced or deployed. No flag lifts a hold: a reviewed
+// anything is uploaded, synced or deployed. No flag lifts a deployment hold: a reviewed
 // Site change to gq.ops.json does. Offboarding is refused separately and
 // earlier, for every command that could expose the Site (offboard/guard.mjs).
 //
@@ -21,7 +21,7 @@ export function deploymentRefusal(ops, source = "gq.ops.json") {
   return (
     `${ops.project}${who} (${source} deployment.state: ${policy.state}): ${policy.reason}. ` +
     "Nothing was uploaded, synced or deployed. " +
-    'A reviewed Site change that sets deployment.state to "authorized" lifts the hold.'
+    'A reviewed Site change that sets deployment.state to "authorized" lifts the deployment hold.'
   );
 }
 
@@ -66,12 +66,13 @@ export function releasePolicy(manifests, { holds = true } = {}) {
   return { guarded, target };
 }
 
-// The validated manifest at `manifestPath` on origin's default branch, read
-// through `git` (a runner resolving to stdout or throwing) without touching
-// the working tree: only FETCH_HEAD and objects change. Throws when the
-// default branch or its manifest can't be read: a release refuses without it.
-// `local` reads the fetched commit (no network, so no credential).
-export async function readDefaultBranchManifest(git, manifestPath, local = git) {
+// The validated manifest at `manifestPath` on the default branch of `source`
+// (origin, or the authoritative remote's URL in CI), read through `git` (a
+// runner resolving to stdout or throwing) without touching any working tree:
+// only FETCH_HEAD and objects change. Throws when the default branch or its
+// manifest can't be read: a release refuses without it. `local` reads the
+// fetched commit (no network, so no credential).
+export async function readDefaultBranchManifest(git, manifestPath, local = git, source = "origin") {
   const refuse = (detail, cause) =>
     new Error(
       `The default branch's ${manifestPath} can't be read (${detail}), so its current deployment policy can't be checked: a release refuses without it. Nothing was uploaded, synced or deployed.`,
@@ -79,15 +80,15 @@ export async function readDefaultBranchManifest(git, manifestPath, local = git) 
     );
   let branch;
   try {
-    const head = await git(["ls-remote", "--symref", "origin", "HEAD"]);
+    const head = await git(["ls-remote", "--symref", source, "HEAD"]);
     branch = /^ref: refs\/heads\/(\S+)\tHEAD$/mu.exec(head)?.[1];
   } catch (error) {
     throw refuse(error.message, error);
   }
-  if (!branch) throw refuse("origin names no default branch");
+  if (!branch) throw refuse(`${source === "origin" ? "origin" : "the remote"} names no default branch`);
   let text;
   try {
-    await git(["fetch", "--quiet", "--no-tags", "origin", `refs/heads/${branch}`]);
+    await git(["fetch", "--quiet", "--no-tags", source, `refs/heads/${branch}`]);
     text = await local(["show", `FETCH_HEAD:${manifestPath}`]);
   } catch (error) {
     throw refuse(error.message, error);

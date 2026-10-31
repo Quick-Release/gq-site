@@ -330,7 +330,7 @@ test("the generated CI release step and Frontend deploy refuse a paused or reser
   const holds = [
     [
       { protected: true, state: "paused", reason: "Controlled release in preparation" },
-      'acme-shop is paused (gq.ops.json deployment.state: paused): Controlled release in preparation. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the hold.',
+      'acme-shop is paused (gq.ops.json deployment.state: paused): Controlled release in preparation. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the deployment hold.',
     ],
     [
       {
@@ -339,7 +339,7 @@ test("the generated CI release step and Frontend deploy refuse a paused or reser
         reason: "Nightly update running",
         holder: "nightly pipeline",
       },
-      'acme-shop is reserved by nightly pipeline (gq.ops.json deployment.state: reserved): Nightly update running. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the hold.',
+      'acme-shop is reserved by nightly pipeline (gq.ops.json deployment.state: reserved): Nightly update running. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the deployment hold.',
     ],
   ];
   for (const [deployment, message] of holds) {

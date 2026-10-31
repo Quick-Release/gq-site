@@ -684,7 +684,7 @@ async function assertHeld(result) {
     result.calls.some(([tool]) => tool === "composer-saw-hold"),
     "held before Composer",
   );
-  assert.doesNotMatch(result.stdout, /hold is lifted/u);
+  assert.doesNotMatch(result.stdout, /admission hold is lifted/u);
   assert.deepEqual(wpCalls(result.calls, "maintenance-mode"), []);
 }
 
@@ -718,7 +718,7 @@ test("a guarded deploy proves the pool enforces the gate, holds, and proves the 
       result.stdout,
       /Held: the gate answered a nested override challenge, PHP-FPM 8\.3 \(pool www\) reloaded, every worker that ran before the hold has gone, and 4 requests to new workers of pool www answered 503 with this hold's nonce/u,
     );
-    assert.match(result.stdout, /The hold is lifted/u);
+    assert.match(result.stdout, /The admission hold is lifted/u);
     assert.equal(await state(result.site), OPEN);
     // The gate names this Site's web root; gq writes no .user.ini; the
     // attempt's own challenge is gone.
@@ -813,7 +813,7 @@ test("a pool that doesn't enforce the gate, or a server gq can't bind to the rel
   }
 });
 
-test("a hold that can't be proven from a fresh generation of the same pool fails before any package change: an open Site opens again, a held one stays held", async () => {
+test("a hold that can't be proven from a fresh generation of the same pool fails before any package change: an open Site opens again while the state is still its own hold; otherwise the state is left as it reads", async () => {
   const script = await guardedScript();
   // The reload is named only when it happened.
   const held = "the admission gate and the admission state (held) changed.";
@@ -854,7 +854,7 @@ test("a hold that can't be proven from a fresh generation of the same pool fails
     await assertBeginFailed(
       open,
       message,
-      `No package file was changed; ${changes} The hold this attempt placed was lifted again: the Site was open before it.`,
+      `No package file was changed; ${changes} The admission hold this attempt placed was lifted again: the Site was open before it.`,
     );
     assert.equal(await state(open.site), OPEN);
 
@@ -1010,6 +1010,30 @@ test("a failed begin whose hold something else replaced leaves that state alone 
       );
       assert.equal(await state(result.site), expected, `${prior} → ${written}`);
     }
+  }
+});
+
+test("putting the state back to open failing (no temporary file, an unwritable one, a failed rename) keeps this attempt's hold, cleans its own files and says so", async () => {
+  const script = await guardedScript();
+  // A fresh Site: the gate's write is the first admission temporary file,
+  // the hold's the second, the restore's the third; the hold's rename is the
+  // first of the state, the restore's the second.
+  for (const failure of [
+    { MKTEMP_FAIL_AT: "3" },
+    { MKTEMP_DEVFULL_AT: "3" },
+    { MV_FAIL: ".gq/state", MV_FAIL_AT: "2" },
+  ]) {
+    const result = await guardedDeploy(script, {
+      siteFiles: { [STATE]: OPEN },
+      env: { SUDO_EXIT: "1", ...failure },
+    });
+    await assertBeginFailed(
+      result,
+      /PHP-FPM 8\.3 couldn't be reloaded/u,
+      "No package file was changed; the admission gate and the admission state (held) changed. Putting the admission state back to open failed, so it is held by this attempt; gq leaves it as it is.",
+    );
+    assert.match(await state(result.site), HELD, JSON.stringify(failure));
+    assert.deepEqual((await readdir(join(result.site, ".gq"))).sort(), ["admission.php", "state"]);
   }
 });
 

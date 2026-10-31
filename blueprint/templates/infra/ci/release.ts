@@ -141,7 +141,7 @@ for (const [ops, source] of [
     const who = policy.state === "reserved" ? " is reserved by " + policy.holder : " is paused";
     refuse(
       ops.project + who + " (" + source + " deployment.state: " + policy.state + "): " + policy.reason + ". " +
-        nothing + ' A reviewed Site change that sets deployment.state to "authorized" lifts the hold.',
+        nothing + ' A reviewed Site change that sets deployment.state to "authorized" lifts the deployment hold.',
     );
   }
 }

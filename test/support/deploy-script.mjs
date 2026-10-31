@@ -56,9 +56,25 @@ fi
 printf '%s' "\${COMPOSER_AUTH:-}" > "$DEPLOY_CALLS.composer-auth"
 if [ "\${COMPOSER_KILL:-0}" = 1 ]; then kill -KILL "$PPID"; fi
 exit "\${COMPOSER_EXIT:-0}"`,
-  // mv fails for a target containing MV_FAIL; otherwise the system's.
-  mv: `if [ -n "\${MV_FAIL:-}" ] && [[ "\${@: -1}" == *"$MV_FAIL"* ]]; then record mv-failed "\${@: -1}"; exit 1; fi
+  // mv fails for a target containing MV_FAIL (only the MV_FAIL_AT-th such
+  // rename, when set); otherwise the system's.
+  mv: `if [ -n "\${MV_FAIL:-}" ] && [[ "\${@: -1}" == *"$MV_FAIL"* ]]; then
+  count=$(( $(cat "$DEPLOY_CALLS.mv" 2>/dev/null || echo 0) + 1 ))
+  echo "$count" >"$DEPLOY_CALLS.mv"
+  if [ -z "\${MV_FAIL_AT:-}" ] || [ "$count" = "$MV_FAIL_AT" ]; then record mv-failed "\${@: -1}"; exit 1; fi
+fi
 exec /bin/mv "$@"`,
+  // The admission's temporary files in .gq: the MKTEMP_FAIL_AT-th fails, the
+  // MKTEMP_DEVFULL_AT-th is /dev/full (so writing to it fails).
+  mktemp: `case "$*" in
+  */.gq/.gq-admission.*)
+    count=$(( $(cat "$DEPLOY_CALLS.mktemp" 2>/dev/null || echo 0) + 1 ))
+    echo "$count" >"$DEPLOY_CALLS.mktemp"
+    if [ "$count" = "\${MKTEMP_FAIL_AT:-}" ]; then record mktemp-failed; exit 1; fi
+    if [ "$count" = "\${MKTEMP_DEVFULL_AT:-}" ]; then record mktemp-devfull; echo /dev/full; exit 0; fi
+    ;;
+esac
+exec /usr/bin/mktemp "$@"`,
   // REAL_RSYNC=1 runs the system's rsync with the script's own arguments
   // (its --delete and protect filters included).
   rsync: `record rsync "$@"

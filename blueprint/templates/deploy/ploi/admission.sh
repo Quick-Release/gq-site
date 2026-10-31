@@ -159,11 +159,12 @@ state_is_open() {
     && [ "$(head -c 80 "$STATE" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "6f70656e0a" ]
 }
 
-# The admission state as it reads now, for messages: never assumed.
+# The admission state as it reads now, for messages: never assumed. $1, if
+# given, is this attempt's nonce.
 describe_state() {
   if state_is_open; then
     echo "open"
-  elif [ -n "${nonce:-}" ] && state_is_hold "$nonce"; then
+  elif [ -n "${1:-}" ] && state_is_hold "$1"; then
     echo "held by this attempt"
   elif [ ! -e "$STATE" ] && [ ! -L "$STATE" ]; then
     echo "held (there is no state file)"
@@ -222,7 +223,7 @@ if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
         }
         \$nonce = 'open';
         if (\$held) {
-            \$nonce = is_string(\$value) && preg_match('/^held ([0-9a-f]{32})\n\$/', \$value, \$match) === 1
+            \$nonce = is_string(\$value) && preg_match('/^held ([0-9a-f]{32})\n\z/', \$value, \$match) === 1
                 ? \$match[1] : 'invalid';
         }
         if (!headers_sent()) {
@@ -373,6 +374,20 @@ remove_challenges() {
   challenges=()
 }
 
+# Puts the admission state back to "open" after a checked failure, only while
+# it is still this attempt's hold: each step's failure is a non-zero return
+# (never an exit), and leaves the state as it was.
+restore_open() {
+  local temporary
+  temporary="$(mktemp "$GQ_DIR/.gq-admission.XXXXXX" 2>/dev/null)" || return 1
+  temporaries+=("$temporary")
+  printf 'open\n' 2>/dev/null >"$temporary" || return 1
+  chmod 0644 "$temporary" 2>/dev/null || return 1
+  state_is_hold "$nonce" || return 1
+  mv -f "$temporary" "$STATE" 2>/dev/null || return 1
+  temporaries=("${temporaries[@]:0:${#temporaries[@]}-1}")
+}
+
 begin() {
   [[ "$ADMIN_HOST" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
     || refuse "gq.ops.json domains.admin isn't a hostname the admission check can request; nothing changed."
@@ -392,12 +407,16 @@ begin() {
     remove_temporaries
     remove_challenges
     if [ -z "$nonce" ]; then
-      outcome="The admission state is unchanged: $(describe_state)."
+      outcome="The admission state is unchanged: $(describe_state "$nonce")."
     elif [ "$prior_open" = true ] && state_is_hold "$nonce"; then
-      write_atomically "$STATE" $'open\n'
-      outcome="The hold this attempt placed was lifted again: the Site was open before it."
+      if restore_open; then
+        outcome="The admission hold this attempt placed was lifted again: the Site was open before it."
+      else
+        remove_temporaries
+        outcome="Putting the admission state back to open failed, so it is $(describe_state "$nonce"); gq leaves it as it is."
+      fi
     else
-      outcome="The admission state is $(describe_state); gq leaves it as it is."
+      outcome="The admission state is $(describe_state "$nonce"); gq leaves it as it is."
     fi
     # Every change, as "a", "a and b" or "a, b and c".
     local count="${#changed[@]}" index
@@ -418,7 +437,7 @@ begin() {
     [ "$failing" = false ] || return 0
     remove_temporaries
     remove_challenges
-    echo "admission.sh begin stopped unexpectedly (exit $code) before proving the hold. No package file was changed; the admission state is $(describe_state) and stays so." >&2
+    echo "admission.sh begin stopped unexpectedly (exit $code) before proving the hold. No package file was changed; the admission state is $(describe_state "$nonce") and stays so." >&2
   }
   trap unexpected EXIT
   prepare
@@ -501,14 +520,14 @@ lift() {
   trap 'remove_temporaries' EXIT
   write_atomically "$STATE" $'open\n'
   trap - EXIT
-  echo "The hold is lifted: PHP requests are served again."
+  echo "The admission hold is lifted: PHP requests are served again."
 }
 
 case "${1:-}" in
   prepare)
     trap 'remove_temporaries' EXIT
     prepare
-    echo "The admission gate is $GATE${changed[*]:+ (written now)}; the admission state is unchanged ($(state_is_open && echo open || echo held)); no reload."
+    echo "The admission gate is $GATE${changed[*]:+ (written now)}; the admission state is unchanged: $(describe_state); no reload."
     ;;
   begin) begin ;;
   lift) lift ;;
