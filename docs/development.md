@@ -115,7 +115,8 @@ package's `infra.json` requires, and that the deploy refuses without them.
 That proves generation and the skeleton's checks, never commerce readiness.
 A commerce Frontend installs private `@quick-release` packages from GitHub
 Packages, so the script needs a `read:packages` token that can read them:
-`GITHUB_PACKAGES_TOKEN`, or your user-level npm config. Without one it
+`GITHUB_PACKAGES_TOKEN` (run from a Site, `gq sigillo run staging -- <gq-site>/scripts/smoke/commerce-check.sh`
+sets the fleet's, from GQ Platform `ops`), or your user-level npm config. Without one it
 refuses (exit 3) before generating anything; it never passes without
 installing; `--probe` stops after that check. CI gives it the workflow's
 `GITHUB_TOKEN` (`packages: read`), which reads a package only while that
@@ -164,11 +165,10 @@ against the private GETQUICK registry, then checks that every GETQUICK
 package locks at the blueprint's pin: the CMS pins install together
 ([recorded requirements](reference/packages.md#recorded-requirements)). It
 needs the registry login in `COMPOSER_AUTH` (http-basic for
-`proxy.composer.getquick.io`); gq-site's own Sigillo `operations`
-environment holds only `NPM_TOKEN`, so locally run it under a Site's
-staging environment, which holds one
-(`gq sigillo run staging -- <gq-site>/scripts/smoke/cms-resolve.sh` from that
-Site). Without the login it refuses (exit 3) and never passes; `--probe`
+`proxy.composer.getquick.io`), the fleet's in GQ Platform `ops`, which
+`gq sigillo run` reads in any Site: locally, from a Site,
+`gq sigillo run staging -- <gq-site>/scripts/smoke/cms-resolve.sh`
+(gq-site's own `operations` environment holds only `NPM_TOKEN`). Without the login it refuses (exit 3) and never passes; `--probe`
 stops after that check. In CI the `cms-registry` job probes the
 `COMPOSER_AUTH` repository secret: without it `cms-resolution` is skipped,
 not passed, with a warning, and only the package suite's offline check of the

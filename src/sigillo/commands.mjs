@@ -1,13 +1,19 @@
-import { access, readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadProjectContext } from "../ops/project-context.mjs";
+import { environmentFlags, sigilloCommand, validateSigilloConfig } from "./client.mjs";
+import {
+  fallbackWarning,
+  readPlatformRegistryCredentials,
+  withRegistryCredentials,
+} from "./registry-credentials.mjs";
 
 // Secrets reach a command only through `sigillo run`, per command, for the
 // environment gq.ops.json maps the requested name to. The wrapper re-enters gq
 // inside `sigillo run` (`--inside`), which drops Sigillo's own bootstrap
 // credentials before starting the command, so application code never sees
-// them. Nothing here mounts, downloads, or writes an environment.
+// them. Nothing here mounts, downloads, or writes an environment. The inner
+// step also reads the fleet's registry credentials from GQ Platform `ops`
+// (registry-credentials.mjs) into the command's environment.
 
 export const SIGILLO_USAGE = [
   "gq sigillo run <environment> -- <command> [arguments...]",
@@ -36,11 +42,11 @@ export function isSigilloCommand(argv) {
 
 // `argv` is everything after `gq sigillo`, taken verbatim: the wrapped
 // command's own options are never parsed as gq's. Resolves to the exit code.
-export async function runSigilloCommand(argv, { cwd, env, exec }) {
+export async function runSigilloCommand(argv, { cwd, env, exec, io }) {
   const [subcommand, ...rest] = argv;
 
   if (subcommand === "run" && rest[0] === "--inside") {
-    return runInside(parseCommand(rest.slice(1)), { cwd, env, exec });
+    return runInside(parseCommand(rest.slice(1)), { cwd, env, exec, io });
   }
   if (subcommand === "run") {
     const [environment, ...afterEnvironment] = rest;
@@ -97,63 +103,25 @@ async function runSigillo({ cwd, env, exec }, buildArguments) {
   return result.code;
 }
 
-// One Sigillo environment the provisioning commands (`gq cloudflare …`,
-// `gq github setup`) store the secrets they mint in, through the site's
-// Sigillo CLI. Values go to it over stdin, never in argv, and are never
-// printed; `get` reads one into memory for the command's own use.
-export async function sigilloSecrets({ context, env, exec }, environment) {
-  const flags = environmentFlags(validateSigilloConfig(context.config.sigillo), environment);
-  return secretsClient({ context, env, exec }, flags);
-}
+// The secrets clients the provisioning commands use (client.mjs).
+export { sigilloProjectSecrets, sigilloSecrets } from "./client.mjs";
 
-// Another Sigillo project's environment on the site's Sigillo server, such as
-// GQ Platform `ops`, which holds the GETQUICK CI App (gq-platform ADR 0012).
-// Same CLI, same rules: stdin in, never printed.
-export async function sigilloProjectSecrets({ context, env, exec }, { projectId, environment }) {
-  const { apiUrl } = validateSigilloConfig(context.config.sigillo);
-  return secretsClient({ context, env, exec }, [
-    "--api-url",
-    apiUrl,
-    "--project",
-    projectId,
-    "--env",
-    environment,
-  ]);
-}
-
-async function secretsClient({ context, env, exec }, flags) {
-  const sigillo = await sigilloCommand(context.projectRoot);
-  async function call(args, input) {
-    const result = await exec(sigillo.command, [...sigillo.prefix, ...args], {
-      cwd: context.projectRoot,
-      env,
-      input,
-    });
-    if (result.code !== 0) throw new Error(`sigillo ${args[0]} failed: ${result.stderr.trim()}`);
-    return result.stdout;
-  }
-
-  return {
-    // The Sigillo name of the environment, for messages.
-    name: flags.at(-1),
-    // The environment's secret listing (names, not values).
-    list: () => call(["secrets", ...flags]),
-    set: (name, value) => call(["secrets", "set", name, ...flags], value),
-    get: async (name) =>
-      (await call(["secrets", "get", name, ...flags, "--raw", "--force"])).trim(),
-  };
-}
-
-async function runInside(command, { cwd, env, exec }) {
+async function runInside(command, { cwd, env, exec, io }) {
   if (env[REENTRY_VARIABLE] !== "1" || env.SIGILLO !== "1") {
     throw new Error("Refusing to run an untrusted Sigillo inner command.");
   }
-  const { projectRoot } = await loadProjectContext({ cwd, env });
+  const context = await loadProjectContext({ cwd, env });
   const scrubbed = { ...env };
   for (const name of BOOTSTRAP_VARIABLES) delete scrubbed[name];
+  // Read as the operator (their checkout's login), as gq github setup --app
+  // reads the App: Sigillo's bootstrap token is the Site project's.
+  const platform = await readPlatformRegistryCredentials({ context, env: scrubbed, exec });
+  const { env: commandEnv, fallbacks } = withRegistryCredentials(scrubbed, platform);
+  const warning = fallbackWarning(fallbacks, platform.problem);
+  if (warning) io?.err(warning);
   const result = await exec(command[0], command.slice(1), {
-    cwd: projectRoot,
-    env: scrubbed,
+    cwd: context.projectRoot,
+    env: commandEnv,
     stdio: "inherit",
   });
   return result.code;
@@ -173,60 +141,5 @@ function refuseBulkArguments(args) {
     throw new Error(
       `Refusing sigillo ${refused}: secrets are injected per command with gq sigillo run, never exported or mounted.`,
     );
-  }
-}
-
-// The flags that point a Sigillo command at the project and the environment
-// gq.ops.json maps `environment` to.
-function environmentFlags(config, environment) {
-  const mapped = config.environments[environment];
-  if (typeof mapped !== "string" || mapped.trim() === "") {
-    throw new Error(
-      `Unknown Sigillo environment: ${environment}. gq.ops.json sigillo.environments maps ` +
-        `${Object.keys(config.environments).join(", ")}.`,
-    );
-  }
-  return ["--api-url", config.apiUrl, "--project", config.projectId, "--env", mapped];
-}
-
-function validateSigilloConfig(sigillo) {
-  if (!sigillo || typeof sigillo !== "object") {
-    throw new Error("gq.ops.json is missing the sigillo block (apiUrl, projectId, environments).");
-  }
-  if (typeof sigillo.apiUrl !== "string" || !sigillo.apiUrl.startsWith("https://")) {
-    throw new Error("gq.ops.json sigillo.apiUrl must be an HTTPS URL.");
-  }
-  if (typeof sigillo.projectId !== "string" || sigillo.projectId.trim() === "") {
-    throw new Error("gq.ops.json sigillo.projectId is required.");
-  }
-  if (sigillo.projectId.startsWith("REPLACE_WITH_")) {
-    throw new Error(
-      "gq.ops.json sigillo.projectId is still a placeholder; set it to the site's Sigillo project ID.",
-    );
-  }
-  if (!sigillo.environments || typeof sigillo.environments !== "object") {
-    throw new Error("gq.ops.json sigillo.environments is required.");
-  }
-  return sigillo;
-}
-
-// The site's installed CLI, or — on a fresh clone, before the first
-// (Sigillo-wrapped) install — the version the site pins, from npm via npx.
-async function sigilloCommand(projectRoot) {
-  const binary = join(projectRoot, "node_modules", ".bin", "sigillo");
-  if (await exists(binary)) return { command: binary, prefix: [] };
-
-  const manifest = JSON.parse(await readFile(join(projectRoot, "package.json"), "utf8"));
-  const version = manifest.devDependencies?.sigillo;
-  if (!version) throw new Error("package.json devDependencies.sigillo is missing.");
-  return { command: "npx", prefix: ["--yes", `sigillo@${version}`] };
-}
-
-async function exists(path) {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
   }
 }

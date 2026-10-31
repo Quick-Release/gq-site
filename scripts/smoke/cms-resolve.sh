@@ -32,9 +32,9 @@ if ! node -e '
 ' "$host" 2>/dev/null; then
   echo "REFUSED: COMPOSER_AUTH has no http-basic login for $host." >&2
   echo "Both CMS skeletons require private getquick/* packages from it, so this check needs" >&2
-  echo "the registry login: run it with COMPOSER_AUTH set (a Site's Sigillo staging holds one:" >&2
-  echo "gq sigillo run staging -- scripts/smoke/cms-resolve.sh), or in CI give the workflow" >&2
-  echo "a COMPOSER_AUTH secret. Nothing was generated or resolved." >&2
+  echo "the registry login: run it with COMPOSER_AUTH set (from any Site, gq sigillo run reads the" >&2
+  echo "fleet's from GQ Platform ops: gq sigillo run staging -- <gq-site>/scripts/smoke/cms-resolve.sh)," >&2
+  echo "or in CI give the workflow a COMPOSER_AUTH secret. Nothing was generated or resolved." >&2
   exit 3
 fi
 # --probe: only whether the login is there (CI decides whether to run).

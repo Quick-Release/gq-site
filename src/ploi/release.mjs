@@ -15,6 +15,7 @@ import { join, resolve } from "node:path";
 
 import { createR2Client } from "../r2.mjs";
 import { createReporter } from "../cli/reporter.mjs";
+import { missingRegistryCredential } from "../sigillo/registry-credentials.mjs";
 import { deploy, syncDeployScript } from "./provision.mjs";
 import { createPloiServerClient } from "./server-client.mjs";
 
@@ -26,10 +27,10 @@ export const shippedPaths = Object.freeze(["apps/cms", "deploy/ploi"]);
 // private registry. The login comes from the secret store and reaches the
 // deploy script as the deploy variable composer_auth → $COMPOSER_AUTH, for
 // that one deploy; nothing stores it on the server.
-export function deployVariables(archiveUrl, composerAuth) {
+export function deployVariables(archiveUrl, composerAuth, env = {}) {
   if (!composerAuth) {
     throw new Error(
-      "COMPOSER_AUTH is missing: run this through gq sigillo run (or CI), which injects the registry login.",
+      `${missingRegistryCredential("COMPOSER_AUTH", env)} In CI the Worker has it from gq ci deploy.`,
     );
   }
   return { archive_url: archiveUrl, composer_auth: composerAuth };
@@ -66,7 +67,7 @@ export async function runRelease({ context, parsed, env, fetch, exec, io, intera
   const key = releaseKey(prefix, version, sha);
   const deployScript = await git(["show", `${sha}:${deployScriptPath}`]);
   // Fail before uploading anything if the registry login is missing.
-  deployVariables("", context.env.COMPOSER_AUTH);
+  deployVariables("", context.env.COMPOSER_AUTH, context.env);
 
   const ui = createReporter(io, interactive);
   ui.intro(`Ploi release · v${version} (${ref} @ ${sha.slice(0, 7)})`);
@@ -104,7 +105,7 @@ export async function runRelease({ context, parsed, env, fetch, exec, io, intera
     step.message("Deploying on Ploi (this can take a few minutes)");
     result = await deploy(client, ops.ploi.siteId, {
       project: ops.project,
-      variables: deployVariables(archiveUrl, context.env.COMPOSER_AUTH),
+      variables: deployVariables(archiveUrl, context.env.COMPOSER_AUTH, context.env),
     });
   } catch (error) {
     step.error("Release failed");

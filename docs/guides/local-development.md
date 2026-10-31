@@ -29,7 +29,10 @@ The runners are shared; what they check is the site's.
   same version, naming both; a content Site locks neither and passes), a
   leftover Artifacts push URL (with
   `gq.ops.json` `artifacts`), the apps' `.env` files, Sigillo's project and
-  login (with `sigillo`), the Artifacts namespace's jurisdiction against
+  login (with `sigillo`), whether GQ Platform `ops` can be read and holds the
+  fleet's `COMPOSER_AUTH` and `GITHUB_PACKAGES_TOKEN`, and every copy of them
+  the Site's own Sigillo environments still hold (each warns, with the
+  `gq sigillo secrets <environment> delete <name>` that removes it), the Artifacts namespace's jurisdiction against
   `artifacts.jurisdiction` (read with `ARTIFACTS_API_TOKEN` from the
   environment or Sigillo `staging`, and skipped without it), the consent
   databases' jurisdiction, which must be `eu` (read with
@@ -95,8 +98,9 @@ to DDEV or Composer as is.
 - `cms composer` runs Composer in a running DDEV project (its PHP matches the
   server), else with the host Composer, else in DDEV started for it. `install`,
   `update` and `reinstall` always use the host Composer with
-  `COMPOSER_AUTH` from `gq sigillo run`, since the registry login doesn't
-  reach DDEV's container.
+  `COMPOSER_AUTH` from `gq sigillo run` (the fleet's, from GQ Platform `ops`:
+  [secrets](secrets.md#gq-platform-ops-the-registry-credentials)), since the
+  registry login doesn't reach DDEV's container.
 - A developer can point `gq-design` (`getquick/gq-design` in Composer) at a
   local checkout with an ignored `apps/cms/.local-plugins/config.json`
   (`{ "gqDesign": "/absolute/path" }`). The old `getquickDesign` key and

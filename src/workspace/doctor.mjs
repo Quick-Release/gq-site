@@ -20,6 +20,9 @@
 // (blueprint/rate-limit-namespaces.json): a collision or an unregistered ID
 // warns. A Site on GitHub reports whether its CI reaches GitHub through the
 // GETQUICK CI token broker or a fine-grained token (gq-platform ADR 0012).
+// The fleet's registry credentials, COMPOSER_AUTH and GITHUB_PACKAGES_TOKEN,
+// must be readable in GQ Platform `ops` (gq-platform ADR 0013), and every
+// copy a Site's own Sigillo environments still hold warns: names only.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -50,6 +53,8 @@ import {
 } from "../manifest/site-settings.mjs";
 import { SITE_BROKER_SECRETS } from "../ci/github-app.mjs";
 import { sigilloSecrets } from "../sigillo/commands.mjs";
+import { PLATFORM_LOCATION, PLATFORM_NAME, platformSecrets } from "../sigillo/platform.mjs";
+import { PLATFORM_ACCESS_REMEDY, REGISTRY_SECRETS } from "../sigillo/registry-credentials.mjs";
 import { adoptionGaps } from "../sync/adoption.mjs";
 import { VERSION } from "../version.mjs";
 import { checkLocalEnvFiles } from "./env-files.mjs";
@@ -166,7 +171,9 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
     io.out("\nSecrets (Sigillo):");
     sigilloReady = await checkSigillo({ root, sigillo: context.config.sigillo, capture, report });
     if (sigilloReady) {
-      await checkLocalSecrets({ context, env, exec, requiredFiles, report });
+      const siteNames = await checkLocalSecrets({ context, env, exec, requiredFiles, report });
+      io.out(`\nRegistry credentials (${PLATFORM_NAME}):`);
+      await checkRegistryCredentials({ context, env, exec, siteNames, report });
     }
   }
 
@@ -234,6 +241,7 @@ function createReport(io) {
   };
 }
 
+// Resolves to each listed environment's names, by gq.ops.json alias.
 async function checkLocalSecrets({ context, env, exec, requiredFiles, report }) {
   const environments = new Map();
   for (const [alias, name] of Object.entries(context.config.sigillo.environments ?? {})) {
@@ -243,16 +251,20 @@ async function checkLocalSecrets({ context, env, exec, requiredFiles, report }) 
     report.fail(
       "local secret check needs a mapped Sigillo environment — configure gq.ops.json sigillo.environments",
     );
-    return;
+    return new Map();
   }
   const secretNames = new Set();
+  const byAlias = new Map();
   let complete = true;
   for (const [name, alias] of environments) {
     try {
       const secrets = await sigilloSecrets({ context, env, exec }, alias);
+      const names = new Set();
       for (const variable of (await secrets.list()).split(/\r?\n/u)) {
-        if (variable.trim()) secretNames.add(variable.trim());
+        if (variable.trim()) names.add(variable.trim());
       }
+      byAlias.set(alias, names);
+      for (const variable of names) secretNames.add(variable);
     } catch {
       // Sigillo stderr is untrusted output and might contain secret values.
       report.fail(
@@ -269,6 +281,42 @@ async function checkLocalSecrets({ context, env, exec, requiredFiles, report }) 
       secretNames,
       report,
     });
+  }
+  return byAlias;
+}
+
+// The fleet's registry credentials (gq-platform ADR 0013): GQ Platform `ops`
+// holds them and gq sigillo run reads them from there; a Site's own copy is
+// stale (used only while GQ Platform ops can't be read). Names only.
+async function checkRegistryCredentials({ context, env, exec, siteNames, report }) {
+  let platformNames = null;
+  try {
+    platformNames = await (await platformSecrets({ context, env, exec })).names();
+  } catch {
+    // Sigillo stderr is untrusted output and might contain secret values.
+    report.warn(
+      `can't read ${PLATFORM_LOCATION}, where gq gets COMPOSER_AUTH and GITHUB_PACKAGES_TOKEN — ${PLATFORM_ACCESS_REMEDY}`,
+    );
+  }
+  if (platformNames) {
+    const absent = REGISTRY_SECRETS.filter((name) => !platformNames.has(name));
+    if (absent.length > 0) {
+      report.warn(
+        `${PLATFORM_NAME} has no ${absent.join(" or ")} — a GQ Platform admin stores it there once for the fleet`,
+      );
+    } else {
+      report.ok(`${REGISTRY_SECRETS.join(" and ")} come from ${PLATFORM_NAME}, read at use`);
+    }
+  }
+  for (const [alias, names] of siteNames) {
+    for (const name of REGISTRY_SECRETS.filter((candidate) => names.has(candidate))) {
+      const remove = `gq sigillo secrets ${alias} delete ${name}`;
+      report.warn(
+        platformNames?.has(name)
+          ? `Sigillo ${alias} still holds its own ${name}, which gq no longer reads (it reads the one in ${PLATFORM_NAME}) — delete it: ${remove}`
+          : `Sigillo ${alias} still holds its own ${name}, which gq falls back to while it can't read ${PLATFORM_NAME} — delete it once it can: ${remove}`,
+      );
+    }
   }
 }
 

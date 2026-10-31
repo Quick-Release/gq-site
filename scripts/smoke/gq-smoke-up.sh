@@ -304,9 +304,9 @@ registry_accepts() {
   ' >/dev/null 2>&1
 }
 
-# wait_for_registry ENVIRONMENT: the proxy picks up a new login only once its
-# redeploy has propagated, so a Composer install straight after `client add`
-# gets HTTP 401. Waits up to two minutes, then offers to keep waiting.
+# wait_for_registry ENVIRONMENT: the proxy accepts the fleet's login, which
+# gq sigillo run reads from GQ Platform ops. Waits up to two minutes, then
+# offers to keep waiting.
 wait_for_registry() {
   local tries=0
   until registry_accepts "$1"; do
@@ -447,10 +447,6 @@ printf '  %s✓%s tools present; @getquick/site %s is published\n' "$GREEN" "$RE
 ask SITE_DIR "Where should the site live? (default $(dirname "$REPO_ROOT")/$PROJECT)"
 SITE_DIR="${SITE_DIR:-$(dirname "$REPO_ROOT")/$PROJECT}"
 write_env SITE_DIR "$SITE_DIR"
-ask REGISTRY_DIR "Your getquick-registry checkout? (default $(dirname "$REPO_ROOT")/getquick-registry)"
-REGISTRY_DIR="${REGISTRY_DIR:-$(dirname "$REPO_ROOT")/getquick-registry}"
-[[ -f "$REGISTRY_DIR/package.json" ]] || { warn "No checkout at $REGISTRY_DIR; clone Quick-Release/getquick-registry and re-run."; exit 1; }
-write_env REGISTRY_DIR "$REGISTRY_DIR"
 pause
 
 # ── 2 ─────────────────────────────────────────────────────────────────────
@@ -561,24 +557,10 @@ copy_secret PLOI_API_TOKEN staging staging
 pause
 
 # ── 7 ─────────────────────────────────────────────────────────────────────
-stage "Composer registry logins"
-say "$PROJECT gets its own logins to the GETQUICK Composer registry: client $PROJECT"
-say "(staging: CI and Ploi) and $PROJECT-dev (dev: local installs). The registry CLI"
-say "stores each as COMPOSER_AUTH in $PROJECT's Sigillo and redeploys the proxy."
-note "Needs \`pnpm registry login\` done once in $REGISTRY_DIR."
-for pair in staging:staging:$PROJECT dev:local:$PROJECT-dev; do
-  IFS=: read -r slug alias client <<<"$pair"
-  if has_secret "$alias" COMPOSER_AUTH; then
-    say "COMPOSER_AUTH is already in $slug; keeping it."
-    continue
-  fi
-  printf '  %s$ pnpm registry client add %s --project %s --env %s%s\n' "$DIM" "$client" "$SIGILLO_PROJECT_ID" "$slug" "$RESET"
-  until (cd "$REGISTRY_DIR" && pnpm registry client add "$client" --project "$SIGILLO_PROJECT_ID" --env "$slug"); do
-    warn "That failed: see the registry CLI's message above (not logged in? run pnpm registry login in $REGISTRY_DIR)."
-    confirm "Retry?" || exit 1
-  done
-done
-say "Waiting for the registry proxy to accept both logins (its redeploy takes a moment)."
+stage "Composer registry login"
+say "Every Site shares one login to the GETQUICK Composer registry: COMPOSER_AUTH in"
+say "GQ Platform ops, which gq sigillo run reads at use (gq-platform ADR 0013)."
+say "Nothing is stored in $PROJECT's Sigillo; you need read access to GQ Platform ops."
 wait_for_registry staging
 wait_for_registry local
 pause

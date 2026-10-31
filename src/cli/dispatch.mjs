@@ -91,7 +91,7 @@ export async function runCli(
 ) {
   // The Sigillo wrapper parses its own arguments: everything after `--` belongs
   // to the wrapped command, not to gq.
-  if (isSigilloCommand(argv)) return runSigilloCommand(argv.slice(1), { cwd, env, exec });
+  if (isSigilloCommand(argv)) return runSigilloCommand(argv.slice(1), { cwd, env, exec, io });
   // So do the local CMS commands, whose extra arguments go to DDEV or Composer.
   if (isCmsCommand(argv)) return runCmsCommand(argv.slice(1), { cwd, env, exec, io, interactive });
   // And the production CMS's content commands, which take a post ID, and

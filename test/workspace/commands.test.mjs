@@ -33,6 +33,11 @@ const OPS = {
   github: { repository: "example/fixture" },
 };
 
+// GQ Platform ops' listing (names only), where the fleet's registry
+// credentials live (gq-platform ADR 0013).
+const PLATFORM_LIST =
+  "sigillo secrets --api-url https://secrets.example.test --project 01M5Z0QYDH1PPN7N3C4A7KZAXJ --env ops";
+
 const ARTIFACTS_REMOTE = "https://account-1.artifacts.cloudflare.net/git/fixture-ns/fixture.git";
 const GITHUB_REMOTE = "git@github.com:example/fixture.git";
 
@@ -98,6 +103,7 @@ function machine({
     "pnpm --version": `${pnpm}\n`,
     "git --version": "git version 2.50.0\n",
     "git remote get-url --push --all origin": `${pushUrls.join("\n")}\n`,
+    [PLATFORM_LIST]: "COMPOSER_AUTH\nGITHUB_PACKAGES_TOKEN\n",
     ...stdout,
   };
   return recordingExec((call) => {
@@ -117,6 +123,14 @@ function isLookup({ command, args }) {
 function commandLine({ command, args }) {
   return [basename(command) === "sigillo" ? "sigillo" : command, ...args].join(" ");
 }
+
+// Everything a run showed: its output and every child's arguments and input.
+const allOutput = (result, exec) =>
+  [
+    result.stdout,
+    result.stderr,
+    ...exec.calls.flatMap((call) => [call.command, ...call.args, call.input ?? ""]),
+  ].join("\n");
 
 // The calls that do something: everything except `command -v` lookups.
 const actions = (exec) => exec.calls.filter((call) => !isLookup(call)).map(commandLine);
@@ -409,7 +423,9 @@ test("gq doctor rejects assignments from every Sigillo environment across apps w
   );
   // Listing reads names only; the one value read is the consent check's
   // Cloudflare token, never a listed assignment's.
-  const calls = actions(exec).filter((line) => line.startsWith("sigillo secrets"));
+  const calls = actions(exec).filter(
+    (line) => line.startsWith("sigillo secrets") && line.includes("--project PROJECT1"),
+  );
   assert.equal(calls.filter((line) => !line.includes(" get ")).length, 3);
   assert.deepEqual(
     calls.filter((line) => line.includes(" get ")).map((line) => line.split(" ")[3]),
@@ -484,6 +500,84 @@ test("gq doctor fails if any configured Sigillo environment cannot be listed wit
   assert.doesNotMatch(
     result.stdout + result.stderr,
     /private-token-value|no disallowed assignments/u,
+  );
+});
+
+// --- the fleet's registry credentials (gq-platform ADR 0013) ----------------
+
+const TWO_ENVIRONMENTS = {
+  ...OPS,
+  artifacts: undefined,
+  sigillo: { ...OPS.sigillo, environments: { local: "dev", staging: "stage" } },
+};
+const SITE_COPIES = {
+  "sigillo secrets --api-url https://secrets.example.test --project PROJECT1 --env dev":
+    "COMPOSER_AUTH\n",
+  "sigillo secrets --api-url https://secrets.example.test --project PROJECT1 --env stage":
+    "COMPOSER_AUTH\nGITHUB_PACKAGES_TOKEN\nPLOI_API_TOKEN\n",
+};
+
+test("gq doctor finds the registry credentials in GQ Platform ops and warns about every Site copy", async () => {
+  const fixture = await healthySite({}, TWO_ENVIRONMENTS);
+  const exec = machine({ stdout: SITE_COPIES });
+  const result = await fixture.run(["doctor"], { exec });
+  assert.equal(result.code, 0, result.stdout);
+  assert.match(
+    result.stdout,
+    /Registry credentials \(GQ Platform ops\):\n {2}✓ COMPOSER_AUTH and GITHUB_PACKAGES_TOKEN come from GQ Platform ops, read at use/u,
+  );
+  for (const [alias, name] of [
+    ["local", "COMPOSER_AUTH"],
+    ["staging", "COMPOSER_AUTH"],
+    ["staging", "GITHUB_PACKAGES_TOKEN"],
+  ]) {
+    assert.ok(
+      result.stdout.includes(
+        `⚠ Sigillo ${alias} still holds its own ${name}, which gq no longer reads (it reads the one in GQ Platform ops) — delete it: gq sigillo secrets ${alias} delete ${name}`,
+      ),
+      result.stdout,
+    );
+  }
+  assert.doesNotMatch(result.stdout, /PLOI_API_TOKEN/u);
+  // Names only: the check reads no value.
+  assert.ok(
+    !actions(exec).some((line) => /secrets get (COMPOSER_AUTH|GITHUB_PACKAGES)/u.test(line)),
+  );
+  assert.ok(actions(exec).includes(PLATFORM_LIST));
+});
+
+test("gq doctor names the remedy when GQ Platform ops can't be read, without echoing Sigillo", async () => {
+  const fixture = await healthySite({}, TWO_ENVIRONMENTS);
+  const exec = recordingExec(async (call) => {
+    if (commandLine(call) === PLATFORM_LIST) {
+      return { code: 1, stderr: "forbidden: private-platform-detail" };
+    }
+    return machine({ stdout: SITE_COPIES })(call.command, call.args, {
+      cwd: call.cwd,
+      env: call.env,
+    });
+  });
+  const result = await fixture.run(["doctor"], { exec });
+  assert.equal(result.code, 0, "a warning, not a failure: the Site's copies still work");
+  assert.match(
+    result.stdout,
+    /⚠ can't read GQ Platform ops \(Sigillo project 01M5Z0QYDH1PPN7N3C4A7KZAXJ\), where gq gets COMPOSER_AUTH and GITHUB_PACKAGES_TOKEN — ask a GQ Platform admin for read access/u,
+  );
+  assert.match(
+    result.stdout,
+    /⚠ Sigillo staging still holds its own GITHUB_PACKAGES_TOKEN, which gq falls back to while it can't read GQ Platform ops — delete it once it can: gq sigillo secrets staging delete GITHUB_PACKAGES_TOKEN/u,
+  );
+  assert.doesNotMatch(result.stdout + result.stderr, /private-platform-detail/u);
+});
+
+test("gq doctor warns when GQ Platform ops lacks a registry credential", async () => {
+  const fixture = await healthySite();
+  const exec = machine({ stdout: { [PLATFORM_LIST]: "GQ_CI_BROKER_KEY\nCOMPOSER_AUTH\n" } });
+  const result = await fixture.run(["doctor"], { exec });
+  assert.equal(result.code, 0, result.stdout);
+  assert.match(
+    result.stdout,
+    /⚠ GQ Platform ops has no GITHUB_PACKAGES_TOKEN — a GQ Platform admin stores it there once for the fleet/u,
   );
 });
 
@@ -966,6 +1060,50 @@ test("gq setup --no-ddev installs, creates the .env files and skips DDEV and Com
   );
   assert.match(result.stdout, /--no-ddev: skipping DDEV and Composer/u);
   assert.match(result.stdout, /pnpm deploy:frontend/u);
+});
+
+test("gq setup installs from GitHub Packages with GQ Platform ops' token in pnpm's environment, never a file", async () => {
+  const npmrc = "@quick-release:registry=https://npm.pkg.github.com\n";
+  const fixture = await site({
+    files: { ".npmrc": npmrc, "node_modules/.bin/sigillo": "" },
+  });
+  const token = "ghp_fleet-packages-secret";
+  const exec = recordingExec((call) => {
+    if (isLookup(call)) return { code: 0 };
+    if (commandLine(call).startsWith("sigillo secrets get GITHUB_PACKAGES_TOKEN")) {
+      return { stdout: `${token}\n` };
+    }
+    return { code: 0 };
+  });
+  const result = await fixture.run(["setup", "--no-ddev"], { exec });
+  assert.equal(result.code, 0, result.stderr);
+  const install = exec.calls.find((call) => commandLine(call) === "pnpm install --frozen-lockfile");
+  assert.equal(install.env["npm_config_//npm.pkg.github.com/:_authToken"], token);
+  assert.match(result.stdout, /the fleet's read:packages token from GQ Platform ops/u);
+  assert.equal(await readFile(fixture.path(".npmrc"), "utf8"), npmrc);
+  assert.ok(!allOutput(result, exec).includes(token));
+});
+
+test("gq setup without access to GQ Platform ops installs with the user's npm config", async () => {
+  const fixture = await site({
+    files: { ".npmrc": "@quick-release:registry=https://npm.pkg.github.com\n" },
+  });
+  // Before the first install there is no sigillo bin: the site's pin via npx.
+  const exec = recordingExec((call) => {
+    if (isLookup(call)) return { code: 0 };
+    if (call.command === "npx" && call.args.includes("sigillo@0.13.0")) {
+      return { code: 1, stderr: "forbidden" };
+    }
+    return { code: 0 };
+  });
+  const result = await fixture.run(["setup", "--no-ddev"], { exec });
+  assert.equal(result.code, 0, result.stderr);
+  const install = exec.calls.find((call) => commandLine(call) === "pnpm install --frozen-lockfile");
+  assert.equal(install.env["npm_config_//npm.pkg.github.com/:_authToken"], undefined);
+  assert.match(
+    result.stderr,
+    /No GITHUB_PACKAGES_TOKEN from GQ Platform ops \(your Sigillo login can't read .*\); pnpm uses your user-level npm config/u,
+  );
 });
 
 test("gq setup keeps an existing .env and copes without an .env.example", async () => {

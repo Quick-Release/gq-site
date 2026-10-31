@@ -12,6 +12,13 @@ from an explicit command below, under the existing Sigillo authority. The
 order matters: the Frontend's secrets must exist before CI is deployed, and the
 CMS's key before its release.
 
+Whoever runs it needs read access to the Site's Sigillo project and to GQ
+Platform `ops`, which holds what every Site shares: the GETQUICK CI App and
+the registry credentials, `COMPOSER_AUTH` and `GITHUB_PACKAGES_TOKEN`.
+`gq sigillo run` reads those at use, so nothing is copied into the new
+Site's Sigillo
+([secrets](secrets.md#gq-platform-ops-the-registry-credentials)).
+
 ```sh
 gq new acme --project acme --variant content   # offline, no secrets
 cd acme && pnpm install
@@ -137,7 +144,8 @@ After [generating or adopting a site](sites.md) and
   (`RELEASES_R2_*`, else `R2_*` credentials), syncs Ploi's stored deploy
   script from `ploi.deployScript` as of that commit, and deploys with the
   deploy variables `archive_url` (a 30-minute presigned URL) and
-  `composer_auth` (`COMPOSER_AUTH`, required). It fails unless the deploy log
+  `composer_auth` (`COMPOSER_AUTH`, required: the fleet's, from GQ Platform
+  `ops`). It fails unless the deploy log
   reports `<PROJECT>_DEPLOY_STATUS=success SHA=<the release commit>`.
   `--git-dir` reads the commit from another repository.
 - `ploi media` sets the `S3_UPLOADS_*` lines of the Ploi site's `.env` for
@@ -156,7 +164,7 @@ line. `gq sync` generates it at `deploy/ploi/admin.sh` (see
 Live → local only: no `gq` command sends a database to the server. Both run
 through `gq sigillo run <environment> --` for `PLOI_API_TOKEN`, the backup
 bucket's `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY` and, for `sync`,
-`COMPOSER_AUTH`. Beside the `domains`, `ploi` and `cloudflare` values above,
+`COMPOSER_AUTH` (from GQ Platform `ops`). Beside the `domains`, `ploi` and `cloudflare` values above,
 they read:
 
 ```json
@@ -239,8 +247,12 @@ these commands deploy and connect it:
   sends its secrets to `wrangler secret bulk` as JSON over stdin: `CF_TOKEN`,
   `PLOI_API_TOKEN`, `COMPOSER_AUTH`, `GITHUB_WEBHOOK_SECRET`, the GitHub
   credentials (below), the backup bucket's key as `R2_*` and the releases
-  bucket's as `RELEASES_R2_*`. It refuses, before Wrangler runs, when one is
-  missing. `ci runs` lists the Worker's CI Workflow runs.
+  bucket's as `RELEASES_R2_*`, and on a commerce Site
+  `GITHUB_PACKAGES_TOKEN`. `COMPOSER_AUTH` and `GITHUB_PACKAGES_TOKEN` are
+  the fleet's, read from GQ Platform `ops` at use: after either is rotated
+  there, run `ci deploy` again. It refuses, before Wrangler runs, when one is
+  missing, saying which come from GQ Platform `ops` and why gq couldn't read
+  them. `ci runs` lists the Worker's CI Workflow runs.
 - `github setup --app` connects the Site through the GETQUICK CI App
   ([below](#github-credentials-the-getquick-ci-app)): no token to paste.
 - `github setup` without `--app` stores a generated `GITHUB_WEBHOOK_SECRET`
