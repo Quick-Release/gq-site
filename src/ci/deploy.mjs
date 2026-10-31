@@ -36,6 +36,20 @@ export const githubWorkerSecrets = Object.freeze({
   GITHUB_WEBHOOK_SECRET: "GITHUB_WEBHOOK_SECRET",
 });
 
+// The same with the GETQUICK CI App (`gq github setup --app`, gq-platform
+// ADR 0012): the Worker asks the token broker for a token per run, so it
+// holds the broker's URL and its own credential instead of GITHUB_CI_TOKEN.
+export const githubAppWorkerSecrets = Object.freeze({
+  GQ_CI_BROKER_URL: "GQ_CI_BROKER_URL",
+  GQ_CI_BROKER_TOKEN: "GQ_CI_BROKER_TOKEN",
+  GITHUB_WEBHOOK_SECRET: "GITHUB_WEBHOOK_SECRET",
+});
+
+// Whether the secret store holds the Site's broker credential: App mode.
+export function usesGithubApp(environment) {
+  return Boolean(environment.GQ_CI_BROKER_URL?.trim() && environment.GQ_CI_BROKER_TOKEN?.trim());
+}
+
 // The release step hands these to the Frontend deploy when they are set, so a
 // CI release binds the Frontend's refresh token, its publication-event secret
 // and its consent read token like `pnpm deploy:frontend` does. A site without
@@ -72,11 +86,12 @@ export function secretsPayload(environment, { github = true } = {}) {
     origin: "https://cms.invalid",
     url: "https://cms.invalid/graphql",
   });
-  const required = { ...workerSecrets, ...(github ? githubWorkerSecrets : {}) };
+  const githubSecrets = usesGithubApp(environment) ? githubAppWorkerSecrets : githubWorkerSecrets;
+  const required = { ...workerSecrets, ...(github ? githubSecrets : {}) };
   const missing = Object.values(required).filter((name) => !environment[name]);
   if (missing.length > 0) {
     throw new Error(
-      `Missing in the secret store: ${missing.join(", ")} (see gq cloudflare ci / cloudflare releases / github setup).`,
+      `Missing in the secret store: ${missing.join(", ")} (see gq cloudflare ci / cloudflare releases / github setup [--app]).`,
     );
   }
   const optional = Object.entries(optionalWorkerSecrets).filter(([, from]) =>
@@ -103,7 +118,7 @@ export function ciDeployToken(context) {
 
 // The Worker's name, its directory and Wrangler's environment: Wrangler
 // authenticates with the CI deploy token only.
-function ciTarget(context, env) {
+export function ciTarget(context, env) {
   const ops = context.config;
   const worker = ops.ci?.worker;
   const accountId = ops.cloudflare?.accountId;
@@ -145,8 +160,30 @@ export async function runCiDeploy({ context, env, exec, io }) {
     stdout: io.stdout,
     stderr: io.stderr,
   });
+  if (context.config.github?.repository && usesGithubApp(context.env)) {
+    await retireGithubToken(exec, target, io);
+  }
   io.out(`Deployed ${target.worker} with ${Object.keys(JSON.parse(payload)).length} secrets.`);
   return 0;
+}
+
+// A Worker moved to the App keeps the GITHUB_CI_TOKEN an earlier deploy set
+// (secret bulk only adds): remove it, so no long-lived token stays bound.
+async function retireGithubToken(exec, target, io) {
+  const listed = await exec(target.wrangler, ["secret", "list", "--format", "json"], {
+    cwd: target.directory,
+    env: target.env,
+  });
+  if (listed.code !== 0) throw new Error("wrangler secret list failed");
+  const names = JSON.parse(listed.stdout || "[]").map(({ name }) => name);
+  if (!names.includes("GITHUB_CI_TOKEN")) return;
+  await wrangler(
+    exec,
+    { ...target, env: { ...target.env, CI: "true" } },
+    ["secret", "delete", "GITHUB_CI_TOKEN"],
+    { stdout: io.stdout, stderr: io.stderr },
+  );
+  io.out("Removed GITHUB_CI_TOKEN from the Worker: it gets tokens from the GETQUICK CI broker.");
 }
 
 // `gq ci runs`. Resolves to an exit code.

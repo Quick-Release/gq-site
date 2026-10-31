@@ -103,6 +103,25 @@ async function runSigillo({ cwd, env, exec }, buildArguments) {
 // printed; `get` reads one into memory for the command's own use.
 export async function sigilloSecrets({ context, env, exec }, environment) {
   const flags = environmentFlags(validateSigilloConfig(context.config.sigillo), environment);
+  return secretsClient({ context, env, exec }, flags);
+}
+
+// Another Sigillo project's environment on the site's Sigillo server, such as
+// GQ Platform `ops`, which holds the GETQUICK CI App (gq-platform ADR 0012).
+// Same CLI, same rules: stdin in, never printed.
+export async function sigilloProjectSecrets({ context, env, exec }, { projectId, environment }) {
+  const { apiUrl } = validateSigilloConfig(context.config.sigillo);
+  return secretsClient({ context, env, exec }, [
+    "--api-url",
+    apiUrl,
+    "--project",
+    projectId,
+    "--env",
+    environment,
+  ]);
+}
+
+async function secretsClient({ context, env, exec }, flags) {
   const sigillo = await sigilloCommand(context.projectRoot);
   async function call(args, input) {
     const result = await exec(sigillo.command, [...sigillo.prefix, ...args], {

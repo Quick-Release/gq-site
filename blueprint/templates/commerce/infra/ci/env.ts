@@ -13,10 +13,14 @@ export type Bindings = CiBindings & {
   // GETQUICK Composer registry login: CI's composer install and the Ploi deploy.
   COMPOSER_AUTH: string;
   CLOUDFLARE_DEPLOY_ACCOUNT_ID: string;
-  // GitHub (pnpm github:setup): a fine-grained token for GITHUB_REPOSITORY
-  // (Contents: read, Commit statuses: read and write) and the webhook secret.
-  // An Artifacts-only site has an empty GITHUB_REPOSITORY and neither secret.
+  // GitHub (pnpm github:setup): the webhook secret, and either the GETQUICK
+  // CI token broker's URL and this Site's credential (gq github setup --app,
+  // gq-platform ADR 0012) or a fine-grained token for GITHUB_REPOSITORY
+  // (Contents: read, Commit statuses: read and write). An Artifacts-only site
+  // has an empty GITHUB_REPOSITORY and none of them.
   GITHUB_CI_TOKEN?: string;
+  GQ_CI_BROKER_URL?: string;
+  GQ_CI_BROKER_TOKEN?: string;
   GITHUB_WEBHOOK_SECRET?: string;
   GITHUB_REPOSITORY: string;
   ARTIFACTS_NAMESPACE: string;

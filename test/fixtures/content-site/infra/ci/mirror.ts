@@ -3,7 +3,7 @@ import { WorkflowEntrypoint } from "cloudflare:workers";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 
 import type { Bindings } from "./env";
-import { githubAuth, mirrorScript } from "./github.ts";
+import { githubAuth, githubToken, mirrorScript } from "./github.ts";
 import type { MirrorParams } from "./github.ts";
 
 // GitHub → Artifacts, one ref per GitHub push webhook (src/index.ts). The push
@@ -19,6 +19,8 @@ export class Mirror extends WorkflowEntrypoint<Bindings, MirrorParams> {
       { retries: { limit: 3, delay: 10_000, backoff: "exponential" }, timeout: 5 * 60 * 1000 },
       async () => {
         const repo = await this.env.ARTIFACTS.get(this.env.ARTIFACTS_REPO);
+        // Minted inside the step and never returned from it.
+        const githubCredential = await githubToken(this.env);
         const { plaintext: artifactsToken } = await repo.createToken("write", 600);
         // A container per run, destroyed right after: containers bill while
         // they are up, and a shared one would idle until it sleeps.
@@ -33,7 +35,7 @@ export class Mirror extends WorkflowEntrypoint<Bindings, MirrorParams> {
             env: {
               REF: ref,
               GITHUB_REMOTE: `https://github.com/${this.env.GITHUB_REPOSITORY}.git`,
-              GITHUB_AUTH: githubAuth(this.env.GITHUB_CI_TOKEN ?? ""),
+              GITHUB_AUTH: githubAuth(githubCredential),
               // Built like @cloudflare/ci does: repo.remote is an RPC property
               // on the binding, which can't be passed on as a string.
               ARTIFACTS_REMOTE: `https://${this.env.CLOUDFLARE_ACCOUNT_ID}.artifacts.cloudflare.net/git/${this.env.ARTIFACTS_NAMESPACE}/${this.env.ARTIFACTS_REPO}.git`,

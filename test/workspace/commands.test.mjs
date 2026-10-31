@@ -1139,3 +1139,71 @@ test("gq doctor has no forms section for a Site without forms", async () => {
   const result = await (await healthySite()).run(["doctor"], { exec: machine() });
   assert.doesNotMatch(result.stdout, /Forms:/u);
 });
+
+// --- gq doctor: GitHub CI credentials (gq-platform ADR 0012) -------------------
+
+test("gq doctor reports whether CI reaches GitHub through the GETQUICK CI broker or a token", async () => {
+  const ciSite = () =>
+    healthySite(
+      {},
+      {
+        ...OPS,
+        ci: { worker: "fixture-ci" },
+        sigillo: { ...OPS.sigillo, environments: { local: "dev", staging: "stage" } },
+      },
+    );
+  const BROKER_URL_GET = `sigillo secrets get GQ_CI_BROKER_URL --api-url https://secrets.example.test --project PROJECT1 --env stage --raw --force`;
+  const broker = "https://gq-ci-broker.fixture-sub.workers.dev";
+  const health = (configured) =>
+    recordingFetch(({ url }) => {
+      assert.equal(url, `${broker}/health`);
+      return json({ ok: true, configured });
+    });
+
+  const token = await (
+    await ciSite()
+  ).run(["doctor"], {
+    exec: machine({ stdout: { [STAGE_NAMES]: "GITHUB_CI_TOKEN\nGITHUB_WEBHOOK_SECRET\n" } }),
+  });
+  assert.equal(token.code, 0, token.stdout);
+  assert.match(
+    token.stdout,
+    /⚠ CI reaches GitHub with a fine-grained GITHUB_CI_TOKEN.*gq github setup --app/u,
+  );
+
+  const app = await (
+    await ciSite()
+  ).run(["doctor"], {
+    exec: machine({
+      stdout: {
+        [STAGE_NAMES]: "GQ_CI_BROKER_URL\nGQ_CI_BROKER_TOKEN\nGITHUB_WEBHOOK_SECRET\n",
+        [BROKER_URL_GET]: `${broker}\n`,
+      },
+    }),
+    fetch: health(true),
+  });
+  assert.equal(app.code, 0, app.stdout);
+  assert.match(app.stdout, /✓ CI gets per-run tokens from the GETQUICK CI broker/u);
+  assert.match(
+    app.stdout,
+    /✓ the broker at https:\/\/gq-ci-broker\.fixture-sub\.workers\.dev is up and configured/u,
+  );
+
+  const down = await (
+    await ciSite()
+  ).run(["doctor"], {
+    exec: machine({
+      stdout: {
+        [STAGE_NAMES]: "GQ_CI_BROKER_URL\nGQ_CI_BROKER_TOKEN\nGITHUB_CI_TOKEN\n",
+        [BROKER_URL_GET]: `${broker}\n`,
+      },
+    }),
+    fetch: health(false),
+  });
+  assert.equal(down.code, 1);
+  assert.match(down.stdout, /⚠ Sigillo staging still holds GITHUB_CI_TOKEN/u);
+  assert.match(
+    down.stdout,
+    /✗ the broker at .* isn't answering as configured — run: gq ci broker deploy/u,
+  );
+});

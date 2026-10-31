@@ -1,3 +1,5 @@
+import { runAppCreate } from "./app-create.mjs";
+import { runBrokerDeploy } from "./broker-deploy.mjs";
 import { runCiDeploy, runCiRuns } from "./deploy.mjs";
 import { runArtifactsCredential, runArtifactsSetup } from "./git-artifacts.mjs";
 import { runGithubSetup } from "./github-setup.mjs";
@@ -8,7 +10,10 @@ import { runGithubSetup } from "./github-setup.mjs";
 const CI_COMMANDS = new Map([
   ["ci deploy", ["gq ci deploy", [], runCiDeploy]],
   ["ci runs", ["gq ci runs", [], runCiRuns]],
-  ["github setup", ["gq github setup [--dry-run]", ["dryRun"], runGithubSetup]],
+  // The GETQUICK CI App's token broker (gq-platform ADR 0012), fleet-wide.
+  ["ci broker deploy", ["gq ci broker deploy [--dry-run]", ["dryRun"], runBrokerDeploy]],
+  ["github setup", ["gq github setup [--app] [--dry-run]", ["app", "dryRun"], runGithubSetup]],
+  ["github app create", ["gq github app create [--dry-run]", ["dryRun"], runAppCreate]],
   ["git artifacts setup", ["gq git artifacts setup", [], runArtifactsSetup]],
   // git's credential helper protocol.
   ["git artifacts get", ["gq git artifacts get | store | erase", [], runArtifactsCredential]],

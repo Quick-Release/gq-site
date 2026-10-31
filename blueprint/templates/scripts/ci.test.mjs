@@ -133,3 +133,31 @@ test("the mirror script converges Artifacts on GitHub's refs", async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("gets each run's GitHub token from the GETQUICK CI broker, else GITHUB_CI_TOKEN", async () => {
+  const { githubToken, hasGithubCredentials } = await import("../infra/ci/github.ts");
+  const requests = [];
+  const broker = async (url, init) => {
+    requests.push({ url, init });
+    return Response.json({ token: "minted", expires_at: "2026-01-01T00:00:00Z" });
+  };
+  const env = {
+    GITHUB_REPOSITORY: "Quick-Release/site",
+    GITHUB_CI_TOKEN: "fine-grained",
+    GQ_CI_BROKER_URL: "https://broker.example",
+    GQ_CI_BROKER_TOKEN: "credential",
+  };
+  assert.equal(await githubToken(env, broker), "minted");
+  assert.equal(requests[0].url, "https://broker.example/token");
+  assert.equal(requests[0].init.headers.Authorization, "Bearer credential");
+  assert.deepEqual(JSON.parse(requests[0].init.body), { repository: "Quick-Release/site" });
+
+  const tokenOnly = { GITHUB_REPOSITORY: "Quick-Release/site", GITHUB_CI_TOKEN: "fine-grained" };
+  assert.equal(await githubToken(tokenOnly, broker), "fine-grained");
+  assert.equal(requests.length, 1);
+  assert.equal(hasGithubCredentials({ GITHUB_REPOSITORY: "Quick-Release/site" }), false);
+  await assert.rejects(
+    githubToken(env, async () => new Response("Unauthorized.", { status: 401 })),
+    /broker answered 401/u,
+  );
+});

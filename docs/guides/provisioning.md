@@ -233,20 +233,85 @@ these commands deploy and connect it:
 
 - `ci deploy` deploys the Worker `ci.worker` with `CI_DEPLOY_API_TOKEN`, then
   sends its secrets to `wrangler secret bulk` as JSON over stdin: `CF_TOKEN`,
-  `PLOI_API_TOKEN`, `COMPOSER_AUTH`, `GITHUB_CI_TOKEN`,
-  `GITHUB_WEBHOOK_SECRET`, the backup bucket's key as `R2_*` and the releases
+  `PLOI_API_TOKEN`, `COMPOSER_AUTH`, `GITHUB_WEBHOOK_SECRET`, the GitHub
+  credentials (below), the backup bucket's key as `R2_*` and the releases
   bucket's as `RELEASES_R2_*`. It refuses, before Wrangler runs, when one is
   missing. `ci runs` lists the Worker's CI Workflow runs.
-- `github setup` stores a generated `GITHUB_WEBHOOK_SECRET` and a pasted,
-  validated fine-grained `GITHUB_CI_TOKEN` (prompting in a terminal only),
-  then creates or updates `github.repository`'s push webhook to the Worker's
-  `/github/webhook` through your `gh` login.
+- `github setup --app` connects the Site through the GETQUICK CI App
+  ([below](#github-credentials-the-getquick-ci-app)): no token to paste.
+- `github setup` without `--app` stores a generated `GITHUB_WEBHOOK_SECRET`
+  and a pasted, validated fine-grained `GITHUB_CI_TOKEN` (prompting in a
+  terminal only), then creates or updates `github.repository`'s push webhook
+  to the Worker's `/github/webhook` through your `gh` login. Sites set up this
+  way keep working; move them to the App when you next touch their CI.
 - `git artifacts setup` registers `gq git artifacts`, under
   `gq sigillo run staging`, as git's only credential helper for the Artifacts
   host, and removes any Artifacts push URL from `origin`, since a second push
   URL would run the pre-push hook twice. As
   the helper, `get` answers that host only with a read-only git token that
   expires in an hour; nothing is stored.
+
+### GitHub credentials: the GETQUICK CI App
+
+The CI Worker of a Site on GitHub fetches pushed refs (Contents read) and
+posts the `cloudflare-ci` commit status (Commit statuses write). Under
+[gq-platform ADR 0012](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0012-fleet-ci-credentials-through-a-github-app-and-token-broker.md)
+it gets those tokens from the **GETQUICK CI** GitHub App through a central
+token broker, the `gq-ci-broker` Worker, instead of a personal token:
+
+```text
+Site CI Worker ── POST /token, Bearer GQ_CI_BROKER_TOKEN, { repository } ──► gq-ci-broker
+gq-ci-broker ── App JWT ──► GitHub: installation token for that repository only,
+                             contents read + statuses write, expires within the hour
+```
+
+The broker alone holds the App's private key. A Site's credential is derived
+from the broker key for its repository, so it can't mint for another one.
+The Worker mints a token inside each mirror and commit-status step and never
+returns it from a step.
+
+Once for the fleet (an organization owner, then whoever deploys):
+
+1. `gq github app create`, from any directory with a `gq.ops.json` `sigillo`
+   block (a Site, or gq-site itself), logged in to Sigillo with access to the
+   GQ Platform project. It prints a loopback URL: open it in a browser signed
+   in as a Quick-Release owner (over `ssh -N -L <port>:127.0.0.1:<port>` when
+   the browser is on another computer). GitHub opens with the App filled in:
+   keep the name **GETQUICK CI** and click **Create GitHub App**. Then install
+   it on Quick-Release with **Only select repositories**, picking one Site's
+   repository. The command stores `GQ_CI_GITHUB_APP_ID`,
+   `GQ_CI_GITHUB_APP_SLUG`, `GQ_CI_GITHUB_APP_PRIVATE_KEY` (PKCS#8, base64
+   DER), `GQ_CI_GITHUB_APP_INSTALLATION_ID` and a generated
+   `GQ_CI_BROKER_KEY` in GQ Platform `ops`. Run again after a stop: it
+   records an installation made later, and otherwise changes nothing while the
+   App exists.
+2. `gq sigillo run staging -- gq ci broker deploy`, from any Site on GitHub.
+   It refuses until the App exists, proves the App against GitHub (owner,
+   permissions, no events, a selected-repositories installation), deploys
+   `gq-ci-broker` to the account's workers.dev with the Site's CI Wrangler and
+   `CI_DEPLOY_API_TOKEN`, sends `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` and
+   `BROKER_KEY` over stdin, and checks `/health`. Rerun it after rotating a
+   key.
+
+Then in each Site:
+
+1. `gq sigillo run staging -- gq github setup --app`. Through your `gh` login
+   (admin on the repository) it adds the repository to the App's
+   installation, creates or updates the push webhook as before, and stores
+   `GQ_CI_BROKER_TOKEN` and `GQ_CI_BROKER_URL` in Sigillo staging. It ends by
+   asking the broker for a token for the repository, and fails if the broker
+   doesn't mint one.
+2. `pnpm ci:deploy` (`gq ci deploy`). With the broker pair in staging it sends
+   it instead of `GITHUB_CI_TOKEN`, and removes a `GITHUB_CI_TOKEN` an earlier
+   deploy left on the Worker.
+3. Delete `GITHUB_CI_TOKEN` from Sigillo staging and revoke it on GitHub.
+   `gq doctor` reports the mode and flags a leftover token.
+
+To cut one Site off, remove its repository from the installation (GitHub →
+Quick-Release settings → GitHub Apps → GETQUICK CI → Repository access): the
+broker can't mint for it from then on. Rotating `GQ_CI_BROKER_KEY` revokes
+every Site's credential at once; redeploy the broker, then rerun
+`github setup --app` and `ci deploy` in each Site.
 
 ### Artifacts-only Sites
 
