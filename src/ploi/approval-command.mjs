@@ -340,8 +340,8 @@ async function requireReviewedCheckout({
     head = null;
   }
   // Neither a replacement object nor a graft may stand in for the pin.
-  const grafts = [gitDir, commonDir].some((dir) => existsSync(join(dir, "info/grafts")));
-  if (head && (replacements !== "" || grafts)) {
+  const grafts = () => [gitDir, commonDir].some((dir) => existsSync(join(dir, "info/grafts")));
+  if (head && (replacements !== "" || grafts())) {
     throw refuse("has replacement objects or grafts, which could stand in for the reviewed commit");
   }
   if (head !== commit || headTree !== pinnedTree || status !== "") {
