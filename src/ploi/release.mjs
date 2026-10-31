@@ -8,13 +8,22 @@
 //   gq ploi release                  # the v* tag at HEAD, else HEAD
 //   gq ploi release --ref v0.1.1     # any tag, branch or commit
 //   gq ploi release --git-dir <dir>  # read the commit from another repository
+//   gq ploi release --composer-only  # the deploy script stops after Composer:
+//                                    # no WP-CLI, activation or database step
 
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { createR2Client } from "../r2.mjs";
 import { createReporter } from "../cli/reporter.mjs";
+import { assertDeploymentAllowed, guardedPackages } from "./deployment-policy.mjs";
+import {
+  SERVER_EXPECTATIONS_FILE,
+  prepareGuardedRelease,
+  unconfiguredApprovals,
+} from "./package-expectations.mjs";
 import { deploy, syncDeployScript } from "./provision.mjs";
 import { createPloiServerClient } from "./server-client.mjs";
 
@@ -25,27 +34,54 @@ export const shippedPaths = Object.freeze(["apps/cms", "deploy/ploi"]);
 // The server's `composer install` fetches the GETQUICK plugins from the
 // private registry. The login comes from the secret store and reaches the
 // deploy script as the deploy variable composer_auth → $COMPOSER_AUTH, for
-// that one deploy; nothing stores it on the server.
-export function deployVariables(archiveUrl, composerAuth) {
+// that one deploy; nothing stores it on the server. `composerOnly` adds the
+// deploy variable composer_only → $COMPOSER_ONLY=true, which makes the deploy
+// script stop after Composer (and its verifications), before any WP-CLI,
+// activation or database step.
+export function deployVariables(archiveUrl, composerAuth, { composerOnly = false } = {}) {
   if (!composerAuth) {
     throw new Error(
       "COMPOSER_AUTH is missing: run this through gq sigillo run (or CI), which injects the registry login.",
     );
   }
-  return { archive_url: archiveUrl, composer_auth: composerAuth };
+  return {
+    archive_url: archiveUrl,
+    composer_auth: composerAuth,
+    ...(composerOnly ? { composer_only: "true" } : {}),
+  };
 }
 
-export function releaseKey(prefix, version, sha) {
-  return `${prefix}v${version}-${sha.slice(0, 12)}.tar.gz`;
+// A guarded release's archive also ships PACKAGE_EXPECTATIONS, so its key
+// names that file's digest too: an archive packed before (or with other
+// expectations) is never reused for it.
+export function releaseKey(prefix, version, sha, expectations = null) {
+  const guarded = expectations
+    ? `-${createHash("sha256").update(expectations).digest("hex").slice(0, 12)}`
+    : "";
+  return `${prefix}v${version}-${sha.slice(0, 12)}${guarded}.tar.gz`;
 }
 
 export function releaseManifest({ version, sha, ref }) {
   return `version=${version}\ncommit=${sha}\nref=${ref}\n`;
 }
 
-// `gq ploi release [--ref <ref>] [--git-dir <dir>]`. Resolves to an exit code.
-export async function runRelease({ context, parsed, env, fetch, exec, io, interactive }) {
+// `gq ploi release [--ref <ref>] [--git-dir <dir>] [--composer-only]`.
+// Resolves to an exit code.
+// `approvals` is the package approval seam (package-expectations.mjs); only
+// a Site with guarded packages consults it.
+export async function runRelease({
+  context,
+  parsed,
+  env,
+  fetch,
+  exec,
+  io,
+  interactive,
+  approvals = unconfiguredApprovals,
+}) {
   const ops = context.config;
+  // A paused or reserved Site refuses before anything else.
+  assertDeploymentAllowed(ops);
   const { bucket, prefix = "" } = ops.releases ?? {};
   if (!bucket) throw new Error("gq.ops.json releases.bucket is required.");
   const deployScriptPath = ops.ploi?.deployScript;
@@ -63,13 +99,35 @@ export async function runRelease({ context, parsed, env, fetch, exec, io, intera
   const ref = parsed.ref ?? (await defaultRef(git));
   const sha = (await git(["rev-parse", `${ref}^{commit}`])).trim();
   const version = (await git(["show", `${sha}:VERSION`])).trim();
-  const key = releaseKey(prefix, version, sha);
   const deployScript = await git(["show", `${sha}:${deployScriptPath}`]);
+  // A Site guarding Composer packages checks them, and their approval, at the
+  // release commit before anything is uploaded. The server checks them again
+  // only with a deploy script gq sync rendered for the same packages.
+  const guarded = guardedPackages(ops);
+  const serverGuard = `GUARDED_PACKAGES="${guarded.join(" ")}"`;
+  if (guarded.length && !deployScript.split("\n").includes(serverGuard)) {
+    throw new Error(
+      `${deployScriptPath} at ${sha.slice(0, 12)} doesn't verify ${guarded.join(", ")} after composer install (no ${serverGuard} line): run gq sync and commit it; nothing was uploaded or deployed.`,
+    );
+  }
+  const expectations = guarded.length
+    ? await prepareGuardedRelease({
+        project: ops.project,
+        guarded,
+        sha,
+        show: (path) => git(["show", `${sha}:${path}`]),
+        approvals,
+      })
+    : null;
+  const key = releaseKey(prefix, version, sha, expectations);
   // Fail before uploading anything if the registry login is missing.
   deployVariables("", context.env.COMPOSER_AUTH);
 
   const ui = createReporter(io, interactive);
-  ui.intro(`Ploi release · v${version} (${ref} @ ${sha.slice(0, 7)})`);
+  const composerOnly = Boolean(parsed.composerOnly);
+  ui.intro(
+    `Ploi release · v${version} (${ref} @ ${sha.slice(0, 7)})${composerOnly ? " · Composer-only" : ""}`,
+  );
   const step = ui.spinner();
   let result;
   let deployScriptUpdated;
@@ -89,7 +147,7 @@ export async function runRelease({ context, parsed, env, fetch, exec, io, intera
     if (await r2.exists(key)) {
       step.message(`${key} is already in R2`);
     } else {
-      await r2.put(key, await packArchive(git, { version, sha, ref }));
+      await r2.put(key, await packArchive(git, { version, sha, ref, expectations }));
     }
     const archiveUrl = await r2.presignGet(key, 1800);
 
@@ -104,7 +162,7 @@ export async function runRelease({ context, parsed, env, fetch, exec, io, intera
     step.message("Deploying on Ploi (this can take a few minutes)");
     result = await deploy(client, ops.ploi.siteId, {
       project: ops.project,
-      variables: deployVariables(archiveUrl, context.env.COMPOSER_AUTH),
+      variables: deployVariables(archiveUrl, context.env.COMPOSER_AUTH, { composerOnly }),
     });
   } catch (error) {
     step.error("Release failed");
@@ -150,7 +208,7 @@ async function defaultRef(git) {
 }
 
 // `exec` captures text, so git writes the (binary) archive to a scratch file.
-async function packArchive(git, { version, sha, ref }) {
+async function packArchive(git, { version, sha, ref, expectations }) {
   const directory = await mkdtemp(join(tmpdir(), "gq-ploi-release-"));
   const output = join(directory, "release.tar.gz");
   try {
@@ -159,6 +217,7 @@ async function packArchive(git, { version, sha, ref }) {
       "--format=tar.gz",
       `--output=${output}`,
       `--add-virtual-file=RELEASE:${releaseManifest({ version, sha, ref })}`,
+      ...(expectations ? [`--add-virtual-file=${SERVER_EXPECTATIONS_FILE}:${expectations}`] : []),
       sha,
       "--",
       ...shippedPaths,

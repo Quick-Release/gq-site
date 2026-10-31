@@ -43,6 +43,14 @@ export const MAX_CONSENT_RETENTION_DAYS = 1826;
 // Turnstile is verified server-side when the Site chooses it.
 export const FORM_PROVIDERS = ["gravityforms"];
 export const FORM_SPAM_CONTROLS = ["honeypot", "turnstile"];
+// A protected Site's deployment states (gq.ops.json deployment.state):
+// "authorized" lets gq deploy it; "paused" and "reserved" (someone else, the
+// holder, is changing the Site) refuse every deploy. See
+// docs/reference/deployment-policy.md.
+export const DEPLOYMENT_STATES = ["paused", "reserved", "authorized"];
+// A Composer package name (vendor/name), as Composer's own schema has it.
+export const COMPOSER_PACKAGE_NAME =
+  /^[a-z0-9]([_.-]?[a-z0-9]+)*\/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$/u;
 
 // Where `$schema` points from a site root, through the site's own install.
 export const SCHEMA_URL = "./node_modules/@getquick/site/schema/gq.ops.schema.json";
@@ -359,6 +367,47 @@ export const manifestSchema = z
       .strictObject({ requiredFiles: z.record(path, z.array(path)).optional() })
       .optional()
       .describe("Added to the files the variant requires in each app."),
+    deployment: z
+      .strictObject({
+        protected: z
+          .literal(true)
+          .describe(
+            "This Site is a protected deployment target: gq deploys it only while state is authorized.",
+          ),
+        state: z
+          .enum(DEPLOYMENT_STATES)
+          .describe(
+            "authorized deploys; paused and reserved refuse every deploy until a reviewed Site change authorizes it again.",
+          ),
+        reason: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe("Why a paused or reserved Site holds."),
+        holder: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe("Who holds a reserved Site (for example, its nightly update pipeline)."),
+        guardedPackages: z
+          .array(
+            z
+              .string()
+              .regex(COMPOSER_PACKAGE_NAME, "must be a Composer package name (vendor/name)"),
+          )
+          .min(1)
+          .optional()
+          .describe(
+            "Composer packages a deploy verifies against deploy/ploi/package-expectations.json and an authenticated approval before uploading, and again on the server after composer install.",
+          ),
+      })
+      .superRefine(checkDeployment)
+      .optional()
+      .describe(
+        "A protected Site's deployment policy. Without it a Site deploys as before; change it only in a reviewed Site change.",
+      ),
     offboarded: z
       .strictObject({
         at: z.iso.datetime(),
@@ -421,6 +470,25 @@ export const manifestSchema = z
 
 // forms: on a content Site with the package pair, whose CMS deploy activates
 // the provider's plugin.
+// A paused or reserved Site says why, and a reserved one who holds it.
+function checkDeployment(deployment, context) {
+  const issue = (key, message) => context.addIssue({ code: "custom", path: [key], message });
+  if (deployment.state !== "authorized" && !deployment.reason) {
+    issue("reason", `is required while the Site is ${deployment.state}`);
+  }
+  if (deployment.state === "reserved" && !deployment.holder) {
+    issue("holder", "is required while the Site is reserved");
+  }
+  if (deployment.state !== "reserved" && deployment.holder) {
+    issue("holder", "is only for a reserved Site");
+  }
+  if (
+    new Set(deployment.guardedPackages ?? []).size !== (deployment.guardedPackages ?? []).length
+  ) {
+    issue("guardedPackages", "repeats a package");
+  }
+}
+
 function checkForms({ forms, variant, contentRuntime, wordpress }, context) {
   if (forms === undefined) return;
   const issue = (message) => context.addIssue({ code: "custom", path: ["forms"], message });

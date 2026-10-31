@@ -81,7 +81,39 @@ version.
   run the checks: push the commit afterwards. The package must be in
   `apps/cms/composer.json`'s `require`. Run it under the `staging`
   environment, which holds `COMPOSER_AUTH`, the Ploi token and the releases
-  R2 key: `pnpm release:package getquick/gq-design`.
+  R2 key: `pnpm release:package getquick/gq-design`. `staging` names the
+  secrets, not the target: it deploys the one Ploi site `gq.ops.json` names,
+  production included.
+
+  Guarded preparation, with any of these options:
+
+  | Option                      | Effect                                                                                            |
+  | --------------------------- | ------------------------------------------------------------------------------------------------- |
+  | `--to <version>`            | Pins the package exactly at `<version>` in `composer.json` first (only that requirement changes). |
+  | `--expect-before <version>` | Refuses, before Composer runs, unless the lock holds `<version>` now.                             |
+  | `--reference <ref>`         | Refuses unless every reference the lock records for the package after the update is `<ref>`.      |
+  | `--no-deploy`               | Commits without deploying: nothing is uploaded and no provider is called.                         |
+  | `--composer-only`           | Deploys the commit Composer-only (see `gq ploi release --composer-only`).                         |
+
+  Guarded preparation runs `composer update <package> --no-interaction
+--no-install` (never `--with-dependencies`, so a version that needs other
+  packages changed fails in Composer), and refuses, restoring
+  `composer.json` and `composer.lock`, when the update adds, removes or
+  changes any other `packages` or `packages-dev` entry, leaves the package at
+  another version or reference, or changes any file besides those two. It
+  commits just those two files. A package in `gq.ops.json`
+  `deployment.guardedPackages` is only prepared with `--to`. `--no-deploy` is
+  allowed on a paused or reserved Site; deploying is not (see
+  [Deployment policy](deployment-policy.md)).
+
+`gq ploi release --composer-only` passes the deploy variable `composer_only`,
+which the deploy script reads as `COMPOSER_ONLY=true`: after replacing the
+shipped code it runs `composer install`, restores shipped plugins and
+themes, applies the dependency patch, verifies any
+[package expectations](package-expectations.md) and reloads PHP-FPM, then
+stops: no maintenance mode, no WP-CLI, no plugin activation and no database
+update. Before this option, only the deploy script understood
+`COMPOSER_ONLY`; no gq command could set it.
 
 A site's `apps/cms/composer.json` and `composer.lock` are its own: no release
 command rewrites a requirement, and none rejects a lock that pins a branch

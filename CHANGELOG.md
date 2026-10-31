@@ -3,6 +3,38 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **Protected Sites can hold their deploys.** A `gq.ops.json` `deployment`
+  block (`protected: true` with `state` `paused`, `reserved` or `authorized`,
+  and a `reason` and `holder` while holding) makes `gq ploi release`,
+  `gq release package` and the generated CI release step refuse a paused or
+  reserved Site before anything is uploaded, synced or deployed. No flag
+  lifts a hold; a reviewed Site change does. A Site without the block deploys
+  as before. See [Deployment policy](docs/reference/deployment-policy.md).
+  `gq sync` updates `scripts/ci-release.mjs`.
+- **Guarded Composer packages.** `deployment.guardedPackages` makes a release
+  check the release commit's `deploy/ploi/package-expectations.json`
+  (contract v1: version, tag identity, lock reference and the exact
+  `gq-tree-v1` file tree) against its `composer.lock`, ask an approval
+  service, and ship the expectations; the deploy script then verifies the
+  installed files after `composer install`, before PHP-FPM reloads or any
+  WP-CLI or database step. gq-site ships no approval service, so a Site
+  guarding a package refuses to deploy until one is integrated. See
+  [Package expectations](docs/reference/package-expectations.md). `gq sync`
+  updates `deploy/ploi/admin.sh`; a Site guarding nothing deploys as before.
+- **Guarded single-package preparation.** `gq release package` takes
+  `--to <version>`, `--reference <ref>`, `--expect-before <version>` and
+  `--no-deploy`: an exact pin, a lock-only update that refuses any other
+  locked package's change (restoring both Composer files), and a commit
+  without any provider call.
+- **Composer-only deploys from gq.** `gq ploi release --composer-only` (and
+  `gq release package --composer-only`) passes `composer_only`, so the deploy
+  script stops after Composer and its verifications. Until now only the
+  deploy script understood `COMPOSER_ONLY`; no gq command set it.
+
 ## 0.29.2 — 2026-10-31
 
 ### Fixed

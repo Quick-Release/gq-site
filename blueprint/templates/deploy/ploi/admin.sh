@@ -14,6 +14,11 @@ WP_LOCALE="{{wordpress.locale}}"
 WP_LANGUAGES="{{wordpress.languages}}"
 # gq.ops.json's variant: a commerce Site also updates WooCommerce's database.
 SITE_VARIANT="{{variant}}"
+# gq.ops.json's deployment.guardedPackages: Composer packages whose installed
+# files must match the release's PACKAGE_EXPECTATIONS (which `gq ploi release`
+# writes once it has checked them) before PHP-FPM reloads or WordPress runs.
+# Empty for a Site that guards none.
+GUARDED_PACKAGES="{{deployment.guardedPackages}}"
 SITE_PATH="${PLOI_SITE_PATH:-$PWD}"
 # The site has no git repository (Ploi custom deployments): `pnpm ploi:release`
 # uploads a release archive to R2 and passes a short-lived URL as the deploy
@@ -65,6 +70,96 @@ composer_install() {
   if [ "$SITE_VARIANT" != commerce ]; then
     php scripts/patch-dependencies.php
   fi
+  verify_package_expectations
+}
+
+# Runs from $APP_PATH after composer install: each package the release's
+# PACKAGE_EXPECTATIONS states must be installed with exactly its files (the
+# gq-tree-v1 listing: regular files only, `sha256sum` lines sorted by path
+# bytes, whose sha256 is the package's digest), from the very composer.lock
+# gq checked. Any difference fails the deploy before PHP-FPM reloads and
+# before any WP-CLI activation or database step. A release without the file
+# is fine unless the Site guards packages.
+verify_package_expectations() {
+  local expectations="$tmp_dir/release/PACKAGE_EXPECTATIONS"
+  local line key package_line lock="" name="" count=0 verified=" " guarded
+  if [ ! -f "$expectations" ]; then
+    if [ -n "$GUARDED_PACKAGES" ]; then
+      echo "This Site guards $GUARDED_PACKAGES, but the release has no PACKAGE_EXPECTATIONS: deploy it with gq ploi release." >&2
+      exit 1
+    fi
+    return 0
+  fi
+  if [ "$(head -n 1 "$expectations")" != "gq-package-expectations 1" ]; then
+    echo "PACKAGE_EXPECTATIONS isn't a version 1 expectations file." >&2
+    exit 1
+  fi
+  # Whole lines: a file's path is everything after its hash, spaces and all.
+  while IFS= read -r line; do
+    key="${line%% *}"
+    case "$key" in
+      gq-package-expectations) ;;
+      lock) lock="${line#lock }" ;;
+      package)
+        [ -z "$name" ] || verify_package_tree "$name" "$count"
+        count=$((count + 1))
+        # name, version, install path and digest, one per line
+        package_line="${line#package }"
+        printf '%s\n' $package_line >"$tmp_dir/package-$count"
+        name="${package_line%% *}"
+        : >"$tmp_dir/expected-$count"
+        ;;
+      file) printf '%s  %s\n' "${line:5:64}" "${line:70}" >>"$tmp_dir/expected-$count" ;;
+      *)
+        echo "PACKAGE_EXPECTATIONS has an unknown line: $key" >&2
+        exit 1
+        ;;
+    esac
+  done <"$expectations"
+  [ -z "$name" ] || verify_package_tree "$name" "$count"
+  if [ -z "$lock" ] || [ "$(sha256sum composer.lock | cut -c1-64)" != "$lock" ]; then
+    echo "composer.lock isn't the lock gq checked before uploading this release." >&2
+    exit 1
+  fi
+  for guarded in $GUARDED_PACKAGES; do
+    if [[ "$verified" != *" $guarded "* ]]; then
+      echo "This Site guards $guarded, but PACKAGE_EXPECTATIONS doesn't state it." >&2
+      exit 1
+    fi
+  done
+}
+
+# verify_package_tree <name> <n>: the package's installed files against
+# $tmp_dir/expected-<n>, its version, path and digest in $tmp_dir/package-<n>.
+verify_package_tree() {
+  local name="$1" n="$2" version install_path digest actual="$tmp_dir/actual-$2"
+  { read -r _; read -r version; read -r install_path; read -r digest; } <"$tmp_dir/package-$n"
+  if [ ! -d "$install_path" ]; then
+    echo "$name isn't installed at $APP_PATH/$install_path." >&2
+    exit 1
+  fi
+  if [ -n "$(find "$install_path" ! -type f ! -type d -print -quit)" ]; then
+    echo "$name's $install_path holds something other than regular files and directories." >&2
+    exit 1
+  fi
+  (cd "$install_path" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum) \
+    | sed 's#^\([0-9a-f]\{64\}\)  \./#\1  #' >"$actual"
+  if grep -qv '^[0-9a-f]\{64\}  ' "$actual" || ! cmp -s "$tmp_dir/expected-$n" "$actual" \
+    || [ "$(sha256sum <"$actual" | cut -c1-64)" != "$digest" ]; then
+    echo "$name's installed files don't match its expected $version tree ($digest):" >&2
+    awk 'NR == FNR { want[substr($0, 67)] = substr($0, 1, 64); next }
+      { have[substr($0, 67)] = substr($0, 1, 64) }
+      END {
+        for (path in want) {
+          if (!(path in have)) print "  missing " path
+          else if (want[path] != have[path]) print "  changed " path
+        }
+        for (path in have) if (!(path in want)) print "  extra   " path
+      }' "$tmp_dir/expected-$n" "$actual" | LC_ALL=C sort >&2
+    exit 1
+  fi
+  echo "Verified $name $version: $(wc -l <"$actual" | tr -d ' ') files match $digest."
+  verified+="$name "
 }
 
 cleanup() {

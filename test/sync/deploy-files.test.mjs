@@ -8,6 +8,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
+import { deploymentRefusal } from "../../src/ploi/deployment-policy.mjs";
 import { createFixtureSite, temporaryDirectory } from "../support/fixture-site.mjs";
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
@@ -321,6 +322,35 @@ test("the generated Frontend deploy and CI release step refuse an offboarded Sit
     "acme-shop is offboarded (gq.ops.json offboarded): a release would expose it again. If the Site is coming back, run gq offboard --restore first.\n",
   );
   assert.equal(release.stdout, "", "it refuses before anything else");
+});
+
+test("the generated CI release step refuses a paused or reserved Site exactly as gq ploi release does", async () => {
+  const holds = [
+    { protected: true, state: "paused", reason: "Controlled release in preparation" },
+    {
+      protected: true,
+      state: "reserved",
+      reason: "Nightly update running",
+      holder: "nightly pipeline",
+    },
+  ];
+  for (const deployment of holds) {
+    const ops = { ...ACME, deployment };
+    const fixture = await createFixtureSite({ ops });
+    assert.equal((await fixture.run(["sync"])).code, 0);
+    const environment = { ...process.env };
+    delete environment.NODE_TEST_CONTEXT;
+
+    const release = spawnSync(process.execPath, ["scripts/ci-release.mjs", "--ref", "0123abcd"], {
+      cwd: fixture.root,
+      encoding: "utf8",
+      env: { ...environment, PATH: "" },
+    });
+
+    assert.equal(release.status, 1);
+    assert.equal(release.stderr, `${deploymentRefusal(ops)}\n`);
+    assert.equal(release.stdout, "", "it refuses before anything else");
+  }
 });
 
 test("preview config uses site.bind after Website initialization", async () => {

@@ -87,7 +87,7 @@ const COMMAND_OPTIONS = new Map([
 // otherwise to undefined for success.
 export async function runCli(
   argv,
-  { cwd, env, fetch, exec, lookup, clock, stdin, io, interactive },
+  { cwd, env, fetch, exec, lookup, clock, approvals, stdin, io, interactive },
 ) {
   // The Sigillo wrapper parses its own arguments: everything after `--` belongs
   // to the wrapped command, not to gq.
@@ -147,7 +147,7 @@ export async function runCli(
   const [provider, resource, action = "list"] = parsed.command;
 
   if (isReleaseCommand(parsed.command)) {
-    return runReleaseCommand({ parsed, context, env, fetch, exec, io, interactive });
+    return runReleaseCommand({ parsed, context, env, fetch, exec, io, interactive, approvals });
   }
 
   if (isPloiWorkflow(parsed.command)) {
@@ -158,6 +158,7 @@ export async function runCli(
       fetch,
       exec,
       lookup,
+      approvals,
       io,
       interactive,
     });
@@ -346,6 +347,9 @@ function parseArguments(argv) {
     "--max-pages",
     "--ref",
     "--git-dir",
+    "--to",
+    "--reference",
+    "--expect-before",
     "--url",
     "--uri",
   ]);
@@ -358,6 +362,8 @@ function parseArguments(argv) {
     "--local",
     "--restore",
     "--archive",
+    "--composer-only",
+    "--no-deploy",
   ]);
 
   for (let index = 0; index < argv.length; index += 1) {

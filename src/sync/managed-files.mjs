@@ -53,7 +53,8 @@ async function renderTemplate(template, manifest) {
 // What a template's `{{name}}` stands for: the manifest's site values under
 // their key paths (`variant` among them), `Project` (project in PascalCase, for names and prose),
 // `deployStatusMarker` (the CMS deploy's status line, which gq ploi release
-// waits for), `wordpress.plugins` space-separated (none until the manifest
+// waits for), `deployment.guardedPackages` space-separated (empty for a Site
+// that guards none), `wordpress.plugins` space-separated (none until the manifest
 // lists some, so the deploy script stays valid shell), `wordpress.locale`
 // (empty without one, so the deploy leaves the language alone),
 // `wordpress.languages` as space-separated locale:slug pairs (empty for a
@@ -80,6 +81,7 @@ function templateValues(manifest) {
     sigilloVersion: packageJson.devDependencies.sigillo,
     deployStatusMarker: deployStatusMarker(project),
     "wordpress.plugins": (manifest.wordpress?.plugins ?? []).join(" "),
+    "deployment.guardedPackages": (manifest.deployment?.guardedPackages ?? []).join(" "),
     "wordpress.locale": manifest.wordpress?.locale ?? "",
     "wordpress.languages": (manifest.wordpress?.languages ?? [])
       .map(({ locale, slug }) => `${locale}:${slug}`)

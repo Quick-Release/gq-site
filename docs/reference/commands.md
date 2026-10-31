@@ -39,7 +39,7 @@ gq ploi api <operation-id> [--path name=value] [--query name=value]
     [--page <n>] [--per-page <n>] [--data <json> | --data-file <file>]
     [--all] [--max-pages <n>] [--dry-run | --yes]
 gq ploi provision [--dry-run | --yes]
-gq ploi release [--ref <ref>] [--git-dir <dir>]
+gq ploi release [--ref <ref>] [--git-dir <dir>] [--composer-only]
 gq ploi media [--dry-run]
 gq ploi events [--dry-run]
 
@@ -96,7 +96,8 @@ gq version sync [version]
 gq release prepare [version]
 gq release tag [version]
 gq release push <major|minor|fix>
-gq release package <composer-package>
+gq release package <composer-package> [--to <version>] [--reference <ref>]
+    [--expect-before <version>] [--no-deploy | --composer-only]
 ```
 
 `--json` prints machine-readable output; `ploi api` always prints the

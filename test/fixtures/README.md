@@ -306,6 +306,15 @@ manifest has neither key, so its deploy is unchanged.
 `sync/graphql-path.test.mjs` exercises both modes. Written by hand and
 reviewed against the templates, not regenerated.
 
+A protected Site's deployment hold (gq.ops.json `deployment`, see
+`docs/reference/deployment-policy.md`) updates the content site's
+`scripts/ci-release.mjs` baseline alongside its template: after the
+offboarding check, a paused or reserved Site refuses before the CMS or the
+Frontend deploys, with the same message `gq ploi release` gives. The content
+site's manifest has no `deployment` block, so its release is unchanged.
+`sync/deploy-files.test.mjs` exercises both holds. Written by hand and
+reviewed against the template, not regenerated.
+
 ## Preservation
 
 - Preserve fixture paths, contents and version identifiers during organization,

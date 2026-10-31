@@ -7,6 +7,9 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { ploiReleaseShippedPaths } from "../../src/index.mjs";
+import { createHash } from "node:crypto";
+
+import { renderServerExpectations, treeDigest } from "../../src/ploi/package-expectations.mjs";
 
 import { createFixtureSite } from "../support/fixture-site.mjs";
 import { deploy, recordingExtension } from "../support/deploy-script.mjs";
@@ -393,4 +396,197 @@ test("a locale that isn't a WordPress locale is refused before gq sync writes an
     );
     await assert.rejects(access(fixture.path("deploy/ploi/admin.sh")), { code: "ENOENT" });
   }
+});
+
+// --- guarded packages: the installed tree checked after composer install -----
+
+const SUPPORT_PATH = "apps/cms/web/app/plugins/gq-support";
+// The tree package-expectations.test.mjs pins with coreutils' digest.
+const SUPPORT_TREE = {
+  "gq-support.php": "hello\n",
+  "src/a b.php": "abc",
+  "Z.txt": "Z",
+};
+const SUPPORT_EXPECTATIONS = {
+  schemaVersion: 1,
+  packages: [
+    {
+      name: "getquick/gq-support",
+      version: "0.2.0",
+      tag: "v0.2.0",
+      tagCommit: "a".repeat(40),
+      lockReference: "b".repeat(40),
+      installPath: "web/app/plugins/gq-support",
+      tree: {
+        normalization: "gq-tree-v1",
+        digest: "b63f13b4a4b3da7f94a6f27e00506c7a6a051d3e542e5c9a1531d1d4040a7bdb",
+        files: [
+          {
+            path: "gq-support.php",
+            sha256: "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+          },
+          {
+            path: "src/a b.php",
+            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+          },
+          {
+            path: "Z.txt",
+            sha256: "bbeebd879e1dff6918546dc0c179fdde505f2a21591c9a9c96e36b054ec5af83",
+          },
+        ],
+      },
+    },
+  ],
+};
+const LOCK = '{"packages":[{"name":"getquick/gq-support","version":"0.2.0"}]}\n';
+
+async function guardedScript() {
+  const fixture = await createFixtureSite({
+    ops: {
+      ...ACME,
+      deployment: {
+        protected: true,
+        state: "authorized",
+        guardedPackages: ["getquick/gq-support"],
+      },
+    },
+  });
+  const result = await fixture.run(["sync"]);
+  assert.equal(result.code, 0, result.stderr);
+  return readSite(fixture.root, "deploy/ploi/admin.sh");
+}
+
+// A guarded deploy whose server has `tree` installed (path → content), with
+// the release's lock `lock` and expectations rendered for `releasedLock`.
+function guardedDeploy(
+  script,
+  {
+    tree = SUPPORT_TREE,
+    composerOnly = false,
+    lock = LOCK,
+    releasedLock = LOCK,
+    expectations = true,
+  } = {},
+) {
+  return deploy(script, {
+    composerOnly,
+    releaseFiles: {
+      "apps/cms/composer.lock": lock,
+      ...(expectations
+        ? { PACKAGE_EXPECTATIONS: renderServerExpectations(SUPPORT_EXPECTATIONS, releasedLock) }
+        : {}),
+    },
+    siteFiles: Object.fromEntries(
+      Object.entries(tree).map(([path, content]) => [`${SUPPORT_PATH}/${path}`, content]),
+    ),
+  });
+}
+
+// No PHP-FPM reload (sudo), activation, database or rewrite step ran.
+function assertStoppedBeforeWordPress(result) {
+  assert.deepEqual(
+    result.calls.filter(([tool]) => tool === "sudo"),
+    [],
+  );
+  for (const step of ["plugin", "core update-db", "rewrite", "theme", "option", "language"]) {
+    assert.deepEqual(wpCalls(result.calls, step), [], step);
+  }
+  assert.match(result.stdout, /DEPLOY_STATUS=failed/u);
+}
+
+test("a guarded deploy verifies the installed tree after Composer and before the PHP-FPM reload", async () => {
+  const script = await guardedScript();
+  assert.match(script, /^GUARDED_PACKAGES="getquick\/gq-support"$/mu);
+
+  for (const composerOnly of [false, true]) {
+    const result = await guardedDeploy(script, { composerOnly });
+    assert.equal(result.code, 0, result.output);
+    assert.match(result.stdout, /Verified getquick\/gq-support 0\.2\.0: 3 files match b63f13b4/u);
+    const composer = result.calls.findIndex(([tool]) => tool === "composer");
+    const reload = result.calls.findIndex(([tool]) => tool === "sudo");
+    assert.ok(composer !== -1 && reload > composer);
+    if (composerOnly) {
+      // Composer-only: no WP-CLI call at all, so no activation or database step.
+      assert.deepEqual(
+        result.calls.filter(([tool]) => tool === "wp"),
+        [],
+      );
+    } else {
+      assert.ok(wpCalls(result.calls, "core update-db").length === 1);
+    }
+  }
+});
+
+test("a guarded deploy refuses an extra, missing or changed file before the reload, activation or database", async () => {
+  const script = await guardedScript();
+  const cases = [
+    [{ ...SUPPORT_TREE, "src/backdoor.php": "<?php" }, /extra\s+src\/backdoor\.php/u],
+    [{ "gq-support.php": "hello\n", "Z.txt": "Z" }, /missing\s+src\/a b\.php/u],
+    [{ ...SUPPORT_TREE, "Z.txt": "changed" }, /changed\s+Z\.txt/u],
+  ];
+  for (const [tree, message] of cases) {
+    for (const composerOnly of [false, true]) {
+      const result = await guardedDeploy(script, { tree, composerOnly });
+      assert.notEqual(result.code, 0, result.output);
+      assert.match(result.stderr, /getquick\/gq-support's installed files don't match/u);
+      assert.match(result.stderr, message);
+      assertStoppedBeforeWordPress(result);
+      if (composerOnly)
+        assert.deepEqual(
+          result.calls.filter(([tool]) => tool === "wp"),
+          [],
+        );
+    }
+  }
+});
+
+test("a guarded deploy refuses another lock than the one gq checked, or a release without expectations", async () => {
+  const script = await guardedScript();
+
+  const otherLock = await guardedDeploy(script, { lock: '{"packages":[]}\n' });
+  assert.notEqual(otherLock.code, 0, otherLock.output);
+  assert.match(otherLock.stderr, /composer\.lock isn't the lock gq checked/u);
+  assertStoppedBeforeWordPress(otherLock);
+
+  const missing = await guardedDeploy(script, { expectations: false });
+  assert.notEqual(missing.code, 0, missing.output);
+  assert.match(
+    missing.stderr,
+    /guards getquick\/gq-support, but the release has no PACKAGE_EXPECTATIONS/u,
+  );
+  assertStoppedBeforeWordPress(missing);
+});
+
+test("a guarded deploy keeps every space of a file's path", async () => {
+  const script = await guardedScript();
+  const tree = { "two  spaces .txt": "x", "gq-support.php": "hello\n" };
+  const files = Object.entries(tree).map(([path, content]) => ({
+    path,
+    sha256: createHash("sha256").update(content).digest("hex"),
+  }));
+  const [pkg] = SUPPORT_EXPECTATIONS.packages;
+  const expectations = {
+    ...SUPPORT_EXPECTATIONS,
+    packages: [{ ...pkg, tree: { ...pkg.tree, files, digest: treeDigest(files) } }],
+  };
+  const result = await deploy(script, {
+    composerOnly: true,
+    releaseFiles: {
+      "apps/cms/composer.lock": LOCK,
+      PACKAGE_EXPECTATIONS: renderServerExpectations(expectations, LOCK),
+    },
+    siteFiles: Object.fromEntries(
+      Object.entries(tree).map(([path, content]) => [`${SUPPORT_PATH}/${path}`, content]),
+    ),
+  });
+  assert.equal(result.code, 0, result.output);
+  assert.match(result.stdout, /Verified getquick\/gq-support 0\.2\.0: 2 files match/u);
+});
+
+test("an unguarded Site's deploy ignores package expectations it doesn't guard", async () => {
+  const script = await generatedScript();
+  assert.match(script, /^GUARDED_PACKAGES=""$/mu);
+  const result = await deploy(script);
+  assert.equal(result.code, 0, result.output);
+  assert.doesNotMatch(result.stdout, /Verified/u);
 });

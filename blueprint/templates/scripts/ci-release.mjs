@@ -94,8 +94,7 @@ function run(label, command, args) {
 
 // An offboarded Site (gq offboard) is never released: the release would
 // deploy its CMS and attach its Frontend's domain again.
-function refuseOffboarded() {
-  const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), "utf8"));
+function refuseOffboarded(ops) {
   if (ops.offboarded) {
     throw new Error(
       `${ops.project} is offboarded (gq.ops.json offboarded): a release would expose it again. If the Site is coming back, run gq offboard --restore first.`,
@@ -103,8 +102,26 @@ function refuseOffboarded() {
   }
 }
 
+// A protected Site (gq.ops.json deployment) is released only while its
+// deployment.state is "authorized": a paused or reserved one refuses before
+// the CMS or the Frontend deploys. gq ploi release refuses the same way;
+// a reviewed Site change lifts the hold, never a flag.
+export function deploymentRefusal(ops) {
+  const policy = ops.deployment;
+  if (!policy || policy.state === "authorized") return null;
+  const who = policy.state === "reserved" ? ` is reserved by ${policy.holder}` : " is paused";
+  return (
+    `${ops.project}${who} (gq.ops.json deployment.state: ${policy.state}): ${policy.reason}. ` +
+    "Nothing was uploaded, synced or deployed. " +
+    'A reviewed Site change that sets deployment.state to "authorized" lifts the hold.'
+  );
+}
+
 function main(arguments_) {
-  refuseOffboarded();
+  const ops = JSON.parse(readFileSync(new URL("../gq.ops.json", import.meta.url), "utf8"));
+  refuseOffboarded(ops);
+  const held = deploymentRefusal(ops);
+  if (held) throw new Error(held);
   const index = arguments_.indexOf("--ref");
   const ref = index === -1 ? null : arguments_[index + 1];
   if (!ref) throw new Error("Usage: ci-release.mjs --ref <sha>");
