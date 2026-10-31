@@ -930,6 +930,67 @@ test("release package refuses an unexpected starting version, other changed file
   );
 });
 
+test("release package rolls a package back to an exact earlier version without touching its dependants", async () => {
+  // A recovery drill: 0.1.12 locked, back to 0.1.11, while the theme that
+  // constrains gq-support (^0.1.0) and GQ Design stay exactly as locked.
+  const theme = {
+    name: "getquick/getquick-theme",
+    version: "0.5.1",
+    require: { "getquick/gq-support": "^0.1.0" },
+    dist: { reference: "e".repeat(40) },
+  };
+  const lock = (version, reference) =>
+    `${JSON.stringify(
+      {
+        packages: [
+          { name: "getquick/gq-design", version: "0.9.4", dist: { reference: "d".repeat(40) } },
+          theme,
+          { name: SUPPORT, version, dist: { type: "zip", reference } },
+        ],
+        "packages-dev": [],
+      },
+      null,
+      4,
+    )}\n`;
+  const composer = SUPPORT_COMPOSER.replace('"0.1.10"', '"0.1.12"');
+  const json = (data) => `${JSON.stringify(data, null, 2)}\n`;
+  const fixture = await site({
+    files: {
+      VERSION: "1.4.0\n",
+      "package.json": json({ name: "fixture", version: "1.4.0", private: true }),
+      "apps/frontend/package.json": json({ name: "frontend", version: "1.4.0" }),
+      "apps/cms/composer.json": composer,
+      "apps/cms/composer.lock": lock("0.1.12", NEW_REF),
+    },
+  });
+  const { fetch } = fakeProviders();
+  const exec = supportExec(fixture, { lock: lock("0.1.11", OLD_REF) });
+
+  const result = await fixture.run(
+    [
+      "release",
+      "package",
+      SUPPORT,
+      "--to",
+      "0.1.11",
+      "--expect-before",
+      "0.1.12",
+      "--reference",
+      OLD_REF,
+      "--no-deploy",
+    ],
+    { env: RELEASE_ENV, fetch, exec },
+  );
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(fetch.requests, []);
+  assert.ok(commandLines(exec).includes(`git commit -m Update ${SUPPORT} to 0.1.11`));
+  assert.equal(
+    await readFile(fixture.path("apps/cms/composer.json"), "utf8"),
+    composer.replace('"0.1.12"', '"0.1.11"'),
+  );
+});
+
 test("release package --no-deploy prepares a commit on a paused Site without calling a provider", async () => {
   const fixture = await supportSite({ deployment: PAUSED });
   const { fetch } = fakeProviders();

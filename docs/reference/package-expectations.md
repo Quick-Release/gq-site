@@ -13,7 +13,7 @@ signature format, so until one is wired into `run()` (the `approvals`
 adapter), every deploy of a Site guarding a package refuses with:
 
 ```
-No authenticated package approval service is configured, so gq can't confirm getquick/gq-support 0.2.0 (v0.2.0) is approved; a guarded deploy refuses. deploy/ploi/package-expectations.json is an expectation the server checks, not an approval.
+No authenticated package approval service is configured, so gq can't confirm getquick/gq-support 0.1.11 (v0.1.11) is approved; a guarded deploy refuses. deploy/ploi/package-expectations.json is an expectation the server checks, not an approval.
 ```
 
 ## Contract v1
@@ -24,8 +24,8 @@ No authenticated package approval service is configured, so gq can't confirm get
   "packages": [
     {
       "name": "getquick/gq-support",
-      "version": "0.2.0",
-      "tag": "v0.2.0",
+      "version": "0.1.11",
+      "tag": "v0.1.11",
       "tagCommit": "<40-hex commit the published tag points at>",
       "lockReference": "<the reference composer.lock records for this version>",
       "installPath": "web/app/plugins/gq-support",
@@ -113,8 +113,8 @@ restores them.
   "releaseCommit": "<the Site's release commit>",
   "package": {
     "name": "getquick/gq-support",
-    "version": "0.2.0",
-    "tag": "v0.2.0",
+    "version": "0.1.11",
+    "tag": "v0.1.11",
     "tagCommit": "<40 hex>",
     "lockReference": "<as in the lock>",
     "installPath": "web/app/plugins/gq-support",
@@ -135,4 +135,7 @@ defines only this request and refuses without an answer.
 pins the exact version, updates only that package in the lock and commits
 it without deploying; see [release package](release.md). It doesn't write
 the expectations file: that comes from the package's published release, and
-its authority from the approval service.
+its authority from the approval service. The version inputs are generic:
+the same command moves a package forward or back (a recovery from 0.1.12
+to 0.1.11 is `--to 0.1.11 --expect-before 0.1.12`), and refuses when doing
+so would change any package that depends on it.
