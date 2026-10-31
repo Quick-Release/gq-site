@@ -3,13 +3,14 @@
 // release step, fully generated from gq.ops.json. The content site's manifest
 // renders the content site's own files (test/fixtures/content-site).
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, readFile, writeFile } from "node:fs/promises";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
 import { createFixtureSite, runGq, temporaryDirectory } from "../support/fixture-site.mjs";
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
+import { gitHttpServer } from "../support/git-http.mjs";
 
 const DEPLOY_PATHS = [
   "apps/frontend/workers/consent-purge.ts",
@@ -175,6 +176,8 @@ test("a gq new site's deploy files hold placeholders until gq.ops.json has the v
     check.stdout,
     [
       "gq.ops.json: up to date (schema v1).",
+      // The request admission renders the admin domain.
+      "deploy/ploi/admission.sh: pending, gq sync would update it.",
       "infra/ci/wrangler.jsonc: pending, gq sync would update it.",
       "gq.lock.json: pending, gq sync would update it.",
       "",
@@ -323,6 +326,50 @@ test("the generated Frontend deploy and CI release step refuse an offboarded Sit
   assert.equal(release.stdout, "", "it refuses before anything else");
 });
 
+test("the generated CI release step and Frontend deploy refuse a paused or reserved Site exactly as gq ploi release does", async () => {
+  // Each hold, and the message gq ploi release gives for it, written out.
+  const holds = [
+    [
+      { protected: true, state: "paused", reason: "Controlled release in preparation" },
+      'acme-shop is paused (gq.ops.json deployment.state: paused): Controlled release in preparation. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the deployment hold.',
+    ],
+    [
+      {
+        protected: true,
+        state: "reserved",
+        reason: "Nightly update running",
+        holder: "nightly pipeline",
+      },
+      'acme-shop is reserved by nightly pipeline (gq.ops.json deployment.state: reserved): Nightly update running. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the deployment hold.',
+    ],
+  ];
+  for (const [deployment, message] of holds) {
+    const ops = { ...ACME, deployment };
+    const fixture = await createFixtureSite({ ops });
+    assert.equal((await fixture.run(["sync"])).code, 0);
+    const environment = { ...process.env };
+    delete environment.NODE_TEST_CONTEXT;
+
+    const release = spawnSync(process.execPath, ["scripts/ci-release.mjs", "--ref", "0123abcd"], {
+      cwd: fixture.root,
+      encoding: "utf8",
+      env: { ...environment, PATH: "" },
+    });
+
+    assert.equal(release.status, 1);
+    assert.equal(release.stderr, `${message}\n`);
+    assert.equal(release.stdout, "", "it refuses before anything else");
+
+    const frontend = spawnSync(process.execPath, ["infra/scripts/deploy-frontend.mjs"], {
+      cwd: fixture.root,
+      encoding: "utf8",
+      env: { ...environment, PATH: "" },
+    });
+    assert.equal(frontend.status, 1);
+    assert.equal(frontend.stderr, `${message}\n`);
+  }
+});
+
 test("preview config uses site.bind after Website initialization", async () => {
   const fixture = await createFixtureSite({
     ops: {
@@ -340,6 +387,377 @@ test("preview config uses site.bind after Website initialization", async () => {
   );
   assert.doesNotMatch(frontend, /\.\.\.previewEnv/u);
   assert.doesNotMatch(frontend, /PUBLIC_GQ_PREVIEW/u);
+});
+
+// The CI Worker's steps (infra/ci/release.ts ciSteps), executed in order as
+// the Worker runs them: bash, git and node, a local bare repository standing
+// in for Artifacts, and a tagged workspace whose install, verify and release
+// are marker scripts the tag controls. An old tag runs its own scripts, so
+// the admission must stop a held or historical release before any of them.
+test("the CI Worker admits a release first, so a held or historical tag runs none of its own code", async () => {
+  for (const variant of ["content", "commerce"]) {
+    const parent = await temporaryDirectory();
+    const created = await runGq(["new", "site", "--project", "acme-shop", "--variant", variant], {
+      cwd: parent,
+    });
+    assert.equal(created.code, 0, created.stderr);
+    const worker = await readSite(join(parent, "site"), "infra/ci/cloudflare.ci.ts");
+    // The Worker runs its steps only through release.ts's runSteps, in
+    // ciSteps' order: no runner call of its own.
+    assert.match(
+      worker,
+      /await runSteps\(ci as unknown as Runner, ciSteps\(params, \{ install, verify, release \}\)\);/u,
+    );
+    assert.equal(worker.split(".runner(").length - 1, 0);
+  }
+
+  const fixture = await createFixtureSite({ ops: ACME });
+  assert.equal((await fixture.run(["sync"])).code, 0);
+  const { ciSteps, runSteps, admissionCommand } = await import(
+    join(fixture.root, "infra/ci/release.ts")
+  );
+  const environment = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => !name.startsWith("GIT_") && name !== "NODE_TEST_CONTEXT",
+    ),
+  );
+  const git = (cwd, ...args) =>
+    execFileSync("git", args, { cwd, env: environment, encoding: "utf8" }).trim();
+  const commit = (work, message) =>
+    git(
+      work,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.test",
+      "commit",
+      "--quiet",
+      "-m",
+      message,
+    );
+
+  // Artifacts is served over git's smart HTTP (git http-backend) on 127.0.0.1,
+  // as the real CI Worker reaches it; ARTIFACTS_REMOTE is that URL. Tokens are
+  // synthetic. A forged endpoint, also on 127.0.0.1, carries an authorized
+  // policy an attacker would steer the read to.
+  //
+  // Artifacts: `requested` tagged v1.0.0, then `current` on main (null: none).
+  // The workspace holds the tag's marker scripts.
+  // `poisonedHome`: the runner's ~/.gitconfig sends ARTIFACTS_REMOTE to the
+  // forged copy (as a tag's install step could write into a shared runner's
+  // home); the admission must not be steered by it. (A tag's workspace shaped
+  // as a bare repository is covered by its own test below.)
+  async function release({
+    current,
+    requested = ACME,
+    trigger = "tag",
+    wrongSha = false,
+    poisonedHome = false,
+  }) {
+    const root = await temporaryDirectory();
+    const served = await temporaryDirectory();
+    const bare = join(served, "artifacts.git");
+    git(served, "init", "--quiet", "--bare", "--initial-branch=main", bare);
+    const work = join(root, "work");
+    git(root, "init", "--quiet", "--initial-branch=main", work);
+    await writeFile(join(work, "gq.ops.json"), `${JSON.stringify(requested)}\n`);
+    git(work, "add", "-A");
+    commit(work, "tagged");
+    git(
+      work,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.test",
+      "tag",
+      "-a",
+      "v1.0.0",
+      "-m",
+      "v1.0.0",
+    );
+    const tagObject = git(work, "rev-parse", "v1.0.0");
+    if (current === null) await rm(join(work, "gq.ops.json"));
+    else await writeFile(join(work, "gq.ops.json"), `${JSON.stringify(current)}\n`);
+    await writeFile(join(work, "README.md"), "later\n");
+    git(work, "add", "-A");
+    commit(work, "main");
+    git(work, "push", "--quiet", bare, "main", "v1.0.0");
+
+    // The forged endpoint: a copy whose main (and HEAD) is an authorized
+    // policy, used by both poison scenarios.
+    const forgedBare = join(served, "forged.git");
+    git(served, "clone", "--quiet", "--bare", bare, forgedBare);
+    const forging = join(root, "forging");
+    git(root, "clone", "--quiet", forgedBare, forging);
+    await writeFile(join(forging, "gq.ops.json"), `${JSON.stringify(ACME)}\n`);
+    git(forging, "add", "-A");
+    git(
+      forging,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.test",
+      "commit",
+      "--quiet",
+      "--allow-empty",
+      "-m",
+      "forged",
+    );
+    git(forging, "push", "--quiet", "origin", "main");
+
+    const server = await gitHttpServer(served);
+    const artifacts = `${server.url}/artifacts.git`;
+    const forged = `${server.url}/forged.git`;
+
+    const home = join(root, "home");
+    await mkdir(home);
+    if (poisonedHome) {
+      await writeFile(join(home, ".gitconfig"), `[url "${forged}"]\n\tinsteadOf = ${artifacts}\n`);
+    }
+    const workspace = join(root, "workspace");
+    await mkdir(workspace);
+    // The tag's own code: each step records that it ran, and what secret it saw.
+    await writeFile(
+      join(workspace, "mark.mjs"),
+      'import { appendFileSync } from "node:fs"; appendFileSync("MARKERS", `${process.argv[2]} ${process.env.SECRET ?? ""}\\n`);',
+    );
+    const step = (name) => ({ name, command: `node mark.mjs ${name}` });
+    const placed = ciSteps(
+      { trigger, tag: "v1.0.0", sha: wrongSha ? "1".repeat(40) : tagObject },
+      // The release step has source control credentials, as the Worker's does.
+      {
+        install: step("install"),
+        verify: step("verify"),
+        release: { ...step("release"), sourceControlCredentials: true },
+      },
+    );
+    // Runners as the CI SDK's: each runs its step's command (bash, in the
+    // tag's workspace), with the Artifacts credentials when the step asks for
+    // them; a failed step ends the run, as a failed Workflow step does. Each
+    // records where it ran: a fresh runner, or the install step's workspace.
+    const ran = [];
+    let output = "";
+    // bash, asynchronously: the admission's git talks to the in-process
+    // Artifacts server over HTTP, so this must not block the event loop.
+    const execute = (where) => ({
+      async runner({ name, command, sourceControlCredentials }) {
+        ran.push(`${where}:${name}`);
+        const status = await new Promise((done, fail) => {
+          const child = spawn("bash", ["-c", command], {
+            cwd: workspace,
+            env: {
+              ...environment,
+              HOME: home,
+              SECRET: "s3cret",
+              ...(sourceControlCredentials
+                ? { ARTIFACTS_REMOTE: artifacts, ARTIFACTS_TOKEN: "artifacts-token" }
+                : {}),
+            },
+          });
+          child.stdout.on("data", (chunk) => (output += chunk));
+          child.stderr.on("data", (chunk) => (output += chunk));
+          child.once("error", fail);
+          child.once("close", (code) => done(code));
+        });
+        if (status !== 0) throw new Error(`${name} failed`);
+        return execute("workspace");
+      },
+    });
+    try {
+      await runSteps(execute("fresh"), placed).catch(() => {});
+    } finally {
+      await server.close();
+    }
+    const markers = await readFile(join(workspace, "MARKERS"), "utf8").catch(() => "");
+    return { ran, markers, output, requests: server.requests, forged, artifacts };
+  }
+
+  const admitted = await release({ current: ACME });
+  // The admission in its own fresh runner, before the install's fresh runner
+  // and the workspace it leaves.
+  assert.deepEqual(admitted.ran, [
+    "fresh:admission",
+    "fresh:install",
+    "workspace:verify",
+    "workspace:release",
+  ]);
+  assert.equal(admitted.markers, "install s3cret\nverify s3cret\nrelease s3cret\n");
+  assert.match(admitted.output, /Release [0-9a-f]{12} admitted/u);
+
+  const paused = {
+    ...ACME,
+    deployment: { protected: true, state: "paused", reason: "Controlled release" },
+  };
+  const guarded = {
+    ...ACME,
+    deployment: {
+      protected: true,
+      state: "authorized",
+      guardedPackages: ["getquick/gq-support"],
+      approval: { slot: "acme/production", stage: "prod" },
+    },
+  };
+  for (const [options, message] of [
+    // An old tag without the hold, held by the default branch's policy.
+    [{ current: paused }, /the default branch's gq\.ops\.json deployment\.state: paused/u],
+    [
+      { current: ACME, requested: paused },
+      /release [0-9a-f]{12}'s gq\.ops\.json deployment\.state: paused/u,
+    ],
+    [
+      { current: { ...ACME, offboarded: { at: "2026-10-01T09:00:00.000Z", phase: "cut" } } },
+      /offboarded \(the default branch's gq\.ops\.json offboarded\)/u,
+    ],
+    // A historical tag whose gq wouldn't verify the guarded package.
+    [{ current: guarded }, /predates the default branch's deployment policy/u],
+    // Fail closed: no current policy, or a tag that isn't the one asked for.
+    [{ current: null }, /The default branch's gq\.ops\.json can't be read/u],
+    [{ current: ACME, wrongSha: true }, /Release 111111111111's gq\.ops\.json can't be read/u],
+    // The runner's global git config can't send the admission elsewhere.
+    [
+      { current: paused, poisonedHome: true },
+      /the default branch's gq\.ops\.json deployment\.state: paused/u,
+    ],
+  ]) {
+    const result = await release(options);
+    assert.deepEqual(result.ran, ["fresh:admission"], JSON.stringify(options));
+    assert.equal(result.markers, "", "none of the tag's code ran");
+    assert.match(result.output, message);
+    assert.doesNotMatch(result.output, /artifacts-token/u);
+    // Whatever the runner's git config says, the read goes to the
+    // authoritative Artifacts repository, never the forged one.
+    const forgedPath = new URL(result.forged).pathname;
+    assert.deepEqual(
+      result.requests.filter((request) => request.path.startsWith(forgedPath)),
+      [],
+      JSON.stringify(options),
+    );
+    assert.ok(
+      result.requests.some((request) => request.path.startsWith("/artifacts.git")),
+      "the authoritative remote was read",
+    );
+  }
+  assert.deepEqual((await release({ current: guarded, requested: guarded })).ran.length, 4);
+
+  // A branch push isn't a release: no admission, nothing deployed.
+  const push = await release({ current: paused, trigger: "push" });
+  assert.deepEqual(push.ran, ["fresh:install", "workspace:verify"]);
+  assert.throws(
+    () => admissionCommand("v1.0.0; rm -rf /", "v1.0.0"),
+    /Not a commit or tag object id/u,
+  );
+  assert.throws(() => admissionCommand("1".repeat(40), "v1; rm -rf /"), /Not a release tag/u);
+});
+
+// Regression: a tag tree can commit a `config`, `HEAD`, `objects/` and
+// `refs/` at its root, so the restored workspace — the admission's working
+// directory in both the fresh runner and the release step — can look like a
+// bare git repository. A planted `url.<forged>.insteadOf = <ARTIFACTS_REMOTE>`
+// in it (directly and through an include) steers `ls-remote --symref HEAD` to
+// a forged endpoint whose HEAD names an attacker-pushed branch (`aaa`) that
+// also exists on the real Artifacts carrying an "authorized" policy; the
+// default-branch read then follows that branch from the real remote and
+// admits a held Site. The admission must read the real remote's own HEAD
+// (main, paused) and refuse, and send the forged endpoint nothing. (Before
+// the fix, this admitted.)
+test("the admission isn't steered by the tag's workspace shaped as a bare repository", async () => {
+  const fixture = await createFixtureSite({ ops: ACME });
+  assert.equal((await fixture.run(["sync"])).code, 0);
+  const { admissionCommand } = await import(join(fixture.root, "infra/ci/release.ts"));
+  const environment = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => !name.startsWith("GIT_") && name !== "NODE_TEST_CONTEXT",
+    ),
+  );
+  const git = (cwd, ...args) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", ...args], {
+      cwd,
+      env: environment,
+      encoding: "utf8",
+    }).trim();
+
+  const paused = {
+    ...ACME,
+    deployment: { protected: true, state: "paused", reason: "Controlled release" },
+  };
+  const root = await temporaryDirectory();
+  const served = await temporaryDirectory();
+  const bare = join(served, "artifacts.git");
+  git(served, "init", "--quiet", "--bare", "--initial-branch=main", bare);
+  const work = join(root, "work");
+  git(root, "init", "--quiet", "--initial-branch=main", work);
+  // The release commit (authorized), tagged v1.0.0.
+  await writeFile(join(work, "gq.ops.json"), `${JSON.stringify(ACME)}\n`);
+  git(work, "add", "-A");
+  git(work, "commit", "--quiet", "-m", "tagged");
+  git(work, "tag", "-a", "v1.0.0", "-m", "v1.0.0");
+  const tagObject = git(work, "rev-parse", "v1.0.0");
+  // An attacker-pushed side branch carrying an authorized policy, kept at the
+  // tagged (authorized) commit; then main moves on to a paused policy.
+  git(work, "branch", "aaa");
+  await writeFile(join(work, "gq.ops.json"), `${JSON.stringify(paused)}\n`);
+  git(work, "commit", "--quiet", "-am", "main: paused");
+  git(work, "push", "--quiet", bare, "main", "aaa", "v1.0.0");
+
+  // The forged endpoint: the same refs, but HEAD names refs/heads/aaa, so a
+  // steered `--symref HEAD` reports aaa as the default branch.
+  const forgedBare = join(served, "forged.git");
+  git(served, "clone", "--quiet", "--bare", bare, forgedBare);
+  git(forgedBare, "symbolic-ref", "HEAD", "refs/heads/aaa");
+
+  const server = await gitHttpServer(served);
+  const artifacts = `${server.url}/artifacts.git`;
+  const forged = `${server.url}/forged.git`;
+
+  // The tag's workspace, shaped as a bare repository whose config redirects
+  // ARTIFACTS_REMOTE to the forged endpoint, directly and through an include.
+  const workspace = join(root, "workspace");
+  await mkdir(join(workspace, "objects", "pack"), { recursive: true });
+  await mkdir(join(workspace, "refs", "heads"), { recursive: true });
+  await writeFile(join(workspace, "HEAD"), "ref: refs/heads/main\n");
+  await writeFile(
+    join(workspace, "config"),
+    `[core]\n\tbare = true\n[url "${forged}"]\n\tinsteadOf = ${artifacts}\n` +
+      `[include]\n\tpath = ${join(workspace, "redirect")}\n`,
+  );
+  await writeFile(join(workspace, "redirect"), `[url "${forged}"]\n\tinsteadOf = ${artifacts}\n`);
+
+  let output = "";
+  let status;
+  try {
+    status = await new Promise((done, fail) => {
+      const child = spawn("bash", ["-c", admissionCommand(tagObject, "v1.0.0")], {
+        cwd: workspace,
+        env: {
+          ...environment,
+          HOME: join(root, "home"),
+          ARTIFACTS_REMOTE: artifacts,
+          ARTIFACTS_TOKEN: "artifacts-token",
+        },
+      });
+      child.stdout.on("data", (chunk) => (output += chunk));
+      child.stderr.on("data", (chunk) => (output += chunk));
+      child.once("error", fail);
+      child.once("close", (code) => done(code));
+    });
+  } finally {
+    await server.close();
+  }
+
+  assert.notEqual(status, 0, output);
+  assert.doesNotMatch(output, /admitted/u, "the steer must not admit a paused Site");
+  assert.match(output, /the default branch's gq\.ops\.json deployment\.state: paused/u);
+  assert.doesNotMatch(output, /artifacts-token/u);
+  const forgedPath = new URL(forged).pathname;
+  assert.deepEqual(
+    server.requests.filter((request) => request.path.startsWith(forgedPath)),
+    [],
+    "the forged endpoint got nothing",
+  );
+  assert.ok(
+    server.requests.some((request) => request.path.startsWith("/artifacts.git")),
+    "the authoritative remote was read",
+  );
 });
 
 // `pnpm plan:frontend` runs infra's plan:frontend: the deploy wrapper in

@@ -19,9 +19,68 @@ test("the release step names any missing deploy credential", async () => {
   ]);
 });
 
-test("the release step can't fetch source without Artifacts credentials", async () => {
-  const { fetchSource } = await import("./ci-release.mjs");
+test("the release step accepts only the Artifacts URLs it fetches the source from", async () => {
+  const { authoritativeScheme } = await import("./ci-release.mjs");
+  assert.equal(
+    authoritativeScheme("https://acct.artifacts.cloudflare.net/git/ns/site.git"),
+    "https",
+  );
+  assert.equal(authoritativeScheme("http://127.0.0.1:41234/site.git"), "http");
+  for (const rejected of [
+    "http://127.0.0.1/site.git/", // trailing slash (empty segment)
+    "http://localhost:41234/site.git", // not 127.0.0.1
+    "https://example.test:443/x.git", // a port
+    "https://user:pass@example.test/x.git", // credentials
+    "https://example.test/a/../x.git", // a .. segment
+    "https://example.test/x.git?y", // a query
+    "https://1.2.3.4/x.git", // a bare IP
+    "file:///tmp/x.git",
+    "/tmp/x.git",
+  ]) {
+    assert.equal(authoritativeScheme(rejected), null, rejected);
+  }
+});
+
+test("the release step fetches the source isolated from the workspace and the runner's environment", async () => {
+  const { fetchSource, sourceGitEnvironment } = await import("./ci-release.mjs");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { dirname, join } = await import("node:path");
+  const sha = "0".repeat(40);
+  const remote = "https://acct.artifacts.cloudflare.net/git/ns/site.git";
+
+  // Guards, all before any git runs: no credentials, a URL it won't fetch
+  // from, and a ref that isn't an object id.
   assert.throws(() => fetchSource("abc", {}), /ARTIFACTS_REMOTE\/ARTIFACTS_TOKEN/u);
+  for (const bad of ["http://localhost/x.git", "file:///tmp/x.git", "/tmp/x.git"]) {
+    assert.throws(
+      () => fetchSource(sha, { ARTIFACTS_REMOTE: bad, ARTIFACTS_TOKEN: "t" }),
+      /isn't an https URL/u,
+      bad,
+    );
+  }
+  assert.throws(
+    () => fetchSource("not-a-sha", { ARTIFACTS_REMOTE: remote, ARTIFACTS_TOKEN: "t" }),
+    /Not a commit or tag object id/u,
+  );
+
+  // The git environment is built from nothing the caller chose: the token
+  // isn't in it (it is added per call), discovery is ceilinged at the scratch
+  // directory's parent, and system and global config are off.
+  const scratch = mkdtempSync(join(tmpdir(), "gq-source-env-"));
+  const env = sourceGitEnvironment("/usr/bin/git", scratch, [["core.hooksPath", "/dev/null"]], {
+    homedir: "/home/ci",
+    username: "ci",
+  });
+  assert.equal(env.GIT_CONFIG_NOSYSTEM, "1");
+  assert.equal(env.GIT_CONFIG_GLOBAL, "/dev/null");
+  assert.equal(env.GIT_NO_REPLACE_OBJECTS, "1");
+  assert.equal(env.GIT_TERMINAL_PROMPT, "0");
+  assert.equal(env.GIT_CEILING_DIRECTORIES, dirname(scratch));
+  assert.equal(env.HOME, "/home/ci");
+  assert.ok(!JSON.stringify(env).includes("PATH_TO_SECRET"));
+  assert.equal(env.GIT_CONFIG_COUNT, "1");
+  assert.equal(env.GIT_CONFIG_KEY_0, "core.hooksPath");
 });
 
 test("verifies GitHub webhook signatures", async () => {

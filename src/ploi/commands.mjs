@@ -9,7 +9,11 @@ const PLOI_WORKFLOWS = new Map([
   ["ploi provision", ["gq ploi provision [--dry-run | --yes]", ["dryRun", "yes"], runProvision]],
   [
     "ploi release",
-    ["gq ploi release [--ref <ref>] [--git-dir <dir>]", ["ref", "gitDir"], runRelease],
+    [
+      "gq ploi release [--ref <ref>] [--git-dir <dir>] [--composer-only]",
+      ["ref", "gitDir", "composerOnly"],
+      runRelease,
+    ],
   ],
   ["ploi media", ["gq ploi media [--dry-run]", ["dryRun"], runMedia]],
   ["ploi events", ["gq ploi events [--dry-run]", ["dryRun"], runEvents]],

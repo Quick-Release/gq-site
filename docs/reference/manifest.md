@@ -114,6 +114,11 @@ Provider IDs are safe to commit; tokens are not. `gq` reads `PLOI_API_TOKEN`,
 
 ## Related references
 
+A protected Site's `deployment` block (its `state`, why and by whom it
+holds, and the Composer packages it guards) is described in
+[Deployment policy](deployment-policy.md) and
+[Package expectations](package-expectations.md).
+
 The [release and version reference](release.md) describes variant defaults
 and the `release`, `verify` and `doctor` additions. Provider-specific settings
 are documented with [provisioning](../guides/provisioning.md), and Sigillo

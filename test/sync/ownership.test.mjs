@@ -48,6 +48,7 @@ const MANAGED_PATHS = [
   "apps/frontend/src/pages/gq/refresh.ts",
   "apps/frontend/workers/consent-purge.ts",
   "deploy/ploi/admin.sh",
+  "deploy/ploi/admission.sh",
   "deploy/ploi/polylang.sh",
   "docs/adr/README.md",
   "docs/agents/README.md",

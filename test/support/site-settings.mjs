@@ -25,6 +25,7 @@ export const CONTENT_RELEASE_PATHS = [
   "gq.ops.json",
   "infra",
   "deploy/ploi/admin.sh",
+  "deploy/ploi/admission.sh",
   "AGENTS.md",
   "apps/cms/.gitignore",
   "apps/cms/composer.json",

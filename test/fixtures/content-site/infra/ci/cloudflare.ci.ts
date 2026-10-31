@@ -5,7 +5,8 @@ import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { Bindings } from "./env";
 import { githubToken, hasGithubCredentials, postCommitStatus } from "./github.ts";
 import type { CommitState } from "./github.ts";
-import { isRelease } from "./release.ts";
+import { ciSteps, runSteps } from "./release.ts";
+import type { Runner, Step } from "./release.ts";
 
 // Steps restore the install step's workspace snapshot, but pnpm's store lives
 // outside it, so `pnpm run`'s dependency check would reinstall everything in
@@ -90,7 +91,7 @@ export class CI extends CIWorkflow<CloudflareArtifacts, Bindings> {
   }
 
   private async checks(params: CiParams<CloudflareArtifacts>, ci: CiContext): Promise<void> {
-    const workspace = await ci.runner({
+    const install: Step = {
       name: "install",
       command:
         "pnpm install --frozen-lockfile && " +
@@ -106,20 +107,18 @@ export class CI extends CIWorkflow<CloudflareArtifacts, Bindings> {
           "apps/cms/composer.lock",
         ],
       },
-    });
+    };
 
     // The same check list as the pre-push hook and `pnpm push`.
-    await workspace.runner({
+    const verify: Step = {
       name: "verify",
       env: pnpmEnv,
       command: "pnpm verify --ci",
-    });
-
-    if (!isRelease(params)) return;
+    };
 
     // Admin first (the frontend reads WordPress over GraphQL): archive to R2,
     // Ploi deploy verified against the tagged commit; then the frontend.
-    await workspace.runner({
+    const release: Step = {
       name: "release",
       env: pnpmEnv,
       command: `node scripts/ci-release.mjs --ref ${params.sha}`,
@@ -137,6 +136,11 @@ export class CI extends CIWorkflow<CloudflareArtifacts, Bindings> {
       // /workspace has no .git: ci-release fetches the tagged commit with these.
       sourceControlCredentials: true,
       config: deployConfig,
-    });
+    };
+
+    // In ciSteps' order: a release is admitted first, by this Worker's own
+    // code, in its own fresh runner, before anything the tag controls is
+    // installed, run or given a secret (release.ts).
+    await runSteps(ci as unknown as Runner, ciSteps(params, { install, verify, release }));
   }
 }

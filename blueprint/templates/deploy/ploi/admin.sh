@@ -14,6 +14,11 @@ WP_LOCALE="{{wordpress.locale}}"
 WP_LANGUAGES="{{wordpress.languages}}"
 # gq.ops.json's variant: a commerce Site also updates WooCommerce's database.
 SITE_VARIANT="{{variant}}"
+# gq.ops.json's deployment.guardedPackages: Composer packages whose installed
+# files must match the release's PACKAGE_EXPECTATIONS (which `gq ploi release`
+# writes once it has checked them) before PHP-FPM reloads or WordPress runs.
+# Empty for a Site that guards none.
+GUARDED_PACKAGES="{{deployment.guardedPackages}}"
 SITE_PATH="${PLOI_SITE_PATH:-$PWD}"
 # The site has no git repository (Ploi custom deployments): `pnpm ploi:release`
 # uploads a release archive to R2 and passes a short-lived URL as the deploy
@@ -31,6 +36,11 @@ tmp_dir=""
 
 cd "$SITE_PATH"
 
+# After the new code is in place: best effort, only so workers drop stale
+# opcache (a failure warns, the deploy goes on). A guarded Site's request
+# admission reloads the serving PHP-FPM itself before anything changes, and
+# there a failed reload fails the deploy: it ends the workers that started
+# before the hold and loads the current gate.
 reload_php_fpm() {
   if ! command -v sudo >/dev/null 2>&1 || ! command -v php >/dev/null 2>&1; then
     echo "Skipping PHP-FPM reload; sudo or PHP is unavailable."
@@ -65,6 +75,152 @@ composer_install() {
   if [ "$SITE_VARIANT" != commerce ]; then
     php scripts/patch-dependencies.php
   fi
+  verify_package_expectations
+}
+
+# A guarded Site is held for the whole deploy by its request admission
+# (deploy/ploi/admission.sh, from the release being deployed): `begin`, before
+# anything is replaced or installed, proves the PHP-FPM pool enforces its
+# gate (php_admin_value[auto_prepend_file], which the server must already
+# have: gq configures none), holds every PHP web request at 503 and proves
+# it; only the end of a deploy that verified its packages and
+# finished every step runs `lift`. A failure, a timeout or a killed deploy
+# leaves the hold: nothing (no exit trap, no timer) serves the Site again.
+admission() {
+  SITE_PATH="$SITE_PATH" APP_PATH="$APP_PATH" bash "$tmp_dir/release/deploy/ploi/admission.sh" "$1"
+}
+
+# Runs from $APP_PATH after composer install: each package the release's
+# PACKAGE_EXPECTATIONS states (its files come from the approval record gq
+# looked up) must be installed with exactly those regular files and no
+# others, and their gq-support.files/v1 digest (the sha256 of
+# "<path>\0<sha256>\n" lines sorted by path bytes) must be the approved one,
+# from the very composer.lock gq checked. Any difference fails the deploy
+# before PHP-FPM reloads and before any WP-CLI activation or database step.
+# A release without the file is fine unless the Site guards packages.
+verify_package_expectations() {
+  local expectations="$tmp_dir/release/PACKAGE_EXPECTATIONS"
+  local line key package_line lock="" name="" count=0 verified=" " guarded
+  if [ ! -f "$expectations" ]; then
+    if [ -n "$GUARDED_PACKAGES" ]; then
+      echo "This Site guards $GUARDED_PACKAGES, but the release has no PACKAGE_EXPECTATIONS: deploy it with gq ploi release." >&2
+      exit 1
+    fi
+    return 0
+  fi
+  if [ "$(head -n 1 "$expectations")" != "gq-package-expectations 1" ]; then
+    echo "PACKAGE_EXPECTATIONS isn't a version 1 expectations file." >&2
+    exit 1
+  fi
+  # Whole lines: a file's path is everything after its hash, spaces and all.
+  while IFS= read -r line; do
+    key="${line%% *}"
+    case "$key" in
+      gq-package-expectations) ;;
+      lock) lock="${line#lock }" ;;
+      package)
+        [ -z "$name" ] || verify_package_tree "$name" "$count"
+        count=$((count + 1))
+        # name, version, install path and digest, one per line
+        package_line="${line#package }"
+        printf '%s\n' $package_line >"$tmp_dir/package-$count"
+        name="${package_line%% *}"
+        : >"$tmp_dir/expected-$count"
+        ;;
+      file) printf '%s  %s\n' "${line:5:64}" "${line:70}" >>"$tmp_dir/expected-$count" ;;
+      *)
+        echo "PACKAGE_EXPECTATIONS has an unknown line: $key" >&2
+        exit 1
+        ;;
+    esac
+  done <"$expectations"
+  [ -z "$name" ] || verify_package_tree "$name" "$count"
+  if [ -z "$lock" ] || [ "$(sha256sum composer.lock | cut -c1-64)" != "$lock" ]; then
+    echo "composer.lock isn't the lock gq checked before uploading this release." >&2
+    exit 1
+  fi
+  for guarded in $GUARDED_PACKAGES; do
+    if [[ "$verified" != *" $guarded "* ]]; then
+      echo "This Site guards $guarded, but PACKAGE_EXPECTATIONS doesn't state it." >&2
+      exit 1
+    fi
+  done
+}
+
+# Runs from $SITE_PATH before anything is replaced: PACKAGE_EXPECTATIONS
+# present when the Site guards packages, and the release's composer.lock the
+# one it names.
+verify_release_lock() {
+  local expectations="$tmp_dir/release/PACKAGE_EXPECTATIONS" lock
+  if [ ! -f "$expectations" ]; then
+    if [ -n "$GUARDED_PACKAGES" ]; then
+      echo "This Site guards $GUARDED_PACKAGES, but the release has no PACKAGE_EXPECTATIONS: deploy it with gq ploi release." >&2
+      exit 1
+    fi
+    return 0
+  fi
+  lock="$(sed -n 's/^lock //p' "$expectations" | head -n 1)"
+  if [ -z "$lock" ] || [ ! -f "$tmp_dir/release/$APP_PATH/composer.lock" ] \
+    || [ "$(sha256sum <"$tmp_dir/release/$APP_PATH/composer.lock" | cut -c1-64)" != "$lock" ]; then
+    echo "The release's composer.lock isn't the lock gq checked before uploading it." >&2
+    exit 1
+  fi
+  # Every line well formed, and the packages stated exactly the ones the Site
+  # guards: checked before anything changes.
+  if grep -vqE '^(gq-package-expectations 1|lock [0-9a-f]{64}|package [a-z0-9][a-z0-9._/-]* [0-9][0-9A-Za-z.+-]* web/app/(plugins|mu-plugins|themes)/[A-Za-z0-9][A-Za-z0-9_.-]* [0-9a-f]{64}|file [0-9a-f]{64} [A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*)$' "$expectations"; then
+    echo "PACKAGE_EXPECTATIONS has a line gq doesn't write." >&2
+    exit 1
+  fi
+  local stated wanted
+  stated="$(sed -n 's/^package \([^ ]*\) .*/\1/p' "$expectations" | LC_ALL=C sort | paste -sd ' ' -)"
+  # shellcheck disable=SC2086 # one package per word
+  wanted="$(printf '%s\n' $GUARDED_PACKAGES | LC_ALL=C sort | paste -sd ' ' -)"
+  if [ -n "$GUARDED_PACKAGES" ] && [ "$stated" != "$wanted" ]; then
+    echo "PACKAGE_EXPECTATIONS states ${stated:-no package}, but this Site guards exactly $wanted." >&2
+    exit 1
+  fi
+}
+
+# files_digest <listing>: the gq-support.files/v1 digest of a sorted
+# `sha256sum` listing ("<sha256>  <path>" lines).
+files_digest() {
+  local line
+  while IFS= read -r line; do
+    printf '%s\0%s\n' "${line:66}" "${line:0:64}"
+  done <"$1" | sha256sum | cut -c1-64
+}
+
+# verify_package_tree <name> <n>: the package's installed files against
+# $tmp_dir/expected-<n>, its version, path and digest in $tmp_dir/package-<n>.
+verify_package_tree() {
+  local name="$1" n="$2" version install_path digest actual="$tmp_dir/actual-$2"
+  { read -r _; read -r version; read -r install_path; read -r digest; } <"$tmp_dir/package-$n"
+  if [ ! -d "$install_path" ]; then
+    echo "$name isn't installed at $APP_PATH/$install_path." >&2
+    exit 1
+  fi
+  if [ -n "$(find "$install_path" ! -type f ! -type d -print -quit)" ]; then
+    echo "$name's $install_path holds something other than regular files and directories." >&2
+    exit 1
+  fi
+  (cd "$install_path" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum) \
+    | sed 's#^\([0-9a-f]\{64\}\)  \./#\1  #' >"$actual"
+  if grep -qv '^[0-9a-f]\{64\}  ' "$actual" || ! cmp -s "$tmp_dir/expected-$n" "$actual" \
+    || [ "$(files_digest "$actual")" != "$digest" ]; then
+    echo "$name's installed files don't match its expected $version tree ($digest):" >&2
+    awk 'NR == FNR { want[substr($0, 67)] = substr($0, 1, 64); next }
+      { have[substr($0, 67)] = substr($0, 1, 64) }
+      END {
+        for (path in want) {
+          if (!(path in have)) print "  missing " path
+          else if (want[path] != have[path]) print "  changed " path
+        }
+        for (path in have) if (!(path in want)) print "  extra   " path
+      }' "$tmp_dir/expected-$n" "$actual" | LC_ALL=C sort >&2
+    exit 1
+  fi
+  echo "Verified $name $version: $(wc -l <"$actual" | tr -d ' ') files match $digest."
+  verified+="$name "
 }
 
 cleanup() {
@@ -79,7 +235,9 @@ cleanup() {
     rm -rf "$tmp_dir"
   fi
 
-  deployed_sha="$(sed -n 's/^commit=//p' "$SITE_PATH/RELEASE" 2>/dev/null | head -1)"
+  # Before the release is copied there is no RELEASE yet: report unknown
+  # rather than let the failed read end the trap before the status line.
+  deployed_sha="$(sed -n 's/^commit=//p' "$SITE_PATH/RELEASE" 2>/dev/null | head -1 || true)"
   deployed_sha="${deployed_sha:-unknown}"
   if [ "$exit_code" -eq 0 ]; then
     echo "{{deployStatusMarker}}=success SHA=$deployed_sha"
@@ -112,6 +270,26 @@ if [ ! -f "$tmp_dir/release/RELEASE" ] || [ ! -f "$tmp_dir/release/$APP_PATH/com
 fi
 echo "Deploying $(tr '\n' ' ' < "$tmp_dir/release/RELEASE")"
 
+# A guarded release refuses before anything on the server changes: the
+# archive must carry PACKAGE_EXPECTATIONS, and its lock must be the one gq
+# checked against the approval. The installed files are checked after
+# composer install (verify_package_expectations).
+verify_release_lock
+# A guarded Site is held, and the hold proven, before anything changes.
+if [ -n "$GUARDED_PACKAGES" ]; then
+  if [ ! -f "$tmp_dir/release/deploy/ploi/admission.sh" ]; then
+    echo "This Site guards $GUARDED_PACKAGES, but the release has no deploy/ploi/admission.sh: run gq sync and release again." >&2
+    exit 1
+  fi
+  # admission.sh owns web/gq-admission (its challenges); a release can't
+  # ship anything there.
+  if [ -e "$tmp_dir/release/$APP_PATH/web/gq-admission" ] || [ -L "$tmp_dir/release/$APP_PATH/web/gq-admission" ]; then
+    echo "The release ships $APP_PATH/web/gq-admission, which the Site's request admission owns." >&2
+    exit 1
+  fi
+  admission begin
+fi
+
 # Replace the shipped code, keeping what the server owns: the .env, Composer's
 # vendor/ and installed WordPress core/plugins/themes, language packs and
 # uploads.
@@ -126,6 +304,7 @@ for path in "${SHIPPED_PATHS[@]}"; do
     --filter='P /web/app/plugins/*/' \
     --filter='P /web/app/themes/*/' \
     --filter='P /web/app/mu-plugins/*/' \
+    --filter='P /web/gq-admission/' \
     "$tmp_dir/release/$path/" "$path/"
 done
 cp "$tmp_dir/release/RELEASE" RELEASE
@@ -168,11 +347,15 @@ if [ "${COMPOSER_ONLY:-false}" = "true" ]; then
   composer_install
   mkdir -p web/app/uploads
   reload_php_fpm
+  [ -z "$GUARDED_PACKAGES" ] || admission lift
   echo "Composer dependencies deployed; skipping WordPress and database operations."
   exit 0
 fi
 
-if [ -f "$APP_PATH/web/wp/wp-load.php" ] && (cd "$APP_PATH" && wp core is-installed); then
+# A guarded Site is already held (admission.sh), and needs no maintenance
+# mode of WordPress's own.
+if [ -z "$GUARDED_PACKAGES" ] && [ -f "$APP_PATH/web/wp/wp-load.php" ] \
+  && (cd "$APP_PATH" && wp core is-installed); then
   (cd "$APP_PATH" && wp maintenance-mode activate) || true
   maintenance_enabled=true
 fi
@@ -319,5 +502,9 @@ if wp core is-installed; then
   fi
 fi
 
-wp maintenance-mode deactivate || true
-maintenance_enabled=false
+if [ -n "$GUARDED_PACKAGES" ]; then
+  admission lift
+else
+  wp maintenance-mode deactivate || true
+  maintenance_enabled=false
+fi

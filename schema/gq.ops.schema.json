@@ -509,6 +509,71 @@
       },
       "additionalProperties": false
     },
+    "deployment": {
+      "description": "A protected Site's deployment policy. Without it a Site deploys as before; change it only in a reviewed Site change.",
+      "type": "object",
+      "properties": {
+        "protected": {
+          "type": "boolean",
+          "const": true,
+          "description": "This Site is a protected deployment target: gq deploys it only while state is authorized."
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "paused",
+            "reserved",
+            "authorized"
+          ],
+          "description": "authorized deploys; paused and reserved refuse every deploy until a reviewed Site change authorizes it again."
+        },
+        "reason": {
+          "description": "Why a paused or reserved Site holds.",
+          "type": "string",
+          "minLength": 1
+        },
+        "holder": {
+          "description": "Who holds a reserved Site (for example, its nightly update pipeline).",
+          "type": "string",
+          "minLength": 1
+        },
+        "guardedPackages": {
+          "description": "Composer packages prepared and deployed only with an approval record looked up for this Site's approval slot, verified again on the server after composer install.",
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([_.-]?[a-z0-9]+)*\\/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$"
+          }
+        },
+        "approval": {
+          "description": "Where the package approval lookup reads this Site's approvals; every record must name this slot and stage.",
+          "type": "object",
+          "properties": {
+            "slot": {
+              "type": "string",
+              "pattern": "^\\S(?:.*\\S)?$",
+              "description": "The approval service's slot for this Site."
+            },
+            "stage": {
+              "type": "string",
+              "pattern": "^\\S(?:.*\\S)?$",
+              "description": "The approval service's stage (staging, prod)."
+            }
+          },
+          "required": [
+            "slot",
+            "stage"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protected",
+        "state"
+      ],
+      "additionalProperties": false
+    },
     "offboarded": {
       "description": "Written by gq offboard: the Site is offboarded, and gq refuses whatever would expose it again.",
       "type": "object",

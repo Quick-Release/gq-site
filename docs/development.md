@@ -66,10 +66,24 @@ Shared helpers stay in `test/support/`, with filenames describing their roles:
   verify and doctor test recipes. Keep expected values independent of production
   defaults so the tests can detect drift.
 - `deploy-script.mjs`: the CMS deploy script harness and local tool stand-ins.
+- `ploi-release.mjs`: the Ploi release suites' Site, in-memory Ploi and R2,
+  git stand-in and approval record stand-ins, shared by
+  `ploi/commands.test.mjs`, `ploi/guarded-release.test.mjs` and
+  `release/package.test.mjs`.
 - `offboarding.mjs`: the offboarding suites' synced Site and its in-memory
   account (Cloudflare, R2's S3 API, Ploi, Sigillo, `gh`, and git against an
   Artifacts repository, each listing a page at a time), with ZIP, git bundle
   and output helpers.
+- `git-http.mjs`: a real git smart-HTTP endpoint for tests — git's own
+  `git-http-backend` (CGI) behind a local HTTP server on `127.0.0.1`, serving
+  bare repositories from a directory and recording each request's method,
+  path and `Authorization` header (with `redirectTo`, answering every request
+  with a redirect instead). It stands in for Cloudflare Artifacts in the CI
+  deployment-policy tests (`ploi/trusted-git.mjs` CI reads,
+  `ploi/policy-authenticity.test.mjs`, and the CI Worker admission in
+  `sync/deploy-files.test.mjs`), where the read's authenticity turns on which
+  endpoint the token and the fetch reach. Nothing leaves `127.0.0.1`; test
+  tokens are synthetic.
 
 Keep this small shared helper set rather than adding per-module helper folders
 or forwarding modules. Baseline evidence stays in `test/fixtures/`; its
@@ -145,6 +159,16 @@ with Polylang and GQ Polylang for WPGraphQL, read over GraphQL.
 `/gf/v2/forms/<id>/submissions` reaches its route while gq-content's forms
 module has Gravity Forms active (a stand-in for both), and the REST index,
 reading forms or entries, method overrides and every other route stay 401.
+`scripts/smoke/admission.sh` runs a guarded Site's generated
+`deploy/ploi/admin.sh` and request admission in a disposable Docker container
+with real nginx over TLS, PHP-FPM (two pools, `opcache.validate_timestamps=0`),
+rsync, Composer and WP-CLI, standing in only for R2, Ploi and the private
+registry: see
+[Package expectations](reference/package-expectations.md#checked-on-a-real-stack).
+It needs Docker and takes about six minutes; it is the authoritative
+proof (CI runs it). `test/cms/admission-gate.test.mjs` runs the rendered gate under
+PHP's built-in server, a quick local check of its state rules: it needs
+`php` on `PATH` and skips without it.
 `scripts/smoke/cms-content.sh` proves the agent's content route
 (`gq content`, [gq-platform ADR 0011](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0011-agent-access-to-production-cms-content.md))
 on a real WordPress over HTTP, behind the generated `content-api.php`, as an
@@ -174,7 +198,7 @@ stops after that check. In CI the `cms-registry` job probes the
 not passed, with a warning, and only the package suite's offline check of the
 recorded requirements runs. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
 three generated-site proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
-`frontend-check.sh`, `commerce-check.sh`, `content-pair.sh`, `consent.sh`, `cms-rest-gate.sh`, `ci-composer.sh` and, with its secret, `cms-resolve.sh` on every push; the
+`frontend-check.sh`, `commerce-check.sh`, `content-pair.sh`, `consent.sh`, `cms-rest-gate.sh`, `admission.sh`, `ci-composer.sh` and, with its secret, `cms-resolve.sh` on every push; the
 real-WordPress Polylang proof, which also needs PHP and downloads, runs locally, and the live gate is the
 gq-smoke wizard ([A new content Site, end to end](guides/provisioning.md#a-new-content-site-end-to-end)).
 

@@ -3,6 +3,89 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **Protected Sites can hold their deploys.** A `gq.ops.json` `deployment`
+  block (`protected: true` with `state` `paused`, `reserved` or `authorized`,
+  and a `reason` and `holder` while holding) makes `gq ploi release`,
+  `gq release package`, the generated CI release step and the generated
+  Frontend deploy refuse a paused or reserved Site before anything is
+  uploaded, synced or deployed. No flag lifts a hold; a reviewed Site change
+  does. A release also checks the default branch's current policy (with a
+  system git, never one on a Site's PATH), so an old commit can't release a
+  Site held since. This applies to every Site: a release now refuses when
+  `origin` or its default branch can't be read, or when the release commit's
+  or the default branch's `gq.ops.json` isn't valid for this gq; an online
+  Site with a valid manifest and no `deployment` block releases as before; in CI the Worker admits a
+  release with its own code as its first step, before the tag's install,
+  checks or release run (once the Site has redeployed its CI Worker). See
+  [Deployment policy](docs/reference/deployment-policy.md). `gq sync` updates
+  `scripts/ci-release.mjs`, `infra/scripts/deploy-frontend.mjs`,
+  `infra/ci/release.ts` and `infra/ci/cloudflare.ci.ts`.
+- **Guarded Composer packages.** `deployment.guardedPackages` (with
+  `deployment.approval`, the Site's approval stage and slot) makes
+  preparation and deploys of those packages look up gq-support's
+  `gq-support.composer-approval/v1` record: through `run()`'s `approvals`
+  adapter, or, in the `gq` command only, gq-support's pinned read-only
+  Operator script from a checkout whose every tracked file matches the
+  reviewed commit, with the `node` and `git` the Operator's own
+  `~/.config/gq/support-approval.json` names (found through the user
+  database, never `HOME`, the environment or a Site). A record must match
+  exactly; the lock must install its version with both references its
+  published tag's commit; the install path comes from the release commit's
+  Composer installer paths. A deploy looks the record up before uploading
+  and again immediately before the deploy request. The deploy script checks
+  the expectations and lock before changing anything, holds a guarded Site
+  before replacing anything (`deploy/ploi/admission.sh`: a gate the PHP-FPM
+  pool must already prepend with `php_admin_value[auto_prepend_file]`, which
+  no package's `.user.ini` can turn off, answers every non-CLI PHP request
+  for the Site 503, setup-config and direct plugin files included; proven
+  by a fresh nested-override challenge, the serving pool's PHP version and
+  worker, a mandatory reload, a drain of pre-hold workers of at most 120
+  seconds and 503s from the reloaded pool; WP-CLI still works; static files
+  aren't covered; a server without that setting refuses, and gq configures
+  none; the Site is served only while the gate reads exactly `open` from
+  `.gq/state`, so a missing, unreadable or malformed state, an
+  `open_basedir` hiding it included, holds it), verifies the installed files
+  (`gq-support.files/v1`) after `composer install`, and lifts the hold
+  only when the deploy verified and finished. Without a configured lookup,
+  guarded packages refuse. See
+  [Package expectations](docs/reference/package-expectations.md). `gq sync`
+  updates the managed, shipped `deploy/ploi/admin.sh` and adds
+  `deploy/ploi/admission.sh`; a guarded Site must `gq sync` and release again,
+  and a guarded deploy of a release without `admission.sh` refuses before
+  changing anything. A Site guarding nothing deploys as before.
+- **In CI, the default branch's policy comes only from `ARTIFACTS_REMOTE`.**
+  `gq ploi release` (and `gq release package`) reads it in a temporary bare
+  repository gq creates, from that exact URL, with no repository, global or
+  system git config, no redirects and only that remote's protocol; the
+  release repository's origin must name the same URL, and `ARTIFACTS_TOKEN`
+  goes only to that URL, only on the two network calls. A tag's install
+  rewriting the workspace's or the runner's git config can no longer
+  redirect the read to a forged policy or receive the token. The CI Worker's
+  admission and `scripts/ci-release.mjs`'s source fetch drop global and
+  system config, scope the token and refuse redirects too. A token without
+  `ARTIFACTS_REMOTE` refuses. On an operator's machine the checkout's own
+  origin stays the source. See
+  [Deployment policy](docs/reference/deployment-policy.md).
+- **Guarded single-package preparation.** `gq release package` takes
+  `--to <version>` (lock exactly that version through Composer's temporary
+  `--with` constraint, keeping a requirement that already admits it, and
+  refusing one that doesn't), `--pin` (also set the requirement to exactly
+  that version), `--reference <ref>`, `--expect-before <version>` and
+  `--no-deploy`. The update is lock-only, runs none of the Site's Composer
+  scripts, plugins or git hooks, and refuses any other locked
+  package's change, any other lock field's change, a `content-hash` Composer
+  wouldn't write, or any unasked file change, undoing its own changes, and
+  `--no-deploy` commits without any provider call.
+- **Composer-only deploys from gq.** `gq ploi release --composer-only` (and
+  `gq release package --composer-only`) passes `composer_only`, so the deploy
+  script stops after Composer and its verifications. A deploy that fails
+  before the release is copied now still prints its status line. Until now only the
+  deploy script understood `COMPOSER_ONLY`; no gq command set it.
+
 ## 0.32.0 — 2026-10-31
 
 ### Changed

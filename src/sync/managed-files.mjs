@@ -53,14 +53,21 @@ async function renderTemplate(template, manifest) {
   });
 }
 
+// A plain lowercase hostname: what deploy/ploi/admission.sh may put in a
+// shell string and a curl --resolve argument.
+const ADMIN_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/u;
+
 // What a template's `{{name}}` stands for: the manifest's site values under
 // their key paths (`variant` among them), `Project` (project in PascalCase, for names and prose),
 // `deployStatusMarker` (the CMS deploy's status line, which gq ploi release
-// waits for), `wordpress.plugins` space-separated (none until the manifest
+// waits for), `deployment.guardedPackages` space-separated (empty for a Site
+// that guards none), `wordpress.plugins` space-separated (none until the manifest
 // lists some, so the deploy script stays valid shell), `wordpress.locale`
 // (empty without one, so the deploy leaves the language alone),
 // `wordpress.languages` as space-separated locale:slug pairs (empty for a
-// monolingual Site, so the deploy leaves Polylang alone), the blueprint's
+// monolingual Site, so the deploy leaves Polylang alone), `domains.adminHost`
+// (domains.admin if ADMIN_HOST matches it, empty otherwise, which the
+// request admission refuses), the blueprint's
 // own pins in the root package.json, `packageManager`
 // and `nodeEngine` (engines.node), so a copy of one can't drift, and the
 // versions a new site installs: `gqVersion` (this @getquick/site) and
@@ -83,6 +90,7 @@ function templateValues(manifest) {
     sigilloVersion: packageJson.devDependencies.sigillo,
     deployStatusMarker: deployStatusMarker(project),
     "wordpress.plugins": (manifest.wordpress?.plugins ?? []).join(" "),
+    "deployment.guardedPackages": (manifest.deployment?.guardedPackages ?? []).join(" "),
     "wordpress.locale": manifest.wordpress?.locale ?? "",
     "wordpress.languages": (manifest.wordpress?.languages ?? [])
       .map(({ locale, slug }) => `${locale}:${slug}`)
@@ -93,6 +101,11 @@ function templateValues(manifest) {
     "artifacts.repo": manifest.artifacts?.repo,
     "cloudflare.accountId": manifest.cloudflare?.accountId,
     "domains.admin": manifest.domains?.admin,
+    // For a shell script: the admin domain only if it is a plain hostname,
+    // else empty (the script then refuses), so nothing else can reach a shell.
+    "domains.adminHost": ADMIN_HOST.test(manifest.domains?.admin ?? "")
+      ? manifest.domains.admin
+      : "",
     "domains.frontend": manifest.domains?.frontend,
     // Optional: a site without one keeps its code in Artifacts only, so it
     // renders empty rather than as a placeholder to fill in.

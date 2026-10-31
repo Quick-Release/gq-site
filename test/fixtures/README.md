@@ -306,6 +306,29 @@ manifest has neither key, so its deploy is unchanged.
 `sync/graphql-path.test.mjs` exercises both modes. Written by hand and
 reviewed against the templates, not regenerated.
 
+A protected Site's deployment hold (gq.ops.json `deployment`, see
+`docs/reference/deployment-policy.md`) updates the content site's
+`scripts/ci-release.mjs` and `infra/scripts/deploy-frontend.mjs` baselines
+alongside their templates: after the offboarding check, a paused or reserved
+Site refuses before the CMS or the Frontend deploys, with the same message
+`gq ploi release` gives. The content
+site's manifest has no `deployment` block, so its release is unchanged.
+`sync/deploy-files.test.mjs` exercises both holds. The release admission
+updates the `infra/ci/release.ts` and `infra/ci/cloudflare.ci.ts` baselines:
+the CI Worker runs its steps through `runSteps(ciSteps(...))`, whose first
+step for a release is the admission, in its own fresh runner (before the
+tag's install, verify and release), and
+`scripts/ci-release.mjs` runs the Frontend deploy without the Artifacts
+credentials; `sync/deploy-files.test.mjs` executes the steps with git, bash
+and node against a tagged workspace of marker scripts. Written by hand and reviewed against the
+templates, not regenerated. The policy-authenticity change updates the same
+three baselines alongside their templates: the admission's git runs without
+system or global config, its token in a header scoped to exactly
+`ARTIFACTS_REMOTE` with redirects off and only that remote's protocol;
+`scripts/ci-release.mjs` fetches the release source into a fresh directory
+the same way; and the policy refusals name the deployment hold. Also written
+by hand.
+
 `pnpm plan:frontend` running the deploy wrapper (the Bruaa rollout) updates
 the content site's `infra/package.json` and `infra/scripts/deploy-frontend.mjs`
 baselines alongside their source: the infra `plan:frontend` script runs

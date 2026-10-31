@@ -98,6 +98,26 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: scripts/smoke/cms-rest-gate.sh
 
+  # A guarded Site's generated deploy script and request admission on a real
+  # stack, in a disposable Docker container: nginx over TLS, PHP-FPM with
+  # two pools and opcache.validate_timestamps=0, rsync, Composer and WP-CLI
+  # on the pinned WordPress. False controls (no prepend, php_value,
+  # .user.ini, another pool) refuse; the pool-enforced gate holds every PHP
+  # request through first bootstrap, a core reinstall with a nested
+  # override, a late failure, a kill and their recoveries. Stand-ins only
+  # for R2, Ploi and the private registry. Public downloads only.
+  admission:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: scripts/smoke/admission.sh
+
   # Whether this workflow has the GETQUICK Composer registry's login (the
   # COMPOSER_AUTH secret, an http-basic entry for proxy.composer.getquick.io).
   # Without it cms-resolution is skipped, not passed, and this job warns.

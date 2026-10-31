@@ -5,7 +5,7 @@
 // caller's own tools. rsync copies (without deleting) so shipped files land;
 // curl copies the archive from a local path.
 import { spawn } from "node:child_process";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { temporaryDirectory } from "./fixture-site.mjs";
@@ -45,14 +45,102 @@ case "$1 \${2:-}" in
   "eval "*S3_UPLOADS_BUCKET*) exit 1 ;;
   *) exit 0 ;;
 esac`,
+  // Records whether the guarded-package admission hold is already in place when
+  // it runs (from apps/cms); COMPOSER_EXIT makes it fail, COMPOSER_KILL=1
+  // kills the deploy script itself (SIGKILL: no exit trap runs).
   composer: `record composer "$@"
-printf '%s' "\${COMPOSER_AUTH:-}" > "$DEPLOY_CALLS.composer-auth"`,
+state=../../.gq/state
+if [ -L "$state" ] || [ "$(od -An -tx1 "$state" 2>/dev/null | tr -d ' \\n')" != 6f70656e0a ]; then
+  record composer-saw-hold
+fi
+printf '%s' "\${COMPOSER_AUTH:-}" > "$DEPLOY_CALLS.composer-auth"
+if [ "\${COMPOSER_KILL:-0}" = 1 ]; then kill -KILL "$PPID"; fi
+exit "\${COMPOSER_EXIT:-0}"`,
+  // mv fails for a target containing MV_FAIL (only the MV_FAIL_AT-th such
+  // rename, when set); otherwise the system's.
+  mv: `if [ -n "\${MV_FAIL:-}" ] && [[ "\${@: -1}" == *"$MV_FAIL"* ]]; then
+  count=$(( $(cat "$DEPLOY_CALLS.mv" 2>/dev/null || echo 0) + 1 ))
+  echo "$count" >"$DEPLOY_CALLS.mv"
+  if [ -z "\${MV_FAIL_AT:-}" ] || [ "$count" = "$MV_FAIL_AT" ]; then record mv-failed "\${@: -1}"; exit 1; fi
+fi
+exec /bin/mv "$@"`,
+  // The admission's temporary files in .gq: the MKTEMP_FAIL_AT-th fails, the
+  // MKTEMP_DEVFULL_AT-th is /dev/full (so writing to it fails).
+  mktemp: `case "$*" in
+  */.gq/.gq-admission.*)
+    count=$(( $(cat "$DEPLOY_CALLS.mktemp" 2>/dev/null || echo 0) + 1 ))
+    echo "$count" >"$DEPLOY_CALLS.mktemp"
+    if [ "$count" = "\${MKTEMP_FAIL_AT:-}" ]; then record mktemp-failed; exit 1; fi
+    if [ "$count" = "\${MKTEMP_DEVFULL_AT:-}" ]; then record mktemp-devfull; echo /dev/full; exit 0; fi
+    ;;
+esac
+exec /usr/bin/mktemp "$@"`,
+  // REAL_RSYNC=1 runs the system's rsync with the script's own arguments
+  // (its --delete and protect filters included).
   rsync: `record rsync "$@"
+if [ "\${REAL_RSYNC:-0}" = 1 ]; then exec /usr/bin/rsync "$@"; fi
 source="\${@: -2:1}"
 target="\${@: -1}"
 mkdir -p "$target"
 cp -R "$source." "$target"`,
+  // The request admission's probes (--resolve) answer as a server whose
+  // pool prepends the gate (php_admin_value): a challenge probe answers with
+  // the gate's headers (X-GQ-Gate open, or the hold's nonce with a 503),
+  // PHP_VERSION (CURL_PHP, 8.3.6), the worker's pid (101 before PHP-FPM's
+  // reload, 202 after; CURL_PID and CURL_PID_AFTER override) and
+  // user_ini.filename (CURL_USER_INI, .user.ini). CURL_PROBE=ungated runs the
+  // probe script itself (the gate didn't answer), stale answers another
+  // nonce, down fails to connect; CURL_UNGATED_AFTER=1 runs it only once
+  // PHP-FPM has reloaded. Each challenge probe is recorded as probe-saw with
+  // the challenge files beside it.
   curl: `record curl "$@"
+case " $* " in
+  *" --resolve "*)
+    [ "\${CURL_PROBE:-}" = down ] && exit 7
+    url="\${@: -1}"
+    output=/dev/null
+    previous=""
+    for arg in "$@"; do
+      [ "$previous" = --output ] && output="$arg"
+      previous="$arg"
+    done
+    path="/\${url#https://*/}"
+    reloaded=0
+    [ -f "$DEPLOY_CALLS.reloaded" ] && reloaded=1
+    case "$path" in
+      /gq-admission/*/probe.php)
+        dir="$SITE_PATH/apps/cms/web\${path%/probe.php}"
+        record probe-saw "$(cd "$dir" && LC_ALL=C ls -A | paste -sd ' ' -)"
+        if [ "\${CURL_PROBE:-}" = ungated ] || { [ "\${CURL_UNGATED_AFTER:-0}" = 1 ] && [ "$reloaded" = 1 ]; }; then
+          printf 'UNGATED\\n' >"$output"
+          printf 'HTTP/1.1 200 OK\\r\\nContent-Type: text/plain\\r\\n\\r\\n'
+          exit 0
+        fi
+        pid="\${CURL_PID:-101}"
+        [ "$reloaded" = 1 ] && pid="\${CURL_PID_AFTER:-202}"
+        # The gate: open only on a read of exactly "open\\n".
+        state="$SITE_PATH/.gq/state"
+        value="$( { [ -L "$state" ] || ! od -An -tx1 "$state" 2>/dev/null; } | tr -d ' \\n')"
+        if [ "$value" = 6f70656e0a ]; then
+          status="200 OK"
+          gate=open
+        else
+          status="503 Service Unavailable"
+          gate=invalid
+          if [ -f "$state" ] && [ ! -L "$state" ] && [ -r "$state" ] \\
+            && grep -qxE 'held [0-9a-f]{32}' "$state" && [ "$(wc -l <"$state")" = 1 ]; then
+            gate="$(sed 's/^held //' "$state")"
+          fi
+          [ "\${CURL_PROBE:-}" = stale ] && gate=00000000000000000000000000000000
+        fi
+        printf 'gq admission probe\\n' >"$output"
+        printf 'HTTP/1.1 %s\\r\\nX-GQ-Gate: %s\\r\\nX-GQ-Php: %s\\r\\nX-GQ-Pid: %s\\r\\nX-GQ-User-Ini: %s\\r\\n\\r\\n' \\
+          "$status" "$gate" "\${CURL_PHP:-8.3.6}" "$pid" "\${CURL_USER_INI:-.user.ini}"
+        exit 0 ;;
+    esac
+    printf 'HTTP/1.1 404 Not Found\\r\\n\\r\\n'
+    exit 0 ;;
+esac
 while [ "$#" -gt 1 ]; do
   if [ "$1" = -o ]; then output="$2"; fi
   shift
@@ -61,13 +149,54 @@ cp "$1" "$output"`,
   php: `record php "$@"
 if [ "\${1:-}" = scripts/patch-dependencies.php ]; then exit "\${DEPENDENCY_PATCH_EXIT:-0}"; fi
 printf '8.3'`,
-  sudo: `record sudo "$@"`,
+  // A PHP-FPM reload marks the reload done; SUDO_EXIT makes sudo fail,
+  // SUDO_KILL=1 kills its caller (SIGKILL: no trap runs); SUDO_WRITE_STATE
+  // replaces the admission state first, as something other than the
+  // attempt would.
+  sudo: `record sudo "$@"
+[ -z "\${SUDO_WRITE_STATE:-}" ] || printf '%b' "$SUDO_WRITE_STATE" >"$SITE_PATH/.gq/state"
+[ "\${SUDO_KILL:-0}" = 1 ] && kill -KILL "$PPID"
+[ "\${SUDO_EXIT:-0}" = 0 ] || exit "$SUDO_EXIT"
+case "$*" in *"fpm reload"*) touch "$DEPLOY_CALLS.reloaded" ;; esac`,
+  // PHP-FPM 8.3's master (pid 10) with two pools: www's worker 101 before
+  // the reload and 202 after (PS_STUCK=1 keeps 101 running, PS_NONE=1 shows
+  // no 8.3 worker, PS_NO_MASTER=1 no PHP-FPM process at all), and pool
+  // other's worker 303 before, 304 after; PHP-FPM 8.2's master (20) and its
+  // worker 401, which never goes; and a grep whose arguments name PHP-FPM
+  // 8.3's master, which isn't one.
+  ps: `processes() {
+  echo "  999   500 grep Sat Oct 31 08:00:00 2026 grep -F php-fpm: master process (/etc/php/8.3/fpm/php-fpm.conf)"
+  [ "\${PS_NO_MASTER:-0}" = 1 ] && return
+  echo "   10     1 php-fpm8.3 Sat Oct 31 08:00:00 2026 php-fpm: master process (/etc/php/8.3/fpm/php-fpm.conf)"
+  echo "   20     1 php-fpm8.2 Sat Oct 31 08:00:00 2026 php-fpm: master process (/etc/php/8.2/fpm/php-fpm.conf)"
+  echo "  401    20 php-fpm8.2 Sat Oct 31 08:30:00 2026 php-fpm: pool www"
+  [ "\${PS_NONE:-0}" = 1 ] && return
+  if [ ! -f "$DEPLOY_CALLS.reloaded" ] || [ "\${PS_STUCK:-0}" = 1 ] || [ "\${PS_GHOST:-0}" = 1 ]; then
+    echo "  101    10 php-fpm8.3 Sat Oct 31 09:00:00 2026 php-fpm: pool www"
+  fi
+  if [ ! -f "$DEPLOY_CALLS.reloaded" ] || [ "\${PS_STUCK:-0}" = 1 ]; then
+    echo "  303    10 php-fpm8.3 Sat Oct 31 09:00:00 2026 php-fpm: pool other"
+  fi
+  if [ -f "$DEPLOY_CALLS.reloaded" ]; then
+    echo "  202    10 php-fpm8.3 Sat Oct 31 09:10:00 2026 php-fpm: pool www"
+    echo "  304    10 php-fpm8.3 Sat Oct 31 09:10:00 2026 php-fpm: pool other"
+  fi
+}
+case "$*" in
+  *comm=*) processes ;;
+  *lstart=*)
+    # PS_GHOST=1: the plain listing no longer shows www's old worker 101,
+    # though the PHP-FPM listing still does.
+    processes | awk -v ghost="\${PS_GHOST:-0}" 'ghost == 1 && $1 == 101 { next } { print $1, $4, $5, $6, $7, $8 }' ;;
+  *) exec /bin/ps "$@" ;;
+esac`,
 };
 
 // Deploys a release holding `releaseFiles` (site-relative path → content;
 // RELEASE, apps/cms/composer.json, apps/cms/web/index.php and the script
 // itself as deploy/ploi/admin.sh are added) with `script`, to a site holding
-// `siteFiles` and an installed WordPress (none with `installed: false`),
+// `siteFiles` (and `siteLinks`, path → symlink target, and `siteDirectories`)
+// and an installed WordPress (none with `installed: false`),
 // with every core language installed (none with `languageInstalled: false`),
 // Polylang holding `polylangLanguages` (lines of slug, locale and order;
 // none by default), `permalinkStructure` as its permalink structure (plain,
@@ -81,6 +210,9 @@ export async function deploy(
   {
     releaseFiles = {},
     siteFiles = {},
+    siteLinks = {},
+    siteDirectories = [],
+    siteModes = {},
     installed = true,
     languageInstalled = true,
     polylangLanguages = [],
@@ -89,6 +221,9 @@ export async function deploy(
     composerAuth = '{"http-basic":{}}',
     patchExit = 0,
     composerOnly = false,
+    composerExit = 0,
+    composerKill = false,
+    env: extraEnv = {},
   } = {},
 ) {
   const directory = await temporaryDirectory();
@@ -110,6 +245,12 @@ export async function deploy(
     ...(installed ? { "apps/cms/web/wp/wp-load.php": "<?php\n" } : {}),
     ...siteFiles,
   });
+  for (const [path, target] of Object.entries(siteLinks)) {
+    await mkdir(dirname(join(site, path)), { recursive: true });
+    await symlink(target, join(site, path));
+  }
+  for (const path of siteDirectories) await mkdir(join(site, path), { recursive: true });
+  for (const [path, mode] of Object.entries(siteModes)) await chmod(join(site, path), mode);
   const scriptPath = join(directory, "admin.sh");
   await writeFile(scriptPath, script);
 
@@ -130,6 +271,9 @@ export async function deploy(
       WP_FAILING: failing.join("\n"),
       DEPENDENCY_PATCH_EXIT: String(patchExit),
       COMPOSER_ONLY: composerOnly ? "true" : "false",
+      COMPOSER_EXIT: String(composerExit),
+      COMPOSER_KILL: composerKill ? "1" : "0",
+      ...extraEnv,
     },
   });
   const recorded = await readFile(calls, "utf8");

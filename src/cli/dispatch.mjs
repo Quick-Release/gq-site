@@ -69,6 +69,7 @@ import {
   runOffboardCommand,
 } from "../offboard/commands.mjs";
 import { refuseWhenOffboarded } from "../offboard/guard.mjs";
+import { unconfiguredApprovals } from "../ploi/package-expectations.mjs";
 import { VERSION } from "../version.mjs";
 
 const COMMAND_OPTIONS = new Map([
@@ -87,7 +88,7 @@ const COMMAND_OPTIONS = new Map([
 // otherwise to undefined for success.
 export async function runCli(
   argv,
-  { cwd, env, fetch, exec, lookup, clock, stdin, io, interactive },
+  { cwd, env, fetch, exec, lookup, clock, approvals, approvalLookup, stdin, io, interactive },
 ) {
   // The Sigillo wrapper parses its own arguments: everything after `--` belongs
   // to the wrapped command, not to gq.
@@ -144,10 +145,37 @@ export async function runCli(
   });
   // An offboarded Site refuses whatever would expose it again (ADR 0011).
   refuseWhenOffboarded(parsed, context.config);
+  // A guarded package's approval lookup: the injected adapter, else the one
+  // the caller's `approvalLookup` builds for this Site (bin/gq.mjs: the
+  // Operator CLI this machine configures), else none: every guarded package
+  // refuses.
+  // Built only when a guarded package is looked up: an unrelated command
+  // never reads the Operator's configuration.
+  if (!approvals && approvalLookup) {
+    let built;
+    approvals = {
+      lookup: (request) =>
+        (built ??= approvalLookup({
+          project: context.config.project,
+          projectRoot: context.projectRoot,
+        })).lookup(request),
+    };
+  }
+  approvals ??= unconfiguredApprovals;
   const [provider, resource, action = "list"] = parsed.command;
 
   if (isReleaseCommand(parsed.command)) {
-    return runReleaseCommand({ parsed, context, env, fetch, exec, io, interactive });
+    return runReleaseCommand({
+      parsed,
+      context,
+      env,
+      fetch,
+      exec,
+      io,
+      interactive,
+      approvals,
+      clock,
+    });
   }
 
   if (isPloiWorkflow(parsed.command)) {
@@ -158,6 +186,8 @@ export async function runCli(
       fetch,
       exec,
       lookup,
+      approvals,
+      clock,
       io,
       interactive,
     });
@@ -346,6 +376,10 @@ function parseArguments(argv) {
     "--max-pages",
     "--ref",
     "--git-dir",
+    "--to",
+    "--reference",
+    "--expect-before",
+    "--release-id",
     "--url",
     "--uri",
   ]);
@@ -359,6 +393,9 @@ function parseArguments(argv) {
     "--local",
     "--restore",
     "--archive",
+    "--composer-only",
+    "--no-deploy",
+    "--pin",
   ]);
 
   for (let index = 0; index < argv.length; index += 1) {
