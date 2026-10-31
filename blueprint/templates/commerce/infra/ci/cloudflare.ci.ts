@@ -33,12 +33,14 @@ const frontendSecrets = [
 // come from GitHub Packages, which needs a read:packages token. The install
 // step writes it to the container's user-level npm config (~/.npmrc), where
 // pnpm reads it, with the shell's printf, so it is in no process's arguments;
-// the repository's .npmrc names the registry, never a token. Without it, the
-// install refuses with the fix rather than failing on a 401.
+// the repository's .npmrc names the registry, never a token. The token is the
+// fleet's, from GQ Platform ops (gq-platform ADR 0013), which pnpm ci:deploy
+// reads at use. Without it, the install refuses with the fix rather than
+// failing on a 401.
 const packagesLogin =
   'if [ -z "${GITHUB_PACKAGES_TOKEN:-}" ]; then ' +
   "echo 'GITHUB_PACKAGES_TOKEN is missing: the Frontend installs @quick-release packages from " +
-  "GitHub Packages. Add a read:packages token to Sigillo staging and run pnpm ci:deploy.' >&2; " +
+  "GitHub Packages. Run pnpm ci:deploy, which gives this Worker the fleet token from GQ Platform ops.' >&2; " +
   "exit 1; fi && (umask 077 && " +
   "printf '//npm.pkg.github.com/:_authToken=%s\\n' \"$GITHUB_PACKAGES_TOKEN\" >> ~/.npmrc)";
 

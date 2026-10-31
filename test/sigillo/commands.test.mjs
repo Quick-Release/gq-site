@@ -169,38 +169,187 @@ test("a missing or incomplete sigillo block is an actionable configuration error
   }
 });
 
+// GQ Platform ops, where the fleet's registry credentials live (gq-platform
+// ADR 0013), on the Site's Sigillo server.
+const PLATFORM_ROUTING = [
+  "--api-url",
+  SIGILLO.apiUrl,
+  "--project",
+  "01M5Z0QYDH1PPN7N3C4A7KZAXJ",
+  "--env",
+  "ops",
+];
+const NPM_TOKEN = "npm_config_//npm.pkg.github.com/:_authToken";
+const PROBLEM = "GQ_REGISTRY_CREDENTIALS_PROBLEM";
+const INSIDE_ENV = Object.freeze({
+  SIGILLO: "1",
+  SIGILLO_TOKEN: "bootstrap-token",
+  SIGILLO_API_URL: SIGILLO.apiUrl,
+  SIGILLO_PROJECT: SIGILLO.projectId,
+  SIGILLO_ENVIRONMENT: "staging",
+  GQ_SIGILLO_REENTRY: "1",
+  PATH: "/bin",
+});
+const PLATFORM_VALUES = Object.freeze({
+  COMPOSER_AUTH:
+    '{"http-basic":{"proxy.composer.getquick.io":{"username":"fleet","password":"fleet-composer-secret"}}}',
+  GITHUB_PACKAGES_TOKEN: "ghp_fleet-packages-secret",
+});
+
+const isSigillo = (call) => call.command.endsWith("node_modules/.bin/sigillo");
+
+// A Sigillo whose GQ Platform ops holds `platform` (names to values) when
+// `readable`, and lists `names`; the wrapped command answers `code`.
+function platformExec({ platform = PLATFORM_VALUES, readable = true, names, code = 0 } = {}) {
+  const listed = names ?? Object.keys(platform);
+  return recordingExec((call) => {
+    if (!isSigillo(call)) return { code };
+    if (!readable) return { code: 1, stderr: "403 forbidden: leaked-sigillo-detail" };
+    const [, verb, name] = call.args;
+    if (verb === "get") {
+      return name in platform
+        ? { stdout: `${platform[name]}\n` }
+        : { code: 1, stderr: "not found" };
+    }
+    return { stdout: listed.map((entry) => `${entry}\n`).join("") };
+  });
+}
+
+const commandCall = (exec) => exec.calls.find((call) => !isSigillo(call));
+
 test("the inner step runs the command in the site root without Sigillo's bootstrap", async () => {
   const site = await sigilloSite();
-  const exec = recordingExec(() => ({ code: 3 }));
+  const exec = platformExec({ code: 3 });
   const result = await site.run(
     ["sigillo", "run", "--inside", "--", "pnpm", "deploy", "--", "--force"],
-    {
-      env: {
-        SIGILLO: "1",
-        SIGILLO_TOKEN: "bootstrap-token",
-        SIGILLO_API_URL: SIGILLO.apiUrl,
-        SIGILLO_PROJECT: SIGILLO.projectId,
-        SIGILLO_ENVIRONMENT: "staging",
-        GQ_SIGILLO_REENTRY: "1",
-        APPLICATION_SECRET: "application-secret",
-        PATH: "/bin",
-      },
-      exec,
-    },
+    { env: { ...INSIDE_ENV, APPLICATION_SECRET: "application-secret" }, exec },
   );
 
   assert.equal(result.stderr, "");
   assert.equal(result.code, 3, "the inner step exits with the command's code");
-  assert.deepEqual(exec.calls, [
+  const command = commandCall(exec);
+  assert.deepEqual(
+    { ...command, env: undefined },
     {
       command: "pnpm",
       args: ["deploy", "--", "--force"],
       cwd: site.root,
-      env: { SIGILLO: "1", APPLICATION_SECRET: "application-secret", PATH: "/bin" },
+      env: undefined,
       input: undefined,
     },
-  ]);
-  assert.equal(exec.options[0].stdio, "inherit");
+  );
+  assert.deepEqual(command.env, {
+    SIGILLO: "1",
+    APPLICATION_SECRET: "application-secret",
+    PATH: "/bin",
+    ...PLATFORM_VALUES,
+    [NPM_TOKEN]: PLATFORM_VALUES.GITHUB_PACKAGES_TOKEN,
+  });
+  assert.equal(exec.options.at(-1).stdio, "inherit");
+});
+
+test("the inner step reads the registry credentials from GQ Platform ops as the operator", async () => {
+  const site = await sigilloSite();
+  const exec = platformExec();
+  const result = await site.run(["sigillo", "run", "--inside", "--", "pnpm", "install"], {
+    env: INSIDE_ENV,
+    exec,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const reads = exec.calls.filter(isSigillo);
+  assert.deepEqual(
+    reads.map((call) => call.args),
+    [
+      ["secrets", "get", "COMPOSER_AUTH", ...PLATFORM_ROUTING, "--raw", "--force"],
+      ["secrets", "get", "GITHUB_PACKAGES_TOKEN", ...PLATFORM_ROUTING, "--raw", "--force"],
+    ],
+  );
+  for (const read of reads) {
+    assert.equal(read.cwd, site.root);
+    // The operator's own login, not the Site project's bootstrap token.
+    for (const name of ["SIGILLO_TOKEN", "SIGILLO_PROJECT", "SIGILLO_ENVIRONMENT"]) {
+      assert.equal(read.env[name], undefined, name);
+    }
+  }
+  // The command runs after the reads.
+  assert.equal(exec.calls.at(-1).command, "pnpm");
+});
+
+test("GQ Platform ops wins over a Site's own copy of a registry credential", async () => {
+  const site = await sigilloSite();
+  const exec = platformExec();
+  const result = await site.run(["sigillo", "run", "--inside", "--", "pnpm", "install"], {
+    env: {
+      ...INSIDE_ENV,
+      COMPOSER_AUTH: '{"http-basic":{"proxy.composer.getquick.io":{"password":"stale-site-copy"}}}',
+      GITHUB_PACKAGES_TOKEN: "ghp_stale-site-copy",
+      [NPM_TOKEN]: "ghp_stale-shell-token",
+    },
+    exec,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stderr, "", "no fallback, no warning");
+  const { env } = commandCall(exec);
+  assert.equal(env.COMPOSER_AUTH, PLATFORM_VALUES.COMPOSER_AUTH);
+  assert.equal(env.GITHUB_PACKAGES_TOKEN, PLATFORM_VALUES.GITHUB_PACKAGES_TOKEN);
+  assert.equal(env[NPM_TOKEN], PLATFORM_VALUES.GITHUB_PACKAGES_TOKEN);
+  assert.equal(env[PROBLEM], undefined);
+});
+
+test("without access to GQ Platform ops a Site's own copy still works, with a warning naming no value", async () => {
+  const site = await sigilloSite();
+  const exec = platformExec({ readable: false });
+  const siteCopy = '{"http-basic":{"proxy.composer.getquick.io":{"password":"site-copy-secret"}}}';
+  const result = await site.run(["sigillo", "run", "--inside", "--", "pnpm", "install"], {
+    env: { ...INSIDE_ENV, COMPOSER_AUTH: siteCopy },
+    exec,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const { env } = commandCall(exec);
+  assert.equal(env.COMPOSER_AUTH, siteCopy);
+  assert.equal(env.GITHUB_PACKAGES_TOKEN, undefined);
+  assert.equal(env[NPM_TOKEN], undefined);
+  assert.match(
+    env[PROBLEM],
+    /^your Sigillo login can't read GQ Platform ops \(Sigillo project 01M5Z0QYDH1PPN7N3C4A7KZAXJ\): ask a GQ Platform admin for read access/u,
+  );
+  assert.match(
+    result.stderr,
+    /^gq: using this Site's own COMPOSER_AUTH instead of the fleet's in GQ Platform ops: your Sigillo login can't read/u,
+  );
+  assert.doesNotMatch(result.stderr + env[PROBLEM], /site-copy-secret|leaked-sigillo-detail/u);
+});
+
+test("a name GQ Platform ops lacks says so; a Site without either runs without it", async () => {
+  const site = await sigilloSite();
+  const exec = platformExec({ platform: { COMPOSER_AUTH: PLATFORM_VALUES.COMPOSER_AUTH } });
+  const result = await site.run(["sigillo", "run", "--inside", "--", "pnpm", "install"], {
+    env: INSIDE_ENV,
+    exec,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stderr, "");
+  const { env } = commandCall(exec);
+  assert.equal(env.COMPOSER_AUTH, PLATFORM_VALUES.COMPOSER_AUTH);
+  assert.equal(env.GITHUB_PACKAGES_TOKEN, undefined);
+  assert.match(env[PROBLEM], /has no GITHUB_PACKAGES_TOKEN: a GQ Platform admin stores it there/u);
+});
+
+test("the registry credentials never reach argv, output or the Site's files", async () => {
+  const site = await sigilloSite();
+  const before = await siteFiles(site);
+  const exec = platformExec();
+  const result = await site.run(["sigillo", "run", "--inside", "--", "pnpm", "install"], {
+    env: INSIDE_ENV,
+    exec,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const visible = [...allArguments(exec), result.stdout, result.stderr].join("\n");
+  for (const value of Object.values(PLATFORM_VALUES)) {
+    assert.ok(!visible.includes(value));
+    assert.ok(!exec.calls.some((call) => call.input?.includes(value)));
+  }
+  assert.deepEqual(await siteFiles(site), before);
 });
 
 test("the inner step refuses to run outside a wrapped sigillo run", async () => {

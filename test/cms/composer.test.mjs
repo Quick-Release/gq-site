@@ -43,7 +43,18 @@ test("gives up without Composer or DDEV, with a per-OS install hint", () => {
 
 test("installs only with the registry login and the host Composer", () => {
   assert.equal(installProblem({ composerAuth: "{}", hasComposer: true }), null);
-  assert.match(installProblem({ composerAuth: "", hasComposer: true }), /COMPOSER_AUTH is missing/);
+  assert.match(
+    installProblem({ composerAuth: "", hasComposer: true }),
+    /^COMPOSER_AUTH is missing: gq reads it from GQ Platform ops \(Sigillo project 01M5Z0QYDH1PPN7N3C4A7KZAXJ\) when the command runs through gq sigillo run\.$/u,
+  );
+  assert.match(
+    installProblem({
+      composerAuth: "",
+      hasComposer: true,
+      env: { GQ_REGISTRY_CREDENTIALS_PROBLEM: "your Sigillo login can't read it" },
+    }),
+    /through gq sigillo run, and your Sigillo login can't read it\.$/u,
+  );
   assert.match(
     installProblem({ composerAuth: "{}", hasComposer: false }, "darwin"),
     /brew install composer/,

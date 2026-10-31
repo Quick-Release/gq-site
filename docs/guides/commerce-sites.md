@@ -98,11 +98,15 @@ and each refuses there, saying why.
   `media:check:upload` and `site:check`, as a content site's does, with the
   checks in [Readiness](#readiness).
 
-`pnpm ci:deploy` gives the CI Worker the storefront's secrets and a
-`GITHUB_PACKAGES_TOKEN` when Sigillo staging has them. CI's install step
-writes the token to the container's user-level npm config, so pnpm can
-install the `@quick-release` packages, and refuses without it; the release
-step hands the storefront's secrets to the Frontend's deploy.
+`pnpm ci:deploy` gives the CI Worker the storefront's secrets and the fleet's
+`GITHUB_PACKAGES_TOKEN`, which `gq sigillo run` reads from GQ Platform `ops`
+([secrets](secrets.md#gq-platform-ops-the-registry-credentials)); on a
+commerce Site it refuses without the token. CI's install step writes the
+token to the container's user-level npm config, so pnpm can install the
+`@quick-release` packages, and refuses without it; the release step hands the
+storefront's secrets to the Frontend's deploy. Nothing is copied into the
+Site's Sigillo: a new commerce Site needs only read access to GQ Platform
+`ops` for whoever runs these commands.
 
 ## Local data
 
@@ -149,13 +153,21 @@ Runtime, the deploy refuses to run without them and names each missing one.
 `@quick-release/*` packages come from GitHub Packages, and a commerce
 Frontend depends on two: the storefront Runtime and its auth contract. So,
 unlike a content site, installing a commerce site needs a GitHub token with
-`read:packages` that can read them; generating one doesn't.
+`read:packages` that can read them; generating one doesn't. It is the
+fleet's `GITHUB_PACKAGES_TOKEN`, a classic token from a Quick-Release machine
+account kept once in GQ Platform `ops` and read at use
+([secrets](secrets.md#gq-platform-ops-the-registry-credentials),
+[gq-platform ADR 0013](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0013-fleet-registry-credentials-read-at-use-from-gq-platform-ops.md)).
 
-- **Locally:** keep the token in your user-level `~/.npmrc`
-  (`//npm.pkg.github.com/:_authToken=…`): pnpm ignores tokens in a
-  repository's `.npmrc`, and the generated one never holds one.
-- **Cloudflare CI:** `GITHUB_PACKAGES_TOKEN` in Sigillo staging, given to the
-  CI Worker by `pnpm ci:deploy` (see above).
+- **Locally:** `gq setup` installs with it, and so does anything run through
+  `gq sigillo run` (`gq sigillo run local -- pnpm install`): pnpm gets it in
+  its environment, never a file. A plain `pnpm install` uses your user-level
+  `~/.npmrc` (`//npm.pkg.github.com/:_authToken=…`), if you keep a token
+  there; pnpm ignores tokens in a repository's `.npmrc`, and the generated one
+  never holds one.
+- **Cloudflare CI:** given to the CI Worker by `pnpm ci:deploy` (see above).
+  After the token is rotated in GQ Platform `ops`, run `pnpm ci:deploy`
+  again.
 - **GitHub Actions in the site's own repository:** the workflow's
   `GITHUB_TOKEN` with `packages: read` reads a package only once that
   package grants the repository Actions access (the package's settings,

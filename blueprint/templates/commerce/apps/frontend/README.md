@@ -38,6 +38,7 @@ Runtime's `infra.json` lists: its cart-session database, rate limiters,
 secrets and variables. Under `vp dev` and in tests there are none, so
 `/api/store/*` and `/api/auth/*` answer 503 there.
 
-`@quick-release/*` packages come from GitHub Packages: installing needs a
-`read:packages` token in your user-level `~/.npmrc`
-(`//npm.pkg.github.com/:_authToken=…`), never in this repository.
+`@quick-release/*` packages come from GitHub Packages: installing needs the
+fleet's `read:packages` token, which `gq setup` and `gq sigillo run local --
+pnpm install` read from GQ Platform `ops` (or one in your user-level
+`~/.npmrc`, `//npm.pkg.github.com/:_authToken=…`), never in this repository.

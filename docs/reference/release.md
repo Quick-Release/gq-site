@@ -80,8 +80,9 @@ version.
   the lock doesn't change it deploys HEAD as it is. It doesn't tag, push or
   run the checks: push the commit afterwards. The package must be in
   `apps/cms/composer.json`'s `require`. Run it under the `staging`
-  environment, which holds `COMPOSER_AUTH`, the Ploi token and the releases
-  R2 key: `pnpm release:package getquick/gq-design`. `staging` names the
+  environment, which holds the Ploi token and the releases R2 key
+  (`gq sigillo run` adds the registry login from GQ Platform `ops`):
+  `pnpm release:package getquick/gq-design`. `staging` names the
   secrets, not the target: it deploys the one Ploi site `gq.ops.json` names,
   production included.
 

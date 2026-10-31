@@ -30,6 +30,7 @@ import {
   revalidateGuardedRelease,
   unconfiguredApprovals,
 } from "./package-expectations.mjs";
+import { missingRegistryCredential } from "../sigillo/registry-credentials.mjs";
 import { deploy, syncDeployScript } from "./provision.mjs";
 import { createPloiServerClient } from "./server-client.mjs";
 
@@ -43,11 +44,15 @@ export const shippedPaths = Object.freeze(["apps/cms", "deploy/ploi"]);
 // that one deploy; nothing stores it on the server. `composerOnly` adds the
 // deploy variable composer_only → $COMPOSER_ONLY=true, which makes the deploy
 // script stop after Composer (and its verifications), before any WP-CLI,
-// activation or database step.
-export function deployVariables(archiveUrl, composerAuth, { composerOnly = false } = {}) {
+// activation or database step. `env` names where a missing login comes from.
+export function deployVariables(
+  archiveUrl,
+  composerAuth,
+  { composerOnly = false, env = {} } = {},
+) {
   if (!composerAuth) {
     throw new Error(
-      "COMPOSER_AUTH is missing: run this through gq sigillo run (or CI), which injects the registry login.",
+      `${missingRegistryCredential("COMPOSER_AUTH", env)} In CI the Worker has it from gq ci deploy.`,
     );
   }
   return {
@@ -168,7 +173,7 @@ export async function runRelease({
     : {};
   const key = releaseKey(prefix, version, sha, expectations);
   // Fail before uploading anything if the registry login is missing.
-  deployVariables("", context.env.COMPOSER_AUTH);
+  deployVariables("", context.env.COMPOSER_AUTH, { env: context.env });
 
   const ui = createReporter(io, interactive);
   const composerOnly = Boolean(parsed.composerOnly);
@@ -222,7 +227,10 @@ export async function runRelease({
     step.message("Deploying on Ploi (this can take a few minutes)");
     result = await deploy(client, ops.ploi.siteId, {
       project: ops.project,
-      variables: deployVariables(archiveUrl, context.env.COMPOSER_AUTH, { composerOnly }),
+      variables: deployVariables(archiveUrl, context.env.COMPOSER_AUTH, {
+        composerOnly,
+        env: context.env,
+      }),
     });
   } catch (error) {
     step.error("Release failed");

@@ -68,8 +68,55 @@ the GQ Platform project as well as the Site's. A Site's staging holds only
 its own `GQ_CI_BROKER_TOKEN` (good for its repository alone) and
 `GQ_CI_BROKER_URL`. Never copy the App key or the broker key into a Site.
 
-A commerce Site's `GITHUB_PACKAGES_TOKEN` stays a classic personal token with
-only `read:packages`: GitHub App tokens don't authenticate to the npm
-registry. The ADR makes it one shared token from a machine account, kept in
-GQ Platform `ops` as `GITHUB_PACKAGES_TOKEN`, and copied into the staging of
-the Sites that need it; no client gets its own.
+## GQ Platform `ops`: the registry credentials
+
+Every Site installs from the same two private registries, so their logins are
+the fleet's, not a Site's
+([gq-platform ADR 0013](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0013-fleet-registry-credentials-read-at-use-from-gq-platform-ops.md)).
+They live once in GQ Platform `ops`, beside the App:
+
+| Secret                  | What it is                                                                                                                                               | Read by                                                                              |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `COMPOSER_AUTH`         | Composer's JSON login (`http-basic`) for the GETQUICK registry, `proxy.composer.getquick.io`                                                             | every `gq sigillo run`                                                               |
+| `GITHUB_PACKAGES_TOKEN` | a classic personal token with only `read:packages`, from a Quick-Release machine account, for GitHub Packages (`npm.pkg.github.com`, `@quick-release/*`) | every `gq sigillo run`, and `gq setup`'s install on a Site that uses GitHub Packages |
+
+GitHub App tokens don't authenticate to GitHub Packages' npm registry, so the
+packages token stays a classic personal token.
+
+`gq sigillo run <environment>` reads both from GQ Platform `ops` before it
+starts the command, with your own Sigillo login, and puts them in the
+command's environment. pnpm also gets the packages token as
+`npm_config_//npm.pkg.github.com/:_authToken`, so
+`gq sigillo run local -- pnpm install` needs no `~/.npmrc` token. Everything
+that needs them gets them there: `pnpm cms:composer`, `pnpm db:sync`,
+`pnpm ploi:release` and `pnpm release:package` (the Ploi deploy's
+`composer_auth`), `pnpm ci:deploy` (into the CI Worker's secrets), package
+discovery and `pnpm site:check`. `gq setup` installs a Site whose `.npmrc`
+names `npm.pkg.github.com` (a commerce Site) with the packages token in pnpm's
+environment, never a file. In CI the Worker holds what `pnpm ci:deploy` gave
+it.
+
+**Precedence:** GQ Platform `ops` wins. A Site's own copy (in its Sigillo
+environment, or your shell) is used only while GQ Platform `ops` can't be
+read or doesn't hold the name, and `gq sigillo run` then warns on stderr,
+naming the secret, never its value. So a Site that still holds copies keeps
+working while its operators get access.
+
+**Rotating** either one is one change in GQ Platform `ops`: local commands
+use the new value at once, and each Site's CI after its next
+`pnpm ci:deploy`.
+
+**Access.** You need read access to GQ Platform `ops` on the Site's Sigillo
+server. Without it a command that needs a registry login says so: `gq`
+names the project and the remedy (ask a GQ Platform admin, then check with
+`npx sigillo secrets --project 01M5Z0QYDH1PPN7N3C4A7KZAXJ --env ops`).
+`gq doctor` reports it, a name GQ Platform `ops` lacks, and every copy a
+Site's own environments still hold, with the command that deletes it:
+
+```sh
+gq sigillo secrets staging delete COMPOSER_AUTH
+gq sigillo secrets staging delete GITHUB_PACKAGES_TOKEN
+gq sigillo secrets local delete COMPOSER_AUTH
+```
+
+Never copy either into a Site's Sigillo, `.env` or `~/.config/gq/ops.env`.
