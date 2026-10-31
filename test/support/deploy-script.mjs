@@ -53,7 +53,10 @@ if [ -f ../../.gq/hold ]; then record composer-saw-hold; fi
 printf '%s' "\${COMPOSER_AUTH:-}" > "$DEPLOY_CALLS.composer-auth"
 if [ "\${COMPOSER_KILL:-0}" = 1 ]; then kill -KILL "$PPID"; fi
 exit "\${COMPOSER_EXIT:-0}"`,
+  // REAL_RSYNC=1 runs the system's rsync with the script's own arguments
+  // (its --delete and protect filters included).
   rsync: `record rsync "$@"
+if [ "\${REAL_RSYNC:-0}" = 1 ]; then exec /usr/bin/rsync "$@"; fi
 source="\${@: -2:1}"
 target="\${@: -1}"
 mkdir -p "$target"

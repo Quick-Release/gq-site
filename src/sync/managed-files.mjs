@@ -53,6 +53,10 @@ async function renderTemplate(template, manifest) {
   });
 }
 
+// A plain lowercase hostname: what deploy/ploi/admission.sh may put in a
+// shell string and a curl --resolve argument.
+const ADMIN_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/u;
+
 // What a template's `{{name}}` stands for: the manifest's site values under
 // their key paths (`variant` among them), `Project` (project in PascalCase, for names and prose),
 // `deployStatusMarker` (the CMS deploy's status line, which gq ploi release
@@ -61,15 +65,15 @@ async function renderTemplate(template, manifest) {
 // lists some, so the deploy script stays valid shell), `wordpress.locale`
 // (empty without one, so the deploy leaves the language alone),
 // `wordpress.languages` as space-separated locale:slug pairs (empty for a
-// monolingual Site, so the deploy leaves Polylang alone), the blueprint's
+// monolingual Site, so the deploy leaves Polylang alone), `domains.adminHost`
+// (domains.admin if ADMIN_HOST matches it, empty otherwise, which the
+// request admission refuses), the blueprint's
 // own pins in the root package.json, `packageManager`
 // and `nodeEngine` (engines.node), so a copy of one can't drift, and the
 // versions a new site installs: `gqVersion` (this @getquick/site) and
 // `sigilloVersion` (the Sigillo CLI it is tested with). Only fully
 // generated and create-once templates, and managed keys' initial file, are
 // rendered; a section's or managed keys' template is used as it ships.
-const ADMIN_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/u;
-
 function templateValues(manifest) {
   const { project } = manifest;
   return {

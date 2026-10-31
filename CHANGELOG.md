@@ -48,7 +48,10 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   only when the deploy verified and finished. Without a configured lookup,
   guarded packages refuse. See
   [Package expectations](docs/reference/package-expectations.md). `gq sync`
-  updates `deploy/ploi/admin.sh`; a Site guarding nothing deploys as before.
+  updates the managed, shipped `deploy/ploi/admin.sh` and adds
+  `deploy/ploi/admission.sh`; a guarded Site must `gq sync` and release again,
+  and a guarded deploy of a release without `admission.sh` refuses before
+  changing anything. A Site guarding nothing deploys as before.
 - **Guarded single-package preparation.** `gq release package` takes
   `--to <version>` (lock exactly that version through Composer's temporary
   `--with` constraint, keeping a requirement that already admits it, and

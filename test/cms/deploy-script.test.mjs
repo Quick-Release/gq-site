@@ -808,6 +808,29 @@ test("the request admission keeps a .user.ini's other settings, and refuses a pr
   }
 });
 
+test("the release's real rsync --delete keeps the request admission's .user.ini, and what the release doesn't ship goes", async (t) => {
+  if (!(await exists("/usr/bin/rsync"))) return t.skip("needs /usr/bin/rsync");
+  const script = await guardedScript();
+  for (const composerOnly of [false, true]) {
+    const result = await guardedDeploy(script, {
+      composerOnly,
+      env: { REAL_RSYNC: "1" },
+      siteFiles: {
+        [INI]: "memory_limit = 256M\n",
+        "apps/cms/web/stale.php": "<?php // not in the release\n",
+      },
+    });
+    assert.equal(result.code, 0, result.output);
+    assert.ok(result.calls.some(([tool]) => tool === "rsync"));
+    const ini = await readFile(join(result.site, INI), "utf8");
+    assert.match(ini, /^memory_limit = 256M\n\n; BEGIN GETQUICK request admission/u);
+    assert.match(ini, /auto_prepend_file = /u);
+    // --delete is real: a file the release doesn't ship is gone.
+    assert.equal(await exists(join(result.site, "apps/cms/web/stale.php")), false);
+    assert.equal(await readFile(join(result.site, "apps/cms/web/index.php"), "utf8"), "<?php\n");
+  }
+});
+
 test("the request admission refuses symlinks and other files where it writes, an invisible PHP-FPM, a release shipping .user.ini, and an unusable admin domain", async () => {
   const script = await guardedScript();
   for (const [options, message] of [

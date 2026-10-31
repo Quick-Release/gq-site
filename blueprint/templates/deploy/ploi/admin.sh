@@ -36,6 +36,11 @@ tmp_dir=""
 
 cd "$SITE_PATH"
 
+# After the new code is in place: best effort, only so workers drop stale
+# opcache (a failure warns, the deploy goes on). A guarded Site's request
+# admission reloads PHP-FPM itself before anything changes, and there a
+# failed reload fails the deploy: it is what makes PHP-FPM read the gate and
+# ends the workers that started before the hold.
 reload_php_fpm() {
   if ! command -v sudo >/dev/null 2>&1 || ! command -v php >/dev/null 2>&1; then
     echo "Skipping PHP-FPM reload; sudo or PHP is unavailable."

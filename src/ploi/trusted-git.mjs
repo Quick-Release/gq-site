@@ -29,21 +29,40 @@ export function trustedGit(locations = TRUSTED_GIT_LOCATIONS) {
   );
 }
 
-// Git settings every policy read has: no replacement object, hook or
-// fsmonitor can change what it reads or run anything.
+// The environment every git gq trusts runs with (a policy read, the Operator
+// checkout's checks): built from nothing the caller's environment chooses,
+// with no system or global git configuration (so no url.insteadOf,
+// credential helper, alias, include or other machine-wide setting can
+// redirect or change a read) and replacement objects off
+// (GIT_NO_REPLACE_OBJECTS; grafts are refused where they matter).
+export function isolatedGitEnvironment({ homedir, path }) {
+  return {
+    PATH: path,
+    HOME: homedir,
+    LANG: "C.UTF-8",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_TERMINAL_PROMPT: "0",
+  };
+}
+
+// Git settings every policy read has: no hook or fsmonitor can run anything.
 const POLICY_CONFIG = Object.freeze([
   ["core.hooksPath", "/dev/null"],
   ["core.fsmonitor", "false"],
 ]);
 
-// The environment of a policy read, built from nothing the caller's
-// environment chooses but SSH_AUTH_SOCK (how an ssh origin authenticates):
-// no GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY,
-// GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_EXEC_PATH, GIT_CONFIG_* or any other
-// GIT_* variable; HOME and the user from the user database; PATH limited to
-// the trusted git's directory and the system's. `header` (an Authorization
-// header for the fixed origin) is added as git configuration, in the
-// environment, never argv.
+// The environment of a policy read: isolatedGitEnvironment's, with nothing
+// the caller's environment chooses but SSH_AUTH_SOCK (how an ssh origin
+// authenticates): no GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE,
+// GIT_OBJECT_DIRECTORY, GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_EXEC_PATH,
+// GIT_CONFIG_* or any other GIT_* variable, and no ~/.gitconfig or
+// /etc/gitconfig; HOME and the user from the user database; PATH limited to
+// the trusted git's directory and the system's. The only credential is
+// `header` (an Authorization header for the fixed origin), added as git
+// configuration in the environment, never argv; an HTTPS origin that needs
+// a global credential helper can't be read (the release refuses).
 export function policyGitEnvironment(
   git,
   env = {},
@@ -51,13 +70,9 @@ export function policyGitEnvironment(
 ) {
   const config = header ? [...POLICY_CONFIG, ["http.extraHeader", header]] : POLICY_CONFIG;
   return {
-    PATH: `${dirname(git)}:/usr/bin:/bin`,
-    HOME: homedir,
+    ...isolatedGitEnvironment({ homedir, path: `${dirname(git)}:/usr/bin:/bin` }),
     USER: username,
     LOGNAME: username,
-    LANG: "C.UTF-8",
-    GIT_TERMINAL_PROMPT: "0",
-    GIT_NO_REPLACE_OBJECTS: "1",
     ...(env.SSH_AUTH_SOCK ? { SSH_AUTH_SOCK: env.SSH_AUTH_SOCK } : {}),
     GIT_CONFIG_COUNT: String(config.length),
     ...Object.fromEntries(

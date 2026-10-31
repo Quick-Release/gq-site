@@ -67,7 +67,15 @@ or holds, before anything else:
   `/opt/homebrew/bin/git` or Homebrew on Linux's), never one a Site's
   `node_modules/.bin` or Sigillo values put first on `PATH`. It reads the last from `origin` (`git ls-remote --symref
 origin HEAD`, then `git fetch origin refs/heads/<branch>`, which changes
-  only `FETCH_HEAD` and objects, never the working tree or a branch). A
+  only `FETCH_HEAD` and objects, never the working tree or a branch). That
+  git runs with an environment gq builds: none of the caller's `GIT_*`
+  variables, no system or global git configuration (`/etc/gitconfig`,
+  `~/.gitconfig` and `~/.config/git/config` are ignored, so no
+  `url.insteadOf`, alias or credential helper applies), no replacement
+  objects, hooks or fsmonitor. `origin` authenticates over SSH (your
+  `SSH_AUTH_SOCK`) or, in CI, with the Artifacts token in a header for those
+  reads only; an HTTPS `origin` that needs a credential helper from your git
+  configuration can't be read, so the release refuses. A
   release commit or default branch whose `gq.ops.json` is missing, invalid or
   unreadable refuses, **for every Site**, protected or not: an old
   unprotected commit can't release a Site whose current branch protects it.

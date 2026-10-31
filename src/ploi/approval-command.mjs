@@ -52,6 +52,7 @@ import { z } from "zod";
 import { runBounded } from "./bounded-process.mjs";
 import { unconfiguredApprovals } from "./package-expectations.mjs";
 import { parseStrictJson } from "./strict-json.mjs";
+import { isolatedGitEnvironment } from "./trusted-git.mjs";
 
 // The reviewed gq-support commit whose Operator CLI gq trusts: gq-support PR
 // 154's merge. A new pin is a reviewed gq-site change.
@@ -288,7 +289,8 @@ async function requireReviewedCheckout({
     const result = await runBounded(
       git,
       [
-        // No replacement object, graft-free reading, no fsmonitor or hooks.
+        // No replacement object (also GIT_NO_REPLACE_OBJECTS in the
+        // environment; grafts are refused below), no fsmonitor or hooks.
         "--no-replace-objects",
         "-c",
         "core.fsmonitor=false",
@@ -299,14 +301,7 @@ async function requireReviewedCheckout({
         ...args,
       ],
       {
-        env: {
-          HOME: homedir,
-          PATH: "/usr/bin:/bin",
-          GIT_CONFIG_NOSYSTEM: "1",
-          GIT_CONFIG_GLOBAL: "/dev/null",
-          GIT_NO_REPLACE_OBJECTS: "1",
-          LANG: "C.UTF-8",
-        },
+        env: isolatedGitEnvironment({ homedir, path: "/usr/bin:/bin" }),
         timeoutMs: GIT_TIMEOUT_MS,
         maxBytes: 16 * 1024 * 1024,
       },
