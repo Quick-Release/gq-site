@@ -98,13 +98,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: scripts/smoke/cms-rest-gate.sh
 
-  # A guarded Site's request admission (deploy/ploi/admission.sh) on a real
+  # A guarded Site's generated deploy script and request admission on a real
   # stack, in a disposable Docker container: nginx over TLS, PHP-FPM with
-  # opcache.validate_timestamps=0, and the pinned WordPress installed by
-  # Composer. Pre-hold requests drain before packages change, every PHP route
-  # answers 503 before WordPress code runs, WP-CLI works, a Composer
-  # reinstall, a kill and a late failure stay held, and the hold lifts
-  # without a reload. Public downloads only; no account.
+  # two pools and opcache.validate_timestamps=0, rsync, Composer and WP-CLI
+  # on the pinned WordPress. False controls (no prepend, php_value,
+  # .user.ini, another pool) refuse; the pool-enforced gate holds every PHP
+  # request through first bootstrap, a core reinstall with a nested
+  # override, a late failure, a kill and their recoveries. Stand-ins only
+  # for R2, Ploi and the private registry. Public downloads only.
   admission:
     runs-on: ubuntu-latest
     steps:

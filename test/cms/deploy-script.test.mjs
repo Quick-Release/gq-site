@@ -2,7 +2,7 @@
 // gq.ops.json, run as Ploi runs it: in a site directory, with stub wp,
 // composer, rsync, curl, php and sudo on PATH that record their calls.
 import assert from "node:assert/strict";
-import { access, lstat, readFile, rm, writeFile } from "node:fs/promises";
+import { access, lstat, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -639,19 +639,40 @@ test("an unguarded Site's deploy ignores package expectations it doesn't guard",
 });
 
 // --- guarded packages: held by the request admission for the whole deploy --
+//
+// The stand-in server (test/support/deploy-script.mjs) is a pool that
+// prepends the gate (php_admin_value): its probes answer with the gate's
+// headers, PHP_VERSION and the worker's pid; ps shows PHP-FPM 8.3's master
+// with pools www and other, and PHP-FPM 8.2's.
 
 const HOLD = ".gq/hold";
 const GATE = ".gq/admission.php";
-const INI = "apps/cms/web/.user.ini";
+const PROBES = "apps/cms/web/gq-admission";
 const exists = (path) =>
   access(path).then(
     () => true,
     () => false,
   );
+const PROBE_URL = /^https:\/\/cms\.acme\.test\/gq-admission\/[0-9a-f]{32}\/probe\.php$/u;
 
 // The index of the first call to `tool` (with `arg`), or -1.
 const firstCall = (calls, tool, arg) =>
   calls.findIndex(([name, ...args]) => name === tool && (!arg || args.includes(arg)));
+const probes = (calls) =>
+  calls.filter(([tool, ...args]) => tool === "curl" && args.includes("--resolve"));
+const changedNothingOnTheSite = (calls) =>
+  assert.deepEqual(
+    calls.filter(([tool]) => ["rsync", "composer"].includes(tool)),
+    [],
+  );
+// The attempt directories left under web/gq-admission.
+const attempts = async (site) => {
+  try {
+    return (await readdir(join(site, PROBES))).sort();
+  } catch {
+    return [];
+  }
+};
 
 async function assertHeld(result) {
   assert.match(await readFile(join(result.site, HOLD), "utf8"), /^[0-9a-f]{32}\n$/u);
@@ -663,48 +684,54 @@ async function assertHeld(result) {
   assert.deepEqual(wpCalls(result.calls, "maintenance-mode"), []);
 }
 
-test("a guarded deploy holds the Site, and proves it, before replacing or installing anything", async () => {
+test("a guarded deploy proves the pool enforces the gate, holds, and proves the hold from a fresh worker generation before replacing or installing anything", async () => {
   const script = await guardedScript();
   for (const composerOnly of [false, true]) {
     const result = await guardedDeploy(script, { composerOnly });
     assert.equal(result.code, 0, result.output);
+    const all = probes(result.calls);
     const reload = firstCall(result.calls, "sudo");
-    const probes = result.calls.filter(
-      ([tool, ...args]) => tool === "curl" && args.includes("--resolve"),
-    );
     const rsync = firstCall(result.calls, "rsync");
-    const composer = firstCall(result.calls, "composer");
-    assert.ok(
-      reload !== -1 && reload < rsync && rsync < composer,
-      "reloaded before anything changed",
-    );
-    // TLS for the admin domain on this machine, the certificate checked, no
-    // redirect followed: the front page and setup-config.php.
-    assert.deepEqual(
-      probes.map((call) => call.at(-1)),
-      ["https://cms.acme.test/", "https://cms.acme.test/wp/wp-admin/setup-config.php"],
-    );
-    for (const probe of probes) {
+    // The challenge before the hold and the reload; at least four after.
+    assert.ok(all.length >= 5, `${all.length} probes`);
+    assert.ok(result.calls.indexOf(all[0]) < reload && reload < rsync);
+    assert.ok(all.every((probe) => result.calls.indexOf(probe) < rsync));
+    assert.ok(all.filter((probe) => result.calls.indexOf(probe) > reload).length >= 4);
+    assert.deepEqual(result.calls[reload], ["sudo", "-n", "service", "php8.3-fpm", "reload"]);
+    for (const probe of all) {
+      assert.match(probe.at(-1), PROBE_URL);
       assert.ok(probe.includes("cms.acme.test:443:127.0.0.1"));
       assert.ok(probe.includes("=https") && probe.includes("--max-redirs"));
       assert.ok(!probe.includes("--insecure") && !probe.includes("-k"));
-      assert.ok(result.calls.indexOf(probe) < rsync);
     }
-    assert.ok(result.calls.some(([tool]) => tool === "composer-saw-hold"));
+    // Each probe ran beside the nested challenge that tries to turn the
+    // prepend off.
+    const saw = result.calls.filter(([tool]) => tool === "probe-saw");
+    assert.ok(
+      saw.length === all.length && saw.every(([, files]) => files === ".user.ini probe.php"),
+    );
     assert.match(
       result.stdout,
-      /Held: PHP-FPM reloaded, every worker that ran before the hold has gone/u,
+      /Held: the gate answered a nested override challenge, PHP-FPM 8\.3 \(pool www\) reloaded, every worker that ran before the hold has gone, and 4 requests to new workers of pool www answered 503 with this hold's nonce/u,
     );
-    // Lifted only at the very end; the gate and .user.ini stay.
     assert.match(result.stdout, /The hold is lifted/u);
     assert.equal(await exists(join(result.site, HOLD)), false);
-    assert.match(await readFile(join(result.site, GATE), "utf8"), /PHP_SAPI !== 'cli'/u);
-    assert.match(
-      await readFile(join(result.site, INI), "utf8"),
-      new RegExp(`auto_prepend_file = "${join(result.site, GATE).replaceAll("/", "\\/")}"`, "u"),
-    );
+    // The gate names this Site's web root; gq writes no .user.ini; the
+    // attempt's own challenge is gone.
+    const gate = await readFile(join(result.site, GATE), "utf8");
+    assert.ok(gate.includes(`$web = '${join(result.site, "apps/cms/web")}';`));
+    assert.equal(await exists(join(result.site, "apps/cms/web/.user.ini")), false);
+    assert.deepEqual(await attempts(result.site), []);
     assert.deepEqual(wpCalls(result.calls, "maintenance-mode"), []);
   }
+});
+
+test("a first guarded deploy needs neither WordPress core nor web/index.php to prove the hold", async () => {
+  const script = await guardedScript();
+  const result = await guardedDeploy(script, { installed: false });
+  assert.equal(result.code, 0, result.output);
+  assert.match(result.stdout, /Held: /u);
+  assert.ok(result.calls.some(([tool]) => tool === "composer-saw-hold"));
 });
 
 test("a guarded deploy that fails or is killed once the hold is proven keeps it", async () => {
@@ -732,126 +759,170 @@ test("a guarded deploy that fails or is killed once the hold is proven keeps it"
   await assertHeld(extension);
 });
 
-test("a guarded deploy whose hold can't be proven changes no package, removes only its own hold, and says what it did change", async () => {
+test("a pool that doesn't enforce the gate, or a server gq can't bind to the reloaded master, refuses before any hold, reload or package change", async () => {
   const script = await guardedScript();
   const cases = [
-    [{ SUDO_EXIT: "1" }, /PHP-FPM couldn't be reloaded \(sudo -n service php8\.3-fpm reload\)/u],
-    [{ CURL_PROBE: "stale" }, /didn't answer 503 with this hold's nonce/u],
-    [{ CURL_PROBE: "down" }, /didn't answer 503 with this hold's nonce/u],
     [
-      { PS_STUCK: "1", GQ_ADMISSION_DRAIN_SECONDS: "1" },
-      /1 PHP-FPM 8\.3 worker\(s\) that ran before the hold were still running after 1s/u,
+      { CURL_PROBE: "ungated" },
+      /ran without the gate: the pool serving cms\.acme\.test doesn't enforce php_admin_value\[auto_prepend_file\]/u,
     ],
-    [{ PS_NONE: "1" }, /no PHP-FPM 8\.3 worker is visible to this user/u],
+    [
+      { CURL_PROBE: "down" },
+      /https:\/\/cms\.acme\.test\/gq-admission\/[0-9a-f]{32}\/probe\.php didn't answer/u,
+    ],
+    [{ CURL_PHP: "8.2.1" }, /worker 101 that answered isn't a worker of PHP-FPM 8\.2's master/u],
+    [{ CURL_PHP: "8.4.0" }, /PHP-FPM 8\.4's master process isn't visible to this user/u],
+    [{ CURL_PHP: "eight" }, /reported a PHP version gq can't read/u],
+    [{ CURL_PID: "999" }, /worker 999 that answered isn't a worker of PHP-FPM 8\.3's master/u],
+    [{ CURL_USER_INI: "invalid" }, /user_ini\.filename is one gq can't challenge/u],
+    [{ CURL_USER_INI: "../evil" }, /user_ini\.filename is one gq can't challenge/u],
+    [{ CURL_USER_INI: ".." }, /user_ini\.filename is one gq can't challenge/u],
+    [{ PS_NONE: "1" }, /worker 101 that answered isn't a worker of PHP-FPM 8\.3's master/u],
   ];
   for (const [env, message] of cases) {
-    // A first hold: removed again.
+    for (const prior of [false, true]) {
+      const siteFiles = prior ? { [HOLD]: `${"f".repeat(32)}\n` } : {};
+      const result = await guardedDeploy(script, { env, siteFiles });
+      assert.notEqual(result.code, 0, result.output);
+      assert.match(result.stderr, message);
+      assert.match(result.stderr, /No package file was changed; the admission gate changed\./u);
+      assert.equal(firstCall(result.calls, "sudo"), -1, "no reload");
+      changedNothingOnTheSite(result.calls);
+      assert.deepEqual(await attempts(result.site), [], "its challenge removed");
+      if (prior) {
+        assert.equal(await readFile(join(result.site, HOLD), "utf8"), `${"f".repeat(32)}\n`);
+        assert.match(result.stderr, /The hold an earlier failed deploy left stays\./u);
+      } else {
+        assert.equal(await exists(join(result.site, HOLD)), false);
+      }
+    }
+  }
+});
+
+test("a hold that can't be proven from a fresh generation of the same pool fails before any package change, removing only its own hold", async () => {
+  const script = await guardedScript();
+  const cases = [
+    [
+      { SUDO_EXIT: "1" },
+      /PHP-FPM 8\.3 couldn't be reloaded \(sudo -n service php8\.3-fpm reload\)/u,
+    ],
+    [{ CURL_PROBE: "stale" }, /answered 503 without this hold's nonce/u],
+    [
+      { PS_STUCK: "1", GQ_ADMISSION_DRAIN_SECONDS: "1" },
+      /2 PHP-FPM 8\.3 worker\(s\) that ran before the hold were still running after 1s/u,
+    ],
+    [
+      { CURL_PID_AFTER: "303" },
+      /worker 303 that answered after the reload isn't a worker of PHP-FPM 8\.3's master/u,
+    ],
+    [
+      { CURL_PID_AFTER: "304" },
+      /worker 304 of pool other answered, but the challenge was answered by pool www/u,
+    ],
+    [{ CURL_UNGATED_AFTER: "1" }, /ran without the gate/u],
+  ];
+  for (const [env, message] of cases) {
     const first = await guardedDeploy(script, { env });
     assert.notEqual(first.code, 0, first.output);
     assert.match(first.stderr, message);
     assert.match(
       first.stderr,
-      /No package file was changed; the admission gate apps\/cms\/web\/\.user\.ini .*changed\. The hold this attempt placed was removed\./u,
+      /No package file was changed; the admission gate and a PHP-FPM 8\.3 reload changed\. The hold this attempt placed was removed\.|No package file was changed; the admission gate changed\. The hold this attempt placed was removed\./u,
     );
     assert.doesNotMatch(first.stderr, /nothing changed/u);
     assert.equal(await exists(join(first.site, HOLD)), false);
-    assert.deepEqual(
-      first.calls.filter(([tool]) => ["rsync", "composer"].includes(tool)),
-      [],
-    );
+    changedNothingOnTheSite(first.calls);
+    assert.deepEqual(await attempts(first.site), []);
 
-    // A hold an earlier failed deploy left: kept.
     const earlier = await guardedDeploy(script, {
       env,
-      siteFiles: { [HOLD]: "f".repeat(32) + "\n" },
+      siteFiles: { [HOLD]: `${"f".repeat(32)}\n` },
     });
     assert.notEqual(earlier.code, 0, earlier.output);
     assert.match(earlier.stderr, /The hold an earlier failed deploy left stays\./u);
-    assert.equal(await exists(join(earlier.site, HOLD)), true);
-    assert.deepEqual(
-      earlier.calls.filter(([tool]) => ["rsync", "composer"].includes(tool)),
-      [],
-    );
+    assert.match(await readFile(join(earlier.site, HOLD), "utf8"), /^[0-9a-f]{32}\n$/u);
+    changedNothingOnTheSite(earlier.calls);
   }
 });
 
-test("the request admission keeps a .user.ini's other settings, and refuses a prepend it didn't write", async () => {
+test("a custom user_ini.filename is challenged too, in a fresh directory; a disabled one needs only the default", async () => {
   const script = await guardedScript();
-  const kept = await guardedDeploy(script, {
-    siteFiles: { [INI]: "memory_limit = 256M\nupload_max_filesize = 64M\n" },
-  });
-  assert.equal(kept.code, 0, kept.output);
-  const ini = await readFile(join(kept.site, INI), "utf8");
-  assert.match(
-    ini,
-    /^memory_limit = 256M\nupload_max_filesize = 64M\n\n; BEGIN GETQUICK request admission/u,
+  const custom = await guardedDeploy(script, { env: { CURL_USER_INI: ".htuser" } });
+  assert.equal(custom.code, 0, custom.output);
+  const saw = custom.calls.filter(([tool]) => tool === "probe-saw").map(([, files]) => files);
+  assert.equal(saw[0], ".user.ini probe.php");
+  assert.ok(
+    saw.slice(1).every((files) => files === ".htuser .user.ini probe.php"),
+    saw.join(" | "),
   );
-  assert.match(ini, /auto_prepend_file = /u);
+  const urls = probes(custom.calls).map((call) => call.at(-1));
+  assert.notEqual(urls[0], urls[1], "the custom challenge is in a fresh directory");
 
-  for (const conflicting of [
-    "auto_prepend_file = /srv/other/prepend.php\n",
-    "  AUTO_PREPEND_FILE=/srv/other/prepend.php\n",
-  ]) {
-    const refused = await guardedDeploy(script, { siteFiles: { [INI]: conflicting } });
-    assert.notEqual(refused.code, 0, refused.output);
-    assert.match(
-      refused.stderr,
-      /already sets auto_prepend_file; gq won't replace or chain unknown prepend code/u,
-    );
-    assert.equal(await readFile(join(refused.site, INI), "utf8"), conflicting);
-    assert.equal(await exists(join(refused.site, HOLD)), false);
-    assert.equal(firstCall(refused.calls, "sudo"), -1);
-    assert.deepEqual(
-      refused.calls.filter(([tool]) => ["rsync", "composer"].includes(tool)),
-      [],
-    );
-  }
+  const disabled = await guardedDeploy(script, { env: { CURL_USER_INI: "-" } });
+  assert.equal(disabled.code, 0, disabled.output);
 });
 
-test("the release's real rsync --delete keeps the request admission's .user.ini, and what the release doesn't ship goes", async (t) => {
+test("the drain is bounded by 120 seconds; the environment may only shorten it", async () => {
+  const script = await guardedScript();
+  for (const seconds of ["121", "600", "0", "abc"]) {
+    const result = await guardedDeploy(script, { env: { GQ_ADMISSION_DRAIN_SECONDS: seconds } });
+    assert.notEqual(result.code, 0, result.output);
+    assert.match(
+      result.stderr,
+      /GQ_ADMISSION_DRAIN_SECONDS (must be between 1 and 120|isn't a number of seconds)/u,
+    );
+    assert.equal(firstCall(result.calls, "curl", "--resolve"), -1);
+    assert.equal(await exists(join(result.site, GATE)), false);
+  }
+  const shorter = await guardedDeploy(script, { env: { GQ_ADMISSION_DRAIN_SECONDS: "30" } });
+  assert.equal(shorter.code, 0, shorter.output);
+});
+
+test("the release's real rsync --delete keeps web/gq-admission, another attempt's challenge included", async (t) => {
   if (!(await exists("/usr/bin/rsync"))) return t.skip("needs /usr/bin/rsync");
   const script = await guardedScript();
+  const other = `${PROBES}/${"a".repeat(32)}`;
   for (const composerOnly of [false, true]) {
     const result = await guardedDeploy(script, {
       composerOnly,
       env: { REAL_RSYNC: "1" },
       siteFiles: {
-        [INI]: "memory_limit = 256M\n",
+        [`${other}/probe.php`]: "<?php\n",
+        [`${other}/.user.ini`]: "auto_prepend_file =\n",
         "apps/cms/web/stale.php": "<?php // not in the release\n",
       },
     });
     assert.equal(result.code, 0, result.output);
     assert.ok(result.calls.some(([tool]) => tool === "rsync"));
-    const ini = await readFile(join(result.site, INI), "utf8");
-    assert.match(ini, /^memory_limit = 256M\n\n; BEGIN GETQUICK request admission/u);
-    assert.match(ini, /auto_prepend_file = /u);
+    assert.deepEqual(await attempts(result.site), ["a".repeat(32)]);
+    assert.equal(await readFile(join(result.site, `${other}/probe.php`), "utf8"), "<?php\n");
     // --delete is real: a file the release doesn't ship is gone.
     assert.equal(await exists(join(result.site, "apps/cms/web/stale.php")), false);
-    assert.equal(await readFile(join(result.site, "apps/cms/web/index.php"), "utf8"), "<?php\n");
   }
 });
 
-test("the request admission refuses symlinks and other files where it writes, an invisible PHP-FPM, a release shipping .user.ini, and an unusable admin domain", async () => {
+test("the request admission refuses symlinks and other files where it writes, a release shipping web/gq-admission, and an unusable admin domain", async () => {
   const script = await guardedScript();
   for (const [options, message] of [
     [{ siteLinks: { [HOLD]: "/etc/passwd" } }, /\.gq\/hold isn't a regular file gq can manage/u],
-    [{ siteLinks: { [INI]: "/etc/php.ini" } }, /\.user\.ini isn't a regular file gq can manage/u],
-    [{ siteLinks: { ".gq": "/tmp" } }, /\.gq isn't a directory gq can manage/u],
-    [{ siteDirectories: [HOLD] }, /\.gq\/hold isn't a regular file/u],
-    [{ env: { PS_NO_MASTER: "1" } }, /PHP-FPM 8\.3's master process isn't visible to this user/u],
     [
-      { releaseFiles: { [INI]: "memory_limit = 1G\n" } },
-      /The release ships apps\/cms\/web\/\.user\.ini/u,
+      { siteLinks: { [GATE]: "/etc/passwd" } },
+      /\.gq\/admission\.php isn't a regular file gq can manage/u,
+    ],
+    [{ siteLinks: { ".gq": "/tmp" } }, /\.gq isn't a directory gq can manage/u],
+    [{ siteLinks: { [PROBES]: "/tmp" } }, /gq-admission isn't a directory gq can manage/u],
+    [{ siteFiles: { [PROBES]: "x" } }, /gq-admission isn't a directory gq can manage/u],
+    [{ siteDirectories: [HOLD] }, /\.gq\/hold isn't a regular file/u],
+    [
+      { releaseFiles: { [`${PROBES}/x/probe.php`]: "<?php\n" } },
+      /The release ships apps\/cms\/web\/gq-admission/u,
     ],
   ]) {
     const result = await guardedDeploy(script, options);
     assert.notEqual(result.code, 0, result.output);
     assert.match(result.stderr, message);
     assert.equal(firstCall(result.calls, "sudo"), -1);
-    assert.deepEqual(
-      result.calls.filter(([tool]) => ["rsync", "composer"].includes(tool)),
-      [],
-    );
+    changedNothingOnTheSite(result.calls);
   }
 
   const fixture = await createFixtureSite({

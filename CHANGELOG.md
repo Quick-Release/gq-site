@@ -38,12 +38,15 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   Composer installer paths. A deploy looks the record up before uploading
   and again immediately before the deploy request. The deploy script checks
   the expectations and lock before changing anything, holds a guarded Site
-  before replacing anything (`deploy/ploi/admission.sh`: a PHP-FPM
-  `auto_prepend_file` gate outside Composer's and rsync's reach answers every
-  non-CLI PHP request 503, setup-config and direct plugin files included,
-  proven after a PHP-FPM reload, a bounded drain of pre-hold workers and a
-  TLS probe of the admin domain; WP-CLI still works; static files aren't
-  covered), verifies the installed files
+  before replacing anything (`deploy/ploi/admission.sh`: a gate the PHP-FPM
+  pool must already prepend with `php_admin_value[auto_prepend_file]`, which
+  no package's `.user.ini` can turn off, answers every non-CLI PHP request
+  for the Site 503, setup-config and direct plugin files included; proven
+  by a fresh nested-override challenge, the serving pool's PHP version and
+  worker, a mandatory reload, a drain of pre-hold workers of at most 120
+  seconds and 503s from the reloaded pool; WP-CLI still works; static files
+  aren't covered; a server without that setting refuses, and gq configures
+  none), verifies the installed files
   (`gq-support.files/v1`) after `composer install`, and lifts the hold
   only when the deploy verified and finished. Without a configured lookup,
   guarded packages refuse. See

@@ -38,9 +38,9 @@ cd "$SITE_PATH"
 
 # After the new code is in place: best effort, only so workers drop stale
 # opcache (a failure warns, the deploy goes on). A guarded Site's request
-# admission reloads PHP-FPM itself before anything changes, and there a
-# failed reload fails the deploy: it is what makes PHP-FPM read the gate and
-# ends the workers that started before the hold.
+# admission reloads the serving PHP-FPM itself before anything changes, and
+# there a failed reload fails the deploy: it ends the workers that started
+# before the hold and loads the current gate.
 reload_php_fpm() {
   if ! command -v sudo >/dev/null 2>&1 || ! command -v php >/dev/null 2>&1; then
     echo "Skipping PHP-FPM reload; sudo or PHP is unavailable."
@@ -80,8 +80,10 @@ composer_install() {
 
 # A guarded Site is held for the whole deploy by its request admission
 # (deploy/ploi/admission.sh, from the release being deployed): `begin`, before
-# anything is replaced or installed, holds every PHP web request at 503 and
-# proves it; only the end of a deploy that verified its packages and
+# anything is replaced or installed, proves the PHP-FPM pool enforces its
+# gate (php_admin_value[auto_prepend_file], which the server must already
+# have: gq configures none), holds every PHP web request at 503 and proves
+# it; only the end of a deploy that verified its packages and
 # finished every step runs `lift`. A failure, a timeout or a killed deploy
 # leaves the hold: nothing (no exit trap, no timer) serves the Site again.
 admission() {
@@ -279,9 +281,10 @@ if [ -n "$GUARDED_PACKAGES" ]; then
     echo "This Site guards $GUARDED_PACKAGES, but the release has no deploy/ploi/admission.sh: run gq sync and release again." >&2
     exit 1
   fi
-  # admission.sh manages web/.user.ini; a release can't ship its own.
-  if [ -e "$tmp_dir/release/$APP_PATH/web/.user.ini" ]; then
-    echo "The release ships $APP_PATH/web/.user.ini, which the Site's request admission manages." >&2
+  # admission.sh owns web/gq-admission (its challenges); a release can't
+  # ship anything there.
+  if [ -e "$tmp_dir/release/$APP_PATH/web/gq-admission" ] || [ -L "$tmp_dir/release/$APP_PATH/web/gq-admission" ]; then
+    echo "The release ships $APP_PATH/web/gq-admission, which the Site's request admission owns." >&2
     exit 1
   fi
   admission begin
@@ -301,7 +304,7 @@ for path in "${SHIPPED_PATHS[@]}"; do
     --filter='P /web/app/plugins/*/' \
     --filter='P /web/app/themes/*/' \
     --filter='P /web/app/mu-plugins/*/' \
-    --filter='P /web/.user.ini' \
+    --filter='P /web/gq-admission/' \
     "$tmp_dir/release/$path/" "$path/"
 done
 cp "$tmp_dir/release/RELEASE" RELEASE

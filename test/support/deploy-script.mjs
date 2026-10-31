@@ -61,20 +61,55 @@ source="\${@: -2:1}"
 target="\${@: -1}"
 mkdir -p "$target"
 cp -R "$source." "$target"`,
-  // The request admission's probes (--resolve) answer as a server whose gate
-  // reads the hold: 503 with its nonce while held. CURL_PROBE=stale answers
-  // another nonce, down fails to connect.
+  // The request admission's probes (--resolve) answer as a server whose
+  // pool prepends the gate (php_admin_value): a challenge probe answers with
+  // the gate's headers (X-GQ-Gate open, or the hold's nonce with a 503),
+  // PHP_VERSION (CURL_PHP, 8.3.6), the worker's pid (101 before PHP-FPM's
+  // reload, 202 after; CURL_PID and CURL_PID_AFTER override) and
+  // user_ini.filename (CURL_USER_INI, .user.ini). CURL_PROBE=ungated runs the
+  // probe script itself (the gate didn't answer), stale answers another
+  // nonce, down fails to connect; CURL_UNGATED_AFTER=1 runs it only once
+  // PHP-FPM has reloaded. Each challenge probe is recorded as probe-saw with
+  // the challenge files beside it.
   curl: `record curl "$@"
 case " $* " in
   *" --resolve "*)
     [ "\${CURL_PROBE:-}" = down ] && exit 7
-    if [ -f "$SITE_PATH/.gq/hold" ]; then
-      nonce="$(cat "$SITE_PATH/.gq/hold")"
-      [ "\${CURL_PROBE:-}" = stale ] && nonce=00000000000000000000000000000000
-      printf 'HTTP/1.1 503 Service Unavailable\r\nX-GQ-Hold: %s\r\n\r\n' "$nonce"
-    else
-      printf 'HTTP/1.1 200 OK\r\n\r\n'
-    fi
+    url="\${@: -1}"
+    output=/dev/null
+    previous=""
+    for arg in "$@"; do
+      [ "$previous" = --output ] && output="$arg"
+      previous="$arg"
+    done
+    path="/\${url#https://*/}"
+    reloaded=0
+    [ -f "$DEPLOY_CALLS.reloaded" ] && reloaded=1
+    case "$path" in
+      /gq-admission/*/probe.php)
+        dir="$SITE_PATH/apps/cms/web\${path%/probe.php}"
+        record probe-saw "$(cd "$dir" && LC_ALL=C ls -A | paste -sd ' ' -)"
+        if [ "\${CURL_PROBE:-}" = ungated ] || { [ "\${CURL_UNGATED_AFTER:-0}" = 1 ] && [ "$reloaded" = 1 ]; }; then
+          printf 'UNGATED\\n' >"$output"
+          printf 'HTTP/1.1 200 OK\\r\\nContent-Type: text/plain\\r\\n\\r\\n'
+          exit 0
+        fi
+        pid="\${CURL_PID:-101}"
+        [ "$reloaded" = 1 ] && pid="\${CURL_PID_AFTER:-202}"
+        if [ -f "$SITE_PATH/.gq/hold" ]; then
+          status="503 Service Unavailable"
+          gate="$(cat "$SITE_PATH/.gq/hold")"
+          [ "\${CURL_PROBE:-}" = stale ] && gate=00000000000000000000000000000000
+        else
+          status="200 OK"
+          gate=open
+        fi
+        printf 'gq admission probe\\n' >"$output"
+        printf 'HTTP/1.1 %s\\r\\nX-GQ-Gate: %s\\r\\nX-GQ-Php: %s\\r\\nX-GQ-Pid: %s\\r\\nX-GQ-User-Ini: %s\\r\\n\\r\\n' \\
+          "$status" "$gate" "\${CURL_PHP:-8.3.6}" "$pid" "\${CURL_USER_INI:-.user.ini}"
+        exit 0 ;;
+    esac
+    printf 'HTTP/1.1 404 Not Found\\r\\n\\r\\n'
     exit 0 ;;
 esac
 while [ "$#" -gt 1 ]; do
@@ -89,23 +124,26 @@ printf '8.3'`,
   sudo: `record sudo "$@"
 [ "\${SUDO_EXIT:-0}" = 0 ] || exit "$SUDO_EXIT"
 case "$*" in *"fpm reload"*) touch "$DEPLOY_CALLS.reloaded" ;; esac`,
-  // PHP-FPM 8.3's master (pid 10) and workers: one before the reload, a new
-  // one after (PS_STUCK=1 keeps the old one, PS_NONE=1 shows no worker,
-  // PS_NO_MASTER=1 no PHP-FPM process at all); PHP-FPM 8.2's master (20) and
-  // its worker, which never goes, always; and a grep whose arguments name
-  // PHP-FPM 8.3's master, which isn't one.
+  // PHP-FPM 8.3's master (pid 10) with two pools: www's worker 101 before
+  // the reload and 202 after (PS_STUCK=1 keeps 101 running, PS_NONE=1 shows
+  // no 8.3 worker, PS_NO_MASTER=1 no PHP-FPM process at all), and pool
+  // other's worker 303 before, 304 after; PHP-FPM 8.2's master (20) and its
+  // worker 401, which never goes; and a grep whose arguments name PHP-FPM
+  // 8.3's master, which isn't one.
   ps: `processes() {
   echo "  999   500 grep Sat Oct 31 08:00:00 2026 grep -F php-fpm: master process (/etc/php/8.3/fpm/php-fpm.conf)"
   [ "\${PS_NO_MASTER:-0}" = 1 ] && return
   echo "   10     1 php-fpm8.3 Sat Oct 31 08:00:00 2026 php-fpm: master process (/etc/php/8.3/fpm/php-fpm.conf)"
   echo "   20     1 php-fpm8.2 Sat Oct 31 08:00:00 2026 php-fpm: master process (/etc/php/8.2/fpm/php-fpm.conf)"
-  echo "  301    20 php-fpm8.2 Sat Oct 31 08:30:00 2026 php-fpm: pool other"
+  echo "  401    20 php-fpm8.2 Sat Oct 31 08:30:00 2026 php-fpm: pool www"
   [ "\${PS_NONE:-0}" = 1 ] && return
   if [ ! -f "$DEPLOY_CALLS.reloaded" ] || [ "\${PS_STUCK:-0}" = 1 ]; then
     echo "  101    10 php-fpm8.3 Sat Oct 31 09:00:00 2026 php-fpm: pool www"
+    echo "  303    10 php-fpm8.3 Sat Oct 31 09:00:00 2026 php-fpm: pool other"
   fi
   if [ -f "$DEPLOY_CALLS.reloaded" ]; then
     echo "  202    10 php-fpm8.3 Sat Oct 31 09:10:00 2026 php-fpm: pool www"
+    echo "  304    10 php-fpm8.3 Sat Oct 31 09:10:00 2026 php-fpm: pool other"
   fi
 }
 case "$*" in

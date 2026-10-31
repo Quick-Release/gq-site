@@ -7,6 +7,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq \
   && apt-get install -y -qq --no-install-recommends \
     nginx php8.3-fpm php8.3-cli php8.3-sqlite3 php8.3-curl php8.3-mbstring php8.3-xml \
-    php8.3-zip php8.3-opcache composer git unzip curl ca-certificates sudo procps openssl \
+    php8.3-zip php8.3-opcache composer git unzip curl ca-certificates sudo procps openssl rsync \
     >/dev/null \
   && rm -rf /var/lib/apt/lists/*

@@ -310,109 +310,173 @@ replaces or installs anything, in a full and a Composer-only deploy alike,
 and stays held until that deploy has verified its packages and finished
 every step. The hold is `deploy/ploi/admission.sh` (managed by `gq sync`,
 shipped in the release), one module the deploy calls as `admission.sh begin`
-and `admission.sh lift`. Everything it writes is outside what Composer or
-the release's rsync own:
+and `admission.sh lift`.
 
-| Path                                        | What                                                                                   |
-| ------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `$SITE/.gq/admission.php`                   | the gate: PHP-FPM prepends it to every script under the web root                       |
-| `$SITE/.gq/hold`                            | present: held. Its content is this hold's nonce, public freshness evidence (no secret) |
-| a managed block in `apps/cms/web/.user.ini` | `auto_prepend_file` for the gate; every other setting there stays                      |
+**The gate is enforced by the server, not by gq's files.** A guard gq wrote
+into a per-directory INI file could be turned off by any package: a
+`.user.ini` in a plugin's directory that sets `auto_prepend_file =` runs that
+plugin's PHP file ungated (checked on PHP-FPM; `php_value` in the pool is no
+better). Only `php_admin_value[auto_prepend_file]` in the PHP-FPM pool can't
+be changed by a `.user.ini` of any `user_ini.filename`, by `php_value` or by
+`ini_set`. So the admission needs a server that already prepends its gate
+that way, and refuses on any other. gq never configures PHP-FPM, nginx or
+Ploi; guarded deployment stays **unavailable on a real host** until the
+hosting contract below holds there and has been reviewed.
 
-The release's rsync protects `web/.user.ini` (a release that ships one is
-refused), and Composer never writes under `.gq/`, so a Composer install that
-deletes and reinstalls `web/wp` (as `roots/wordpress` does) leaves the hold
-alone; WordPress's own `.maintenance` lives in `web/wp` and doesn't survive
-one.
+What gq owns, all outside what Composer or the release's rsync write:
 
-While held, the gate answers every **non-CLI PHP request** 503 (`Retry-After`,
-`Cache-Control: no-store`, `X-GQ-Hold: <nonce>`, a body naming nothing)
-before any other PHP code runs: WordPress, its installer and upgrader,
-`setup-config.php` (which loads `wp-settings.php` without `wp-config.php` or
-`.maintenance`), and a plugin's own PHP file requested directly.
-Command-line PHP (WP-CLI: this deploy's own steps, and a recovery) is never
-held. **The gate covers PHP only**: nginx still serves static files.
+| Path                                         | What                                                                                                                                                                             |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$SITE/.gq/admission.php`                    | the gate the pool prepends; rewritten only when it differs, never removed                                                                                                        |
+| `$SITE/.gq/hold`                             | present: held. Its content is this hold's nonce, public freshness evidence (no secret)                                                                                           |
+| `$SITE/apps/cms/web/gq-admission/<attempt>/` | one attempt's challenge (`probe.php` and INI files that empty `auto_prepend_file`), removed by that attempt; a killed attempt's stays, harmless, and no other attempt removes it |
+
+The release's rsync protects `web/gq-admission/`, and a release that ships
+anything there is refused. gq writes no `.user.ini`.
+
+While held, the gate answers every **non-CLI PHP request for the Site's web
+root** 503 (`Retry-After`, `Cache-Control: no-store`, `X-GQ-Gate: <nonce>`, a
+body naming nothing) before any other PHP code runs: WordPress, its
+installer and upgrader, `setup-config.php`, a plugin's own PHP file, a
+script a package's `.user.ini` sits beside. Command-line PHP (WP-CLI: this
+deploy's own steps, and a recovery) is never held. **The gate covers PHP
+only**: nginx still serves static files. The gate tells the Site's requests
+from another Site's sharing the pool by the server's `SCRIPT_FILENAME` and
+`DOCUMENT_ROOT`, resolved: only a request whose script and document root
+both resolve outside the Site's web root passes untouched; one with either
+value missing or unresolvable is treated as the Site's.
 
 `begin`, after the deploy's preflight and before anything changes:
 
 1. refuses, changing nothing, a managed path that is a symlink or not a
-   regular file (`.gq` not a directory), a `.user.ini` that already sets
-   `auto_prepend_file` outside gq's block (gq neither replaces nor chains
-   unknown prepend code), an admin domain (`gq.ops.json` `domains.admin`)
-   that isn't a plain hostname, and a PHP-FPM master for the CLI's PHP
-   version (`php-fpm: master process (/etc/php/<v>/fpm/php-fpm.conf)`) that
-   this user can't see;
-2. writes the gate and the `.user.ini` block if they differ, and the hold
-   with a fresh nonce, each atomically (a rename in the same directory);
-3. reloads PHP-FPM (`sudo -n service php<v>-fpm reload`), which must succeed:
-   new workers read the new `.user.ini` and the gate (PHP caches both per
-   worker, and opcache may not revalidate files);
-4. waits, bounded (`GQ_ADMISSION_DRAIN_SECONDS`, 120 by default), until no
-   worker of that master that existed before the reload still runs
-   (matched by pid and start time, wherever it is now), so no request that
-   started before the hold still runs WordPress code when packages change.
-   Another PHP version's pools aren't reloaded, so they aren't waited for;
-5. requests, over TLS for the admin domain resolved to 127.0.0.1 with the
-   certificate checked, no redirect followed, bounded timeouts and only the
-   headers kept, the front page and `/wp/wp-admin/setup-config.php`, each of
-   which must answer 503 with this hold's nonce;
-6. requires a worker of that master to be visible (so the drain wasn't
-   vacuous).
+   regular file (a directory for `.gq` and `gq-admission`), an admin domain
+   (`gq.ops.json` `domains.admin`) that isn't a plain hostname, and a drain
+   limit above 120 seconds;
+2. installs the gate if it differs (atomically: a rename in the same
+   directory);
+3. **the challenge**: writes a fresh `web/gq-admission/<attempt>/` with
+   `probe.php` and a `.user.ini` that sets `auto_prepend_file =`, and
+   requests it over TLS for the admin domain resolved to 127.0.0.1 (the
+   certificate checked, no redirect followed, bounded timeouts). The gate
+   must answer it: if `probe.php` itself runs, the nested override won, and
+   the pool doesn't enforce the gate (no prepend, `php_value`, a root
+   `.user.ini`, or a pool without it), so `begin` refuses. The gate reports
+   `PHP_VERSION`, its worker's pid and `user_ini.filename`; a custom file
+   name (a safe base name, or the deploy refuses) is challenged again in
+   another fresh directory, so no worker's INI cache hides it;
+4. **binds the serving pool**: PHP-FPM `<version>`'s master
+   (`/etc/php/<version>/fpm/php-fpm.conf`, the version the gate reported,
+   not the CLI's) must be visible, and the worker that answered must be one
+   of its workers; that worker's pool is the Site's. A version whose master
+   isn't there, or a worker of another master, refuses;
+5. writes the hold (fresh nonce), reloads PHP-FPM `<version>` (`sudo -n
+service php<version>-fpm reload`), which must succeed, and waits, at
+   most 120 seconds (`GQ_ADMISSION_DRAIN_SECONDS` may only shorten it),
+   until no worker of that master that ran before the reload still runs
+   (matched by pid and start time, wherever it is now): no request that
+   started before the hold still runs WordPress code;
+6. requires 4 more probes to answer 503 with this hold's nonce, each from a
+   worker of **the same pool** that started **after** the reload.
 
 If any step fails, `begin` fails before any package file changes. It removes
-a hold it created (the Site's code is still the previous, verified one) and
-keeps one an earlier failed deploy left. It says what it did change (the
-gate, `.user.ini`, a reload) rather than "nothing changed".
+a hold it created (the Site's code is still the previous, verified one),
+keeps one an earlier failed deploy left, removes its own challenges, and
+says what it did change (the gate, a reload) rather than "nothing changed".
 
 `lift` removes the hold. The gate checks the hold file on every request (stat
-cache cleared, never opcache), so lifting needs no reload, and nor does a
-hold appearing. Only the end of a deploy that verified the guarded packages
-and finished every step lifts it. A failed Composer install, a failed
-verification, a failed later step (activation, database, an extension), a
-timeout or a killed deploy leaves it: nothing (no exit trap, no timer)
-releases the hold. Recovery is another guarded deploy of an approved
-version, which needs its own fresh approval; removing `.gq/hold` by hand
-serves files that didn't verify. An unguarded Site's deploy uses WordPress's
-own maintenance mode, as before.
+cache cleared, never opcache), so lifting needs no reload. Only the end of a
+deploy that verified the guarded packages and finished every step lifts it.
+A failed Composer install, a failed verification, a failed later step
+(activation, database, an extension), a timeout or a killed deploy leaves
+it: nothing (no exit trap, no timer) releases the hold. Recovery is another
+guarded deploy of an approved version, which needs its own fresh approval;
+removing `.gq/hold` by hand serves files that didn't verify. An unguarded
+Site's deploy uses WordPress's own maintenance mode, as before.
 
-#### What the server must provide
+#### The hosting contract
 
-The admission refuses or fails closed when one of these doesn't hold; none
-is provisioned by gq:
+None of this is provisioned by gq, and each item needs a human hosting
+review before any guarded deploy on a real host:
 
-- PHP-FPM honours `.user.ini` (`user_ini.filename` is the default) and
-  `auto_prepend_file` in it under the web root;
-- nginx answers HTTPS for the admin domain on 127.0.0.1 with a certificate
-  the server trusts;
-- the deploy user may run `sudo -n service php<v>-fpm reload` (Ploi's own
-  deploy scripts reload PHP-FPM this way);
-- PHP-FPM's processes are visible to the deploy user (no `hidepid` on
-  `/proc`).
+- **P1, the prepend:** the PHP-FPM pool serving the Site has
+  `php_admin_value[auto_prepend_file] = <SITE_PATH>/.gq/admission.php`, a
+  fixed path outside Composer and the release. The pool's other settings,
+  `user_ini.filename` among them, are the host's.
+- **P1, routing:** nginx sends **every** PHP script under the admin web root
+  to that one pool. The probes sample the workers serving one URL: they
+  prove that pool's enforced setting, not how nginx routes every other
+  location, and they authenticate nothing about the host's configuration.
+  Per-location routing to different pools is unsupported unless reviewed
+  separately.
+- **P1, one gate per pool:** the setting names one Site's gate. Sites
+  sharing a pool aren't held by it (the gate passes their requests), but
+  two guarded Sites can't share one pool: each needs its own pool, or a
+  different reviewed design.
+- **P2:** nginx answers HTTPS for the admin domain on 127.0.0.1 with a
+  certificate the server trusts, and serves `/gq-admission/` (no rule
+  denying it).
+- **P3:** the deploy user may run `sudo -n service php<version>-fpm reload`
+  (Ploi's own deploy scripts reload PHP-FPM this way).
+- **P4:** PHP-FPM's processes are visible to the deploy user (no `hidepid`
+  on `/proc`).
+- **P5, the reload's effects:** a reload restarts every pool of that PHP
+  version's master, other Sites' included, as Ploi's own deploy reload
+  already does. With PHP-FPM's default `process_control_timeout = 0` it
+  ends requests in flight at once (a 502, a cut-off write included); with a
+  positive one they finish first, up to that long. gq changes neither;
+  which one a host runs needs that review.
 
-A reload restarts every pool of that PHP version's master, other Sites'
-included, as Ploi's own deploy reload already does. With PHP-FPM's default
-`process_control_timeout = 0`, the reload ends requests in flight at once
-(they get a 502); with a positive one, they finish first, up to that long,
-and `begin` waits for them. Either way no pre-hold request still runs when
-packages change.
+**Bootstrap**, by a person, once per Site, in this order: install the gate
+with `SITE_PATH=… APP_PATH=apps/cms bash deploy/ploi/admission.sh prepare`
+(from a checkout of a release that carries it; it holds nothing and touches
+no package), then add P1 to the pool and reload PHP-FPM. With P1 set and the
+gate missing, every PHP request of that pool fails (500): fail-closed, but
+an outage, so the gate goes first. The first guarded deploy needs neither
+WordPress core nor `web/index.php` (the challenge is its own script). There
+is no workaround through an unguarded install.
 
 #### Checked on a real stack
 
-`scripts/smoke/admission.sh` (CI job `admission`) generates a guarded Site
-and runs its `admission.sh` verbatim in a disposable Docker container
-(`scripts/smoke/admission/`): nginx over TLS for the admin domain (a
-throwaway CA), PHP-FPM with `opcache.validate_timestamps=0` running a static
-pool as the Site's user, the WordPress the CMS skeleton pins installed by
-Composer under the generated Bedrock config, on SQLite. It checks a
-pre-hold slow request with both reload behaviours; every PHP route answering
-503 with the nonce while no WordPress or plugin code runs; static files
-still served; WP-CLI while held; a real `composer reinstall` deleting
-`web/wp` while held; lifting and holding without a reload; a killed and a
-late-failing deploy staying held; a failed `begin` keeping an earlier hold
-and removing its own; and `.user.ini` settings kept and a foreign prepend
-refused. The generated `admin.sh`'s order of steps (hold proven before the
-rsync and Composer, lifted only at the end) is checked with stand-ins in
-`test/cms/deploy-script.test.mjs`.
+`scripts/smoke/admission.sh` (CI job `admission`) runs the generated
+`deploy/ploi/admin.sh` and `admission.sh` verbatim, as a `ploi` user, in a
+disposable Docker container (`scripts/smoke/admission/`): real nginx over TLS
+(a throwaway CA), real PHP-FPM with `opcache.validate_timestamps=0` and two
+pools of one version, real rsync, real Composer and real WP-CLI on the
+WordPress the CMS skeleton pins (on SQLite). Stand-ins, and only these: the
+release archive is a local file instead of R2, there is no Ploi, the
+GETQUICK packages are local Composer path packages with their names (the
+registry is private), and the release's `apps/cms` is the generated one
+with that `composer.json`, a no-op `patch-dependencies.php`, the SQLite
+drop-in and the checks' instruments. The server's nginx and PHP-FPM
+configuration is the smoke's own; **Ploi's production templates are not
+checked**. It checks:
+
+- false controls, each refused before any hold or package change: no
+  prepend, `php_value`, a root `.user.ini`, `php_value` with a custom
+  `user_ini.filename`, and `php_admin_value` on one pool while nginx sends
+  the admin domain to another pool of the same PHP-FPM;
+- a missing gate under P1 failing closed (500);
+- a pre-hold request: ended by the reload under the default
+  `process_control_timeout` (502), finished before the hold is proven with
+  a positive one;
+- the whole generated deploy: a first bootstrap without core or
+  `web/index.php`; an installed Site's activation; a deploy that reinstalls
+  core and installs a package shipping `.user.ini` with `auto_prepend_file
+=` during Composer; a late extension failure; a refused reload keeping an
+  earlier hold; a kill during Composer; and the recoveries. A poller
+  requests the Site's PHP routes throughout, and must-use and plugin
+  markers note any WordPress or plugin code a web request runs: in every
+  held window (the "Held:" line to the hold going, less 100ms for the
+  watcher's granularity) nothing runs and every request answers 503;
+- while held: every PHP route and plugin file answering 503 with the nonce,
+  a script reaching PHP without `DOCUMENT_ROOT` held, static files served,
+  another Site in the same pool not held, WP-CLI working;
+- a custom `user_ini.filename` (`.htuser`) under P1 challenged and passing.
+
+What it can't show: the same-version pools stand in for two PHP versions
+(binding to another version's master is checked with stand-ins in
+`test/cms/deploy-script.test.mjs`), and nothing here checks a real Ploi
+server's nginx, pools or reload.
 
 ### Remaining gaps
 

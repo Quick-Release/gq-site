@@ -148,12 +148,13 @@ with Polylang and GQ Polylang for WPGraphQL, read over GraphQL.
 `/gf/v2/forms/<id>/submissions` reaches its route while gq-content's forms
 module has Gravity Forms active (a stand-in for both), and the REST index,
 reading forms or entries, method overrides and every other route stay 401.
-`scripts/smoke/admission.sh` proves a guarded Site's request admission
-(`deploy/ploi/admission.sh`) in a disposable Docker container with nginx
-over TLS, PHP-FPM (`opcache.validate_timestamps=0`) and the pinned WordPress
-installed by Composer: see
+`scripts/smoke/admission.sh` runs a guarded Site's generated
+`deploy/ploi/admin.sh` and request admission in a disposable Docker container
+with real nginx over TLS, PHP-FPM (two pools, `opcache.validate_timestamps=0`),
+rsync, Composer and WP-CLI, standing in only for R2, Ploi and the private
+registry: see
 [Package expectations](reference/package-expectations.md#checked-on-a-real-stack).
-It needs Docker.
+It needs Docker and takes about six minutes.
 `scripts/smoke/cms-content.sh` proves the agent's content route
 (`gq content`, [gq-platform ADR 0011](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0011-agent-access-to-production-cms-content.md))
 on a real WordPress over HTTP, behind the generated `content-api.php`, as an
