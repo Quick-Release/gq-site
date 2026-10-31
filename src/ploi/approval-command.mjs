@@ -1,156 +1,249 @@
-// The package approval lookup adapter: runs gq-support's Operator CLI
+// The package approval lookup adapter: runs gq-support's read-only Operator
+// CLI from a reviewed gq-support checkout, with the Operator's own
+// Cloudflare and GitHub logins:
 //
 //   <command> [<args>...] composer-approval <slot> <release-id> <artifact-dir> <prepare|deploy>
 //     --stage <stage> --account-id <id> --database-id <id> --ledger-database-id <id>
 //
-// with the Operator's own Cloudflare and GitHub logins (read-only; see
-// docs/reference/package-expectations.md). No shell: each value is one
-// argument. The lookup takes at most `timeoutMs`, and its output at most
-// MAX_OUTPUT_BYTES. A non-zero exit, output that isn't exactly one JSON
-// object, or a record for another stage or slot rejects; the caller checks
-// the record itself (package-expectations.mjs checkApprovalRecord). Nothing
-// the caller types is ever taken as an approval.
+// Trust comes only from the Operator's machine, never from a Site: the
+// configuration is the file APPROVAL_CONFIG_FILE under the invoking
+// process's XDG_CONFIG_HOME (else HOME/.config), outside the Site, never a
+// Site's .env, ops.env or Sigillo values. It names an absolute command and
+// the gq-support checkout it runs in, both outside the Site; the checkout
+// must be clean at OPERATOR_COMMIT, the reviewed gq-support commit. It binds
+// each project to its approval target: stage, slot, Cloudflare account, main
+// and ledger database IDs. A lookup refuses unless the Site's reviewed
+// gq.ops.json deployment.approval names that same stage and slot.
 //
-// Configuration: the Site names its own approval slot and stage in
-// gq.ops.json (deployment.approval), a reviewed change. The Operator's machine
-// names the command and the approval service's IDs in the environment:
-// GQ_SUPPORT_APPROVAL_COMMAND (an executable path; without it no lookup is
-// configured and every guarded package refuses), GQ_SUPPORT_APPROVAL_ARGS (a
-// JSON array of arguments before `composer-approval`, optional),
-// GQ_SUPPORT_APPROVAL_CWD (optional), GQ_SUPPORT_ACCOUNT_ID,
-// GQ_SUPPORT_DATABASE_ID, GQ_SUPPORT_LEDGER_DATABASE_ID and
-// GQ_SUPPORT_ARTIFACT_DIR (the downloaded release artifact).
-import { unconfiguredApprovals } from "./package-expectations.mjs";
+// The command runs without a shell, in its own process group, for at most
+// APPROVAL_TIMEOUT_MS and MAX_OUTPUT_BYTES of output (bounded-process.mjs),
+// with only the environment its logins need: no Composer, Ploi, R2 or other
+// deploy credentials. Every refusal is a fixed message: none carries the
+// command's own output. The caller checks the record itself
+// (package-expectations.mjs checkApprovalRecord).
+import { readFileSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
 
+import { z } from "zod";
+
+import { runBounded } from "./bounded-process.mjs";
+import { unconfiguredApprovals } from "./package-expectations.mjs";
+import { parseStrictJson } from "./strict-json.mjs";
+
+// The reviewed gq-support commit whose Operator CLI gq trusts: gq-support PR
+// 154's merge. A new pin is a reviewed gq-site change.
+export const OPERATOR_COMMIT = "29de3c7ec66ad96d6726bae20766c2acc7fcc312";
+export const APPROVAL_CONFIG_FILE = "gq/support-approval.json";
 export const APPROVAL_TIMEOUT_MS = 120_000;
 export const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+const GIT_TIMEOUT_MS = 30_000;
+// What the CLI's Wrangler and gh logins and its runtime need, and nothing
+// else: never a Site's or a deploy's credentials.
+export const CHILD_ENVIRONMENT = Object.freeze([
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TZ",
+  "TMPDIR",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_STATE_HOME",
+  "NODE_EXTRA_CA_CERTS",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+]);
 
-const REQUIRED = {
-  accountId: "GQ_SUPPORT_ACCOUNT_ID",
-  databaseId: "GQ_SUPPORT_DATABASE_ID",
-  ledgerDatabaseId: "GQ_SUPPORT_LEDGER_DATABASE_ID",
-  artifactDir: "GQ_SUPPORT_ARTIFACT_DIR",
-};
+const text = z.string().trim().min(1);
+const absolute = text.refine((path) => isAbsolute(path), "must be an absolute path");
+const configSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  command: absolute,
+  args: z.array(z.string()).default([]),
+  checkout: absolute,
+  artifactDir: absolute,
+  targets: z.record(
+    text,
+    z.strictObject({
+      stage: text,
+      slot: text,
+      accountId: text,
+      databaseId: text,
+      ledgerDatabaseId: text,
+    }),
+  ),
+});
 
-// The approvals adapter for `ops` (a validated manifest) and `settings` (the
-// layered environment): unconfiguredApprovals without
-// GQ_SUPPORT_APPROVAL_COMMAND, else a command adapter that refuses every
-// lookup while any of its settings is missing.
-export function approvalsFromSettings(ops, settings, { exec, env, resolvePath = (path) => path }) {
-  const command = settings.GQ_SUPPORT_APPROVAL_COMMAND?.trim();
-  if (!command) return unconfiguredApprovals;
-  const missing = [];
-  const approval = ops.deployment?.approval;
-  if (!approval) missing.push("gq.ops.json deployment.approval");
-  const values = {};
-  for (const [key, name] of Object.entries(REQUIRED)) {
-    values[key] = settings[name]?.trim();
-    if (!values[key]) missing.push(name);
+// The approvals adapter this machine configures for `project` (whose Site is
+// at `projectRoot`), from the invoking process's environment `env`:
+// unconfiguredApprovals without the configuration file, else a command
+// adapter, or one that refuses every lookup when the configuration can't be
+// trusted.
+export function approvalsFor({ env, project, projectRoot, operatorCommit = OPERATOR_COMMIT }) {
+  const base = env.XDG_CONFIG_HOME?.trim() || (env.HOME?.trim() && join(env.HOME, ".config"));
+  if (!base || !isAbsolute(base)) return unconfiguredApprovals;
+  const path = join(base, APPROVAL_CONFIG_FILE);
+  let source;
+  try {
+    source = readFileSync(path, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return unconfiguredApprovals;
+    return refusing(`${path} can't be read`);
   }
-  let args = [];
-  if (settings.GQ_SUPPORT_APPROVAL_ARGS?.trim()) {
-    try {
-      args = JSON.parse(settings.GQ_SUPPORT_APPROVAL_ARGS);
-    } catch {
-      args = null;
-    }
-    if (!Array.isArray(args) || !args.every((arg) => typeof arg === "string")) {
-      missing.push("GQ_SUPPORT_APPROVAL_ARGS as a JSON array of strings");
-    }
+  const site = realpathOrNull(projectRoot);
+  if (!site || inside(realpathOrNull(path) ?? path, site)) {
+    return refusing(`${path} is inside the Site, which can't configure its own approvals`);
   }
-  if (missing.length > 0) {
-    return {
-      async lookup() {
-        throw new Error(
-          `The package approval lookup is configured but lacks ${missing.join(", ")}; a guarded package refuses.`,
-        );
-      },
-    };
+  let config;
+  try {
+    config = configSchema.parse(parseStrictJson(source));
+  } catch {
+    return refusing(`${path} isn't a valid approval configuration`);
   }
-  const cwd = settings.GQ_SUPPORT_APPROVAL_CWD?.trim();
+  const target = Object.hasOwn(config.targets, project) ? config.targets[project] : null;
+  if (!target) return refusing(`${path} binds no approval target for ${project}`);
+  for (const [name, configured] of [
+    ["command", config.command],
+    ["checkout", config.checkout],
+  ]) {
+    const real = realpathOrNull(configured);
+    if (!real) return refusing(`${path}'s ${name} doesn't exist`);
+    if (inside(real, site)) return refusing(`${path}'s ${name} is inside the Site`);
+  }
   return createCommandApprovals({
-    command: resolvePath(command),
-    args,
-    cwd: cwd ? resolvePath(cwd) : undefined,
-    slot: approval.slot,
-    stage: approval.stage,
-    ...values,
-    artifactDir: resolvePath(values.artifactDir),
-    exec,
-    env,
+    command: config.command,
+    args: config.args,
+    checkout: config.checkout,
+    artifactDir: config.artifactDir,
+    target,
+    operatorCommit,
+    env: childEnvironment(env),
   });
 }
 
-// A lookup adapter that runs the Operator CLI (see the top of this file).
+// A lookup adapter running the Operator CLI from `checkout` for `target`.
 export function createCommandApprovals({
   command,
   args = [],
-  cwd,
-  slot,
-  stage,
-  accountId,
-  databaseId,
-  ledgerDatabaseId,
+  checkout,
   artifactDir,
-  exec,
+  target,
+  operatorCommit = OPERATOR_COMMIT,
   env,
   timeoutMs = APPROVAL_TIMEOUT_MS,
 }) {
   return {
-    async lookup({ phase, releaseId, package: pkg }) {
+    async lookup({ phase, stage, slot, releaseId, package: pkg }) {
       const label = `The approval lookup for ${pkg.name} ${pkg.version} (release ${releaseId}, phase ${phase})`;
       if (!Number.isSafeInteger(releaseId) || releaseId < 1) {
         throw new Error(`${label} needs the approved release's ID.`);
       }
-      const argv = [
-        ...args,
-        "composer-approval",
-        slot,
-        String(releaseId),
-        artifactDir,
-        phase,
-        "--stage",
-        stage,
-        "--account-id",
-        accountId,
-        "--database-id",
-        databaseId,
-        "--ledger-database-id",
-        ledgerDatabaseId,
-      ];
+      if (stage !== target.stage || slot !== target.slot) {
+        throw new Error(
+          `${label} refused: this Site names ${stage} slot ${slot}, but this machine binds ${target.stage} slot ${target.slot} for it.`,
+        );
+      }
+      await requireReviewedCheckout(checkout, operatorCommit, env, label);
       let result;
       try {
-        result = await exec(command, argv, { cwd, env, timeout: timeoutMs });
+        result = await runBounded(
+          command,
+          [
+            ...args,
+            "composer-approval",
+            target.slot,
+            String(releaseId),
+            artifactDir,
+            phase,
+            "--stage",
+            target.stage,
+            "--account-id",
+            target.accountId,
+            "--database-id",
+            target.databaseId,
+            "--ledger-database-id",
+            target.ledgerDatabaseId,
+          ],
+          { cwd: checkout, env, timeoutMs, maxBytes: MAX_OUTPUT_BYTES },
+        );
       } catch (error) {
-        throw new Error(`${label} couldn't run: ${error.message}`, { cause: error });
+        // runBounded's messages are fixed ("timed out"): no command output.
+        throw new Error(`${label} ${error.message}.`, { cause: error });
       }
-      if (result.code !== 0) {
-        const detail = tail(result.stderr) || `exit ${result.code}`;
-        throw new Error(`${label} refused: ${detail}`);
-      }
-      if (Buffer.byteLength(result.stdout ?? "") > MAX_OUTPUT_BYTES) {
-        throw new Error(`${label} printed more than ${MAX_OUTPUT_BYTES} bytes.`);
-      }
+      if (result.code !== 0) throw new Error(`${label} refused (exit ${result.code}).`);
       let record;
       try {
-        record = JSON.parse(result.stdout);
+        record = parseStrictJson(result.stdout);
       } catch {
         throw new Error(`${label} didn't print one JSON record.`);
       }
       if (!record || typeof record !== "object" || Array.isArray(record)) {
         throw new Error(`${label} didn't print one JSON record.`);
       }
-      if (record.stage !== stage || record.slot !== slot) {
-        throw new Error(
-          `${label} returned a record for ${record.stage}/${record.slot}, not ${stage}/${slot}.`,
-        );
-      }
       return record;
     },
   };
 }
 
-// The last lines of a refusal, bounded.
-function tail(text = "") {
-  return text.trim().split("\n").slice(-5).join(" ").slice(-500);
+// Refuses unless `checkout` is a git work tree at exactly `commit` with no
+// tracked or untracked change (ignored files, such as dependencies, aside).
+async function requireReviewedCheckout(checkout, commit, env, label) {
+  const git = async (args) => {
+    const result = await runBounded("git", ["-C", checkout, ...args], {
+      env,
+      timeoutMs: GIT_TIMEOUT_MS,
+      maxBytes: 1024 * 1024,
+    });
+    if (result.code !== 0) throw new Error("git failed");
+    return result.stdout;
+  };
+  let head;
+  let status;
+  try {
+    head = (await git(["rev-parse", "HEAD"])).trim();
+    status = await git(["status", "--porcelain", "--untracked-files=normal"]);
+  } catch {
+    head = null;
+  }
+  if (head !== commit || status !== "") {
+    throw new Error(
+      `${label} refused: the gq-support checkout isn't clean at the reviewed commit ${commit.slice(0, 12)}.`,
+    );
+  }
+}
+
+function childEnvironment(env) {
+  return Object.fromEntries(
+    CHILD_ENVIRONMENT.filter((name) => typeof env[name] === "string").map((name) => [
+      name,
+      env[name],
+    ]),
+  );
+}
+
+function refusing(reason) {
+  return {
+    async lookup() {
+      throw new Error(
+        `The package approval lookup can't be trusted: ${reason}; a guarded package refuses.`,
+      );
+    },
+  };
+}
+
+function realpathOrNull(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
+function inside(path, root) {
+  const rest = relative(root, path);
+  return rest === "" || (!rest.startsWith("..") && !isAbsolute(rest));
 }

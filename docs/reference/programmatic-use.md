@@ -27,7 +27,7 @@ With `background: { log }` (`gq cms start`'s worker) it starts the child
 detached in its own process group, writing its output to `log`, and resolves
 with its `pid` once it has started.
 
-`approvals` is the seam an authenticated package approval service plugs into
-([Package expectations](package-expectations.md)). Without it, every
-deploy of a Site guarding a Composer package refuses; `bin/gq.mjs` passes
-none yet.
+`approvals` is the package approval lookup ([Package expectations](package-expectations.md)).
+Without it, gq uses the Operator CLI adapter that the machine's own
+`~/.config/gq/support-approval.json` configures, and without that every
+guarded package refuses.

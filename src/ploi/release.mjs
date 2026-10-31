@@ -14,11 +14,16 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 import { createR2Client } from "../r2.mjs";
 import { createReporter } from "../cli/reporter.mjs";
-import { assertDeploymentAllowed, guardedPackages } from "./deployment-policy.mjs";
+import {
+  assertDeploymentAllowed,
+  readDefaultBranchManifest,
+  releasePolicy,
+} from "./deployment-policy.mjs";
+import { validateManifest } from "../manifest/manifest.mjs";
 import {
   SERVER_EXPECTATIONS_FILE,
   prepareGuardedRelease,
@@ -101,12 +106,33 @@ export async function runRelease({
   const git = gitRunner(exec, gitDir ?? context.projectRoot, env);
   const ref = parsed.ref ?? (await defaultRef(git));
   const sha = (await git(["rev-parse", `${ref}^{commit}`])).trim();
+  // Every policy that applies, before anything else reads or changes a
+  // provider: the working tree's, the release commit's and the default
+  // branch's current one (an old commit doesn't carry a newer hold). Any of
+  // them offboarded or holding, or one unreadable, refuses.
+  const manifestPath = relative(context.projectRoot, context.configPath);
+  const { guarded, target } = releasePolicy([
+    { ops, source: "gq.ops.json" },
+    {
+      ops: await requestedManifest(git, sha, manifestPath),
+      source: `release ${sha.slice(0, 12)}'s ${manifestPath}`,
+    },
+    {
+      ops: await readDefaultBranchManifest(git, manifestPath),
+      source: `the default branch's ${manifestPath}`,
+    },
+  ]);
   const version = (await git(["show", `${sha}:VERSION`])).trim();
   const deployScript = await git(["show", `${sha}:${deployScriptPath}`]);
-  // A Site guarding Composer packages checks them, and their approval, at the
-  // release commit before anything is uploaded. The server checks them again
-  // only with a deploy script gq sync rendered for the same packages.
-  const guarded = guardedPackages(ops);
+  // A Site guarding Composer packages (in any of those policies) checks them,
+  // and their approval, at the release commit before anything is uploaded.
+  // The server checks them again only with a deploy script gq sync rendered
+  // for the same packages.
+  if (guarded.length && !target) {
+    throw new Error(
+      `${guarded.join(", ")} ${guarded.length > 1 ? "are" : "is"} guarded, but no gq.ops.json names deployment.approval to look approvals up for; nothing was uploaded or deployed.`,
+    );
+  }
   const serverGuard = `GUARDED_PACKAGES="${guarded.join(" ")}"`;
   if (guarded.length && !deployScript.split("\n").includes(serverGuard)) {
     throw new Error(
@@ -116,6 +142,7 @@ export async function runRelease({
   const { expectations = null, records = [] } = guarded.length
     ? await prepareGuardedRelease({
         project: ops.project,
+        target,
         guarded,
         sha,
         show: (path) => git(["show", `${sha}:${path}`]),
@@ -160,14 +187,21 @@ export async function runRelease({
       serverId: ops.ploi.serverId,
       fetch,
     });
-    // The approval that let this release upload isn't permission to change
-    // the site: look it up again, fresh, right before the first change.
-    if (records.length) {
-      step.message("Revalidating the guarded packages' deploy approval");
-      await revalidateGuardedRelease({ project: ops.project, sha, records, approvals, clock });
-    }
     step.message(`Syncing the Ploi deploy script with ${deployScriptPath}`);
     deployScriptUpdated = await syncDeployScript(client, ops.ploi.siteId, deployScript);
+    // The approval that let this release upload isn't permission to install:
+    // run every deploy lookup again, fresh, right before the deploy request.
+    if (records.length) {
+      step.message("Revalidating the guarded packages' deploy approval");
+      await revalidateGuardedRelease({
+        project: ops.project,
+        target,
+        sha,
+        records,
+        approvals,
+        clock,
+      });
+    }
 
     step.message("Deploying on Ploi (this can take a few minutes)");
     result = await deploy(client, ops.ploi.siteId, {
@@ -207,6 +241,30 @@ function gitRunner(exec, cwd, env) {
     }
     return result.stdout;
   };
+}
+
+// The validated manifest at `manifestPath` in commit `sha`. A commit without
+// one, or with one this gq can't validate, refuses.
+async function requestedManifest(git, sha, manifestPath) {
+  let text;
+  try {
+    text = await git(["show", `${sha}:${manifestPath}`]);
+  } catch (error) {
+    throw new Error(
+      `Release ${sha.slice(0, 12)} has no ${manifestPath} (${error.message}); nothing was uploaded or deployed.`,
+
+      { cause: error },
+    );
+  }
+  try {
+    return validateManifest(JSON.parse(text));
+  } catch (error) {
+    throw new Error(
+      `Release ${sha.slice(0, 12)}'s ${manifestPath} can't be checked (${error.message}); nothing was uploaded or deployed.`,
+
+      { cause: error },
+    );
+  }
 }
 
 async function defaultRef(git) {

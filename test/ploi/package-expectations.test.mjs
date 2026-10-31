@@ -9,11 +9,13 @@ import test from "node:test";
 import {
   checkApprovalRecord,
   checkLockedRecord,
+  installPathOf,
   filesDigest,
   parsePackageExpectations,
   renderServerExpectations,
   unconfiguredApprovals,
 } from "../../src/ploi/package-expectations.mjs";
+import { parseStrictJson } from "../../src/ploi/strict-json.mjs";
 
 // gq-support.php ("hello\n"), src/a-b.php ("abc") and Z.txt ("Z").
 const FILES = Object.freeze({
@@ -24,6 +26,8 @@ const FILES = Object.freeze({
 const DIGEST = "57661d4dc252d72859e8ac659219b6948230f73e2916aa631a04761219bf77d3";
 const NOW = Date.parse("2026-10-31T12:00:00Z");
 const REQUEST = Object.freeze({
+  stage: "prod",
+  slot: "nomia/production",
   phase: "deploy",
   name: "getquick/gq-support",
   version: "0.1.11",
@@ -58,6 +62,14 @@ test("an approval record is acted on only for its phase, package and version, fr
   assert.equal(checkApprovalRecord(record(), REQUEST, NOW).files_digest, DIGEST);
 
   const refusals = [
+    [
+      record({ stage: "staging" }),
+      /is for staging slot nomia\/production, not this Site's prod slot nomia\/production/u,
+    ],
+    [
+      record({ slot: "ekis/production" }),
+      /is for prod slot ekis\/production, not this Site's prod slot nomia\/production/u,
+    ],
     [record({ phase: "prepare" }), /is for phase prepare, not deploy/u],
     [
       record({
@@ -83,6 +95,11 @@ test("an approval record is acted on only for its phase, package and version, fr
   for (const [candidate, message] of refusals) {
     assert.throws(() => checkApprovalRecord(candidate, REQUEST, NOW), message);
   }
+  // A record can't be checked against no target.
+  assert.throws(
+    () => checkApprovalRecord(record(), { ...REQUEST, slot: undefined }, NOW),
+    /without the Site's approval stage and slot/u,
+  );
 });
 
 test("an approval record refuses package paths gq-support refuses", () => {
@@ -131,7 +148,6 @@ test("the Site's expectations file is strict and refuses approval-looking fields
         name: "getquick/gq-support",
         version: "0.1.11",
         releaseId: 11,
-        installPath: "web/app/plugins/gq-support",
       },
     ],
   };
@@ -153,20 +169,32 @@ test("the Site's expectations file is strict and refuses approval-looking fields
   );
 });
 
-test("the lock must install the approved version from the published tag's commit, not as a dev package", () => {
+test("the lock must install the approved version with both references the published tag's commit, not as a dev package", () => {
   const approved = checkApprovalRecord(record(), REQUEST, NOW);
   const lock = (entry, section = "packages") => ({
     [section]: [{ name: "getquick/gq-support", ...entry }],
   });
 
-  // The registry's dist reference (a repacked ZIP) doesn't matter.
   checkLockedRecord(
     lock({
       version: "0.1.11",
       source: { reference: TAG_COMMIT },
-      dist: { reference: "e".repeat(40) },
+      dist: { reference: TAG_COMMIT },
     }),
     approved,
+  );
+  // A repacked registry ZIP doesn't make another commit the approved package.
+  assert.throws(
+    () =>
+      checkLockedRecord(
+        lock({
+          version: "0.1.11",
+          source: { reference: TAG_COMMIT },
+          dist: { reference: "e".repeat(40) },
+        }),
+        approved,
+      ),
+    /with dist reference e{40}, not b{40}/u,
   );
   checkLockedRecord(lock({ version: "v0.1.11", source: { reference: TAG_COMMIT } }), approved);
 
@@ -234,4 +262,75 @@ test("without an approval service, every lookup refuses and says the file isn't 
     }),
     /No package approval lookup is configured.*not an approval/u,
   );
+});
+
+test("strict JSON refuses a repeated member name anywhere, and otherwise parses as JSON.parse does", () => {
+  const text = '{"a":[1,{"b":"\\"x\\""}],"c":null,"d":-1.5e3,"e":true}';
+  assert.deepEqual(parseStrictJson(text), JSON.parse(text));
+  assert.throws(() => parseStrictJson('{"a":1,"a":2}'), /Repeated member name "a"/u);
+  assert.throws(
+    () => parseStrictJson('{"files":{"x.php":"1","x.php":"2"}}'),
+    /Repeated member name "x\.php"/u,
+  );
+  assert.throws(() => parseStrictJson('{"a":1} {"a":1}'), /Unexpected text/u);
+  assert.throws(() => parseStrictJson('{"a":1,}'), /Expected a member name/u);
+  assert.equal(Object.getPrototypeOf(parseStrictJson('{"__proto__":{"x":1}}')), Object.prototype);
+});
+
+test("a package's install path is the one installer-paths pattern composer/installers would use", () => {
+  const bedrock = {
+    extra: {
+      "installer-paths": {
+        "web/app/mu-plugins/{$name}/": ["type:wordpress-muplugin"],
+        "web/app/plugins/{$name}/": ["type:wordpress-plugin"],
+        "web/app/themes/{$name}/": ["type:wordpress-theme"],
+      },
+    },
+  };
+  const support = { name: "getquick/gq-support", type: "wordpress-plugin" };
+  assert.equal(installPathOf(bedrock, support), "web/app/plugins/gq-support");
+  assert.equal(
+    installPathOf(bedrock, { ...support, extra: { "installer-name": "support" } }),
+    "web/app/plugins/support",
+  );
+  assert.equal(
+    installPathOf(
+      {
+        extra: {
+          "installer-paths": { "web/app/mu-plugins/{$vendor}-{$name}": ["getquick/gq-support"] },
+        },
+      },
+      support,
+    ),
+    "web/app/mu-plugins/getquick-gq-support",
+  );
+
+  for (const [composer, entry, message] of [
+    [bedrock, { ...support, type: "library" }, /locked as type library/u],
+    [{}, support, /places getquick\/gq-support nowhere/u],
+    [
+      {
+        extra: {
+          "installer-paths": {
+            ...bedrock.extra["installer-paths"],
+            "web/app/plugins/x/": ["vendor:getquick"],
+          },
+        },
+      },
+      support,
+      /has 2 patterns for getquick\/gq-support/u,
+    ],
+    [
+      { extra: { "installer-paths": { "vendor/{$name}/": ["type:wordpress-plugin"] } } },
+      support,
+      /installs at vendor\/gq-support/u,
+    ],
+    [
+      { extra: { "installer-paths": { "web/app/plugins/{$type}/": ["type:wordpress-plugin"] } } },
+      support,
+      /installs at web\/app\/plugins\/\{\$type\}/u,
+    ],
+  ]) {
+    assert.throws(() => installPathOf(composer, entry), message);
+  }
 });

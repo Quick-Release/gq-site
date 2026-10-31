@@ -81,9 +81,9 @@ export function fetchSource(ref, environment, directory = "/tmp/release-source")
   return directory;
 }
 
-function run(label, command, args) {
+function run(label, command, args, env = process.env) {
   console.log(`\n=== ${label}: ${[command, ...args].join(" ")}`);
-  const result = spawnSync(command, args, { stdio: "inherit" });
+  const result = spawnSync(command, args, { stdio: "inherit", env });
   if (result.error) {
     console.error(`${label} could not start: ${result.error.message}`);
     return 1;
@@ -137,16 +137,21 @@ function main(arguments_) {
   const gitDir = isGitRepository(process.cwd()) ? process.cwd() : fetchSource(ref, process.env);
   console.log(`release source: ${gitDir}`);
 
-  const admin = run("admin", "pnpm", [
-    "exec",
-    "gq",
-    "ploi",
-    "release",
-    "--ref",
-    ref,
-    "--git-dir",
-    gitDir,
-  ]);
+  // gq ploi release reads the default branch's current policy from origin
+  // (Artifacts here): it gets the token in a header via env, never argv.
+  const gitAuth = process.env.ARTIFACTS_TOKEN
+    ? {
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "http.extraHeader",
+        GIT_CONFIG_VALUE_0: `Authorization: Bearer ${process.env.ARTIFACTS_TOKEN}`,
+      }
+    : {};
+  const admin = run(
+    "admin",
+    "pnpm",
+    ["exec", "gq", "ploi", "release", "--ref", ref, "--git-dir", gitDir],
+    { ...process.env, ...gitAuth },
+  );
   if (admin !== 0) return admin;
   return run("frontend", "pnpm", ["run", "deploy:frontend:raw"]);
 }

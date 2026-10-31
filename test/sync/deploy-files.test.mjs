@@ -4,7 +4,7 @@
 // renders the content site's own files (test/fixtures/content-site).
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -378,4 +378,126 @@ test("preview config uses site.bind after Website initialization", async () => {
   );
   assert.doesNotMatch(frontend, /\.\.\.previewEnv/u);
   assert.doesNotMatch(frontend, /PUBLIC_GQ_PREVIEW/u);
+});
+
+// The CI Worker's release admission (infra/ci/release.ts admissionCommand),
+// run as the release step runs it: bash, git and node, with a local bare
+// repository standing in for Artifacts and the generated Site as the tagged
+// workspace. An old tag runs its own scripts, so this is what holds it.
+test("the CI Worker's release admission holds an old tag by the default branch's current policy, and fails closed", async () => {
+  const fixture = await createFixtureSite({ ops: ACME });
+  assert.equal((await fixture.run(["sync"])).code, 0);
+  const { admissionCommand } = await import(join(fixture.root, "infra/ci/release.ts"));
+  const environment = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => !name.startsWith("GIT_") && name !== "NODE_TEST_CONTEXT",
+    ),
+  );
+  const git = (cwd, ...args) =>
+    execFileSync("git", args, { cwd, env: environment, encoding: "utf8" });
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+
+  // `current` on the default branch (none with null), the workspace's own
+  // gq.ops.json as `requested`.
+  async function admit({ current, requested = ACME, remote = true }) {
+    const root = await temporaryDirectory();
+    const bare = join(root, "artifacts.git");
+    git(root, "init", "--quiet", "--bare", "--initial-branch=main", bare);
+    const work = join(root, "work");
+    git(root, "init", "--quiet", "--initial-branch=main", work);
+    if (current !== null)
+      await writeFile(join(work, "gq.ops.json"), `${JSON.stringify(current)}\n`);
+    else await writeFile(join(work, "README.md"), "no manifest\n");
+    git(work, "add", "-A");
+    git(
+      work,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.test",
+      "commit",
+      "--quiet",
+      "-m",
+      "main",
+    );
+    git(work, "push", "--quiet", bare, "main");
+    const workspace = join(root, "workspace");
+    await mkdir(workspace);
+    await writeFile(join(workspace, "gq.ops.json"), `${JSON.stringify(requested)}\n`);
+    return spawnSync("bash", ["-c", admissionCommand(sha)], {
+      cwd: workspace,
+      encoding: "utf8",
+      env: {
+        ...environment,
+        ...(remote ? { ARTIFACTS_REMOTE: bare, ARTIFACTS_TOKEN: "artifacts-token" } : {}),
+      },
+    });
+  }
+
+  const admitted = await admit({ current: ACME });
+  assert.equal(admitted.status, 0, admitted.stderr);
+  assert.match(admitted.stdout, /Release 0123456789ab admitted/u);
+
+  const paused = {
+    ...ACME,
+    deployment: { protected: true, state: "paused", reason: "Controlled release" },
+  };
+  const reserved = {
+    ...ACME,
+    deployment: {
+      protected: true,
+      state: "reserved",
+      reason: "Nightly",
+      holder: "nightly pipeline",
+    },
+  };
+  const guarded = {
+    ...ACME,
+    deployment: {
+      protected: true,
+      state: "authorized",
+      guardedPackages: ["getquick/gq-support"],
+      approval: { slot: "acme/production", stage: "prod" },
+    },
+  };
+  const cases = [
+    // An old tag without the hold, held by the default branch's policy.
+    [{ current: paused }, `${deploymentRefusal(paused, "the default branch's gq.ops.json")}\n`],
+    [
+      { current: ACME, requested: reserved },
+      `${deploymentRefusal(reserved, "release 0123456789ab's gq.ops.json")}\n`,
+    ],
+    [
+      { current: { ...ACME, offboarded: { at: "2026-10-01T09:00:00.000Z", phase: "cut" } } },
+      /acme-shop is offboarded \(the default branch's gq\.ops\.json offboarded\)/u,
+    ],
+    // An old tag whose gq wouldn't verify the guarded package.
+    [{ current: guarded }, /Release 0123456789ab predates the default branch's deployment policy/u],
+    [
+      {
+        current: guarded,
+        requested: { ...guarded, deployment: { protected: true, state: "authorized" } },
+      },
+      /doesn't guard getquick\/gq-support/u,
+    ],
+    // Fail closed.
+    [
+      { current: null },
+      /The default branch's gq\.ops\.json can't be read.*a release refuses without it/u,
+    ],
+    [{ current: ACME, remote: false }, /The default branch's gq\.ops\.json can't be read/u],
+  ];
+  for (const [options, expected] of cases) {
+    const result = await admit(options);
+    assert.equal(result.status, 1, JSON.stringify(options));
+    if (typeof expected === "string") assert.equal(result.stderr, expected);
+    else assert.match(result.stderr, expected);
+    assert.doesNotMatch(result.stderr + result.stdout, /artifacts-token/u);
+  }
+  assert.equal(
+    (await admit({ current: guarded, requested: guarded })).status,
+    0,
+    "a release commit that carries the current policy is admitted",
+  );
+  assert.throws(() => admissionCommand("v1.0.0; rm -rf /"), /Not a commit or tag object id/u);
 });

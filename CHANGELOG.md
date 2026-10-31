@@ -13,37 +13,45 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   `gq release package`, the generated CI release step and the generated
   Frontend deploy refuse a paused or reserved Site before anything is
   uploaded, synced or deployed. No flag lifts a hold; a reviewed Site change
-  does. A Site without the block deploys as before. CI still reads the
-  tagged commit's policy, so a tag predating a hold isn't held yet. See
+  does. A Site without the block deploys as before. A release also checks
+  the default branch's current policy, which it can't proceed without, so an
+  old commit can't release a Site held since; in CI the Worker checks it with
+  its own code before the tagged scripts run (once the Site has redeployed
+  its CI Worker). See
   [Deployment policy](docs/reference/deployment-policy.md). `gq sync` updates
-  `scripts/ci-release.mjs` and `infra/scripts/deploy-frontend.mjs`.
+  `scripts/ci-release.mjs`, `infra/scripts/deploy-frontend.mjs`,
+  `infra/ci/release.ts` and `infra/ci/cloudflare.ci.ts`.
 - **Guarded Composer packages.** `deployment.guardedPackages` (with
-  `deployment.approval`, the Site's approval slot and stage) makes
+  `deployment.approval`, the Site's approval stage and slot) makes
   preparation and deploys of those packages look up gq-support's
   `gq-support.composer-approval/v1` record: through `run()`'s `approvals`
-  adapter, or gq-support's read-only Operator CLI that the environment
-  configures (`GQ_SUPPORT_APPROVAL_COMMAND` and the service's IDs). A record
-  must match exactly; the lock must install its version from its published
-  tag's commit. A deploy looks the record up before uploading and again
-  immediately before changing the Ploi site, and the deploy script verifies
-  the installed files (`gq-support.files/v1`) and the lock after
-  `composer install`, before PHP-FPM reloads or any WP-CLI or database step.
-  Without a configured lookup, guarded packages refuse. The install isn't
-  atomic: a refusal on the server leaves Composer's changed files in place.
-  See [Package expectations](docs/reference/package-expectations.md).
-  `gq sync` updates `deploy/ploi/admin.sh`; a Site guarding nothing deploys
-  as before.
+  adapter, or gq-support's read-only Operator CLI from a gq-support checkout
+  clean at the reviewed commit, which only the Operator's machine configures
+  (`~/.config/gq/support-approval.json`; never a Site's files). A record must
+  match exactly; the lock must install its version with both references its
+  published tag's commit; the install path comes from the release commit's
+  Composer installer paths. A deploy looks the record up before uploading
+  and again immediately before the deploy request, and the deploy script
+  checks the lock before changing anything and the installed files
+  (`gq-support.files/v1`) after `composer install`, before PHP-FPM reloads or
+  any activation or database step. Without a configured lookup, guarded
+  packages refuse. The install isn't atomic: a refusal after Composer leaves
+  its changed files in place. See
+  [Package expectations](docs/reference/package-expectations.md). `gq sync`
+  updates `deploy/ploi/admin.sh`; a Site guarding nothing deploys as before.
 - **Guarded single-package preparation.** `gq release package` takes
   `--to <version>` (lock exactly that version through Composer's temporary
   `--with` constraint, keeping a requirement that already admits it, and
   refusing one that doesn't), `--pin` (also set the requirement to exactly
   that version), `--reference <ref>`, `--expect-before <version>` and
   `--no-deploy`. The update is lock-only and refuses any other locked
-  package's change or any unasked `composer.json` change, restoring both
-  Composer files, and `--no-deploy` commits without any provider call.
+  package's change, any other lock field's change, a `content-hash` Composer
+  wouldn't write, or any unasked file change, undoing its own changes, and
+  `--no-deploy` commits without any provider call.
 - **Composer-only deploys from gq.** `gq ploi release --composer-only` (and
   `gq release package --composer-only`) passes `composer_only`, so the deploy
-  script stops after Composer and its verifications. Until now only the
+  script stops after Composer and its verifications. A deploy that fails
+  before the release is copied now still prints its status line. Until now only the
   deploy script understood `COMPOSER_ONLY`; no gq command set it.
 
 ## 0.29.2 — 2026-10-31

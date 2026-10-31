@@ -313,8 +313,13 @@ alongside their templates: after the offboarding check, a paused or reserved
 Site refuses before the CMS or the Frontend deploys, with the same message
 `gq ploi release` gives. The content
 site's manifest has no `deployment` block, so its release is unchanged.
-`sync/deploy-files.test.mjs` exercises both holds. Written by hand and
-reviewed against the template, not regenerated.
+`sync/deploy-files.test.mjs` exercises both holds. The release admission
+updates the `infra/ci/release.ts` and `infra/ci/cloudflare.ci.ts` baselines:
+the CI Worker runs `admissionCommand` before the tagged
+`scripts/ci-release.mjs`, which now passes the Artifacts token to
+`gq ploi release` in its environment; `sync/deploy-files.test.mjs` runs the
+admission with git, bash and node. Written by hand and reviewed against the
+templates, not regenerated.
 
 ## Preservation
 

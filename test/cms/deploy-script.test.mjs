@@ -521,21 +521,28 @@ test("a guarded deploy refuses an extra, missing or changed file before the relo
   }
 });
 
-test("a guarded deploy refuses another lock than the one gq checked, or a release without expectations", async () => {
+test("a guarded deploy refuses another lock, or a release without expectations, before changing anything on the server", async () => {
   const script = await guardedScript();
-
-  const otherLock = await guardedDeploy(script, { lock: '{"packages":[]}\n' });
-  assert.notEqual(otherLock.code, 0, otherLock.output);
-  assert.match(otherLock.stderr, /composer\.lock isn't the lock gq checked/u);
-  assertStoppedBeforeWordPress(otherLock);
-
-  const missing = await guardedDeploy(script, { expectations: false });
-  assert.notEqual(missing.code, 0, missing.output);
-  assert.match(
-    missing.stderr,
-    /guards getquick\/gq-support, but the release has no PACKAGE_EXPECTATIONS/u,
-  );
-  assertStoppedBeforeWordPress(missing);
+  for (const [options, message] of [
+    [{ lock: '{"packages":[]}\n' }, /The release's composer\.lock isn't the lock gq checked/u],
+    [
+      { expectations: false },
+      /guards getquick\/gq-support, but the release has no PACKAGE_EXPECTATIONS/u,
+    ],
+  ]) {
+    for (const composerOnly of [false, true]) {
+      const result = await guardedDeploy(script, { ...options, composerOnly });
+      assert.notEqual(result.code, 0, result.output);
+      assert.match(result.stderr, message);
+      // Nothing replaced, installed, reloaded or run in WordPress: not even
+      // maintenance mode.
+      assert.deepEqual(
+        result.calls.filter(([tool]) => ["rsync", "composer", "sudo", "wp", "php"].includes(tool)),
+        [],
+      );
+      assert.match(result.stdout, /DEPLOY_STATUS=failed/u);
+    }
+  }
 });
 
 test("a guarded deploy refuses an installed file whose name the approval can't hold", async () => {

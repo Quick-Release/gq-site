@@ -130,6 +130,26 @@ verify_package_expectations() {
   done
 }
 
+# Runs from $SITE_PATH before anything is replaced: PACKAGE_EXPECTATIONS
+# present when the Site guards packages, and the release's composer.lock the
+# one it names.
+verify_release_lock() {
+  local expectations="$tmp_dir/release/PACKAGE_EXPECTATIONS" lock
+  if [ ! -f "$expectations" ]; then
+    if [ -n "$GUARDED_PACKAGES" ]; then
+      echo "This Site guards $GUARDED_PACKAGES, but the release has no PACKAGE_EXPECTATIONS: deploy it with gq ploi release." >&2
+      exit 1
+    fi
+    return 0
+  fi
+  lock="$(sed -n 's/^lock //p' "$expectations" | head -n 1)"
+  if [ -z "$lock" ] || [ ! -f "$tmp_dir/release/$APP_PATH/composer.lock" ] \
+    || [ "$(sha256sum <"$tmp_dir/release/$APP_PATH/composer.lock" | cut -c1-64)" != "$lock" ]; then
+    echo "The release's composer.lock isn't the lock gq checked before uploading it." >&2
+    exit 1
+  fi
+}
+
 # files_digest <listing>: the gq-support.files/v1 digest of a sorted
 # `sha256sum` listing ("<sha256>  <path>" lines).
 files_digest() {
@@ -184,7 +204,9 @@ cleanup() {
     rm -rf "$tmp_dir"
   fi
 
-  deployed_sha="$(sed -n 's/^commit=//p' "$SITE_PATH/RELEASE" 2>/dev/null | head -1)"
+  # Before the release is copied there is no RELEASE yet: report unknown
+  # rather than let the failed read end the trap before the status line.
+  deployed_sha="$(sed -n 's/^commit=//p' "$SITE_PATH/RELEASE" 2>/dev/null | head -1 || true)"
   deployed_sha="${deployed_sha:-unknown}"
   if [ "$exit_code" -eq 0 ]; then
     echo "{{deployStatusMarker}}=success SHA=$deployed_sha"
@@ -216,6 +238,12 @@ if [ ! -f "$tmp_dir/release/RELEASE" ] || [ ! -f "$tmp_dir/release/$APP_PATH/com
   exit 1
 fi
 echo "Deploying $(tr '\n' ' ' < "$tmp_dir/release/RELEASE")"
+
+# A guarded release refuses before anything on the server changes: the
+# archive must carry PACKAGE_EXPECTATIONS, and its lock must be the one gq
+# checked against the approval. The installed files are checked after
+# composer install (verify_package_expectations).
+verify_release_lock
 
 # Replace the shipped code, keeping what the server owns: the .env, Composer's
 # vendor/ and installed WordPress core/plugins/themes, language packs and

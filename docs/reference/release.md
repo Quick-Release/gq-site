@@ -102,12 +102,19 @@ version.
   temporary constraint, so the lock gets exactly that version even when the
   requirement (`^0.1.3`, `*`) admits newer ones. A range never lets Composer
   pick the registry's latest. It never runs `--with-dependencies`, so a
-  version that needs other packages changed fails in Composer. It refuses,
-  restoring `composer.json` and `composer.lock`, when the update adds,
-  removes or changes any other `packages` or `packages-dev` entry, leaves the
-  package at another version or reference, or changes any other file
-  (`composer.json` included, unless `--pin`). It commits only the files it
-  may change. The host Composer must support `update --with` (Composer 2).
+  version that needs other packages changed fails in Composer. It refuses
+  when the update adds, removes or changes any other `packages` or
+  `packages-dev` entry, changes any other top-level lock field (aliases,
+  platform, stability flags, minimum-stability, plugin-api-version), changes
+  `content-hash` (with `--pin`: to anything but the hash Composer computes for
+  the pinned `composer.json`, which gq computes after reproducing the lock's
+  current one), leaves the package at another version or reference, or
+  changes any other file (`composer.json` included, unless `--pin`). It stages
+  and commits exactly the files it may change, checking the index. Any
+  failure up to the commit puts back `composer.json`, `composer.lock` (and a
+  guarded package's expectations), undoes its own staging, and names anything
+  else that changed without touching it. The host Composer must support
+  `update --with` (Composer 2).
   A package in `gq.ops.json`
   `deployment.guardedPackages` is only prepared with `--to` and
   `--release-id`, from a fresh `prepare` approval record looked up before
@@ -116,8 +123,9 @@ version.
   with the lock (see [Package expectations](package-expectations.md)).
 
 `gq ploi release --composer-only` passes the deploy variable `composer_only`,
-which the deploy script reads as `COMPOSER_ONLY=true`: after replacing the
-shipped code it runs `composer install`, restores shipped plugins and
+which the deploy script reads as `COMPOSER_ONLY=true`: after the guarded
+package checks it can make before anything changes, and replacing the
+shipped code, it runs `composer install`, restores shipped plugins and
 themes, applies the dependency patch, verifies any
 [package expectations](package-expectations.md) and reloads PHP-FPM, then
 stops: no maintenance mode, no WP-CLI, no plugin activation and no database

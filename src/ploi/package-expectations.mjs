@@ -56,13 +56,13 @@ const INSTALL_PATH = /^web\/app\/(plugins|mu-plugins|themes)\/[A-Za-z0-9][\w.-]*
 const text = z.string().trim().min(1);
 
 // The Site's reviewed expectation: which package version and which approved
-// release (its release ID, the approval service's lookup key) it intends, and
-// where Composer installs it. Identity and contents come only from the record.
+// release (its release ID, the approval service's lookup key) it intends.
+// Identity and contents come only from the record, and where Composer
+// installs the package from the release commit's own Composer configuration.
 const expectation = z.strictObject({
   name: z.string().regex(COMPOSER_PACKAGE_NAME, "must be a Composer package name"),
   version: z.string().regex(VERSION, "must be an exact version like 1.2.3"),
   releaseId: z.number().int().positive(),
-  installPath: z.string().regex(INSTALL_PATH, "must be web/app/<plugins|mu-plugins|themes>/<slug>"),
 });
 
 const expectations = z.strictObject({
@@ -134,12 +134,20 @@ export function filesDigest(files) {
 }
 
 // The approval record `record` as gq may act on it for `request` at `now`
-// (ms): a record for the same phase, package, exact version and (when asked
-// for one) release ID, whose files hash to its files_digest, observed within
+// (ms): a record for exactly the Site's reviewed stage and slot, the same
+// phase, package, exact version and (when asked for one) release ID, whose files hash to its files_digest, observed within
 // APPROVAL_MAX_AGE_MS. Throws naming the problem otherwise.
-export function checkApprovalRecord(record, { phase, name, version, releaseId }, now) {
+export function checkApprovalRecord(record, { stage, slot, phase, name, version, releaseId }, now) {
   const label = `The approval record for ${name} ${version}`;
+  if (!stage || !slot) {
+    throw new Error(`${label} can't be checked without the Site's approval stage and slot.`);
+  }
   const data = parseWith(approvalRecord, record, label);
+  if (data.stage !== stage || data.slot !== slot) {
+    throw new Error(
+      `${label} is for ${data.stage} slot ${data.slot}, not this Site's ${stage} slot ${slot}.`,
+    );
+  }
   if (data.phase !== phase) throw new Error(`${label} is for phase ${data.phase}, not ${phase}.`);
   if (data.package.name !== name || data.package.version !== version) {
     throw new Error(`${label} approves ${data.package.name} ${data.package.version} instead.`);
@@ -167,17 +175,24 @@ export async function lookUpApproval(approvals, request, clock) {
   const record = await approvals.lookup(request);
   return checkApprovalRecord(
     record,
-    { phase: request.phase, releaseId: request.releaseId, ...request.package },
+    {
+      stage: request.stage,
+      slot: request.slot,
+      phase: request.phase,
+      releaseId: request.releaseId,
+      ...request.package,
+    },
     clock.now(),
   );
 }
 
 // Throws unless `lock` (a parsed composer.lock) installs `record`'s package:
-// in `packages` (a --no-dev install skips packages-dev), at its version, from
-// the commit its published tag points to (source.reference). The record's
-// provenance.source_commit is the gq-support source commit, never compared
-// with the lock, and the registry's dist ZIP is never compared with
-// zip_sha256: the registry may repack it.
+// in `packages` (a --no-dev install skips packages-dev), at its version, with
+// source.reference (and dist.reference, when there is a dist) the commit its
+// published tag points to. The record's provenance.source_commit is the
+// gq-support source commit, never compared with the lock, and the registry's
+// dist ZIP bytes are never compared with zip_sha256: the registry may repack
+// them, but that doesn't make another commit the approved package.
 export function checkLockedRecord(lock, record, lockPath = "apps/cms/composer.lock") {
   const { name, version } = record.package;
   const entry = lockedEntry(lock, name);
@@ -192,13 +207,66 @@ export function checkLockedRecord(lock, record, lockPath = "apps/cms/composer.lo
   if (normaliseVersion(entry.version) !== version) {
     throw new Error(`${lockPath} locks ${name} ${entry.version}, not the approved ${version}.`);
   }
+  // Both of the lock's references must be the published tag's commit: a
+  // repacked registry ZIP doesn't make another commit the same package.
+  const commit = record.published_tag.commit;
   const reference = entry.source?.reference;
-  if (reference !== record.published_tag.commit) {
+  if (reference !== commit) {
     throw new Error(
-      `${lockPath} locks ${name} from source reference ${reference ?? "(none)"}, not ${record.published_tag.commit}, the commit the approved ${record.published_tag.name} tag points to.`,
+      `${lockPath} locks ${name} from source reference ${reference ?? "(none)"}, not ${commit}, the commit the approved ${record.published_tag.name} tag points to.`,
+    );
+  }
+  if (entry.dist && entry.dist.reference !== commit) {
+    throw new Error(
+      `${lockPath} locks ${name} with dist reference ${entry.dist.reference ?? "(none)"}, not ${commit}, the commit the approved ${record.published_tag.name} tag points to.`,
     );
   }
   return entry;
+}
+
+// The WordPress package types composer/installers places.
+const WORDPRESS_TYPES = new Set(["wordpress-plugin", "wordpress-muplugin", "wordpress-theme"]);
+
+// Where Composer installs the lock entry `entry` under the CMS composer.json
+// `composer` (both from the release commit), as composer/installers decides
+// it: the extra.installer-paths pattern that names the package, its
+// `type:<type>` or its `vendor:<vendor>`, with {$name} (the package's
+// installer-name, else its name) and {$vendor} filled in. Throws unless
+// exactly one pattern applies and the result is a WordPress plugin, must-use
+// plugin or theme directory.
+export function installPathOf(composer, entry, composerPath = "apps/cms/composer.json") {
+  const [vendor, name] = entry.name.split("/");
+  if (!WORDPRESS_TYPES.has(entry.type)) {
+    throw new Error(
+      `${entry.name} is locked as type ${entry.type ?? "(none)"}, not a WordPress plugin or theme gq can place.`,
+    );
+  }
+  const paths = composer?.extra?.["installer-paths"];
+  const matching = Object.entries(paths && typeof paths === "object" ? paths : {}).filter(
+    ([, selectors]) =>
+      Array.isArray(selectors) &&
+      (selectors.includes(entry.name) ||
+        selectors.includes(`type:${entry.type}`) ||
+        selectors.includes(`vendor:${vendor}`)),
+  );
+  if (matching.length !== 1) {
+    throw new Error(
+      matching.length === 0
+        ? `${composerPath}'s extra.installer-paths places ${entry.name} nowhere; gq needs exactly one pattern to know where it installs.`
+        : `${composerPath}'s extra.installer-paths has ${matching.length} patterns for ${entry.name}; gq needs exactly one to know where it installs.`,
+    );
+  }
+  const installerName = entry.extra?.["installer-name"];
+  const path = matching[0][0]
+    .replaceAll("{$name}", typeof installerName === "string" ? installerName : name)
+    .replaceAll("{$vendor}", vendor)
+    .replace(/\/+$/u, "");
+  if (!INSTALL_PATH.test(path)) {
+    throw new Error(
+      `${entry.name} installs at ${path}, not a web/app/plugins, mu-plugins or themes directory gq can verify.`,
+    );
+  }
+  return path;
 }
 
 // The PACKAGE_EXPECTATIONS file the deploy script reads: line-based, so the
@@ -216,8 +284,9 @@ export function renderServerExpectations(packages, lockText) {
   return `${lines.join("\n")}\n`;
 }
 
-// The approval seam. `lookup({ phase, project, releaseId, releaseCommit?,
-// package: { name, version } })` resolves to the approval service's current
+// The approval seam. `lookup({ phase, project, stage, slot, releaseId,
+// releaseCommit?, package: { name, version } })` (stage and slot: the Site's
+// reviewed gq.ops.json deployment.approval) resolves to the approval service's current
 // gq-support.composer-approval/v1 record for that release and phase, or
 // rejects when there is none (not approved, withdrawn, unreadable). Without a
 // configured adapter (approval-command.mjs), this one refuses.
@@ -235,7 +304,15 @@ export const unconfiguredApprovals = Object.freeze({
 // expects, and checks the lock installs exactly that record's package.
 // Resolves to { expectations: the PACKAGE_EXPECTATIONS text, records }.
 // Throws, before anything is uploaded, on any failure.
-export async function prepareGuardedRelease({ project, guarded, sha, show, approvals, clock }) {
+export async function prepareGuardedRelease({
+  project,
+  target,
+  guarded,
+  sha,
+  show,
+  approvals,
+  clock,
+}) {
   const read = async (path) => {
     try {
       return await show(path);
@@ -257,46 +334,64 @@ export async function prepareGuardedRelease({ project, guarded, sha, show, appro
     }
     return pkg;
   });
+  const composer = JSON.parse(await read("apps/cms/composer.json"));
   const records = [];
+  const shipped = [];
   for (const pkg of packages) {
-    const record = await lookUpApproval(approvals, deployRequest(project, sha, pkg), clock);
-    checkLockedRecord(lock, record);
+    const record = await lookUpApproval(approvals, deployRequest(project, target, sha, pkg), clock);
+    const entry = checkLockedRecord(lock, record);
     records.push(record);
+    shipped.push({
+      ...pkg,
+      installPath: installPathOf(composer, entry),
+      files: record.files,
+      filesDigest: record.files_digest,
+    });
   }
-  const shipped = packages.map((pkg, index) => ({
-    ...pkg,
-    files: records[index].files,
-    filesDigest: records[index].files_digest,
-  }));
   return { expectations: renderServerExpectations(shipped, lockText), records };
 }
 
-// Runs every deploy lookup again, fresh, immediately before a release changes
-// the Ploi site: each must succeed and match the record the release checked
+// Runs every deploy lookup again, fresh, immediately before a release's
+// deploy request: each must succeed and match the record the release checked
 // in every field but observed_at. Throws otherwise.
-export async function revalidateGuardedRelease({ project, sha, records, approvals, clock }) {
+export async function revalidateGuardedRelease({
+  project,
+  target,
+  sha,
+  records,
+  approvals,
+  clock,
+}) {
   for (const before of records) {
     const pkg = { ...before.package, releaseId: before.release_id };
     let now;
     try {
-      now = await lookUpApproval(approvals, deployRequest(project, sha, pkg), clock);
+      now = await lookUpApproval(approvals, deployRequest(project, target, sha, pkg), clock);
     } catch (error) {
       throw new Error(
-        `${pkg.name} ${pkg.version} is no longer approved for deploy (${error.message}); the Ploi site was not changed.`,
+        `${pkg.name} ${pkg.version} is no longer approved for deploy (${error.message}); nothing was deployed.`,
         { cause: error },
       );
     }
     const changed = differingFields(before, now).filter((field) => field !== "observed_at");
     if (changed.length > 0) {
       throw new Error(
-        `${pkg.name} ${pkg.version}'s approval changed since this release checked it (${changed.join(", ")}); the Ploi site was not changed.`,
+        `${pkg.name} ${pkg.version}'s approval changed since this release checked it (${changed.join(", ")}); nothing was deployed.`,
       );
     }
   }
 }
 
-function deployRequest(project, releaseCommit, { name, version, releaseId }) {
-  return { phase: "deploy", project, releaseId, releaseCommit, package: { name, version } };
+function deployRequest(project, { stage, slot }, releaseCommit, { name, version, releaseId }) {
+  return {
+    phase: "deploy",
+    project,
+    stage,
+    slot,
+    releaseId,
+    releaseCommit,
+    package: { name, version },
+  };
 }
 
 // The dotted paths at which two parsed records differ.

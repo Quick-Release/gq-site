@@ -5,6 +5,7 @@ import { CMS_PATH, composerDependencyChange } from "../cms/local.mjs";
 import { COMPOSER_PACKAGE_NAME } from "../manifest/schema.mjs";
 import { loadSiteSettings } from "../manifest/site-settings.mjs";
 import { parseVersion, satisfiesConstraint } from "../packages/versions.mjs";
+import { composerContentHash } from "../cms/composer-content-hash.mjs";
 import { assertDeploymentAllowed, guardedPackages } from "../ploi/deployment-policy.mjs";
 import {
   PACKAGE_EXPECTATIONS_PATH,
@@ -371,8 +372,8 @@ function createRelease({ config, root, env, exec, io }) {
 // fresh phase "prepare" record (before Composer runs; without a lookup it
 // refuses). The lock must then install it from the commit the record's
 // published tag points to (never a caller's --reference), and its entry in
-// deploy/ploi/package-expectations.json (version, release ID, install path)
-// is committed with the lock. Preparing isn't permission to deploy: the
+// deploy/ploi/package-expectations.json (version, release ID) is committed
+// with the lock. Preparing isn't permission to deploy: the
 // deploy looks the approval up again.
 async function releasePackage(
   name,
@@ -433,6 +434,8 @@ async function releasePackage(
         {
           phase: "prepare",
           project: context.config.project,
+          stage: context.config.deployment.approval.stage,
+          slot: context.config.deployment.approval.slot,
           releaseId: options.releaseId,
           package: { name, version: options.to },
         },
@@ -461,12 +464,30 @@ async function releasePackage(
     ...(options.guardedPackage ? [PACKAGE_EXPECTATIONS_PATH] : []),
   ]);
 
+  // --pin changes composer.json, and so the lock's content-hash: the new hash
+  // must be the one Composer computes, checked independently, which needs
+  // the lock's current hash to be reproducible first.
+  let pinnedText = null;
+  let contentHash = beforeLock["content-hash"];
+  if (options.pin) {
+    if (composerContentHash(composerText) !== beforeLock["content-hash"]) {
+      throw new Error(
+        `${COMPOSER_LOCK}'s content-hash isn't the one gq computes for ${COMPOSER_JSON}, so gq can't check the hash --pin would change; nothing changed.`,
+      );
+    }
+    pinnedText = pinRequirement(composerText, name, options.to);
+    contentHash = composerContentHash(pinnedText);
+  }
+
   io.out(`Updating ${name} in ${COMPOSER_LOCK}.`);
   let after;
+  let staged = false;
+  let committed = false;
+  // Guarded preparation keeps every change through the commit inside one
+  // refusal: whatever fails, the files it owns are put back, its staging is
+  // undone, and anything else that changed is named and left alone.
   try {
-    if (options.pin) {
-      await writeFile(composerPath, pinRequirement(composerText, name, options.to));
-    }
+    if (pinnedText !== null) await writeFile(composerPath, pinnedText);
     // --to resolves exactly that version (a temporary constraint, as
     // `composer update --with` takes it), whatever newer one the requirement
     // also admits.
@@ -484,62 +505,72 @@ async function releasePackage(
     const afterLock = await readLockFile(root);
     after = lockedPackage(afterLock, name);
     if (!after) throw new Error(`${COMPOSER_LOCK} has no ${name} after composer update.`);
-    if (options.guarded) checkLockChange(beforeLock, afterLock, name, options);
+    if (options.guarded) checkLockChange(beforeLock, afterLock, name, options, contentHash);
     // A guarded package is locked from exactly the approved published tag,
     // and the Site's expectation names the approved release for review with
     // the lock change.
     if (approval) {
       checkLockedRecord(afterLock, approval);
       const existing = expectationsText ? parsePackageExpectations(expectationsText).packages : [];
-      const previous = existing.find((pkg) => pkg.name === name);
-      const entry = {
-        name,
-        version: options.to,
-        releaseId: approval.release_id,
-        installPath: previous?.installPath ?? `web/app/plugins/${name.split("/")[1]}`,
-      };
+      const entry = { name, version: options.to, releaseId: approval.release_id };
       await writeFile(
         expectationsPath,
         packageExpectationsText([...existing.filter((pkg) => pkg.name !== name), entry]),
       );
     }
+
+    const version = await release.readVersion();
+    assertVersion(version);
+    await release.sync(version);
+    await release.check(version);
+
+    const changed = changedPaths(await release.git(["status", "--porcelain"]));
+    if (changed.length > 0) {
+      if (options.guarded) {
+        const unexpected = changed.filter((path) => !allowed.has(path));
+        if (unexpected.length > 0) {
+          throw new Error(
+            `Preparing ${name} changed ${unexpected.join(", ")} too; only ${[...allowed].join(", ")} may change.`,
+          );
+        }
+        staged = true;
+        await release.runCommand("git", ["add", "--", ...changed]);
+        const indexed = (await release.git(["diff", "--cached", "--name-only"]))
+          .split(/\r?\n/u)
+          .filter(Boolean);
+        if ([...indexed].sort().join("\n") !== [...changed].sort().join("\n")) {
+          throw new Error(
+            `The index holds ${indexed.join(", ") || "nothing"}, not exactly ${changed.join(", ")}.`,
+          );
+        }
+      } else {
+        await release.stage();
+      }
+      await release.runCommand("git", [
+        "commit",
+        "-m",
+        `Update ${name} to ${describePackage(after)}`,
+      ]);
+      committed = true;
+    } else if (options.noDeploy) {
+      io.out(
+        `${COMPOSER_LOCK} already pins ${name} ${describePackage(before)}; nothing to prepare.`,
+      );
+      return 0;
+    } else {
+      io.out(`${COMPOSER_LOCK} already pins ${name} ${describePackage(before)}; deploying HEAD.`);
+    }
   } catch (error) {
-    if (options.guarded) {
+    if (options.guarded && !committed) {
+      if (staged) await release.git(["reset", "--quiet", "--", ...allowed]).catch(() => {});
       await restore();
-      error.message += ` ${restored}; nothing was committed.`;
+      const left = await release
+        .git(["status", "--porcelain"])
+        .then((status) => changedPaths(status).filter((path) => !allowed.has(path)))
+        .catch(() => []);
+      error.message += ` ${restored}; nothing was committed.${left.length ? ` Left as they are, not gq's to restore: ${left.join(", ")}.` : ""}`;
     }
     throw error;
-  }
-
-  const version = await release.readVersion();
-  assertVersion(version);
-  await release.sync(version);
-  await release.check(version);
-
-  const changed = changedPaths(await release.git(["status", "--porcelain"]));
-  if (changed.length > 0) {
-    if (options.guarded) {
-      const unexpected = changed.filter((path) => !allowed.has(path));
-      if (unexpected.length > 0) {
-        await restore();
-        throw new Error(
-          `Preparing ${name} changed ${unexpected.join(", ")} too; only ${[...allowed].join(", ")} may change. ${restored}; nothing was committed.`,
-        );
-      }
-      await release.runCommand("git", ["add", "--", ...changed]);
-    } else {
-      await release.stage();
-    }
-    await release.runCommand("git", [
-      "commit",
-      "-m",
-      `Update ${name} to ${describePackage(after)}`,
-    ]);
-  } else if (options.noDeploy) {
-    io.out(`${COMPOSER_LOCK} already pins ${name} ${describePackage(before)}; nothing to prepare.`);
-    return 0;
-  } else {
-    io.out(`${COMPOSER_LOCK} already pins ${name} ${describePackage(before)}; deploying HEAD.`);
   }
 
   if (options.noDeploy) {
@@ -648,8 +679,16 @@ function pinRequirement(text, name, to) {
 
 // Refuses a lock update that changed anything but `name`, or left `name` at
 // another version or reference than the options ask for.
-function checkLockChange(before, after, name, { to, reference }) {
+function checkLockChange(before, after, name, { to, reference }, contentHash) {
   const problems = [];
+  // Every other top-level field (aliases, platform, stability flags,
+  // minimum-stability, plugin-api-version, …) stays exactly as it was, and
+  // content-hash is the expected one (unchanged without --pin).
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (key === "packages" || key === "packages-dev") continue;
+    const expected = key === "content-hash" ? contentHash : before[key];
+    if (JSON.stringify(after[key]) !== JSON.stringify(expected)) problems.push(`changed ${key}`);
+  }
   for (const section of ["packages", "packages-dev"]) {
     const entries = (lock) =>
       new Map(
@@ -673,7 +712,7 @@ function checkLockChange(before, after, name, { to, reference }) {
   }
   if (problems.length > 0) {
     throw new Error(
-      `composer update ${name} changed other locked packages: ${problems.join(", ")}.`,
+      `composer update ${name} changed more of ${COMPOSER_LOCK} than ${name}: ${problems.join(", ")}.`,
     );
   }
   const entry = lockedPackage(after, name);

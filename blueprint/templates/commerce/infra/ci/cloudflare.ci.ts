@@ -5,7 +5,7 @@ import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { Bindings } from "./env";
 import { postCommitStatus } from "./github.ts";
 import type { CommitState } from "./github.ts";
-import { isRelease } from "./release.ts";
+import { admissionCommand, isRelease } from "./release.ts";
 
 // Steps restore the install step's workspace snapshot, but pnpm's store lives
 // outside it, so `pnpm run`'s dependency check would reinstall everything in
@@ -129,7 +129,10 @@ export class CI extends CIWorkflow<CloudflareArtifacts, Bindings> {
     await workspace.runner({
       name: "release",
       env: pnpmEnv,
-      command: `node scripts/ci-release.mjs --ref ${params.sha}`,
+      // Admission first, with this Worker's own code: the default branch's
+      // current policy and the release commit's must both allow a release
+      // (release.ts), whatever the tagged scripts would do.
+      command: `${admissionCommand(params.sha)}\nnode scripts/ci-release.mjs --ref ${params.sha}`,
       // COMPOSER_AUTH is handed to the Ploi deploy for its composer install;
       // the storefront Runtime's secrets to the Frontend's deploy, when this
       // Worker has them (a step naming a secret the Worker lacks fails; the

@@ -5,14 +5,21 @@
 // anything is uploaded, synced or deployed. No flag lifts a hold: a reviewed
 // Site change to gq.ops.json does. Offboarding is refused separately and
 // earlier, for every command that could expose the Site (offboard/guard.mjs).
+//
+// A release checks every policy that applies to it: the working tree's, the
+// release commit's and the default branch's current one, which a release
+// can't proceed without (readDefaultBranchManifest). An old commit that
+// predates a hold doesn't carry it, so the current policy is what holds it.
+import { validateManifest } from "../manifest/manifest.mjs";
 
-// Why `ops` (a validated manifest) can't be deployed now, or null.
-export function deploymentRefusal(ops) {
+// Why `ops` (a validated manifest) can't be deployed now, or null. `source`
+// names where its gq.ops.json came from.
+export function deploymentRefusal(ops, source = "gq.ops.json") {
   const policy = ops.deployment;
   if (!policy || policy.state === "authorized") return null;
   const who = policy.state === "reserved" ? ` is reserved by ${policy.holder}` : " is paused";
   return (
-    `${ops.project}${who} (gq.ops.json deployment.state: ${policy.state}): ${policy.reason}. ` +
+    `${ops.project}${who} (${source} deployment.state: ${policy.state}): ${policy.reason}. ` +
     "Nothing was uploaded, synced or deployed. " +
     'A reviewed Site change that sets deployment.state to "authorized" lifts the hold.'
   );
@@ -27,4 +34,56 @@ export function assertDeploymentAllowed(ops) {
 // The Composer packages a deploy of `ops` verifies (deployment.guardedPackages).
 export function guardedPackages(ops) {
   return ops.deployment?.guardedPackages ?? [];
+}
+
+// Every policy a release of commit `sha` must pass: `manifests` are
+// [{ ops, source }] (validated manifests and where each came from). Throws
+// the first refusal: an offboarded or held manifest. Resolves to the union of
+// their guarded packages and the approval target the first one naming it
+// gives.
+export function releasePolicy(manifests) {
+  for (const { ops, source } of manifests) {
+    if (ops.offboarded) {
+      throw new Error(
+        `${ops.project} is offboarded (${source} offboarded): a release would expose it again. Nothing was uploaded, synced or deployed.`,
+      );
+    }
+    const refusal = deploymentRefusal(ops, source);
+    if (refusal) throw new Error(refusal);
+  }
+  const guarded = [...new Set(manifests.flatMap(({ ops }) => guardedPackages(ops)))];
+  const target = manifests.find(({ ops }) => ops.deployment?.approval)?.ops.deployment.approval;
+  return { guarded, target };
+}
+
+// The validated manifest at `manifestPath` on origin's default branch, read
+// through `git` (a runner resolving to stdout or throwing) without touching
+// the working tree: only FETCH_HEAD and objects change. Throws when the
+// default branch or its manifest can't be read: a release refuses without it.
+export async function readDefaultBranchManifest(git, manifestPath) {
+  const refuse = (detail, cause) =>
+    new Error(
+      `The default branch's ${manifestPath} can't be read (${detail}), so its current deployment policy can't be checked: a release refuses without it. Nothing was uploaded, synced or deployed.`,
+      { cause },
+    );
+  let branch;
+  try {
+    const head = await git(["ls-remote", "--symref", "origin", "HEAD"]);
+    branch = /^ref: refs\/heads\/(\S+)\tHEAD$/mu.exec(head)?.[1];
+  } catch (error) {
+    throw refuse(error.message, error);
+  }
+  if (!branch) throw refuse("origin names no default branch");
+  let text;
+  try {
+    await git(["fetch", "--quiet", "--no-tags", "origin", `refs/heads/${branch}`]);
+    text = await git(["show", `FETCH_HEAD:${manifestPath}`]);
+  } catch (error) {
+    throw refuse(error.message, error);
+  }
+  try {
+    return validateManifest(JSON.parse(text));
+  } catch (error) {
+    throw refuse(error.message, error);
+  }
 }

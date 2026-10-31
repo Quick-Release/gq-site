@@ -8,9 +8,8 @@ prepares and deploys them only with an approval record looked up from
 gq-support's approval service. Two inputs are kept apart:
 
 - **The Site's expectation**, `deploy/ploi/package-expectations.json`: which
-  version and which approved release the Site's reviewed source intends, and
-  where Composer installs it. Anyone who can change the Site can edit it, so
-  it is never authority.
+  version and which approved release the Site's reviewed source intends.
+  Anyone who can change the Site can edit it, so it is never authority.
 - **The approval record** (`gq-support.composer-approval/v1`, owned by
   gq-support), which the approval lookup returns. It is the only authority:
   the package's identity (its published tag's commit) and its exact file list
@@ -30,29 +29,30 @@ No command-line flag, typed digest, reference or boolean stands in for it.
 ```json
 {
   "schemaVersion": 1,
-  "packages": [
-    {
-      "name": "getquick/gq-support",
-      "version": "0.1.11",
-      "releaseId": 11,
-      "installPath": "web/app/plugins/gq-support"
-    }
-  ]
+  "packages": [{ "name": "getquick/gq-support", "version": "0.1.11", "releaseId": 11 }]
 }
 ```
 
-Strict: an unknown key (`approved`, `filesDigest`, `lockReference`, …)
-fails. `releaseId` is the approval service's ID for the release, the key a
-lookup takes; the service refuses one that isn't its current approved
-release. `installPath` is relative to `apps/cms`: `web/app/plugins/<slug>`,
-`web/app/mu-plugins/<slug>` or `web/app/themes/<slug>`.
-`gq release package --to … --release-id …` writes the entry (below); review
-it with the lock change.
+Strict: an unknown key (`approved`, `filesDigest`, `lockReference`,
+`installPath`, …) fails. `releaseId` is the approval service's ID for the
+release, the key a lookup takes; the service refuses one that isn't its
+current approved release. `gq release package --to … --release-id …` writes
+the entry (below); review it with the lock change.
+
+Where the package installs isn't the Site's to state: gq derives it from the
+release commit's `apps/cms/composer.json` `extra.installer-paths` and the
+lock entry's package type, as composer/installers does (the one pattern
+naming the package, its `type:` or its `vendor:`, with `{$name}` and
+`{$vendor}`; the package's `installer-name` when it has one). No matching
+pattern, more than one, a non-WordPress type or a path outside
+`web/app/plugins`, `web/app/mu-plugins` or `web/app/themes` refuses. For
+gq-support in a GETQUICK Site that is `web/app/plugins/gq-support`.
 
 ## The approval record
 
 gq-support defines it ([gq-support PR 154](https://github.com/Quick-Release/gq-support/pull/154),
-provisional until merged); gq reads exactly these keys and refuses a record
+merged in [`29de3c7`](https://github.com/Quick-Release/gq-support/commit/29de3c7ec66ad96d6726bae20766c2acc7fcc312)).
+gq reads exactly these keys, in every object but `files`, and refuses a record
 with a missing or unknown one:
 
 ```json
@@ -74,22 +74,30 @@ with a missing or unknown one:
 
 gq acts on a record only when:
 
-- it is for the slot and stage `gq.ops.json` `deployment.approval` names, the
-  phase asked, the package, the exact version and the release ID asked;
+- it is for exactly the stage and slot the Site's reviewed `gq.ops.json`
+  `deployment.approval` names (every lookup carries them, whatever adapter
+  answers), the phase asked, the package, the exact version and the release ID
+  asked;
 - its `files` hash to its `files_digest` (`gq-support.files/v1`, below);
-- its `observed_at` is within five minutes of now (at most one minute ahead).
+- its `observed_at`, the Operator CLI's point-in-time observation, not the
+  approval's time, is within five minutes of now (at most one minute ahead).
+  That is a ceiling, not a cache: every deploy-phase check runs the lookup
+  afresh, and a slow lookup can expire.
 
 Identity:
 
 - `composer.lock`'s `source.reference` for the package must be
-  `published_tag.commit`, the commit the approved tag points to. The lock's
-  version must be `package.version`, in `packages` (the server's `--no-dev`
-  install skips `packages-dev`).
+  `published_tag.commit`, the commit the approved tag points to, verified by
+  gq-support against the approved files. A lock entry without a source
+  reference refuses. Its `dist.reference`, when there is a dist, must be the
+  same commit: a repacked registry ZIP doesn't make another commit the
+  package. The lock's version must be `package.version`, in `packages` (the
+  server's `--no-dev` install skips `packages-dev`).
 - `provenance.source_commit` is gq-support's source commit. It is never
   compared with the lock.
 - `package.zip_sha256` is the approved release-workflow ZIP, not the Composer
-  registry's dist ZIP, which may be repacked: the registry's bytes, its
-  `dist.shasum` and its `dist.reference` are never compared.
+  registry's dist ZIP: the registry's bytes and its `dist.shasum` are never
+  compared.
 
 ### gq-support.files/v1
 
@@ -104,52 +112,64 @@ installed file fails, as does any extra, missing or changed file.
 ## The lookup
 
 `run()` takes an `approvals` adapter, `{ lookup(request) }`, where `request`
-is `{ phase, project, releaseId, releaseCommit?, package: { name, version } }`
-and the result is the record, or a rejection. Without one, gq builds the
-Operator CLI adapter from the environment, and without that configuration
-there is no lookup at all.
+is `{ phase, project, stage, slot, releaseId, releaseCommit?, package: { name,
+version } }` and the result is the record, or a rejection. Without one, gq
+uses the Operator CLI adapter if the machine running gq configures it, and
+otherwise there is no lookup at all.
 
-The Operator CLI adapter runs gq-support's read-only command with the
-Operator's own Cloudflare and GitHub logins:
+### The Operator CLI adapter
+
+It runs gq-support's read-only command from a reviewed gq-support checkout,
+with the Operator's own Cloudflare (Wrangler) and GitHub (`gh`) logins:
 
 ```
-<GQ_SUPPORT_APPROVAL_COMMAND> [<GQ_SUPPORT_APPROVAL_ARGS>...] composer-approval \
-  <slot> <release-id> <GQ_SUPPORT_ARTIFACT_DIR> <prepare|deploy> \
-  --stage <stage> --account-id <GQ_SUPPORT_ACCOUNT_ID> \
-  --database-id <GQ_SUPPORT_DATABASE_ID> --ledger-database-id <GQ_SUPPORT_LEDGER_DATABASE_ID>
+<command> [<args>...] composer-approval <slot> <release-id> <artifactDir> <prepare|deploy> \
+  --stage <stage> --account-id <accountId> --database-id <databaseId> --ledger-database-id <ledgerDatabaseId>
 ```
 
-| Setting                                                                            | Where                                                                                                      |
-| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `deployment.approval.slot`, `.stage`                                               | `gq.ops.json`, a reviewed Site change; required with `guardedPackages`.                                    |
-| `GQ_SUPPORT_APPROVAL_COMMAND`                                                      | The environment: the executable (for example a wrapper around `pnpm --filter gq-support-worker operator`). |
-| `GQ_SUPPORT_APPROVAL_ARGS`, `GQ_SUPPORT_APPROVAL_CWD`                              | Optional: a JSON array of arguments before `composer-approval`, and the directory to run it in.            |
-| `GQ_SUPPORT_ACCOUNT_ID`, `GQ_SUPPORT_DATABASE_ID`, `GQ_SUPPORT_LEDGER_DATABASE_ID` | The approval service's IDs for the stage.                                                                  |
-| `GQ_SUPPORT_ARTIFACT_DIR`                                                          | The downloaded release artifact (`gq-support.zip`, `gq-support.manifest.json`, `provenance.json`).         |
+Its configuration is only the Operator's machine's: the file
+`$XDG_CONFIG_HOME/gq/support-approval.json` (else
+`$HOME/.config/gq/support-approval.json`) of the process running gq. A Site's
+`.env`, `ops.env`, Sigillo values or `gq.ops.json` never configure it, and a
+configuration file, command or checkout inside the Site refuses.
 
-For example, with a reviewed gq-support checkout pinned at the merge commit
-that introduced the command
-([`29de3c7`](https://github.com/Quick-Release/gq-support/commit/29de3c7ec66ad96d6726bae20766c2acc7fcc312)),
-an Operator's environment might hold:
-
-```sh
-GQ_SUPPORT_APPROVAL_COMMAND=pnpm
-GQ_SUPPORT_APPROVAL_ARGS='["--filter","gq-support-worker","operator"]'
-GQ_SUPPORT_APPROVAL_CWD=/path/to/gq-support   # checked out at 29de3c7
-GQ_SUPPORT_ACCOUNT_ID=…
-GQ_SUPPORT_DATABASE_ID=…
-GQ_SUPPORT_LEDGER_DATABASE_ID=…
-GQ_SUPPORT_ARTIFACT_DIR=/path/to/downloaded/release-artifact
+```json
+{
+  "schemaVersion": 1,
+  "command": "/usr/bin/pnpm",
+  "args": ["--filter", "gq-support-worker", "operator"],
+  "checkout": "/srv/gq-support",
+  "artifactDir": "/srv/gq-support-artifacts/v0.1.11",
+  "targets": {
+    "nomia": {
+      "stage": "prod",
+      "slot": "nomia/production",
+      "accountId": "…",
+      "databaseId": "…",
+      "ledgerDatabaseId": "…"
+    }
+  }
+}
 ```
 
-This is an example, not an enabled target: until the approval service has an
-approved release and the Site's slot is bound to it (reviewed gq-support
+- `command` and `checkout` are absolute and outside the Site. The checkout
+  must be a git work tree clean at the commit gq-site pins
+  (`29de3c7ec66ad96d6726bae20766c2acc7fcc312`, a reviewed gq-site change to
+  move); untracked files count, ignored ones (dependencies) don't. A checkout
+  that isn't refuses before the command runs.
+- `targets` binds each project to its approval target. A lookup refuses
+  unless the Site's `deployment.approval` names that same stage and slot.
+- The command runs without a shell, in its own process group, for at most two
+  minutes and 4 MiB of output, read as it streams; when it exits or passes a
+  bound, the whole group is killed. It gets only `PATH`, `HOME`, `USER`,
+  `LOGNAME`, the locale, `TZ`, `TMPDIR`, the `XDG_*` directories and the CA
+  certificate settings: no Composer, Ploi, R2, Cloudflare or GitHub tokens.
+- Its stdout must be exactly one JSON object, with no repeated member name.
+  Every refusal is a fixed message: none carries the command's output.
+
+This configuration isn't enabled anywhere yet: until the approval service has
+an approved release and the Site's slot is bound to it (reviewed gq-support
 follow-ups), the command refuses, and so does every guarded package.
-
-No shell runs: each value is one argument. A lookup takes at most two minutes
-and prints at most 4 MiB. A non-zero exit, output that isn't exactly one JSON
-object, a record for another slot or stage, or any check above failing is a
-refusal. A configured command with a setting missing refuses every lookup.
 
 ## Preparing a guarded package
 
@@ -159,18 +179,27 @@ refusal. A configured command with a setting missing refuses every lookup.
 1. looks up a `phase: "prepare"` record for exactly that release and version,
    before Composer runs; no record means nothing changes;
 2. locks exactly `<version>` of only that package (`composer update
-<package> --with <package>:<version> --no-install`, with the usual
-   guards). A requirement that already admits `<version>` (`^0.1.3`, `*`)
-   stays as it is; one that doesn't refuses unless `--pin` sets it to exactly
-   `<version>`. A range never authorizes the registry's latest;
-3. refuses, restoring everything, unless the lock's `source.reference` is the
-   record's `published_tag.commit`;
-4. sets the package's entry in `deploy/ploi/package-expectations.json`
-   (`<version>`, the record's `release_id`, the install path, kept or
-   `web/app/plugins/<name>` for a new entry);
-5. commits `composer.lock`, the expectations file and, with `--pin`,
-   `composer.json`, and nothing else.
+<package> --with <package>:<version> --no-install`). A requirement that
+   already admits `<version>` (`^0.1.3`, `*`) stays as it is; one that
+   doesn't refuses unless `--pin` sets it to exactly `<version>`. A range
+   never authorizes the registry's latest;
+3. refuses unless the lock changed only that package's entry: every other
+   `packages` and `packages-dev` entry and every other top-level field
+   (aliases, platform, stability flags, minimum-stability,
+   plugin-api-version) exactly as before, and `content-hash` unchanged, or,
+   with `--pin`, exactly the hash Composer computes for the pinned
+   `composer.json` (gq computes it, and only trusts that after reproducing
+   the lock's current hash);
+4. refuses unless the lock's references are the record's
+   `published_tag.commit`;
+5. sets the package's entry in `deploy/ploi/package-expectations.json`
+   (`<version>`, the record's `release_id`);
+6. commits exactly `composer.lock`, the expectations file and, with `--pin`,
+   `composer.json`: anything else changed refuses, and the index must hold
+   exactly those paths.
 
+Any failure up to the commit puts back the files gq changes, undoes its own
+staging, and names (without touching) anything else that changed.
 `--reference` is refused for a guarded package: the record names it. With
 `--no-deploy` the lookup is the only outside call: nothing is uploaded and
 the Ploi site isn't touched. A `prepare` record never authorizes an install.
@@ -180,48 +209,51 @@ to 0.1.11 is `--to 0.1.11 --release-id <0.1.11's id> --expect-before 0.1.12`.
 ## Deploying a guarded package
 
 `gq ploi release` (and so `gq release package` without `--no-deploy`, and the
-CI release step):
+CI release step), after the [deployment policy](deployment-policy.md) checks:
 
-1. reads the expectations and `composer.lock` **from the release commit**, and
-   refuses when either is missing or a guarded package isn't stated;
+1. reads the expectations, `composer.lock` and `apps/cms/composer.json`
+   **from the release commit**, and refuses when one is missing or a guarded
+   package isn't stated;
 2. refuses unless the release commit's deploy script carries the
    `GUARDED_PACKAGES="…"` line `gq sync` renders, so the server checks again;
 3. looks up a `phase: "deploy"` record for each package's expected release,
-   and refuses unless the lock installs exactly its package (version and
-   published tag commit);
-4. uploads the archive with `PACKAGE_EXPECTATIONS`: the record's file list and
-   digest, and the sha256 of the lock it checked, under an archive key that
-   includes that file's digest;
-5. **runs every deploy lookup again, immediately before changing the Ploi
-   site** (the deploy script sync, then the deploy). A failed lookup, or a
-   record that differs in any field but `observed_at`, stops the release with
-   the Ploi site unchanged.
+   refuses unless the lock installs exactly its package (version and
+   references), and derives where it installs;
+4. uploads the archive with `PACKAGE_EXPECTATIONS`: the install path, the
+   record's file list and digest, and the sha256 of the lock it checked,
+   under an archive key that includes that file's digest;
+5. syncs the deploy script, then **runs every deploy lookup again,
+   immediately before the deploy request**. A failed lookup, or a record that
+   differs in any field but `observed_at`, stops the release before the
+   deploy is requested.
 
-On the server, `deploy/ploi/admin.sh` runs after `composer install`, the
-restore of shipped plugins and the dependency patch, and **before** PHP-FPM
-reloads and any WP-CLI activation, database update, deploy extension or
-rewrite flush. (A full deploy has already turned maintenance mode on, as
-before; a Composer-only deploy runs no WP-CLI at all.) It computes
-`gq-support.files/v1` over the installed directory and refuses when:
+On the server, `deploy/ploi/admin.sh`:
 
-- the Site guards a package and the archive has no `PACKAGE_EXPECTATIONS`, or
-  doesn't state that package;
-- `apps/cms/composer.lock` isn't the lock gq checked;
-- the installed files differ from the record's: each `missing`, `changed` or
-  `extra` path is listed, or a non-regular file is there.
+- right after unpacking the archive, before it replaces, installs or runs
+  anything, refuses when the Site guards a package and the archive has no
+  `PACKAGE_EXPECTATIONS` (or doesn't state that package), or when the
+  release's `composer.lock` isn't the lock gq checked;
+- after `composer install`, the restore of shipped plugins and the dependency
+  patch, and **before** PHP-FPM reloads and any plugin activation, database
+  update, deploy extension or rewrite flush, computes `gq-support.files/v1`
+  over the install path and refuses when the files differ from the record's:
+  each `missing`, `changed` or `extra` path is listed, or a non-regular file
+  is there.
 
-The installed version isn't read separately: it is the lock's (checked
+A full deploy runs `wp core is-installed` and turns maintenance mode on
+before Composer, as it always has; a Composer-only deploy runs no WP-CLI at
+all. The installed version isn't read separately: it is the lock's (checked
 against the record before upload, and the lock's hash again on the server),
 and the package's own files, its version header included, must be exactly the
 approved ones.
 
 ### What a refusal leaves
 
-The install is **not atomic**. A refusal on the server fails the deploy
-(`<PROJECT>_DEPLOY_STATUS=failed`, and `gq ploi release` exits 1) after
+The install is **not atomic**. A refusal after `composer install` fails the
+deploy (`<PROJECT>_DEPLOY_STATUS=failed`, and `gq ploi release` exits 1) after
 Composer has already replaced files: they stay on disk, not yet loaded by a
-PHP-FPM reload, and a full deploy leaves maintenance mode as its cleanup
-leaves it. Nothing rolls back. Recovery is another guarded release of an
+PHP-FPM reload, and a full deploy's cleanup leaves maintenance mode as it
+always does. Nothing rolls back. Recovery is another guarded release of an
 approved version, which needs its own fresh approval; a version the approval
 service doesn't approve (an unsigned legacy package among them) can't be
 deployed through this path.
@@ -229,7 +261,6 @@ deployed through this path.
 ### Remaining gaps
 
 - The server can't reach the approval service: the fresh lookup is gq's,
-  immediately before it triggers the deploy, and Ploi's deploy then runs
+  immediately before it requests the deploy, and Ploi's deploy then runs
   within minutes. The server verifies the files against that record.
-- `bin/gq.mjs` passes no adapter of its own: an Operator configures the CLI
-  adapter through the environment, or guarded packages refuse.
+- No Operator machine is configured yet, so guarded packages refuse.
