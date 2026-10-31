@@ -14,6 +14,7 @@ const code = await run(["ploi", "site", "show", "--json"], {
   exec, // every child process: (command, args, { cwd, env, input, stdio, timeout, background, stdout, stderr }) => { code, stdout, stderr, pid? }
   lookup, // every DNS lookup, as node:dns/promises' lookup
   approvals, // { lookup(request) }: a guarded package's approval record (none by default)
+  approvalLookup, // ({ project, projectRoot }) => approvals, for the Site released (bin/gq.mjs: the Operator CLI's)
   stdin, // a readable stream, for git's credential request
   stdout, // anything with write()
   stderr,
@@ -27,7 +28,9 @@ With `background: { log }` (`gq cms start`'s worker) it starts the child
 detached in its own process group, writing its output to `log`, and resolves
 with its `pid` once it has started.
 
-`approvals` is the package approval lookup ([Package expectations](package-expectations.md)).
-Without it, gq uses the Operator CLI adapter that the machine's own
-`~/.config/gq/support-approval.json` configures, and without that every
-guarded package refuses.
+`approvals` is the package approval lookup ([Package expectations](package-expectations.md)),
+and `approvalLookup` builds one for the Site being released. Without either,
+every guarded package refuses. Only `bin/gq.mjs` passes `approvalLookup`: the
+Operator CLI adapter that its own environment's
+`GQ_SUPPORT_APPROVAL_CONFIG` (else `~/.config/gq/support-approval.json`)
+configures.

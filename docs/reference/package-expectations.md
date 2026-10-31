@@ -113,14 +113,21 @@ installed file fails, as does any extra, missing or changed file.
 
 `run()` takes an `approvals` adapter, `{ lookup(request) }`, where `request`
 is `{ phase, project, stage, slot, releaseId, releaseCommit?, package: { name,
-version } }` and the result is the record, or a rejection. Without one, gq
-uses the Operator CLI adapter if the machine running gq configures it, and
-otherwise there is no lookup at all.
+version } }` and the result is the record, or a rejection. A caller can
+instead pass `approvalLookup({ project, projectRoot })`, which builds the
+adapter for the Site being released. Without either, there is no lookup and
+every guarded package refuses.
+
+Only the `gq` command (`bin/gq.mjs`) passes one: the Operator CLI adapter,
+built from its own process environment. A program calling `run()` gets no
+lookup unless it passes its own.
 
 ### The Operator CLI adapter
 
 It runs gq-support's read-only command from a reviewed gq-support checkout,
-with the Operator's own Cloudflare (Wrangler) and GitHub (`gh`) logins:
+with the Operator's own Cloudflare (Wrangler) and GitHub (`gh`) logins. gq
+holds no key or secret for it, and every prepare or deploy check runs the
+command afresh: no saved record is ever accepted.
 
 ```
 <command> [<args>...] composer-approval <slot> <release-id> <artifactDir> <prepare|deploy> \
@@ -128,10 +135,12 @@ with the Operator's own Cloudflare (Wrangler) and GitHub (`gh`) logins:
 ```
 
 Its configuration is only the Operator's machine's: the file
+`GQ_SUPPORT_APPROVAL_CONFIG` names (an absolute path, which must exist), else
 `$XDG_CONFIG_HOME/gq/support-approval.json` (else
-`$HOME/.config/gq/support-approval.json`) of the process running gq. A Site's
-`.env`, `ops.env`, Sigillo values or `gq.ops.json` never configure it, and a
-configuration file, command or checkout inside the Site refuses.
+`$HOME/.config/gq/support-approval.json`), read from the environment of the
+process running `gq`. A Site's `.env`, `ops.env`, Sigillo values or
+`gq.ops.json` never configure it, and a configuration file, command, checkout
+or artifact directory inside the Site refuses.
 
 ```json
 {
@@ -139,14 +148,16 @@ configuration file, command or checkout inside the Site refuses.
   "command": "/usr/bin/pnpm",
   "args": ["--filter", "gq-support-worker", "operator"],
   "checkout": "/srv/gq-support",
-  "artifactDir": "/srv/gq-support-artifacts/v0.1.11",
   "targets": {
     "nomia": {
       "stage": "prod",
       "slot": "nomia/production",
       "accountId": "…",
       "databaseId": "…",
-      "ledgerDatabaseId": "…"
+      "ledgerDatabaseId": "…",
+      "releases": {
+        "0.1.11": { "releaseId": 11, "artifactDir": "/srv/gq-support-artifacts/v0.1.11" }
+      }
     }
   }
 }
@@ -159,13 +170,21 @@ configuration file, command or checkout inside the Site refuses.
   that isn't refuses before the command runs.
 - `targets` binds each project to its approval target. A lookup refuses
   unless the Site's `deployment.approval` names that same stage and slot.
+- `releases` binds each gq-support version the Operator may look up to the
+  approved release's ID and its downloaded release artifact (`gq-support.zip`,
+  `gq-support.manifest.json`, `provenance.json`). A lookup for a version it
+  doesn't bind, for another release ID, or for a package other than
+  `getquick/gq-support` refuses before the command runs.
 - The command runs without a shell, in its own process group, for at most two
-  minutes and 4 MiB of output, read as it streams; when it exits or passes a
-  bound, the whole group is killed. It gets only `PATH`, `HOME`, `USER`,
-  `LOGNAME`, the locale, `TZ`, `TMPDIR`, the `XDG_*` directories and the CA
-  certificate settings: no Composer, Ploi, R2, Cloudflare or GitHub tokens.
-- Its stdout must be exactly one JSON object, with no repeated member name.
-  Every refusal is a fixed message: none carries the command's output.
+  minutes and 4 MiB on each of stdout and stderr, read as they stream; when it
+  exits or passes a bound, the whole group is killed. stderr is discarded. It
+  gets only `PATH`, `HOME`, `USER`, `LOGNAME`, the locale, `TZ`, `TMPDIR`, the
+  `XDG_*` directories and the CA certificate settings: no Composer, Ploi, R2,
+  Cloudflare or GitHub tokens.
+- It must exit 0 and print exactly one JSON object, with no repeated member
+  name, which gq then checks as above. Every refusal is a fixed message: none
+  carries the command's output or a path from the configuration, and nothing
+  from the configuration goes into a release archive.
 
 This configuration isn't enabled anywhere yet: until the approval service has
 an approved release and the Site's slot is bound to it (reviewed gq-support

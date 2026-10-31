@@ -25,9 +25,12 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   `deployment.approval`, the Site's approval stage and slot) makes
   preparation and deploys of those packages look up gq-support's
   `gq-support.composer-approval/v1` record: through `run()`'s `approvals`
-  adapter, or gq-support's read-only Operator CLI from a gq-support checkout
-  clean at the reviewed commit, which only the Operator's machine configures
-  (`~/.config/gq/support-approval.json`; never a Site's files). A record must
+  adapter, or, in the `gq` command only, gq-support's read-only Operator CLI
+  from a gq-support checkout clean at the reviewed commit, which only the
+  Operator's machine configures (`GQ_SUPPORT_APPROVAL_CONFIG`, else
+  `~/.config/gq/support-approval.json`; never a Site's files), binding each
+  project's stage, slot, account, databases and each gq-support version's
+  release ID and artifact. A record must
   match exactly; the lock must install its version with both references its
   published tag's commit; the install path comes from the release commit's
   Composer installer paths. A deploy looks the record up before uploading
