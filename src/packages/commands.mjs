@@ -1,15 +1,17 @@
 // gq packages check|propose: discovery and upgrade proposals for the GETQUICK
 // packages in the blueprint's catalogue (catalogue.mjs): Composer packages and
 // npm packages on GitHub Packages. Both are read-only; `propose --write`
-// changes only the proposed pins of the blueprint's CMS composer.json and npm
-// pins, in a gq-site checkout. Neither resolves a lockfile, touches a Site,
-// or approves a combination's runtime compatibility. Exits 1 when any source
-// couldn't be read.
+// changes only the proposed pins of the blueprint's CMS composer.json files
+// and npm pins, and their recorded requirements, in a gq-site checkout.
+// Neither resolves a lockfile, touches a Site, or approves a combination's
+// runtime compatibility. Exits 1 when any source couldn't be read, or when
+// the current pins' recorded requirements disagree with the registry or
+// with each other.
 import { rename, writeFile } from "node:fs/promises";
 
-import { isNpm, loadCatalogue, locateBlueprint } from "./catalogue.mjs";
+import { isNpm, loadCatalogue, locateBlueprint, requirementsText } from "./catalogue.mjs";
 import { discoverPackage } from "./discovery.mjs";
-import { applyDependencies, applyRequirements, planPackages } from "./plan.mjs";
+import { FAILING_BLOCKERS, applyDependencies, applyRequirements, planPackages } from "./plan.mjs";
 
 export const PACKAGES_USAGE = [
   "gq packages check [--json]",
@@ -39,10 +41,20 @@ export async function runPackagesCommand(argv, { cwd, env, fetch, io }) {
   for (const pkg of loaded.catalogue.packages) {
     discoveries.push(await discoverPackage(pkg, { composer: loaded.composer, env, fetch }));
   }
-  const packages = planPackages(loaded.catalogue, loaded.composer, discoveries, loaded.npm);
-  const files = [loaded.composerFile, loaded.npmFile].filter(Boolean);
+  const packages = planPackages(
+    loaded.catalogue,
+    loaded.composer,
+    discoveries,
+    loaded.npm,
+    loaded.requirements,
+  );
+  const files = [
+    ...loaded.composers.map((composer) => composer.relativePath),
+    loaded.npmFile,
+    loaded.requirementsFile,
+  ].filter(Boolean);
   const failed = packages.some((row) =>
-    row.blockers.some((blocker) => blocker.code === "discovery-failed"),
+    row.blockers.some((blocker) => FAILING_BLOCKERS.has(blocker.code)),
   );
 
   if (options.action === "check") {
@@ -52,6 +64,7 @@ export async function runPackagesCommand(argv, { cwd, env, fetch, io }) {
           {
             composerFile: loaded.composerFile,
             npmFile: loaded.npmFile,
+            files,
             packages,
             compatibility: COMPATIBILITY,
           },
@@ -65,7 +78,12 @@ export async function runPackagesCommand(argv, { cwd, env, fetch, io }) {
 
   const changes = packages
     .filter((row) => row.action === "upgrade")
-    .map((row) => ({ name: row.name, from: row.current, to: row.proposed }));
+    .map((row) => ({
+      name: row.name,
+      from: row.current,
+      to: row.proposed,
+      ...(row.proposedRequires ? { requires: row.proposedRequires } : {}),
+    }));
   const blocked = packages
     .filter((row) => row.blockers.length > 0)
     .map((row) => ({ name: row.name, action: row.action, blockers: row.blockers }));
@@ -74,16 +92,32 @@ export async function runPackagesCommand(argv, { cwd, env, fetch, io }) {
     const npmNames = new Set(
       loaded.catalogue.packages.filter((pkg) => isNpm(pkg)).map((pkg) => pkg.name),
     );
-    // Both files are edited in memory first, so a refusal writes neither.
+    // Every file is edited in memory first, so a refusal writes none.
     const edits = [
-      [loaded.composerPath, loaded.composerText, applyRequirements, false],
-      [loaded.npmPath, loaded.npmText, applyDependencies, true],
-    ].flatMap(([path, text, apply, npm]) => {
-      const own = changes.filter((change) => npmNames.has(change.name) === npm);
+      ...loaded.composers.map((composer) => [
+        composer.path,
+        composer.text,
+        applyRequirements,
+        (change) =>
+          !npmNames.has(change.name) && Object.hasOwn(composer.json.require ?? {}, change.name),
+      ]),
+      [loaded.npmPath, loaded.npmText, applyDependencies, (change) => npmNames.has(change.name)],
+    ].flatMap(([path, text, apply, owns]) => {
+      const own = changes.filter(owns);
       if (own.length === 0) return [];
       const output = apply(text, own);
       return output === text ? [] : [[path, output]];
     });
+    if (loaded.requirements) {
+      const records = structuredClone(loaded.requirements);
+      for (const change of changes) {
+        if (npmNames.has(change.name)) continue;
+        records.packages[change.name] = { version: change.to, require: change.requires ?? {} };
+      }
+      const before = requirementsText(loaded.requirements);
+      const after = requirementsText(records);
+      if (after !== before) edits.push([loaded.requirementsPath, after]);
+    }
     for (const [path, output] of edits) {
       const temporary = `${path}.gq-packages.tmp`;
       await writeFile(temporary, output);
@@ -133,6 +167,12 @@ function printCheck(io, files, packages) {
     io.out(`  upstream    ${describeSource(row.upstream, "upstream")}`);
     io.out(`  registry    ${describeSource(row.registry, "registry")}`);
     io.out(`  target      ${describeTarget(row)}`);
+    if (row.requires && Object.keys(row.requires).length > 0) {
+      const requires = Object.entries(row.requires).map(
+        ([name, constraint]) => `${name} ${constraint}`,
+      );
+      io.out(`  requires    ${requires.join(", ")}`);
+    }
     if (row.lockstep) {
       io.out(
         `  lockstep    ${row.lockstep.group}: ${row.lockstep.members.join(", ")} at ${row.lockstep.target ?? "no common version"}`,

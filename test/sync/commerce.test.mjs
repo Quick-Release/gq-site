@@ -56,7 +56,7 @@ test("gq new --variant commerce writes a WooCommerce CMS without WPGraphQL", asy
     assert.ok(installed, plugin);
   }
   assert.equal(composer.require["wp-plugin/woocommerce"], "11.2.1");
-  assert.equal(composer.require["getquick/getquick-ecommerce"], "0.3.5");
+  assert.equal(composer.require["getquick/getquick-ecommerce"], "0.4.3");
   assert.ok(!Object.keys(composer.require).some((name) => name.includes("graphql")));
 
   const deploy = await readSite(site.root, "deploy/ploi/admin.sh");

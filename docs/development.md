@@ -158,9 +158,23 @@ site's Cloudflare CI image with Docker and runs its install step's Composer
 command as the image's root user on a clean CMS (see
 [CMS dependency patches](guides/dependency-patches.md#verification-boundary)). The
 wiring proof also installs the CI Worker's dependencies for Wrangler's local
-workerd runtime. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
+workerd runtime. `scripts/smoke/cms-resolve.sh` generates a content and a
+commerce Site and runs `composer update --dry-run` in each one's `apps/cms`
+against the private GETQUICK registry, then checks that every GETQUICK
+package locks at the blueprint's pin: the CMS pins install together
+([recorded requirements](reference/packages.md#recorded-requirements)). It
+needs the registry login in `COMPOSER_AUTH` (http-basic for
+`proxy.composer.getquick.io`); gq-site's own Sigillo `operations`
+environment holds only `NPM_TOKEN`, so locally run it under a Site's
+staging environment, which holds one
+(`gq sigillo run staging -- <gq-site>/scripts/smoke/cms-resolve.sh` from that
+Site). Without the login it refuses (exit 3) and never passes; `--probe`
+stops after that check. In CI the `cms-registry` job probes the
+`COMPOSER_AUTH` repository secret: without it `cms-resolution` is skipped,
+not passed, with a warning, and only the package suite's offline check of the
+recorded requirements runs. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
 three generated-site proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
-`frontend-check.sh`, `commerce-check.sh`, `content-pair.sh`, `consent.sh`, `cms-rest-gate.sh` and `ci-composer.sh` on every push; the
+`frontend-check.sh`, `commerce-check.sh`, `content-pair.sh`, `consent.sh`, `cms-rest-gate.sh`, `ci-composer.sh` and, with its secret, `cms-resolve.sh` on every push; the
 real-WordPress Polylang proof, which also needs PHP and downloads, runs locally, and the live gate is the
 gq-smoke wizard ([A new content Site, end to end](guides/provisioning.md#a-new-content-site-end-to-end)).
 

@@ -7,13 +7,19 @@
 // target is the newest version every member's registry serves, and either
 // every member moves to it or none does. Discovery proves availability, not
 // that the newest combination of packages works together.
-import { blueprintPin, lockstepGroups } from "./catalogue.mjs";
+//
+// With recorded requirements (the catalogue's requirementsFile), each pin's
+// record is compared with what the registry says that version requires, and
+// a proposal is held when it would leave a pinned package's requirement
+// unsatisfied, so pins Composer can't install together are never proposed.
+import { blueprintPin, isNpm, lockstepGroups } from "./catalogue.mjs";
 import {
   compareVersions,
   minimumOf,
   parseCaret,
   parseVersion,
   satisfiesCaret,
+  satisfiesConstraint,
 } from "./versions.mjs";
 
 const WRITE_BLOCKERS = new Set([
@@ -23,8 +29,13 @@ const WRITE_BLOCKERS = new Set([
   "reference-mismatch",
 ]);
 
-// One report row per catalogue entry, in catalogue order.
-export function planPackages(catalogue, composer, discoveries, npm = null) {
+// Blockers that mean the blueprint's current pins are wrong, not that a
+// proposal waits: gq packages check fails on them.
+export const FAILING_BLOCKERS = new Set(["discovery-failed", "requirements-drift"]);
+
+// One report row per catalogue entry, in catalogue order. `requirements` is
+// the requirementsFile's JSON, when the catalogue has one.
+export function planPackages(catalogue, composer, discoveries, npm = null, requirements = null) {
   const installable = new Map();
   const rows = catalogue.packages.map((pkg, index) =>
     planPackage(pkg, composer, npm, discoveries[index], installable),
@@ -39,7 +50,106 @@ export function planPackages(catalogue, composer, discoveries, npm = null) {
       composer,
     );
   }
+  if (requirements) planRequirements(catalogue, rows, discoveries, requirements);
   return rows;
+}
+
+// Recorded requirements against the registry, then the proposed pins
+// against every pinned package's requirements, holding back (with its
+// lockstep group) any upgrade that would leave one unsatisfied, until the
+// proposal is consistent.
+function planRequirements(catalogue, rows, discoveries, requirements) {
+  const entries = catalogue.packages
+    .map((pkg, index) => ({ pkg, row: rows[index], registry: discoveries[index].registry }))
+    .filter(({ pkg }) => !isNpm(pkg));
+  const releaseOf = (entry, version) =>
+    entry.registry.status === "ok"
+      ? (entry.registry.releases.find((release) => release.version === version) ?? null)
+      : null;
+  const block = (row, code, message) => {
+    if (!row.blockers.some((blocker) => blocker.message === message)) {
+      row.blockers.push({ code, message });
+    }
+  };
+
+  for (const entry of entries) {
+    const { pkg, row } = entry;
+    const record = requirements.packages[pkg.name];
+    const pinned = row.current === null ? null : parseVersion(row.current);
+    if (!record || !pinned || entry.registry.status !== "ok") continue;
+    const release = releaseOf(entry, pinned.text);
+    if (!release) {
+      block(
+        row,
+        "requirements-drift",
+        `The registry doesn't serve the pinned ${pkg.name} ${pinned.text}, so what it requires can't be confirmed.`,
+      );
+    } else if (describeRequire(release.requires) !== describeRequire(record.require)) {
+      block(
+        row,
+        "requirements-drift",
+        `The registry's ${pkg.name} ${pinned.text} requires ${describeRequire(release.requires)}, but the recorded requirements say ${describeRequire(record.require)}.`,
+      );
+    }
+    row.requires = record.require;
+  }
+
+  const byName = new Map(entries.map((entry) => [entry.pkg.name, entry]));
+  for (;;) {
+    const pinOf = (entry) => (moving(entry) ? entry.row.proposed : entry.row.current);
+    const requiresOf = (entry) =>
+      moving(entry)
+        ? (releaseOf(entry, entry.row.proposed)?.requires ?? {})
+        : (requirements.packages[entry.pkg.name]?.require ?? {});
+    const held = new Set();
+    for (const entry of entries) {
+      const pin = pinOf(entry);
+      if (pin === null) continue;
+      for (const [name, constraint] of Object.entries(requiresOf(entry))) {
+        const other = byName.get(name);
+        const otherPin = other ? pinOf(other) : null;
+        const version = otherPin === null ? null : parseVersion(otherPin);
+        if (!version || satisfiesConstraint(version, constraint) !== false) continue;
+        const message = `${entry.pkg.name} ${pin} requires ${name} ${constraint}, which ${name} ${otherPin} doesn't satisfy.`;
+        const culprits = [entry, other].filter(moving);
+        if (culprits.length === 0) {
+          block(entry.row, "requirements-drift", message);
+          continue;
+        }
+        for (const culprit of culprits) {
+          block(culprit.row, "unsatisfied", message);
+          held.add(culprit);
+        }
+      }
+    }
+    if (held.size === 0) break;
+    for (const entry of held) {
+      const group = entry.pkg.lockstep;
+      const members = group ? rows.filter((row) => row.lockstep?.group === group) : [entry.row];
+      for (const row of members) {
+        if (row !== entry.row) {
+          block(row, "lockstep", `${entry.pkg.name} can't move, so no member of ${group} does.`);
+        }
+        row.proposed = null;
+        row.action = "blocked";
+      }
+    }
+  }
+  for (const entry of entries) {
+    if (moving(entry))
+      entry.row.proposedRequires = releaseOf(entry, entry.row.proposed)?.requires ?? {};
+  }
+
+  function moving(entry) {
+    return entry.row.action === "upgrade";
+  }
+}
+
+function describeRequire(require) {
+  const pairs = Object.entries(require ?? {}).sort(([left], [right]) => left.localeCompare(right));
+  return pairs.length === 0
+    ? "nothing"
+    : pairs.map(([name, constraint]) => `${name} ${constraint}`).join(", ");
 }
 
 function planPackage(pkg, composer, npm, { upstream, registry }, installableByPackage) {
@@ -182,6 +292,13 @@ function planPackage(pkg, composer, npm, { upstream, registry }, installableByPa
   if (pkg.policy === "exact") return planExact(row, composer, current, newestInstallable, block);
 
   const caret = parseCaret(current);
+  if (!caret && pkg.policy === "manual") {
+    // An exact pin under a manual policy: reported, never proposed.
+    block("manual", `${pkg.name}'s policy is manual: nothing is proposed.`);
+    row.target = newestInstallable.version;
+    row.action = "blocked";
+    return finish(row);
+  }
   if (!caret) {
     block("unsupported-constraint", `${current} isn't a caret constraint; change it by hand.`);
     return finish(row);

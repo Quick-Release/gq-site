@@ -12,7 +12,11 @@ are site-owned and never touched.
 [`packages.json`](packages.json) is the package catalogue for
 `gq packages`: the GETQUICK Composer packages the blueprint knows, where each
 is discovered and installed from, and its upgrade policy. It holds no version
-constraints; those stay in `templates/apps/cms/composer.json`. See
+constraints; those stay in both CMS skeletons' `composer.json`
+(`templates/apps/cms/` and `templates/commerce/apps/cms/`).
+[`package-requirements.json`](package-requirements.json) records what each
+pinned version requires of the other GETQUICK packages, from the registry, so
+a test can check offline that the pins install together. See
 [Blueprint packages](../docs/reference/packages.md).
 
 An entry with `variants` applies only to sites of those variants (ADR 0017);
