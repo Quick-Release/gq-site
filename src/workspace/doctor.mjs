@@ -18,7 +18,8 @@
 // gq verify runs; the other initial keys it lacks only warn. A commerce
 // Site's rate-limit namespace IDs are checked against the fleet's register
 // (blueprint/rate-limit-namespaces.json): a collision or an unregistered ID
-// warns.
+// warns. A Site on GitHub reports whether its CI reaches GitHub through the
+// GETQUICK CI token broker or a fine-grained token (gq-platform ADR 0012).
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -47,6 +48,7 @@ import {
   RELEASE_CONFIG_FILENAME,
   siteSettings,
 } from "../manifest/site-settings.mjs";
+import { SITE_BROKER_SECRETS } from "../ci/github-app.mjs";
 import { sigilloSecrets } from "../sigillo/commands.mjs";
 import { adoptionGaps } from "../sync/adoption.mjs";
 import { VERSION } from "../version.mjs";
@@ -185,6 +187,11 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
     io.out("\nConsent records (D1):");
     const token = await stagingToken("CLOUDFLARE_API_TOKEN", { context, env, exec, sigilloReady });
     await checkConsentJurisdiction({ config: context.config, token, fetch, report });
+  }
+
+  if (context.config.github?.repository && context.config.ci?.worker) {
+    io.out("\nGitHub CI credentials:");
+    await checkGithubCredentials({ context, env, exec, fetch, sigilloReady, report });
   }
 
   if (context.config.forms) {
@@ -370,6 +377,58 @@ async function stagingToken(name, { context, env, exec, sigilloReady }) {
   } catch {
     return null;
   }
+}
+
+// How the Site's CI Worker reaches GitHub (gq-platform ADR 0012): through
+// the GETQUICK CI token broker (gq github setup --app), or a fine-grained
+// GITHUB_CI_TOKEN, which still works but needs a person to rotate it. Reads
+// Sigillo staging's names and the broker's /health, never a value.
+async function checkGithubCredentials({ context, env, exec, fetch, sigilloReady, report }) {
+  if (!sigilloReady || !context.config.sigillo?.environments?.[SECRETS_ENVIRONMENT]) {
+    return report.skip(`GitHub CI credentials not checked: no Sigillo ${SECRETS_ENVIRONMENT}`);
+  }
+  let names;
+  let secrets;
+  try {
+    secrets = await sigilloSecrets({ context, env, exec }, SECRETS_ENVIRONMENT);
+    names = new Set((await secrets.list()).split(/\r?\n/u).map((name) => name.trim()));
+  } catch {
+    // Sigillo stderr is untrusted output and might contain secret values.
+    return report.fail(`could not list Sigillo ${SECRETS_ENVIRONMENT} variable names`);
+  }
+  const app = names.has(SITE_BROKER_SECRETS.url) && names.has(SITE_BROKER_SECRETS.token);
+  if (!app) {
+    if (names.has("GITHUB_CI_TOKEN")) {
+      return report.warn(
+        "CI reaches GitHub with a fine-grained GITHUB_CI_TOKEN, which a person must rotate — move to the GETQUICK CI App: gq sigillo run staging -- gq github setup --app, then gq ci deploy",
+      );
+    }
+    return report.warn(
+      `Sigillo ${SECRETS_ENVIRONMENT} has no GitHub CI credentials: mirrors and commit statuses fail — run: gq sigillo run staging -- gq github setup --app`,
+    );
+  }
+  report.ok(
+    `CI gets per-run tokens from the GETQUICK CI broker (${SITE_BROKER_SECRETS.token} in Sigillo ${SECRETS_ENVIRONMENT})`,
+  );
+  if (names.has("GITHUB_CI_TOKEN")) {
+    report.warn(
+      `Sigillo ${SECRETS_ENVIRONMENT} still holds GITHUB_CI_TOKEN, which the broker replaces: delete it there and revoke it on GitHub`,
+    );
+  }
+  let url;
+  try {
+    url = await secrets.get(SITE_BROKER_SECRETS.url);
+  } catch {
+    return report.warn(
+      `could not read ${SITE_BROKER_SECRETS.url} from Sigillo ${SECRETS_ENVIRONMENT}`,
+    );
+  }
+  const health = await fetch(`${url}/health`).then(
+    (response) => (response.ok ? response.json() : null),
+    () => null,
+  );
+  if (health?.configured) report.ok(`the broker at ${url} is up and configured`);
+  else report.fail(`the broker at ${url} isn't answering as configured — run: gq ci broker deploy`);
 }
 
 // The Site's side of headless forms: what gq sync and src/lib/content.ts

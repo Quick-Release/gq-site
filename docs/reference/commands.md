@@ -82,7 +82,9 @@ gq offboard --archive [--dry-run] [--yes]
 
 gq ci deploy
 gq ci runs
-gq github setup [--dry-run]
+gq ci broker deploy [--dry-run]
+gq github setup [--app] [--dry-run]
+gq github app create [--dry-run]
 gq git artifacts setup
 gq git artifacts get | store | erase
 

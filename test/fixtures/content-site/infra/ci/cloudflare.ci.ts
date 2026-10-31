@@ -3,7 +3,7 @@ import type { CiContext, CiParams, CloudflareArtifacts } from "@cloudflare/ci";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 
 import type { Bindings } from "./env";
-import { postCommitStatus } from "./github.ts";
+import { githubToken, hasGithubCredentials, postCommitStatus } from "./github.ts";
 import type { CommitState } from "./github.ts";
 import { admissionCommand, isRelease } from "./release.ts";
 
@@ -57,16 +57,18 @@ export class CI extends CIWorkflow<CloudflareArtifacts, Bindings> {
     // sha is the tag object, which GitHub can't attach a status to. An
     // Artifacts-only site has no GitHub to report to. Reporting never fails
     // the pipeline.
-    const { GITHUB_CI_TOKEN: token, GITHUB_REPOSITORY: repository } = this.env;
+    // The token comes from the GETQUICK CI broker (or GITHUB_CI_TOKEN), minted
+    // inside each status step and never returned from it.
+    const repository = this.env.GITHUB_REPOSITORY;
     const report = async (state: CommitState, description: string) => {
-      if (params.trigger !== "push" || !token || !repository) return;
+      if (params.trigger !== "push" || !repository || !hasGithubCredentials(this.env)) return;
       try {
         await step.do(
           `github status ${state}`,
           { retries: { limit: 3, delay: 5_000, backoff: "exponential" }, timeout: 60_000 },
-          () =>
+          async () =>
             postCommitStatus(
-              { token, repository },
+              { token: await githubToken(this.env), repository },
               params.sha,
               state,
               `${description} · run ${run}`,

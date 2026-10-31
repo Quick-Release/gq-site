@@ -386,6 +386,7 @@ function parseArguments(argv) {
   const repeatedValueOptions = new Set(["--path", "--query", "--uri"]);
   const booleanOptions = new Set([
     "--all",
+    "--app",
     "--dry-run",
     "--yes",
     "--upload",

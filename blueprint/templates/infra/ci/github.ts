@@ -76,6 +76,52 @@ export function githubAuth(token: string): string {
   return btoa(`x-access-token:${token}`);
 }
 
+// Where a run's GitHub token comes from: the GETQUICK CI token broker when
+// the Worker has its URL and this Site's credential (gq github setup --app,
+// gq-platform ADR 0012), otherwise the fine-grained GITHUB_CI_TOKEN.
+export type GithubCredentials = {
+  GITHUB_REPOSITORY: string;
+  GITHUB_CI_TOKEN?: string;
+  GQ_CI_BROKER_URL?: string;
+  GQ_CI_BROKER_TOKEN?: string;
+};
+
+// A token for GITHUB_REPOSITORY: from the broker, an installation token for
+// this repository only (Contents read, Commit statuses write) that expires
+// within the hour, minted afresh for each use; or GITHUB_CI_TOKEN. Call it
+// inside the Workflow step that uses the token, and never return the token
+// from a step: step results are persisted.
+export async function githubToken(
+  env: GithubCredentials,
+  fetchImplementation: typeof fetch = fetch,
+): Promise<string> {
+  if (env.GQ_CI_BROKER_URL && env.GQ_CI_BROKER_TOKEN) {
+    const response = await fetchImplementation(`${env.GQ_CI_BROKER_URL}/token`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.GQ_CI_BROKER_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ repository: env.GITHUB_REPOSITORY }),
+    });
+    if (!response.ok) {
+      // The broker's refusal is fixed text, never a credential.
+      const detail = await response.text().catch(() => "");
+      throw new Error(`GETQUICK CI broker answered ${response.status}: ${detail.slice(0, 200)}`);
+    }
+    const { token } = (await response.json()) as { token?: unknown };
+    if (typeof token !== "string" || !token) throw new Error("GETQUICK CI broker sent no token");
+    return token;
+  }
+  if (env.GITHUB_CI_TOKEN) return env.GITHUB_CI_TOKEN;
+  throw new Error("No GitHub credentials: run gq github setup --app, then gq ci deploy");
+}
+
+// Whether the Worker has any GitHub credentials to report statuses with.
+export function hasGithubCredentials(env: GithubCredentials): boolean {
+  return Boolean(env.GITHUB_CI_TOKEN || (env.GQ_CI_BROKER_URL && env.GQ_CI_BROKER_TOKEN));
+}
+
 export type CommitState = "pending" | "success" | "failure" | "error";
 
 export const statusContext = "cloudflare-ci";

@@ -541,3 +541,286 @@ test("passes private preview pairs from the secret store to the CI Worker", () =
     assert.equal(withPreview[name], value);
   }
 });
+
+// --- the GETQUICK CI App (gq-platform ADR 0012) -------------------------------
+
+const PLATFORM_PROJECT = "01M5Z0QYDH1PPN7N3C4A7KZAXJ";
+const BROKER = "https://gq-ci-broker.fixture-sub.workers.dev";
+
+// Sigillo with two stores, the Site's staging and GQ Platform ops (values in
+// memory; `get` answers from them, `set` records into them), and gh.
+function appExec({
+  platform = {},
+  staging = {},
+  hooks = [],
+  admin = true,
+  workerSecrets = [],
+} = {}) {
+  const stores = { platform: { ...platform }, staging: { ...staging } };
+  const exec = recordingExec(({ command, args, input }) => {
+    if (command === "gh") {
+      const line = args.join(" ");
+      if (line === "api repos/example/fixture/hooks") return { stdout: JSON.stringify(hooks) };
+      if (line === "api repos/example/fixture") {
+        return { stdout: JSON.stringify({ id: 555, permissions: { admin } }) };
+      }
+      return { stdout: "" };
+    }
+    if (command.endsWith(SIGILLO_BIN)) {
+      const store = args.includes(PLATFORM_PROJECT) ? stores.platform : stores.staging;
+      if (args[1] === "set") {
+        store[args[2]] = input;
+        return {};
+      }
+      if (args[1] === "get") {
+        return args[2] in store
+          ? { stdout: `${store[args[2]]}\n` }
+          : { code: 1, stderr: "missing" };
+      }
+      return { stdout: Object.keys(store).join("\n") };
+    }
+    if (command.endsWith("wrangler") && args.join(" ").startsWith("secret list")) {
+      return {
+        stdout: JSON.stringify(workerSecrets.map((name) => ({ name, type: "secret_text" }))),
+      };
+    }
+    if (command.endsWith("wrangler")) return {};
+    return { code: 1, stderr: `unexpected ${command} ${args.join(" ")}` };
+  });
+  return { exec, stores };
+}
+
+const PLATFORM = Object.freeze({
+  GQ_CI_GITHUB_APP_ID: "4242",
+  GQ_CI_GITHUB_APP_SLUG: "getquick-ci",
+  GQ_CI_GITHUB_APP_INSTALLATION_ID: "77",
+  GQ_CI_BROKER_KEY: "broker-key",
+});
+
+// Cloudflare's subdomain and the broker, which mints for a right credential.
+function appFetch({ brokerStatus = 200 } = {}) {
+  return recordingFetch(({ url, headers }) => {
+    if (url.endsWith("/accounts/account-1/workers/subdomain")) {
+      return { success: true, result: { subdomain: "fixture-sub" } };
+    }
+    if (url === `${BROKER}/token`) {
+      assert.match(headers.Authorization, /^Bearer gqci1_/u);
+      return brokerStatus === 200
+        ? { token: "ghs_minted", expires_at: "2026-10-31T13:00:00Z" }
+        : new Response(JSON.stringify({ error: "nope" }), { status: brokerStatus });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+}
+
+test("github setup --app adds the repository to the App, stores the broker credential and proves it mints", async () => {
+  const { brokerCredential } = await import("../../src/ci/broker/broker.mjs");
+  const fixture = await site();
+  const { exec, stores } = appExec({ platform: PLATFORM });
+  const fetch = appFetch();
+
+  const result = await fixture.run(["github", "setup", "--app"], {
+    env: { CI_DEPLOY_API_TOKEN: "ci-deploy", GITHUB_WEBHOOK_SECRET: "kept" },
+    fetch,
+    exec,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const put = exec.calls.find(({ args }) => args.includes("PUT"));
+  assert.deepEqual(put.args, ["api", "-X", "PUT", "user/installations/77/repositories/555"]);
+  assert.equal(
+    stores.staging.GQ_CI_BROKER_TOKEN,
+    await brokerCredential("broker-key", "example/fixture"),
+  );
+  assert.equal(stores.staging.GQ_CI_BROKER_URL, BROKER);
+  assert.equal(stores.staging.GITHUB_CI_TOKEN, undefined, "no token pasted or stored");
+  assert.ok(
+    exec.calls.some(
+      ({ args }) => args.includes("POST") && args.includes("repos/example/fixture/hooks"),
+    ),
+  );
+  assert.deepEqual(
+    Object.keys(stores.platform).sort(),
+    Object.keys(PLATFORM).sort(),
+    "ops untouched",
+  );
+  assert.doesNotMatch(result.stdout + result.stderr, /gqci1_|broker-key|ghs_minted/u);
+});
+
+test("github setup --app refuses before changing anything until the App exists", async () => {
+  const fixture = await site();
+  const { exec, stores } = appExec();
+
+  const result = await fixture.run(["github", "setup", "--app"], {
+    env: { CI_DEPLOY_API_TOKEN: "ci-deploy" },
+    fetch: appFetch(),
+    exec,
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /GETQUICK CI App isn't ready: .*gq github app create/u);
+  assert.deepEqual(stores.staging, {});
+  assert.ok(exec.calls.every(({ args }) => !args.includes("-X")));
+});
+
+test("github setup --app fails when the broker doesn't mint for the repository", async () => {
+  const fixture = await site();
+  const { exec } = appExec({ platform: PLATFORM });
+
+  const result = await fixture.run(["github", "setup", "--app"], {
+    env: { CI_DEPLOY_API_TOKEN: "ci-deploy", GITHUB_WEBHOOK_SECRET: "kept" },
+    fetch: appFetch({ brokerStatus: 403 }),
+    exec,
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /the broker answered 403: nope\. Is the broker deployed/u);
+});
+
+test("github setup --app needs an admin of the repository", async () => {
+  const fixture = await site();
+  const { exec, stores } = appExec({ platform: PLATFORM, admin: false });
+
+  const result = await fixture.run(["github", "setup", "--app"], {
+    env: { CI_DEPLOY_API_TOKEN: "ci-deploy" },
+    fetch: appFetch(),
+    exec,
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /isn't an admin of example\/fixture/u);
+  assert.deepEqual(stores.staging, {});
+});
+
+test("ci deploy sends the broker pair instead of GITHUB_CI_TOKEN and removes the old token", async () => {
+  const fixture = await site();
+  const { exec } = appExec({ workerSecrets: ["CF_TOKEN", "GITHUB_CI_TOKEN"] });
+  const env = {
+    ...DEPLOY_ENV,
+    GITHUB_CI_TOKEN: "",
+    GQ_CI_BROKER_URL: BROKER,
+    GQ_CI_BROKER_TOKEN: "gqci1_credential",
+  };
+
+  const result = await fixture.run(["ci", "deploy"], { env, exec });
+
+  assert.equal(result.code, 0, result.stderr);
+  const bulk = exec.calls.find(({ args }) => args.join(" ") === "secret bulk");
+  const secrets = JSON.parse(bulk.input);
+  assert.equal(secrets.GQ_CI_BROKER_URL, BROKER);
+  assert.equal(secrets.GQ_CI_BROKER_TOKEN, "gqci1_credential");
+  assert.equal(secrets.GITHUB_CI_TOKEN, undefined);
+  assert.equal(secrets.GITHUB_WEBHOOK_SECRET, "value-of-GITHUB_WEBHOOK_SECRET");
+  const removal = exec.calls.find(({ args }) => args[1] === "delete");
+  assert.deepEqual(removal.args, ["secret", "delete", "GITHUB_CI_TOKEN"]);
+  assert.match(result.stdout, /Removed GITHUB_CI_TOKEN from the Worker/u);
+});
+
+test("ci deploy in App mode leaves a Worker without GITHUB_CI_TOKEN as it is", async () => {
+  const fixture = await site();
+  const { exec } = appExec({ workerSecrets: ["CF_TOKEN"] });
+  const env = { ...DEPLOY_ENV, GQ_CI_BROKER_URL: BROKER, GQ_CI_BROKER_TOKEN: "gqci1_credential" };
+
+  const result = await fixture.run(["ci", "deploy"], { env, exec });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.ok(exec.calls.every(({ args }) => args[1] !== "delete"));
+});
+
+test("ci broker deploy refuses until the App exists", async () => {
+  const fixture = await site();
+  const { exec } = appExec({ platform: { GQ_CI_BROKER_KEY: "broker-key" } });
+
+  const result = await fixture.run(["ci", "broker", "deploy"], {
+    env: { CI_DEPLOY_API_TOKEN: "ci-deploy" },
+    fetch: appFetch(),
+    exec,
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stderr,
+    /lacks GQ_CI_GITHUB_APP_ID, GQ_CI_GITHUB_APP_PRIVATE_KEY\. An organization owner creates it first: gq github app create/u,
+  );
+  assert.ok(exec.calls.every(({ command }) => !command.endsWith("wrangler")));
+});
+
+test("ci broker deploy proves the App, then deploys the broker apart from the Site's CI config", async () => {
+  const { generateKeyPairSync } = await import("node:crypto");
+  const { pkcs8Base64, APP_PERMISSIONS } = await import("../../src/ci/github-app.mjs");
+  const { privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs1", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
+  });
+  const fixture = await site();
+  const platform = { ...PLATFORM, GQ_CI_GITHUB_APP_PRIVATE_KEY: pkcs8Base64(privateKey) };
+  const { exec } = appExec({ platform });
+  const fetch = recordingFetch(({ url }) => {
+    if (url.endsWith("/workers/subdomain"))
+      return { success: true, result: { subdomain: "fixture-sub" } };
+    if (url === "https://api.github.com/app") {
+      return {
+        id: 4242,
+        slug: "getquick-ci",
+        owner: { login: "Quick-Release" },
+        permissions: APP_PERMISSIONS,
+        events: [],
+      };
+    }
+    if (url === "https://api.github.com/app/installations/77") {
+      return {
+        account: { login: "Quick-Release" },
+        repository_selection: "selected",
+        suspended_at: null,
+      };
+    }
+    if (url === `${BROKER}/health`) return { ok: true, configured: true };
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  const result = await fixture.run(["ci", "broker", "deploy"], {
+    env: { CI_DEPLOY_API_TOKEN: "ci-deploy" },
+    fetch,
+    exec,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  const wrangler = exec.calls.filter(({ command }) => command.endsWith("wrangler"));
+  assert.deepEqual(
+    wrangler.map(({ args }) => args.slice(0, 2).join(" ")),
+    ["deploy --config", "secret bulk"],
+  );
+  for (const call of wrangler) {
+    assert.ok(!call.cwd.startsWith(fixture.root), "never in the Site's CI directory");
+    assert.equal(call.env.CLOUDFLARE_API_TOKEN, "ci-deploy");
+    assert.match(call.args.at(-1), /gq-ci-broker-.*\/wrangler\.json$/u);
+  }
+  assert.deepEqual(Object.keys(JSON.parse(wrangler[1].input)).sort(), [
+    "BROKER_KEY",
+    "GITHUB_APP_ID",
+    "GITHUB_APP_PRIVATE_KEY",
+  ]);
+  assert.ok(
+    wrangler.every(({ args }) => !args.some((argument) => argument.includes("broker-key"))),
+  );
+  assert.match(result.stdout, /health: configured/u);
+});
+
+test("github app create stops when the App already exists, and --dry-run prints the manifest", async () => {
+  const fixture = await site();
+  const exists = appExec({ platform: PLATFORM });
+  const existing = await fixture.run(["github", "app", "create"], { env: {}, exec: exists.exec });
+  assert.equal(existing.code, 0, existing.stderr);
+  assert.match(existing.stdout, /already holds GQ_CI_GITHUB_APP_ID: the App exists/u);
+
+  const fresh = appExec();
+  const dry = await fixture.run(["github", "app", "create", "--dry-run"], {
+    env: {},
+    exec: fresh.exec,
+  });
+  assert.equal(dry.code, 0, dry.stderr);
+  assert.match(dry.stdout, /"name": "GETQUICK CI"/u);
+  assert.match(dry.stdout, /\+ generate the broker key/u);
+  assert.deepEqual(fresh.stores.platform, {});
+});
