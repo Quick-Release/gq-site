@@ -400,6 +400,20 @@ run_deploy_extensions() {
   done <"$tmp_dir/extensions"
 }
 
+# Gives a site with plain permalinks (a fresh install's default) pretty ones,
+# so /wp-json/ reaches the REST API: with plain permalinks WordPress doesn't
+# route it, and GQ Config's headless routing redirects it to the Frontend,
+# which breaks the storefront's Store API and auth upstreams, `gq content`
+# and WPGraphQL at /graphql. A structure already set (by an administrator or
+# a deploy extension) stays. Runs after the extensions, before the flush.
+apply_permalinks() {
+  local structure
+  structure="$(wp option get permalink_structure)"
+  [ -z "$structure" ] || return 0
+  echo "Setting pretty permalinks (/%postname%/); the site had plain permalinks."
+  wp rewrite structure '/%postname%/' --quiet
+}
+
 if wp core is-installed; then
   # The GETQUICK theme (or the site's child of it) must stay installed.
   require_installed theme getquick-theme
@@ -425,6 +439,7 @@ if wp core is-installed; then
   apply_locale
   apply_languages
   run_deploy_extensions
+  apply_permalinks
   wp rewrite flush --hard --quiet
 
   # Media on R2: the first deploy with S3 Uploads configured copies the

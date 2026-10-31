@@ -321,6 +321,16 @@ the CI Worker runs `admissionCommand` before the tagged
 admission with git, bash and node. Written by hand and reviewed against the
 templates, not regenerated.
 
+`pnpm plan:frontend` running the deploy wrapper (the Bruaa rollout) updates
+the content site's `infra/package.json` and `infra/scripts/deploy-frontend.mjs`
+baselines alongside their source: the infra `plan:frontend` script runs
+`node scripts/deploy-frontend.mjs --dry-run --detailed` instead of
+`alchemy deploy --dry-run` directly, so a plan gets the deploy's checks,
+`CLOUDFLARE_ACCOUNT_ID` from `cloudflare.accountId` and
+`PUBLIC_WORDPRESS_GRAPHQL_URL`, and the wrapper gains a comment saying so.
+`sync/deploy-files.test.mjs` runs the plan for both variants. Written by hand
+and reviewed against the templates, not regenerated.
+
 ## Preservation
 
 - Preserve fixture paths, contents and version identifiers during organization,

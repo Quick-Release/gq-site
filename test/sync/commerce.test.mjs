@@ -85,6 +85,13 @@ test("a commerce CMS deploy updates WooCommerce's database and patches no conten
       ([tool, ...args]) => tool === "wp" && args.join(" ") === "wc update",
     );
     assert.equal(updates.length, composerOnly ? 0 : 1);
+    // Pretty permalinks, so the storefront's Store API and auth upstreams
+    // reach /wp-json/ instead of GQ Config's redirect to the Frontend.
+    const structure = result.calls.filter(
+      ([tool, ...args]) =>
+        tool === "wp" && args.join(" ") === "rewrite structure /%postname%/ --quiet",
+    );
+    assert.equal(structure.length, composerOnly ? 0 : 1);
   }
 });
 
@@ -560,19 +567,76 @@ test("a gated commerce foundation adopts the commerce variant through gq sync", 
   ops.wordpress = { plugins: COMMERCE_PLUGINS };
   await writeFile(join(root, "gq.ops.json"), `${JSON.stringify(ops, null, 2)}\n`);
 
+  // Installing the bumped @getquick/site, to run its gq, makes pnpm write a
+  // pnpm-workspace.yaml of its own, with no packages.
+  const stub = "allowBuilds:\n  esbuild: true\n";
+  await writeFile(join(root, "pnpm-workspace.yaml"), stub);
+
   const adopted = await runGq(["sync"], { cwd: root });
   assert.equal(adopted.code, 0, adopted.stderr);
   for (const path of [
     "apps/cms/composer.json",
     "apps/frontend/vite.config.ts",
     "infra/frontend.run.ts",
-    "pnpm-workspace.yaml",
   ]) {
     assert.ok(await exists(root, path), path);
   }
   assert.equal(await readSite(root, "README.md"), "# FPA Shop\n");
+  // Sync keeps both files it doesn't own, and names what each lacks.
+  assert.equal(await readSite(root, "pnpm-workspace.yaml"), stub);
+  const missing = [
+    "scripts.dev",
+    "scripts.frontend:dev",
+    "scripts.build",
+    "scripts.check",
+    "scripts.lint",
+    "scripts.test",
+    "devDependencies.sigillo",
+    "devDependencies.vite",
+  ];
+  assert.equal(
+    adopted.stderr,
+    "warning: pnpm-workspace.yaml lists no workspace packages, so pnpm installs none of the " +
+      "Site's apps (pnpm writes such a file when it installs before gq sync creates the " +
+      "blueprint's, and gq sync never replaces a file it creates once). " +
+      "Run gq sync --recreate pnpm-workspace.yaml.\n" +
+      `warning: package.json lacks keys a new Site's package.json starts with: ${missing.join(", ")}. ` +
+      "Run gq sync --recreate package.json (adds them, and changes no key package.json has).\n",
+  );
+  const pending = await runGq(["sync", "--check"], { cwd: root });
+  assert.equal(pending.code, 0, pending.stderr);
+  assert.match(pending.stderr, /warning: pnpm-workspace\.yaml lists no workspace packages/u);
+
+  const recreated = await runGq(
+    ["sync", "--recreate", "pnpm-workspace.yaml", "--recreate", "package.json"],
+    { cwd: root },
+  );
+  assert.equal(recreated.code, 0, recreated.stderr);
+  assert.equal(recreated.stderr, "");
+  assert.match(
+    recreated.stdout,
+    new RegExp(`^package\\.json: updated \\(initial keys ${missing.join(", ")}\\)\\.$`, "mu"),
+  );
+  assert.match(await readSite(root, "pnpm-workspace.yaml"), /^packages:\n {2}- "apps\/\*"$/mu);
+  const merged = JSON.parse(await readSite(root, "package.json"));
+  // What the file had stays: its name, its format script, its vite-plus pin.
+  assert.equal(merged.name, "@fpa-shop/site");
+  assert.equal(merged.scripts.format, "vp fmt");
+  assert.equal(merged.scripts.check, "pnpm --filter @fpa-shop/frontend check");
+  assert.equal(merged.devDependencies["vite-plus"], "1.1.0");
+  assert.equal(merged.devDependencies.vite, "catalog:");
+  assert.deepEqual(Object.keys(merged.devDependencies), [
+    "@getquick/site",
+    "sigillo",
+    "vite",
+    "vite-plus",
+  ]);
+  // The added keys are the Site's: the lock doesn't record them.
+  const lock = JSON.parse(await readSite(root, "gq.lock.json"));
+  assert.equal(lock.keys["package.json"]["scripts.check"], undefined);
   const check = await runGq(["sync", "--check"], { cwd: root });
   assert.equal(check.code, 0, check.stderr);
+  assert.equal(check.stderr, "");
 });
 
 // gq packages proposes and writes the content CMS's pins only (its catalogue

@@ -131,6 +131,54 @@ test("the deploy extensions run in lexical order from apps/cms, after activation
   assert.match(result.stdout, /^Running deploy extension deploy\/ploi\/admin\.d\/10-theme\.sh$/mu);
 });
 
+test("a site with plain permalinks gets /%postname%/ after the extensions, before the flush", async () => {
+  const result = await deploy(await generatedScript(), {
+    releaseFiles: { "deploy/ploi/admin.d/10-theme.sh": recordingExtension("10-theme.sh") },
+  });
+
+  assert.equal(result.code, 0, result.output);
+  const [structure, ...more] = wpCalls(result.calls, "rewrite structure");
+  assert.deepEqual(more, []);
+  assert.deepEqual(structure, ["wp", "rewrite", "structure", "/%postname%/", "--quiet"]);
+  const at = (call) => result.calls.indexOf(call);
+  const extension = result.calls.find(([tool]) => tool === "extension");
+  assert.ok(at(extension) < at(wpCalls(result.calls, "option get permalink_structure")[0]));
+  assert.ok(at(structure) < at(wpCalls(result.calls, "rewrite flush")[0]));
+  assert.match(result.stdout, /^Setting pretty permalinks \(\/%postname%\/\)/mu);
+});
+
+test("a permalink structure the site already has stays", async () => {
+  const result = await deploy(await generatedScript(), {
+    permalinkStructure: "/%year%/%monthnum%/%postname%/",
+  });
+
+  assert.equal(result.code, 0, result.output);
+  assert.equal(wpCalls(result.calls, "option get permalink_structure").length, 1);
+  assert.deepEqual(wpCalls(result.calls, "rewrite structure"), []);
+  assert.equal(wpCalls(result.calls, "rewrite flush").length, 1);
+});
+
+test("a permalink structure that can't be read fails the deploy instead of replacing it", async () => {
+  const result = await deploy(await generatedScript(), {
+    failing: ["option get permalink_structure"],
+  });
+
+  assert.equal(result.code, 1, result.output);
+  assert.deepEqual(wpCalls(result.calls, "rewrite structure"), []);
+  assert.deepEqual(wpCalls(result.calls, "rewrite flush"), []);
+  assert.match(result.stdout, /^ACME_SHOP_DEPLOY_STATUS=failed/mu);
+});
+
+test("a Composer-only deploy and a deploy before WordPress is installed leave permalinks alone", async () => {
+  const script = await generatedScript();
+  for (const options of [{ composerOnly: true }, { installed: false }]) {
+    const result = await deploy(script, options);
+    assert.equal(result.code, 0, result.output);
+    assert.deepEqual(wpCalls(result.calls, "option get permalink_structure"), []);
+    assert.deepEqual(wpCalls(result.calls, "rewrite structure"), []);
+  }
+});
+
 test("a failing deploy extension fails the deploy and leaves maintenance mode off", async () => {
   const result = await deploy(await generatedScript(), {
     releaseFiles: {

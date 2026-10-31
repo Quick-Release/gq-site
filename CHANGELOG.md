@@ -54,6 +54,69 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   before the release is copied now still prints its status line. Until now only the
   deploy script understood `COMPOSER_ONLY`; no gq command set it.
 
+## 0.29.3 — 2026-10-31
+
+### Fixed
+
+- **The CMS deploy gives a Site with plain permalinks pretty ones, so
+  `/wp-json/` reaches the REST API.** A fresh WordPress install has plain
+  permalinks, so WordPress doesn't route `/wp-json/`, and GQ Config's
+  headless routing then 301-redirects it to the Frontend. On a commerce Site
+  that broke the storefront's Store API and auth upstreams (503/400, found on
+  Bruaa's staging); on a content Site it breaks `gq content`, `gq media
+check`'s REST read, the forms submissions route and a `/graphql`
+  `wordpress.graphqlPath` (WPGraphQL's rewrite rule). The default
+  `/wp/graphql` matches by path without rewrite rules, so content delivery
+  was unaffected, and the content Sites already deployed have a structure in
+  their databases. The generated `deploy/ploi/admin.sh` now sets
+  `/%postname%/` after the deploy extensions, before `wp rewrite flush`, only
+  when `permalink_structure` is empty: a structure an administrator or an
+  extension set stays, and one it can't read fails the deploy instead of being
+  replaced. Both variants; `gq sync` updates the script. **A Site with a
+  deploy extension that does this (Bruaa's `deploy/ploi/admin.d/20-permalinks.sh`)
+  can delete it.**
+- **`pnpm plan:frontend` plans with the deploy's account and secrets.** It ran
+  `alchemy deploy --dry-run` directly, so, unlike `pnpm deploy:frontend`, it
+  had no `CLOUDFLARE_ACCOUNT_ID` from `gq.ops.json` `cloudflare.accountId`
+  ("Provider 'Cloudflare' is not configured in profile 'default'"), no
+  Sigillo staging secrets and, on a content Site, no
+  `PUBLIC_WORDPRESS_GRAPHQL_URL`. `infra`'s `plan:frontend` now runs the
+  deploy wrapper, `node scripts/deploy-frontend.mjs --dry-run --detailed`,
+  with the deploy's checks, and the root `plan:frontend` runs it under
+  `gq sigillo run staging` as `deploy:frontend` does; `plan:frontend:raw`
+  runs it without. Both variants; `gq sync` updates the managed scripts.
+- **An adopting Site's root files get what a new Site's have.** Adopting from
+  a gated foundation (Bruaa) left two gaps `gq sync` didn't report:
+  - `gq sync --recreate package.json` adds to an existing root `package.json`
+    each key of the blueprint's initial one it lacks (the `dev`,
+    `frontend:dev`, `build`, `check`, `lint`, `format` and `test` scripts and
+    the `@getquick/site`, `sigillo`, `vite` and `vite-plus` devDependencies;
+    a dependency in any dependency map counts as there), and changes no key
+    it has. The keys it adds are the Site's, not managed. Until now only a
+    `package.json` gq created got them, so `gq verify` failed on a missing
+    `check` script.
+  - `gq sync` and `gq sync --check` warn when `package.json` lacks any of
+    those keys, and when `pnpm-workspace.yaml` lists no workspace packages:
+    pnpm writes such a file when it installs before `gq sync` has created the
+    blueprint's, and sync keeps it as it keeps any create-once file. Each
+    warning names the `--recreate` that fixes it. `gq doctor` fails on the
+    workspace file and on a missing script `gq verify` runs, and warns about
+    the other keys.
+  - The commerce guide's "Adopting from a gated foundation" installs the
+    bumped `@getquick/site` before syncing, then runs
+    `gq sync --recreate pnpm-workspace.yaml --recreate package.json`.
+- **The fleet's rate-limit namespace register exists.** The commerce guide
+  said to pick unused IDs from a register that didn't exist.
+  `blueprint/rate-limit-namespaces.json`, documented in
+  `docs/reference/rate-limit-namespaces.md`, lists them by Cloudflare account:
+  Ekis 1001–1003 and Bruaa 1007–1009 in `8f38791a8c37b182239af2a385ab3c31`.
+  1004–1006, the guide's example, are reserved for documentation and tests in
+  every account. `gq doctor` warns when a commerce Site's
+  `cloudflare.rateLimitNamespaces` hold an ID another Site holds in the same
+  account, a reserved ID, one ID twice, or IDs the register doesn't list for
+  it, and the package suite fails when an example in the docs isn't reserved
+  or the reference's table differs from the register.
+
 ## 0.29.2 — 2026-10-31
 
 ### Fixed
