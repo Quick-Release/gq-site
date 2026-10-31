@@ -65,6 +65,25 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   before the release is copied now still prints its status line. Until now only the
   deploy script understood `COMPOSER_ONLY`; no gq command set it.
 
+### Fixed
+
+- **`gq github setup --app` no longer stops on a repository already in the
+  GETQUICK CI installation.** It always called GitHub's
+  `PUT /user/installations/{id}/repositories/{repo}` through `gh`, which
+  GitHub refused with 403 for an organization owner's `gh` login (an OAuth app
+  token), skipping the broker credential, URL and webhook. It now asks GitHub
+  as the App first (an installation token limited to Metadata read, then every
+  page of `GET /installation/repositories`, then the token is revoked); a
+  repository already there is planned as `✓ … in the installation` and not
+  added, and `--dry-run` shows the real membership. A missing repository is
+  still added through `gh`, before anything else is written; a 403 or 404
+  stops with the remedy (an organization owner adds it at the installation's
+  settings page, or switches the installation to "All repositories", with its
+  trade-off), and which token types GitHub documents for that call. It now
+  needs `GQ_CI_GITHUB_APP_ID` and `GQ_CI_GITHUB_APP_PRIVATE_KEY` from GQ
+  Platform `ops` as well. See
+  [provisioning](https://github.com/Quick-Release/gq-site/blob/main/docs/guides/provisioning.md#when-github-refuses-to-add-the-repository).
+
 ## 0.31.0 — 2026-10-31
 
 ### Added
