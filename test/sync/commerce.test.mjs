@@ -242,6 +242,49 @@ test("a commerce site keeps its own storefront through gq sync", async () => {
   assert.ok(!(await exists(site.root, "apps/frontend/src/home.test.tsx")));
 });
 
+// The Site's formatter (vp fmt, sortPackageJson) keeps dependencies in
+// order, so gq sync adds a managed dependency where it sorts; appended, the
+// pre-commit hook would move it and the next sync would see an edit.
+test("gq sync adds GQ Design's packages where they sort in a sorted dependency map", async () => {
+  const site = await newCommerceSite();
+  const path = join(site.root, "apps/frontend/package.json");
+  const designless = (dependencies) =>
+    Object.fromEntries(
+      Object.entries(dependencies).filter(([name]) => !name.startsWith("@quick-release/design-")),
+    );
+  const frontend = JSON.parse(await readFile(path, "utf8"));
+  const generated = Object.keys(frontend.dependencies);
+  assert.deepEqual(generated, generated.toSorted());
+
+  await writeFile(
+    path,
+    `${JSON.stringify({ ...frontend, dependencies: designless(frontend.dependencies) }, null, 2)}\n`,
+  );
+  const sorted = await site.run(["sync"]);
+  assert.equal(sorted.code, 0, sorted.stderr);
+  const text = await readFile(path, "utf8");
+  assert.deepEqual(Object.keys(JSON.parse(text).dependencies), generated);
+  assert.match(
+    text,
+    /\n {4}"@quick-release\/auth-contract": "0\.1\.9",\n {4}"@quick-release\/design-contract": "0\.9\.4",\n {4}"@quick-release\/design-renderer": "0\.9\.4",\n {4}"@quick-release\/storefront"/u,
+  );
+
+  // A map the site keeps in its own order gets them after its siblings.
+  const { react, ...rest } = designless(frontend.dependencies);
+  await writeFile(
+    path,
+    `${JSON.stringify({ ...frontend, dependencies: { react, ...rest } }, null, 2)}\n`,
+  );
+  const appended = await site.run(["sync"]);
+  assert.equal(appended.code, 0, appended.stderr);
+  assert.deepEqual(Object.keys(JSON.parse(await readFile(path, "utf8")).dependencies), [
+    "react",
+    ...Object.keys(rest),
+    "@quick-release/design-contract",
+    "@quick-release/design-renderer",
+  ]);
+});
+
 test("gq new --variant commerce prints its provisioning, with no events, refresh or readiness", async () => {
   const site = await newCommerceSite(["--locale", "pt_PT_ao90"]);
   const { stdout } = site.created;

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # Generates a disposable content site from this checkout's blueprint, installs
-# its Frontend's dependencies (the pinned @getquick/content among them) and
-# runs the Frontend's tests (the rendered-route tests in src/routes.test.ts),
+# its Frontend's dependencies (the pinned @getquick/content among them),
+# checks the whole Site with its own root `vp fmt --check` and runs the
+# Frontend's tests (the rendered-route tests in src/routes.test.ts),
 # `astro check` against the package's types, lint and format,
 # then lists a second language in its gq.ops.json (wordpress.languages) and
 # runs the tests and `astro check` again, as a bilingual Site. Last it
@@ -36,6 +37,9 @@ node "$repo/bin/gq.mjs" new "$project" --project "$project" --variant content --
 use_this_checkout "$repo" "$parent/$project"
 cd "$project"
 CI=1 pnpm install --filter "@$project/frontend..." --filter . >/dev/null
+# The Site's own root formatter, as its pre-commit hook runs it: every file gq
+# wrote is already formatted, so the first commit edits none of them.
+pnpm exec vp fmt --check
 
 cd apps/frontend
 pnpm test
