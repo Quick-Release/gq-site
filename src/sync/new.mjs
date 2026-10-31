@@ -196,8 +196,10 @@ function reportCommerceRelease(io) {
   io.out("  # deploy activates WooCommerce, GQ eCommerce and the theme and updates");
   io.out("  # WooCommerce's database. Prove its uploads with a CMS check user:");
   io.out(scriptLine("media:check:upload"));
-  io.out("  # A commerce Site has no readiness check yet (gq-site#26): nothing above,");
-  io.out("  # pnpm verify included, makes it ready, and gq site check refuses it.");
+  io.out("  # Ready only when every part holds (ADR 0021): the CMS's Store API, plugins,");
+  io.out("  # theme and proxy secret, a cart round-tripped through the storefront's Worker,");
+  io.out("  # its rate limiters, the legal pages and independent media (exit 1 until then):");
+  io.out(scriptLine("site:check"));
 }
 
 function scriptLine(script) {

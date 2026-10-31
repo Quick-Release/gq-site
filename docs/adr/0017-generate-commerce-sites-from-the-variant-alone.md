@@ -1,6 +1,7 @@
 # ADR 0017: Generate commerce Sites from the variant alone
 
-- Status: Accepted
+- Status: Accepted; amended by [ADR 0021](0021-declare-a-commerce-site-ready-through-the-same-gate.md)
+  (`gq site check` is a commerce Site's readiness gate too)
 - Date: 2026-10-17
 
 ## Context
@@ -72,7 +73,12 @@ renderer packages are not either
 - **No commerce readiness yet.** `gq site check` refuses on a commerce Site
   until [#26](https://github.com/Quick-Release/gq-site/issues/26) defines its
   health checks; passing `gq verify`, formatting or manifest validation is
-  never readiness. `gq media check` is shared.
+  never readiness. `gq media check` is shared. _Amended by
+  [ADR 0021](0021-declare-a-commerce-site-ready-through-the-same-gate.md):
+  `gq site check` now runs a commerce Site's own checks (the CMS's Store API,
+  plugins, theme and proxy secret, a cart round-tripped through the
+  storefront's Worker, its rate limiters, legal pages and media). Passing
+  `gq verify` is still never readiness._
 - **Defaults.** Commerce checks are content's (`check`, `lint`, `test`,
   `test:scripts`, `infra:check`, `ci:check`, Composer validate/lint/test) plus
   the Frontend's `build`; release paths and version files are content's; the

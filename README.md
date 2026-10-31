@@ -92,7 +92,9 @@ a site takes them by bumping its pin and running `gq sync`. `gq new --variant co
 generates a commerce site with the storefront Runtime mounted, whose install needs a
 GitHub Packages token
 ([ADR 0017](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0017-generate-commerce-sites-from-the-variant-alone.md));
-a commerce site has no readiness check, and commerce adoption and fleet rollout are gated work.
+`gq site check` is its readiness gate
+([ADR 0021](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0021-declare-a-commerce-site-ready-through-the-same-gate.md)),
+and commerce adoption and fleet rollout are gated work.
 See the [rollout record](https://github.com/Quick-Release/gq-site/blob/main/docs/plans/getquick-blueprint-rollout.md#phases-and-gates)
 for evidence and remaining gates, and
 [ADR 0001](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0001-the-getquick-site-blueprint.md)

@@ -928,7 +928,7 @@ async function consentSettings({ ops, env, fetch, languages }) {
 }
 
 /** Each language's homepage HTML, as fetched without JavaScript; null when it can't be read. */
-async function publicPages({ origin, fetch, languages }) {
+export async function publicPages({ origin, fetch, languages }) {
   const homes = languages.length > 0 ? languages.map(({ home }) => home) : ["/"];
   const pages = [];
   for (const home of homes) {
@@ -946,7 +946,7 @@ async function publicPages({ origin, fetch, languages }) {
   return pages;
 }
 
-function legalCheck(settings, languages) {
+export function legalCheck(settings, languages) {
   const name = "legal-pages";
   const assign = "assign them in the CMS under GETQUICK → Legal (GQ Config), then check again";
   if (settings.outdated) {
@@ -1013,7 +1013,7 @@ function runtimeOf(html) {
   }
 }
 
-function runtimeCheck(settings, pages) {
+export function runtimeCheck(settings, pages) {
   const name = "consent-runtime";
   const analytics = settings.data?.googleAnalytics;
   const ga4 = Boolean(analytics?.enabled && analytics?.measurementId);
@@ -1059,7 +1059,7 @@ export function scanThirdPartyHosts(html, firstParty) {
   };
 }
 
-function hostsCheck(pages, ops, origin) {
+export function hostsCheck(pages, ops, origin) {
   const name = "third-party-hosts";
   // The Site's own hosts: its Frontend, its CMS and its media domain.
   const firstParty = {
@@ -1102,7 +1102,7 @@ export function result(checks) {
 }
 
 // An error's message, without anything a provider echoed past its first line.
-function messageOf(error) {
+export function messageOf(error) {
   const message = error instanceof Error ? error.message : String(error);
   return message.split("\n")[0];
 }
@@ -1115,10 +1115,10 @@ export function notReady(name, detail, action) {
   return { name, status: "not-ready", detail, action };
 }
 
-function warn(name, detail, action) {
+export function warn(name, detail, action) {
   return { name, status: "warn", detail, action };
 }
 
-function skipped(name, detail) {
+export function skipped(name, detail) {
   return { name, status: "skipped", detail };
 }
