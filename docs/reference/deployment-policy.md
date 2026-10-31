@@ -82,17 +82,24 @@ or holds, before anything else:
     includes not followed), or the release refuses before any request. The
     read itself (`git ls-remote --symref <ARTIFACTS_REMOTE> HEAD`, then a
     fetch of `refs/heads/<branch>`) runs in a temporary bare repository gq
-    creates and removes, with only gq's settings: none of the release
-    repository's config (its origin, `url.insteadOf`, includes, credential
-    settings) applies, redirects aren't followed, only the remote's own
-    protocol is allowed, and `ARTIFACTS_TOKEN` reaches git as
+    creates and removes: every git call names it with `--git-dir` and runs
+    in it, `GIT_CEILING_DIRECTORIES` stops discovery at its parent, and
+    `safe.bareRepository=explicit`, so git never adopts a repository found
+    from the release repository, the working directory or any directory above
+    the scratch one. None of the release repository's config (its origin,
+    `url.insteadOf`, includes, credential settings) applies; no global or
+    system config applies; redirects aren't followed; only the remote's own
+    protocol is allowed; and `ARTIFACTS_TOKEN` reaches git as
     `http.<ARTIFACTS_REMOTE>.extraHeader` in the environment of those two
     calls alone. So a step before the release (the tag's install) that
     rewrites the release repository's config or a runner's global config can
     neither redirect the read to a forged, authorized policy nor receive the
-    token. `ARTIFACTS_TOKEN` without `ARTIFACTS_REMOTE`, or an
-    `ARTIFACTS_REMOTE` that isn't an https URL (plain http only to
-    127.0.0.1, for tests), refuses.
+    token. `ARTIFACTS_TOKEN` without `ARTIFACTS_REMOTE`, `ARTIFACTS_REMOTE`
+    without `ARTIFACTS_TOKEN`, or an `ARTIFACTS_REMOTE` that isn't an
+    accepted URL, refuses. An accepted URL is `https://` to a DNS name (no
+    bare IP address, no port, no credentials, no `..`- or dot-prefixed path
+    segment, no query or fragment), or, for the tests only, plain `http://`
+    to `127.0.0.1` (any port). `localhost` is not accepted.
   - **On an operator's machine** (neither set): from the checkout's own
     `origin`, as its `.git/config` says (`git ls-remote --symref origin
 HEAD`, then `git fetch origin refs/heads/<branch>`, which changes only
@@ -102,9 +109,12 @@ HEAD`, then `git fetch origin refs/heads/<branch>`, which changes only
     `SSH_AUTH_SOCK`); an HTTPS `origin` that needs a credential helper from
     your global git configuration can't be read, so the release refuses.
 
-  The CI Worker's own admission reads both policies the same way (no system
-  or global config, the token scoped to `ARTIFACTS_REMOTE`, no redirects),
-  in a scratch repository of its own. A
+  The CI Worker's own admission reads both policies the same way (a temporary
+  bare repository of its own, every call bound to it with `--git-dir` and
+  `GIT_CEILING_DIRECTORIES` so the tag's workspace can't be discovered as a
+  repository from the step's working directory, no system or global config,
+  the token scoped to `ARTIFACTS_REMOTE`, no redirects, only that remote's
+  protocol, the same accepted URLs). A
   release commit or default branch whose `gq.ops.json` is missing, invalid or
   unreadable refuses, **for every Site**, protected or not: an old
   unprotected commit can't release a Site whose current branch protects it.
@@ -124,16 +134,20 @@ deploy`): a tag carries its own `scripts/ci-release.mjs`, gq, package
   `git` and `node`, before anything the tag controls is installed, run or
   given a secret: no `pnpm install`, Composer install or lifecycle script, no
   `pnpm verify`, no release. It fetches the release tag and the default
-  branch from Artifacts into a scratch repository and reads `gq.ops.json` from
-  both commits with `git show` (never the restored workspace). It refuses
+  branch from Artifacts into a scratch repository of its own and reads
+  `gq.ops.json` from both commits with `git show` (never the restored
+  workspace, which it never lets git discover as a repository). It refuses
   when either is offboarded or holds, when either can't be read, when the tag
   doesn't point at the release's commit, or when the default branch protects
   the Site or guards packages and the tagged commit doesn't (its gq wouldn't
-  enforce that). The release step admits again first. The Artifacts token
-  reaches each git call in its environment only: never argv, an exported
-  variable or a global git setting, and the Frontend deploy runs without it.
-  `gq ploi release` (run by `ci-release.mjs`) likewise puts it only in its
-  own two git reads of the default branch.
+  enforce that). The release step admits again first, the same way. The
+  Artifacts token reaches each network git call in its environment only:
+  never argv, an exported variable, a file or a global git setting, and the
+  Frontend deploy runs without it. `scripts/ci-release.mjs` fetches the
+  release source the same way — a repository it makes whose origin names
+  `ARTIFACTS_REMOTE`, every call bound to it, the token only on the fetch —
+  and `gq ploi release` (which it then runs) puts the token only in its own
+  two git reads of the default branch.
 
 ## Not covered
 

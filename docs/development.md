@@ -74,6 +74,16 @@ Shared helpers stay in `test/support/`, with filenames describing their roles:
   account (Cloudflare, R2's S3 API, Ploi, Sigillo, `gh`, and git against an
   Artifacts repository, each listing a page at a time), with ZIP, git bundle
   and output helpers.
+- `git-http.mjs`: a real git smart-HTTP endpoint for tests — git's own
+  `git-http-backend` (CGI) behind a local HTTP server on `127.0.0.1`, serving
+  bare repositories from a directory and recording each request's method,
+  path and `Authorization` header (with `redirectTo`, answering every request
+  with a redirect instead). It stands in for Cloudflare Artifacts in the CI
+  deployment-policy tests (`ploi/trusted-git.mjs` CI reads,
+  `ploi/policy-authenticity.test.mjs`, and the CI Worker admission in
+  `sync/deploy-files.test.mjs`), where the read's authenticity turns on which
+  endpoint the token and the fetch reach. Nothing leaves `127.0.0.1`; test
+  tokens are synthetic.
 
 Keep this small shared helper set rather than adding per-module helper folders
 or forwarding modules. Baseline evidence stays in `test/fixtures/`; its
