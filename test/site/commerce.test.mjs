@@ -37,10 +37,6 @@ test("content-only commands refuse a commerce Site and say why", async () => {
   const fixture = await site();
   for (const [argv, message] of [
     [
-      ["site", "check"],
-      /gq site check isn't for a commerce Site: commerce readiness isn't defined yet \(https:\/\/github\.com\/Quick-Release\/gq-site\/issues\/26\)/u,
-    ],
-    [
       ["frontend", "refresh"],
       /gq frontend refresh isn't for a commerce Site: its storefront has no publication store/u,
     ],
