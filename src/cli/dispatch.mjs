@@ -375,6 +375,7 @@ function parseArguments(argv) {
     "--archive",
     "--composer-only",
     "--no-deploy",
+    "--pin",
   ]);
 
   for (let index = 0; index < argv.length; index += 1) {

@@ -102,17 +102,22 @@ contents. None of that is in gq-site.
 
 ## Preparing a guarded package
 
-`gq release package <package> --to <version> [--expect-before <version>] [--reference <ref>] --no-deploy`
+`gq release package <package> --to <version> [--pin] [--expect-before <version>] [--reference <ref>] --no-deploy`
 (see [release package](release.md)):
 
 1. looks up a fresh `phase: "prepare"` record for exactly `<version>`, before
    Composer runs; no record means nothing changes;
-2. pins and updates only that package in the lock (the usual guards);
+2. locks exactly `<version>` of only that package (`composer update
+<package> --with <package>:<version> --no-install`, the usual guards). A
+   requirement that already admits `<version>` (`^0.1.3` for 0.1.11) stays
+   as it is; one that doesn't refuses unless `--pin` sets it to exactly
+   `<version>`. A compatible range never authorizes the registry's latest;
 3. sets the package's entry in `deploy/ploi/package-expectations.json`:
    `<version>`, the reference the lock now records, the install path (kept, or
    `web/app/plugins/<name>` for a new entry) and the record's `files_digest`;
-4. commits `composer.json`, `composer.lock` and the expectations file, and
-   nothing else. With `--no-deploy` no provider is called.
+4. commits `composer.lock`, the expectations file and, with `--pin`,
+   `composer.json`, and nothing else. With `--no-deploy` no provider is
+   called.
 
 Preparing isn't permission to deploy. The version is any exact version: the
 same command moves forward or back (a recovery from 0.1.12 to 0.1.11 is

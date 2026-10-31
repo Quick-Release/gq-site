@@ -96,7 +96,7 @@ gq version sync [version]
 gq release prepare [version]
 gq release tag [version]
 gq release push <major|minor|fix>
-gq release package <composer-package> [--to <version>] [--reference <ref>]
+gq release package <composer-package> [--to <version> [--pin]] [--reference <ref>]
     [--expect-before <version>] [--no-deploy | --composer-only]
 ```
 

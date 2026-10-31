@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { CMS_PATH, composerDependencyChange } from "../cms/local.mjs";
 import { COMPOSER_PACKAGE_NAME } from "../manifest/schema.mjs";
 import { loadSiteSettings } from "../manifest/site-settings.mjs";
+import { parseVersion, satisfiesConstraint } from "../packages/versions.mjs";
 import { assertDeploymentAllowed, guardedPackages } from "../ploi/deployment-policy.mjs";
 import {
   PACKAGE_EXPECTATIONS_PATH,
@@ -33,8 +34,8 @@ const RELEASE_COMMANDS = new Map([
   [
     "release package",
     [
-      "gq release package <composer-package> [--to <version>] [--reference <ref>] [--expect-before <version>] [--no-deploy | --composer-only]",
-      ["to", "reference", "expectBefore", "noDeploy", "composerOnly"],
+      "gq release package <composer-package> [--to <version> [--pin]] [--reference <ref>] [--expect-before <version>] [--no-deploy | --composer-only]",
+      ["to", "pin", "reference", "expectBefore", "noDeploy", "composerOnly"],
     ],
   ],
 ]);
@@ -353,15 +354,18 @@ function createRelease({ config, root, env, exec, io }) {
 // Nothing is pushed, tagged or bumped: the archive is keyed by the commit, so
 // each redeploy is its own. Resolves to the Ploi release's exit code.
 //
-// Guarded preparation: --to <version> pins the package exactly in
-// composer.json first, --expect-before <version> refuses unless the lock
+// Guarded preparation: --to <version> locks exactly that version (Composer's
+// temporary `--with <package>:<version>` constraint), changing only the lock
+// when composer.json's requirement already admits it and refusing when it
+// doesn't; --pin also sets the requirement to exactly <version> (the only way
+// this command changes composer.json). --expect-before <version> refuses unless the lock
 // holds that version now, --reference <ref> requires the lock's reference
 // after the update, and --no-deploy commits without deploying (nothing is
 // uploaded and no provider is called). Any of them runs Composer with
 // --no-install (only the lock changes) and refuses, restoring composer.json
 // and composer.lock, when the update changes any other locked package, the
-// version or the reference isn't the one asked for, or a file other than
-// those two changed. A package in gq.ops.json deployment.guardedPackages is
+// version or the reference isn't the one asked for, or any other file
+// changed (composer.json too, without --pin). A package in gq.ops.json deployment.guardedPackages is
 // only ever prepared this way, with --to, and only once the approval service
 // returns a fresh phase "prepare" record for that exact version (looked up
 // before Composer runs; without a service it refuses). Its entry in
@@ -383,6 +387,17 @@ async function releasePackage(
   const composer = JSON.parse(composerText);
   if (!Object.hasOwn(composer.require ?? {}, name)) {
     throw new Error(`${CMS_PATH}/composer.json doesn't require ${name}.`);
+  }
+  // Without --pin, --to changes only the lock, so the requirement must
+  // already admit that version; it is never widened implicitly.
+  if (options.to && !options.pin) {
+    const constraint = composer.require[name];
+    const admits = satisfiesConstraint(parseVersion(options.to), constraint);
+    if (admits !== true) {
+      throw new Error(
+        `${COMPOSER_JSON} requires ${name} ${constraint}, which ${admits === false ? "doesn't admit" : "gq can't tell admits"} ${options.to}; nothing changed. Add --pin to set the requirement to exactly ${options.to} (a reviewed change to ${COMPOSER_JSON}).`,
+      );
+    }
   }
   if (await release.git(["status", "--porcelain"])) {
     throw new Error("gq release package requires a clean working tree: it commits composer.lock.");
@@ -438,7 +453,7 @@ async function releasePackage(
     ? `${COMPOSER_JSON}, ${COMPOSER_LOCK} and ${PACKAGE_EXPECTATIONS_PATH} are restored`
     : `${COMPOSER_JSON} and ${COMPOSER_LOCK} are restored`;
   const allowed = new Set([
-    COMPOSER_JSON,
+    ...(options.pin ? [COMPOSER_JSON] : []),
     COMPOSER_LOCK,
     ...(options.guardedPackage ? [PACKAGE_EXPECTATIONS_PATH] : []),
   ]);
@@ -446,12 +461,21 @@ async function releasePackage(
   io.out(`Updating ${name} in ${COMPOSER_LOCK}.`);
   let after;
   try {
-    if (options.to) {
+    if (options.pin) {
       await writeFile(composerPath, pinRequirement(composerText, name, options.to));
     }
+    // --to resolves exactly that version (a temporary constraint, as
+    // `composer update --with` takes it), whatever newer one the requirement
+    // also admits.
     await composerDependencyChange(
       join(root, CMS_PATH),
-      ["update", name, "--no-interaction", ...(options.guarded ? ["--no-install"] : [])],
+      [
+        "update",
+        name,
+        ...(options.to ? ["--with", `${name}:${options.to}`] : []),
+        "--no-interaction",
+        ...(options.guarded ? ["--no-install"] : []),
+      ],
       { exec, env, stdio: "inherit" },
     );
     const afterLock = await readLockFile(root);
@@ -557,6 +581,10 @@ function packageOptions(parsed, name, ops) {
   }
   if (options.reference !== undefined && !REFERENCE.test(options.reference)) {
     throw new Error(`--reference takes a lock reference (a commit), not "${options.reference}".`);
+  }
+  options.pin = Boolean(parsed.pin);
+  if (options.pin && !options.to) {
+    throw new Error("--pin sets the requirement to --to's version: name it with --to.");
   }
   if (options.noDeploy && options.composerOnly) {
     throw new Error("--composer-only is how a deploy runs; --no-deploy doesn't deploy.");

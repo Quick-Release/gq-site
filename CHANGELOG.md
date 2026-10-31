@@ -29,10 +29,13 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   [Package expectations](docs/reference/package-expectations.md). `gq sync`
   updates `deploy/ploi/admin.sh`; a Site guarding nothing deploys as before.
 - **Guarded single-package preparation.** `gq release package` takes
-  `--to <version>`, `--reference <ref>`, `--expect-before <version>` and
-  `--no-deploy`: an exact pin, a lock-only update that refuses any other
-  locked package's change (restoring both Composer files), and a commit
-  without any provider call.
+  `--to <version>` (lock exactly that version through Composer's temporary
+  `--with` constraint, keeping a requirement that already admits it, and
+  refusing one that doesn't), `--pin` (also set the requirement to exactly
+  that version), `--reference <ref>`, `--expect-before <version>` and
+  `--no-deploy`. The update is lock-only and refuses any other locked
+  package's change or any unasked `composer.json` change, restoring both
+  Composer files, and `--no-deploy` commits without any provider call.
 - **Composer-only deploys from gq.** `gq ploi release --composer-only` (and
   `gq release package --composer-only`) passes `composer_only`, so the deploy
   script stops after Composer and its verifications. Until now only the

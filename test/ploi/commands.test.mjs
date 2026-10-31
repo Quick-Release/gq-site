@@ -843,14 +843,15 @@ const NEW_REF = "2".repeat(40);
 const SUPPORT_COMPOSER = `${JSON.stringify(
   {
     name: "fixture/cms",
-    require: { "getquick/gq-design": "0.9.4", [SUPPORT]: "0.1.10", php: ">=8.4" },
+    // A compatible range, as a Site's own composer.json has it.
+    require: { "getquick/gq-design": "0.9.4", [SUPPORT]: "^0.1.3", php: ">=8.4" },
     "minimum-stability": "dev",
   },
   null,
   2,
 )}\n`;
 
-function supportLock({ version = "0.2.0", reference = NEW_REF, design = "0.9.4", dev = [] } = {}) {
+function supportLock({ version = "0.1.11", reference = NEW_REF, design = "0.9.4", dev = [] } = {}) {
   return `${JSON.stringify(
     {
       "content-hash": `hash-${version}-${design}`,
@@ -865,7 +866,7 @@ function supportLock({ version = "0.2.0", reference = NEW_REF, design = "0.9.4",
   )}\n`;
 }
 
-function supportSite(extra = {}) {
+function supportSite(extra = {}, composer = SUPPORT_COMPOSER) {
   const json = (data) => `${JSON.stringify(data, null, 2)}\n`;
   return site({
     ops: { ...OPS, ...extra },
@@ -873,28 +874,43 @@ function supportSite(extra = {}) {
       VERSION: "1.4.0\n",
       "package.json": json({ name: "fixture", version: "1.4.0", private: true }),
       "apps/frontend/package.json": json({ name: "frontend", version: "1.4.0" }),
-      "apps/cms/composer.json": SUPPORT_COMPOSER,
+      "apps/cms/composer.json": composer,
       "apps/cms/composer.lock": supportLock({ version: "0.1.10", reference: OLD_REF }),
     },
   });
 }
 
-// Composer's update writes `lock`; git reports what changed since (the two
-// Composer files, and `extra` paths) and accepts add and commit.
-function supportExec(fixture, { lock = supportLock(), extra = [] } = {}) {
+// Composer's update writes `lock` (and, with `composerJson`, rewrites
+// composer.json); git reports the tracked files whose content changed since
+// this was made, plus `extra` paths once Composer has run, and accepts add
+// and commit.
+function supportExec(fixture, { lock = supportLock(), extra = [], composerJson } = {}) {
+  const tracked = [
+    "apps/cms/composer.json",
+    "apps/cms/composer.lock",
+    "deploy/ploi/package-expectations.json",
+  ];
+  const read = (path) => readFile(fixture.path(path), "utf8").catch(() => null);
+  const initial = Promise.all(tracked.map(read));
   let updated = false;
   return recordingExec(async ({ command, args }) => {
     if (command === "sh") return {};
     if (command === "composer") {
       if (args[0] === "update") {
         await writeFile(fixture.path("apps/cms/composer.lock"), lock);
+        if (composerJson) await writeFile(fixture.path("apps/cms/composer.json"), composerJson);
         updated = true;
       }
       return {};
     }
     if (command === "git" && args[0] === "status") {
-      const paths = ["apps/cms/composer.json", "apps/cms/composer.lock", ...extra];
-      return { stdout: updated ? paths.map((path) => ` M ${path}\n`).join("") : "" };
+      const before = await initial;
+      const now = await Promise.all(tracked.map(read));
+      const paths = [
+        ...tracked.filter((_, index) => now[index] !== before[index]),
+        ...(updated ? extra : []),
+      ];
+      return { stdout: paths.map((path) => ` M ${path}\n`).join("") };
     }
     if (command === "git" && (args[0] === "add" || args[0] === "commit")) return {};
     return { code: 1, stderr: `unexpected ${command} ${args.join(" ")}` };
@@ -903,7 +919,7 @@ function supportExec(fixture, { lock = supportLock(), extra = [] } = {}) {
 
 const commandLines = (exec) => exec.calls.map(({ command, args }) => [command, ...args].join(" "));
 
-test("release package --to --no-deploy pins one package exactly, commits only its lock change, and calls no provider", async () => {
+test("release package --to locks exactly the approved version, leaving a compatible requirement alone, and calls no provider", async () => {
   const fixture = await supportSite();
   const { fetch } = fakeProviders();
   const exec = supportExec(fixture);
@@ -914,7 +930,7 @@ test("release package --to --no-deploy pins one package exactly, commits only it
       "package",
       SUPPORT,
       "--to",
-      "0.2.0",
+      "0.1.11",
       "--reference",
       NEW_REF,
       "--expect-before",
@@ -927,26 +943,95 @@ test("release package --to --no-deploy pins one package exactly, commits only it
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(fetch.requests, [], "no upload, script sync or deploy");
   const lines = commandLines(exec);
+  // Exactly 0.1.11, though ^0.1.3 admits newer releases too.
   assert.ok(
-    lines.includes(`composer update ${SUPPORT} --no-interaction --no-install`),
+    lines.includes(
+      `composer update ${SUPPORT} --with ${SUPPORT}:0.1.11 --no-interaction --no-install`,
+    ),
     lines.join("\n"),
   );
-  assert.ok(!lines.some((line) => /\b-w\b|--with/u.test(line)), "never --with-dependencies");
   assert.ok(
-    lines.includes("git add -- apps/cms/composer.json apps/cms/composer.lock"),
-    lines.join("\n"),
+    !lines.some((line) => /\s(-w|-W|--with-(all-)?dependencies)\b/u.test(line)),
+    "never --with-dependencies",
   );
-  assert.ok(lines.includes(`git commit -m Update ${SUPPORT} to 0.2.0`), lines.join("\n"));
+  // Lock-only: the requirement is kept byte for byte, and only the lock is committed.
+  assert.equal(await readFile(fixture.path("apps/cms/composer.json"), "utf8"), SUPPORT_COMPOSER);
+  assert.ok(lines.includes("git add -- apps/cms/composer.lock"), lines.join("\n"));
+  assert.ok(lines.includes(`git commit -m Update ${SUPPORT} to 0.1.11`), lines.join("\n"));
   assert.ok(
     !lines.some((line) => /^git (rev-parse|archive|push|tag)/u.test(line)),
     lines.join("\n"),
   );
-  // Only the one requirement changed, formatting kept.
+  assert.match(result.stdout, /without deploying: nothing was uploaded/u);
+});
+
+test("release package --to refuses a requirement that doesn't admit the version unless --pin sets it", async () => {
+  for (const [constraint, message] of [
+    [
+      "^0.1.3",
+      /requires getquick\/gq-support \^0\.1\.3, which doesn't admit 0\.2\.0; nothing changed\. Add --pin/u,
+    ],
+    ["dev-main as 0.1.99", /which gq can't tell admits 0\.2\.0; nothing changed\. Add --pin/u],
+  ]) {
+    const composer = SUPPORT_COMPOSER.replace('"^0.1.3"', JSON.stringify(constraint));
+    const fixture = await supportSite({}, composer);
+    const exec = supportExec(fixture, { lock: supportLock({ version: "0.2.0" }) });
+
+    const refused = await fixture.run(
+      ["release", "package", SUPPORT, "--to", "0.2.0", "--no-deploy"],
+      {
+        env: RELEASE_ENV,
+        exec,
+      },
+    );
+
+    assert.equal(refused.code, 1, constraint);
+    assert.match(refused.stderr, message);
+    assert.ok(!exec.calls.some(({ command }) => command === "composer"));
+    assert.equal(await readFile(fixture.path("apps/cms/composer.json"), "utf8"), composer);
+  }
+
+  const fixture = await supportSite();
+  const exec = supportExec(fixture, { lock: supportLock({ version: "0.2.0" }) });
+  const pinned = await fixture.run(
+    ["release", "package", SUPPORT, "--to", "0.2.0", "--pin", "--no-deploy"],
+    { env: RELEASE_ENV, exec },
+  );
+  assert.equal(pinned.code, 0, pinned.stderr);
+  // Only that requirement changed, formatting kept.
   assert.equal(
     await readFile(fixture.path("apps/cms/composer.json"), "utf8"),
-    SUPPORT_COMPOSER.replace('"getquick/gq-support": "0.1.10"', '"getquick/gq-support": "0.2.0"'),
+    SUPPORT_COMPOSER.replace('"getquick/gq-support": "^0.1.3"', '"getquick/gq-support": "0.2.0"'),
   );
-  assert.match(result.stdout, /without deploying: nothing was uploaded/u);
+  assert.ok(
+    commandLines(exec).includes("git add -- apps/cms/composer.json apps/cms/composer.lock"),
+  );
+
+  const unnamed = await fixture.run(["release", "package", SUPPORT, "--pin", "--no-deploy"], {
+    env: RELEASE_ENV,
+  });
+  assert.equal(unnamed.code, 1);
+  assert.match(unnamed.stderr, /--pin sets the requirement to --to's version/u);
+});
+
+test("release package --to refuses a composer.json change it didn't ask for", async () => {
+  const fixture = await supportSite();
+  const exec = supportExec(fixture, {
+    composerJson: SUPPORT_COMPOSER.replace('"^0.1.3"', '"*"'),
+  });
+
+  const result = await fixture.run(
+    ["release", "package", SUPPORT, "--to", "0.1.11", "--no-deploy"],
+    { env: RELEASE_ENV, exec },
+  );
+
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stderr,
+    /changed apps\/cms\/composer\.json too; only apps\/cms\/composer\.lock may change/u,
+  );
+  assert.equal(await readFile(fixture.path("apps/cms/composer.json"), "utf8"), SUPPORT_COMPOSER);
+  assert.ok(!commandLines(exec).some((line) => line.startsWith("git commit")));
 });
 
 test("release package refuses a lock update that changes another package, restoring both files", async () => {
@@ -959,7 +1044,7 @@ test("release package refuses a lock update that changes another package, restor
     const exec = supportExec(fixture, { lock });
 
     const result = await fixture.run(
-      ["release", "package", SUPPORT, "--to", "0.2.0", "--no-deploy"],
+      ["release", "package", SUPPORT, "--to", "0.1.11", "--no-deploy"],
       { env: RELEASE_ENV, exec },
     );
 
@@ -981,18 +1066,21 @@ test("release package refuses a lock update that changes another package, restor
 test("release package refuses the wrong version or reference after the update", async () => {
   const wrongVersion = await supportSite();
   const version = await wrongVersion.run(
-    ["release", "package", SUPPORT, "--to", "0.2.0", "--no-deploy"],
+    ["release", "package", SUPPORT, "--to", "0.1.11", "--no-deploy"],
     {
       env: RELEASE_ENV,
-      exec: supportExec(wrongVersion, { lock: supportLock({ version: "0.2.1" }) }),
+      exec: supportExec(wrongVersion, { lock: supportLock({ version: "0.1.12" }) }),
     },
   );
   assert.equal(version.code, 1);
-  assert.match(version.stderr, /locks getquick\/gq-support 0\.2\.1 after the update, not 0\.2\.0/u);
+  assert.match(
+    version.stderr,
+    /locks getquick\/gq-support 0\.1\.12 after the update, not 0\.1\.11/u,
+  );
 
   const wrongReference = await supportSite();
   const reference = await wrongReference.run(
-    ["release", "package", SUPPORT, "--to", "0.2.0", "--reference", "3".repeat(40), "--no-deploy"],
+    ["release", "package", SUPPORT, "--to", "0.1.11", "--reference", "3".repeat(40), "--no-deploy"],
     { env: RELEASE_ENV, exec: supportExec(wrongReference) },
   );
   assert.equal(reference.code, 1);
@@ -1007,7 +1095,7 @@ test("release package refuses an unexpected starting version, other changed file
   const fixture = await supportSite();
   const before = supportExec(fixture);
   const expected = await fixture.run(
-    ["release", "package", SUPPORT, "--to", "0.2.0", "--expect-before", "0.1.9", "--no-deploy"],
+    ["release", "package", SUPPORT, "--to", "0.1.11", "--expect-before", "0.1.9", "--no-deploy"],
     { env: RELEASE_ENV, exec: before },
   );
   assert.equal(expected.code, 1);
@@ -1018,7 +1106,7 @@ test("release package refuses an unexpected starting version, other changed file
   assert.ok(!before.calls.some(({ command }) => command === "composer"));
 
   const extra = await supportSite();
-  const other = await extra.run(["release", "package", SUPPORT, "--to", "0.2.0", "--no-deploy"], {
+  const other = await extra.run(["release", "package", SUPPORT, "--to", "0.1.11", "--no-deploy"], {
     env: RELEASE_ENV,
     exec: supportExec(extra, { extra: ["apps/cms/auth.json"] }),
   });
@@ -1040,7 +1128,7 @@ test("release package refuses an unexpected starting version, other changed file
   );
 });
 
-test("release package rolls a package back to an exact earlier version without touching its dependants", async () => {
+test("release package rolls a package back to an exact earlier version, lock-only, without touching its dependants", async () => {
   // A recovery drill: 0.1.12 locked, back to 0.1.11, while the theme that
   // constrains gq-support (^0.1.0) and GQ Design stay exactly as locked.
   const theme = {
@@ -1062,7 +1150,8 @@ test("release package rolls a package back to an exact earlier version without t
       null,
       4,
     )}\n`;
-  const composer = SUPPORT_COMPOSER.replace('"0.1.10"', '"0.1.12"');
+  // ^0.1.3 admits both 0.1.11 and 0.1.12: the requirement stays as it is.
+  const composer = SUPPORT_COMPOSER;
   const json = (data) => `${JSON.stringify(data, null, 2)}\n`;
   const fixture = await site({
     files: {
@@ -1094,11 +1183,10 @@ test("release package rolls a package back to an exact earlier version without t
 
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(fetch.requests, []);
-  assert.ok(commandLines(exec).includes(`git commit -m Update ${SUPPORT} to 0.1.11`));
-  assert.equal(
-    await readFile(fixture.path("apps/cms/composer.json"), "utf8"),
-    composer.replace('"0.1.12"', '"0.1.11"'),
-  );
+  const lines = commandLines(exec);
+  assert.ok(lines.includes(`git commit -m Update ${SUPPORT} to 0.1.11`));
+  assert.ok(lines.includes("git add -- apps/cms/composer.lock"), lines.join("\n"));
+  assert.equal(await readFile(fixture.path("apps/cms/composer.json"), "utf8"), composer);
 });
 
 // A Site guarding gq-support, and Composer moving it to 0.1.11.
@@ -1109,7 +1197,6 @@ const prepareRecord = () => approvalRecord({ phase: "prepare" });
 const guardedPrepare = (fixture, options = {}) =>
   supportExec(fixture, {
     lock: supportLock({ version: "0.1.11" }),
-    extra: ["deploy/ploi/package-expectations.json"],
     ...options,
   });
 const PREPARE = ["release", "package", SUPPORT, "--to", "0.1.11", "--no-deploy"];
@@ -1149,9 +1236,7 @@ test("release package prepares a guarded package from a fresh prepare approval a
   ]);
   const lines = commandLines(exec);
   assert.ok(
-    lines.includes(
-      "git add -- apps/cms/composer.json apps/cms/composer.lock deploy/ploi/package-expectations.json",
-    ),
+    lines.includes("git add -- apps/cms/composer.lock deploy/ploi/package-expectations.json"),
     lines.join("\n"),
   );
   assert.deepEqual(
@@ -1199,7 +1284,7 @@ test("release package --no-deploy prepares a commit on a paused Site without cal
   const { fetch } = fakeProviders();
 
   const result = await fixture.run(
-    ["release", "package", SUPPORT, "--to", "0.2.0", "--no-deploy"],
+    ["release", "package", SUPPORT, "--to", "0.1.11", "--no-deploy"],
     { env: RELEASE_ENV, fetch, exec: supportExec(fixture) },
   );
 
