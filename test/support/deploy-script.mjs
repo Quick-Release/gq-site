@@ -49,7 +49,10 @@ esac`,
   // it runs (from apps/cms); COMPOSER_EXIT makes it fail, COMPOSER_KILL=1
   // kills the deploy script itself (SIGKILL: no exit trap runs).
   composer: `record composer "$@"
-if [ "$(cat ../../.gq/state 2>/dev/null)" != open ]; then record composer-saw-hold; fi
+state=../../.gq/state
+if [ -L "$state" ] || [ "$(od -An -tx1 "$state" 2>/dev/null | tr -d ' \\n')" != 6f70656e0a ]; then
+  record composer-saw-hold
+fi
 printf '%s' "\${COMPOSER_AUTH:-}" > "$DEPLOY_CALLS.composer-auth"
 if [ "\${COMPOSER_KILL:-0}" = 1 ]; then kill -KILL "$PPID"; fi
 exit "\${COMPOSER_EXIT:-0}"`,
@@ -131,8 +134,11 @@ cp "$1" "$output"`,
 if [ "\${1:-}" = scripts/patch-dependencies.php ]; then exit "\${DEPENDENCY_PATCH_EXIT:-0}"; fi
 printf '8.3'`,
   // A PHP-FPM reload marks the reload done; SUDO_EXIT makes sudo fail,
-  // SUDO_KILL=1 kills its caller (SIGKILL: no trap runs).
+  // SUDO_KILL=1 kills its caller (SIGKILL: no trap runs); SUDO_WRITE_STATE
+  // replaces the admission state first, as something other than the
+  // attempt would.
   sudo: `record sudo "$@"
+[ -z "\${SUDO_WRITE_STATE:-}" ] || printf '%b' "$SUDO_WRITE_STATE" >"$SITE_PATH/.gq/state"
 [ "\${SUDO_KILL:-0}" = 1 ] && kill -KILL "$PPID"
 [ "\${SUDO_EXIT:-0}" = 0 ] || exit "$SUDO_EXIT"
 case "$*" in *"fpm reload"*) touch "$DEPLOY_CALLS.reloaded" ;; esac`,

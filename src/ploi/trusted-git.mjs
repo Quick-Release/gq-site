@@ -35,8 +35,9 @@ export function trustedGit(locations = TRUSTED_GIT_LOCATIONS) {
 // ~/.config/git/config: no url.insteadOf, credential helper, alias or
 // include from there) and replacement objects off (GIT_NO_REPLACE_OBJECTS;
 // grafts are refused where they matter). The repository's own config
-// (.git/config) still applies; the policy reads pin what matters from it
-// (core.hooksPath, core.fsmonitor) in POLICY_CONFIG.
+// (.git/config) still applies, its remote.origin.url and any url.insteadOf
+// or credential setting in it included; of it, the policy reads pin only
+// core.hooksPath and core.fsmonitor (POLICY_CONFIG).
 export function isolatedGitEnvironment({ homedir, path }) {
   return {
     PATH: path,

@@ -304,6 +304,14 @@ approved ones.
 
 ### Held for the whole deploy: the request admission
 
+Two different holds meet here ([glossary](../../GLOSSARY.md)): the
+**deployment hold** (`gq.ops.json` `deployment.state` other than
+`authorized`) stops a release before it starts and is lifted only by a
+reviewed Site change; the **admission hold** (the request admission's
+state, anything but exactly `open`) answers PHP requests 503 while a deploy
+runs. In this section, "hold", "held" and "open" are the admission's;
+`admission.sh lift` can't authorize a release or lift a deployment hold.
+
 The install is **not atomic**: Composer replaces files as it goes, and
 nothing rolls them back. So a guarded Site is **held** before the deploy
 replaces or installs anything, in a full and a Composer-only deploy alike,
@@ -346,9 +354,36 @@ memory gets its scripts failed (both checked on PHP-FPM). These are the
 per-directory settings checked; it isn't a claim that no other one could
 matter.
 
+**Startup output comes before the gate.** A package's `.user.ini` can make
+PHP print a warning while it starts the request, before the prepended gate
+runs: with `display_errors` and `display_startup_errors` on (PHP 8's
+built-in default for the latter; a production `php.ini` turns it off, and a
+`.user.ini` can turn both on), a `memory_limit` below what's already in use
+(`64K`, `1K`), an invalid one (`abc`) or `zend.assertions` set per
+directory each do on PHP-FPM 8.3 (checked). The gate still runs first among
+PHP code and ends the request, so the package's script doesn't run, but the
+headers have already gone: the client gets **200** with the warning, without
+the gate's 503, `Retry-After` or `no-store`, so a cache in front could keep
+it. The gate can't change headers already sent, and gq sets no PHP setting
+to prevent it. A pool that pins `php_admin_flag[display_errors] = off`
+answers those requests 503 with `no-store` (checked on PHP-FPM 8.3, with
+the nested file turning both settings on); that
+is part of the hosting review (P5), not something gq checks or provisions.
+Other PHP versions (8.5 among them) may print such warnings in more cases.
+
+**Limits of the state's protection.** The gate, the state and the deploy all
+run as the Site's Unix user, so anything that runs as that user can write
+`open`: the deploy itself, a recovery, or code WP-CLI loads during the
+deploy (the guarded packages are verified before any WP-CLI step; the Site's
+other plugins aren't). A hard link at the state path isn't detected (only a
+symlink is), and a FIFO there would stall requests until PHP's timeouts
+(`begin` refuses a non-regular state; the gate doesn't check). These limits
+are the host's user separation, not something the admission can close.
+
 While held, the gate answers every **non-CLI PHP request for the Site's web
-root** 503 (`Retry-After`, `Cache-Control: no-store`, `X-GQ-Gate: <nonce>`, a
-body naming nothing) before any other PHP code runs: WordPress, its
+root** 503 (`Retry-After`, `Cache-Control: no-store`, a body naming nothing,
+and `X-GQ-Gate`: the nonce for a `held <nonce>` state, `invalid` for every
+other held state, a bootstrapped Site's absent one included) before any other PHP code runs: WordPress, its
 installer and upgrader, `setup-config.php`, a plugin's own PHP file, a
 script a package's `.user.ini` sits beside. Command-line PHP (WP-CLI: this
 deploy's own steps, and a recovery) is never held. **The gate covers PHP
@@ -399,7 +434,9 @@ Site that was held (an earlier failed deploy, or no state at all) stays
 held. If `begin` stops any other way (an unexpected error), it removes only
 its own temporary and challenge files it knows of, never opens the Site,
 and says what the state is; a temporary file can remain if the shell itself
-dies. A `begin` killed with SIGKILL runs no cleanup: its hold (and its
+dies, and a write that fails before the shell can track its temporary file
+(the moment between `mktemp` and recording it) isn't cleaned either. A
+`begin` killed with SIGKILL runs no cleanup: its hold (and its
 challenge directory) can remain **before** Composer has changed anything,
 and the Site stays held until a guarded deploy finishes.
 

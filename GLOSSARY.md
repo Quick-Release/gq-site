@@ -229,6 +229,33 @@ Restoring a database is a separate, deliberate act that loses editors' work
 since its snapshot.
 _Avoid_: restore (for a code switch)
 
+**Deployment policy**:
+A protected Site's `gq.ops.json` `deployment` block, read before anything
+is uploaded, synced or deployed. Its **deployment state** is `authorized`,
+`paused` or `reserved`.
+_Avoid_: admission state (that is the request admission's)
+
+**Deployment hold**:
+A deployment state other than `authorized`: no release may start. Only a
+reviewed Site change to `deployment.state` lifts it; nothing on the server
+can.
+_Avoid_: hold (unqualified, where the request admission's could be meant)
+
+**Guarded package**:
+A Composer package named in the deployment policy's `guardedPackages`: it
+is deployed only as an approved version, verified file by file on the
+server.
+
+**Request admission**:
+What answers a guarded Site's PHP requests 503, before any other PHP code,
+while a deploy changes its packages: a gate the PHP-FPM pool prepends, and
+the **admission state** it reads (`.gq/state`). The Site is served only
+while the admission state reads exactly `open` and a newline; anything else,
+`held <nonce>` among it, is an **admission hold**. `admission.sh lift` ends
+an admission hold at the end of a deploy that verified and finished; it
+can't authorize a release or lift a deployment hold.
+_Avoid_: maintenance mode (WordPress's own, which unguarded Sites use)
+
 ### Hosting
 
 **Staging domain**:

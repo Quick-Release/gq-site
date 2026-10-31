@@ -797,8 +797,8 @@ test("a pool that doesn't enforce the gate, or a server gq can't bind to the rel
   for (const [env, message] of cases) {
     for (const [prior, word] of [
       [OPEN, "open"],
-      [EARLIER, "held"],
-      [undefined, "held"],
+      [EARLIER, 'held (it isn\'t exactly "open")'],
+      [undefined, "held (there is no state file)"],
     ]) {
       const siteFiles = prior ? { [STATE]: prior } : {};
       const result = await guardedDeploy(script, { env, siteFiles });
@@ -862,7 +862,7 @@ test("a hold that can't be proven from a fresh generation of the same pool fails
     await assertBeginFailed(
       earlier,
       message,
-      `No package file was changed; ${changes} The Site stays held.`,
+      `No package file was changed; ${changes} The admission state is held by this attempt; gq leaves it as it is.`,
     );
     assert.match(await state(earlier.site), HELD);
     assert.notEqual(await state(earlier.site), EARLIER, "this attempt's own fresh hold");
@@ -884,7 +884,7 @@ test('only a positive, exact "open" state counts as open: an absent, unreadable,
     await assertBeginFailed(
       failed,
       /PHP-FPM 8\.3 couldn't be reloaded/u,
-      "No package file was changed; the admission gate and the admission state (held) changed. The Site stays held.",
+      "No package file was changed; the admission gate and the admission state (held) changed. The admission state is held by this attempt; gq leaves it as it is.",
     );
     assert.match(await state(failed.site), HELD, label);
     const deployed = await guardedDeploy(script, options);
@@ -902,7 +902,7 @@ test('only a positive, exact "open" state counts as open: an absent, unreadable,
     await assertBeginFailed(
       site,
       /PHP-FPM 8\.3 couldn't be reloaded/u,
-      "No package file was changed; the admission gate and the admission state (held) changed. The Site stays held.",
+      "No package file was changed; the admission gate and the admission state (held) changed. The admission state is held by this attempt; gq leaves it as it is.",
     );
   } else {
     t.diagnostic("running as root: the unreadable state case is skipped");
@@ -933,7 +933,7 @@ test("a begin that stops unexpectedly removes only its own files and never opens
       env: { MV_FAIL: ".gq/state" },
     });
     assert.notEqual(result.code, 0, result.output);
-    const word = prior === OPEN ? "open" : "held";
+    const word = prior === OPEN ? "open" : 'held (it isn\'t exactly "open")';
     assert.ok(
       result.stderr.includes(
         `admission.sh begin stopped unexpectedly (exit 1) before proving the hold. No package file was changed; the admission state is ${word} and stays so.`,
@@ -966,6 +966,53 @@ test("a begin that stops unexpectedly removes only its own files and never opens
   );
 });
 
+test("the gate's own write failing stops begin before anything else: its temporary file goes, the state and packages are unchanged", async () => {
+  const script = await guardedScript();
+  for (const [prior, word] of [
+    [OPEN, "open"],
+    [EARLIER, 'held (it isn\'t exactly "open")'],
+    [undefined, "held (there is no state file)"],
+  ]) {
+    const result = await guardedDeploy(script, {
+      siteFiles: prior ? { [STATE]: prior } : {},
+      env: { MV_FAIL: ".gq/admission.php" },
+    });
+    assert.notEqual(result.code, 0, result.output);
+    assert.ok(
+      result.stderr.includes(
+        `admission.sh begin stopped unexpectedly (exit 1) before proving the hold. No package file was changed; the admission state is ${word} and stays so.`,
+      ),
+      result.stderr,
+    );
+    assert.equal(await state(result.site), prior);
+    assert.deepEqual((await readdir(join(result.site, ".gq"))).sort(), prior ? ["state"] : []);
+    assert.equal(firstCall(result.calls, "curl", "--resolve"), -1);
+    changedNothingOnTheSite(result.calls);
+  }
+});
+
+test("a failed begin whose hold something else replaced leaves that state alone and says what it reads", async () => {
+  const script = await guardedScript();
+  for (const [written, word, expected] of [
+    ["open\\n", "open", OPEN],
+    [`held ${"e".repeat(32)}\\n`, 'held (it isn\'t exactly "open")', `held ${"e".repeat(32)}\n`],
+    ["garbage", 'held (it isn\'t exactly "open")', "garbage"],
+  ]) {
+    for (const prior of [OPEN, EARLIER]) {
+      const result = await guardedDeploy(script, {
+        siteFiles: { [STATE]: prior },
+        env: { SUDO_EXIT: "1", SUDO_WRITE_STATE: written },
+      });
+      await assertBeginFailed(
+        result,
+        /PHP-FPM 8\.3 couldn't be reloaded/u,
+        `No package file was changed; the admission gate and the admission state (held) changed. The admission state is ${word}; gq leaves it as it is.`,
+      );
+      assert.equal(await state(result.site), expected, `${prior} → ${written}`);
+    }
+  }
+});
+
 test("a begin killed once its hold is written leaves the hold and its challenge, and the deploy stops before any package change", async () => {
   const script = await guardedScript();
   const result = await guardedDeploy(script, {
@@ -994,7 +1041,10 @@ test("a late failure stays held, and only the next guarded deploy that finishes 
     siteFiles: { [STATE]: hold },
     env: { SUDO_EXIT: "1" },
   });
-  assert.match(failed.stderr, /The Site stays held\./u);
+  assert.match(
+    failed.stderr,
+    /The admission state is held by this attempt; gq leaves it as it is\./u,
+  );
   assert.match(await state(failed.site), HELD);
   const recovered = await guardedDeploy(script, { siteFiles: { [STATE]: hold } });
   assert.equal(recovered.code, 0, recovered.output);

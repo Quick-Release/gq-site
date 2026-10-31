@@ -154,7 +154,10 @@ with real nginx over TLS, PHP-FPM (two pools, `opcache.validate_timestamps=0`),
 rsync, Composer and WP-CLI, standing in only for R2, Ploi and the private
 registry: see
 [Package expectations](reference/package-expectations.md#checked-on-a-real-stack).
-It needs Docker and takes about six minutes.
+It needs Docker and takes about six minutes; it is the authoritative
+proof (CI runs it). `test/cms/admission-gate.test.mjs` runs the rendered gate under
+PHP's built-in server, a quick local check of its state rules: it needs
+`php` on `PATH` and skips without it.
 `scripts/smoke/cms-content.sh` proves the agent's content route
 (`gq content`, [gq-platform ADR 0011](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0011-agent-access-to-production-cms-content.md))
 on a real WordPress over HTTP, behind the generated `content-api.php`, as an

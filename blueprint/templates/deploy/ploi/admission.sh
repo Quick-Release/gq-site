@@ -80,7 +80,10 @@ DRAIN_SECONDS="${GQ_ADMISSION_DRAIN_SECONDS:-$DRAIN_LIMIT}"
 # Probes of the held Site from the reloaded pool.
 HELD_PROBES=4
 
+# A checked refusal (not an unexpected exit).
+failing=false
 refuse() {
+  failing=true
   echo "$1" >&2
   exit 1
 }
@@ -154,6 +157,19 @@ remove_temporaries() {
 state_is_open() {
   [ -f "$STATE" ] && [ ! -L "$STATE" ] && [ -r "$STATE" ] \
     && [ "$(head -c 80 "$STATE" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "6f70656e0a" ]
+}
+
+# The admission state as it reads now, for messages: never assumed.
+describe_state() {
+  if state_is_open; then
+    echo "open"
+  elif [ -n "${nonce:-}" ] && state_is_hold "$nonce"; then
+    echo "held by this attempt"
+  elif [ ! -e "$STATE" ] && [ ! -L "$STATE" ]; then
+    echo "held (there is no state file)"
+  else
+    echo "held (it isn't exactly \"open\")"
+  fi
 }
 
 # Whether the state file is exactly "held $1".
@@ -363,30 +379,25 @@ begin() {
   check_paths
   local prior_open=false version pool old left deadline attempt workers line url
   nonce=""
-  failing=false
   state_is_open && prior_open=true
-  prepare
 
-  # A known failure: its challenges go. The state goes back to "open" only
-  # if the Site was open before and the state is still this attempt's hold
-  # (no package file has changed, so the Site's code is the previous,
-  # verified one); otherwise it stays as it is.
+  # A checked failure: its challenges and temporary files go. The state goes
+  # back to "open" only if the Site was open before and the state is still
+  # this attempt's own hold (no package file has changed, so the Site's code
+  # is the previous, verified one); any other state is left as it reads, and
+  # the message says what that is.
   fail() {
     local what="nothing else" outcome
     failing=true
     remove_temporaries
     remove_challenges
     if [ -z "$nonce" ]; then
-      if [ "$prior_open" = true ]; then
-        outcome="The admission state is unchanged: open."
-      else
-        outcome="The admission state is unchanged: held."
-      fi
+      outcome="The admission state is unchanged: $(describe_state)."
     elif [ "$prior_open" = true ] && state_is_hold "$nonce"; then
       write_atomically "$STATE" $'open\n'
       outcome="The hold this attempt placed was lifted again: the Site was open before it."
     else
-      outcome="The Site stays held."
+      outcome="The admission state is $(describe_state); gq leaves it as it is."
     fi
     # Every change, as "a", "a and b" or "a, b and c".
     local count="${#changed[@]}" index
@@ -399,22 +410,18 @@ begin() {
     echo "The admission check failed: $1. No package file was changed; $what changed. $outcome" >&2
     exit 1
   }
-  # Any other exit (an unexpected error): only this attempt's own files go;
-  # the state stays as it is, never opened.
+  # Any other exit (an unexpected error, from the gate's own write on):
+  # only this attempt's own files go; the state stays as it reads, never
+  # opened.
   unexpected() {
     local code=$?
     [ "$failing" = false ] || return 0
     remove_temporaries
     remove_challenges
-    local now="held"
-    if state_is_open; then
-      now="open"
-    elif [ -n "$nonce" ] && state_is_hold "$nonce"; then
-      now="held (this attempt's hold)"
-    fi
-    echo "admission.sh begin stopped unexpectedly (exit $code) before proving the hold. No package file was changed; the admission state is $now and stays so." >&2
+    echo "admission.sh begin stopped unexpectedly (exit $code) before proving the hold. No package file was changed; the admission state is $(describe_state) and stays so." >&2
   }
   trap unexpected EXIT
+  prepare
 
   # The challenge: the gate must answer for a script beside a .user.ini that
   # empties auto_prepend_file.

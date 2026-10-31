@@ -96,7 +96,10 @@ request() {
     --resolve "$HOST:443:127.0.0.1" --resolve "$OTHER_HOST:443:127.0.0.1" "$@" "$url" 2>/dev/null || true
 }
 # The admission state: open only when it reads exactly "open".
-is_open() { [ "$(od -An -tx1 "$STATE" 2>/dev/null | tr -d ' \n')" = 6f70656e0a ]; }
+# Like the gate: exactly these bytes, from a regular file, not a symlink.
+is_open() {
+  [ -f "$STATE" ] && [ ! -L "$STATE" ] && [ "$(od -An -tx1 "$STATE" 2>/dev/null | tr -d ' \n')" = 6f70656e0a ]
+}
 is_held() { ! is_open; }
 gate_header() { tr -d '\r' <"$WORK/headers" | sed -n 's/^[Xx]-[Gg][Qq]-[Gg]ate: //p'; }
 # Restarts PHP-FPM (stopped, gone, started) and waits until both pools
@@ -147,7 +150,7 @@ admin_pool() {
 #
 # A poller requests the Site's PHP routes throughout; must-use and plugin
 # markers note every web request that ran WordPress or a plugin's own file.
-# A deploy's held window runs from its "Held:" line to the hold file going
+# A deploy's held window runs from its "Held:" line to the state reading open
 # (less 100ms for the watcher's granularity):
 # no marker may fall in it, and every polled request in it answers 503 (or
 # nginx's own 404 while no PHP file exists for the path at all).
@@ -450,13 +453,33 @@ NGINX
     "$({ [ "$status" = 200 ] && [ -z "$(gate_header)" ]; } && echo ok)" "$status"
   check "held: WP-CLI runs (a recovery)" "$({ [ "$(wp option get siteurl)" = "https://$HOST/wp" ]; } && echo ok)"
 
+  # A package's .user.ini that makes PHP print a startup warning before the
+  # gate (display_errors on, memory_limit below what's in use): the script
+  # (display_startup_errors on too) still never runs, but the warning went
+  # out first, so PHP answers 200
+  # with it, without the gate's 503 or no-store. A pool that pins
+  # display_errors off (a hosting review item; gq sets none) answers 503.
+  status=$(request "https://$HOST/app/plugins/noisy/noisy.php")
+  check "held: a nested .user.ini forcing a startup warning doesn't run the script (PHP answers $status, cache-control '$(tr -d '\r' <"$WORK/headers" | sed -n 's/^[Cc]ache-[Cc]ontrol: //p')')" \
+    "$({ ! grep -q noisy "$HOME_DIR/plugin-ran" && ! tr -d '\r' <"$WORK/headers" | grep -qi '^x-gq-smoke-ran:' \
+      && ! grep -q "noisy ran" "$WORK/body"; } && echo ok)" "$status $(head -c 200 "$WORK/body")"
+  check "held: that startup warning reaches the client as a 200 under the default display policy (the documented limit)" \
+    "$({ [ "$status" = 200 ] && grep -q "Failed to set memory limit" "$WORK/body"; } && echo ok)" "$status"
+  echo "php_admin_flag[display_errors] = off" >>"$POOL"
+  restart_fpm
+  status=$(request "https://$HOST/app/plugins/noisy/noisy.php")
+  check "held: with the pool pinning display_errors off, the same script answers 503 with no-store" \
+    "$({ [ "$status" = 503 ] && tr -d '\r' <"$WORK/headers" | grep -qix 'cache-control: no-store'; } && echo ok)" "$status"
+  sed -i '/php_admin_flag\[display_errors\]/d' "$POOL"
+  restart_fpm
+
   # --- a failed begin keeps an earlier hold --------------------------------
   mv "$SUDOERS" "$WORK/sudoers"
   code=0
   deploy r2 "$WORK/no-reload.log" || code=$?
   mv "$WORK/sudoers" "$SUDOERS"
-  check "a deploy whose reload is refused fails before any package change and keeps the earlier hold" \
-    "$({ [ "$code" != 0 ] && is_held && grep -q "The Site stays held." "$WORK/no-reload.log" \
+  check "a deploy whose reload is refused, on a held Site, fails before any package change and leaves it held" \
+    "$({ [ "$code" != 0 ] && is_held && grep -q 'The admission state is held by this attempt; gq leaves it as it is\.' "$WORK/no-reload.log" \
       && ! grep -q "Verified" "$WORK/no-reload.log"; } && echo ok)" "exit $code: $(tail -n 3 "$WORK/no-reload.log")"
 
   # --- recovery: another guarded deploy lifts it -----------------------------

@@ -46,7 +46,11 @@ The refusal reads, for example:
 acme is reserved by nightly pipeline (the default branch's gq.ops.json deployment.state: reserved): Nightly update running. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the hold.
 ```
 
-No flag or environment variable lifts a hold. A policy change is a reviewed
+No flag or environment variable lifts a deployment hold (the
+[glossary](../../GLOSSARY.md)'s term for `paused` or `reserved`; a guarded
+Site's request admission has its own, unrelated **admission hold**, and
+`admission.sh lift`, which ends that one at the end of a deploy, can't
+authorize a release or lift a deployment hold). A policy change is a reviewed
 Site change to `gq.ops.json`, merged to the default branch. Removing the
 block makes the Site an ordinary one again, which is just as much a reviewed
 change.

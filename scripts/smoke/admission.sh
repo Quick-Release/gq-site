@@ -138,6 +138,18 @@ header('X-GQ-Smoke-Ran: lowmem');
 echo "lowmem ran\n";
 PHP
 
+# A package whose .user.ini makes PHP print a startup warning before the
+# gate runs (display_errors and display_startup_errors on, a memory_limit
+# below what's in use).
+package noisy '{"name": "acme/noisy", "version": "1.0.0", "type": "wordpress-plugin"}'
+printf 'display_errors = On\ndisplay_startup_errors = On\nmemory_limit = 64K\n' >"$work/packages/noisy/.user.ini"
+cat >"$work/packages/noisy/noisy.php" <<'PHP'
+<?php
+file_put_contents('/home/ploi/plugin-ran', sprintf("%.6f noisy\n", microtime(true)), FILE_APPEND);
+header('X-GQ-Smoke-Ran: noisy');
+echo "noisy ran\n";
+PHP
+
 # Releases: the generated apps/cms and deploy/ploi, with the stand-ins.
 release() {
   local name="$1" extra="$2" dir="$work/releases/$1"
@@ -155,7 +167,8 @@ release() {
     { "type": "path", "url": "/work/packages/getquick-theme", "options": { "symlink": false } },
     { "type": "path", "url": "/work/packages/gq-config", "options": { "symlink": false } },
     { "type": "path", "url": "/work/packages/sneaky", "options": { "symlink": false } },
-    { "type": "path", "url": "/work/packages/basedir", "options": { "symlink": false } }
+    { "type": "path", "url": "/work/packages/basedir", "options": { "symlink": false } },
+    { "type": "path", "url": "/work/packages/noisy", "options": { "symlink": false } }
   ],
   "require": {
     "composer/installers": "^2.0",
@@ -203,9 +216,11 @@ PHP
 release r1 ""
 release r2 ',
     "acme/basedir": "1.0.0",
+    "acme/noisy": "1.0.0",
     "acme/sneaky": "1.0.0"'
 release r3 ',
     "acme/basedir": "1.0.0",
+    "acme/noisy": "1.0.0",
     "acme/sneaky": "1.0.0"'
 printf '#!/usr/bin/env bash\necho "late extension fails"\nexit 4\n' \
   >"$work/releases/r3/deploy/ploi/admin.d/20-late-failure.sh"
