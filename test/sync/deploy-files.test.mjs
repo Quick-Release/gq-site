@@ -3,13 +3,14 @@
 // release step, fully generated from gq.ops.json. The content site's manifest
 // renders the content site's own files (test/fixtures/content-site).
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
 import { createFixtureSite, runGq, temporaryDirectory } from "../support/fixture-site.mjs";
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
+import { gitHttpServer } from "../support/git-http.mjs";
 
 const DEPLOY_PATHS = [
   "apps/frontend/workers/consent-purge.ts",
@@ -435,11 +436,17 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
       message,
     );
 
-  // Artifacts: `requested` tagged v1.0.0, then `current` on main (null:
-  // none). The workspace holds the tag's marker scripts.
-  // `poisonedHome`: the runner's ~/.gitconfig sends ARTIFACTS_REMOTE to a
-  // forged copy whose main is authorized (as a tag's install step could
-  // write it into a shared runner's home).
+  // Artifacts is served over git's smart HTTP (git http-backend) on 127.0.0.1,
+  // as the real CI Worker reaches it; ARTIFACTS_REMOTE is that URL. Tokens are
+  // synthetic. A forged endpoint, also on 127.0.0.1, carries an authorized
+  // policy an attacker would steer the read to.
+  //
+  // Artifacts: `requested` tagged v1.0.0, then `current` on main (null: none).
+  // The workspace holds the tag's marker scripts.
+  // `poisonedHome`: the runner's ~/.gitconfig sends ARTIFACTS_REMOTE to the
+  // forged copy (as a tag's install step could write into a shared runner's
+  // home); the admission must not be steered by it. (A tag's workspace shaped
+  // as a bare repository is covered by its own test below.)
   async function release({
     current,
     requested = ACME,
@@ -448,8 +455,9 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
     poisonedHome = false,
   }) {
     const root = await temporaryDirectory();
-    const bare = join(root, "artifacts.git");
-    git(root, "init", "--quiet", "--bare", "--initial-branch=main", bare);
+    const served = await temporaryDirectory();
+    const bare = join(served, "artifacts.git");
+    git(served, "init", "--quiet", "--bare", "--initial-branch=main", bare);
     const work = join(root, "work");
     git(root, "init", "--quiet", "--initial-branch=main", work);
     await writeFile(join(work, "gq.ops.json"), `${JSON.stringify(requested)}\n`);
@@ -475,18 +483,36 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
     commit(work, "main");
     git(work, "push", "--quiet", bare, "main", "v1.0.0");
 
+    // The forged endpoint: a copy whose main (and HEAD) is an authorized
+    // policy, used by both poison scenarios.
+    const forgedBare = join(served, "forged.git");
+    git(served, "clone", "--quiet", "--bare", bare, forgedBare);
+    const forging = join(root, "forging");
+    git(root, "clone", "--quiet", forgedBare, forging);
+    await writeFile(join(forging, "gq.ops.json"), `${JSON.stringify(ACME)}\n`);
+    git(forging, "add", "-A");
+    git(
+      forging,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.test",
+      "commit",
+      "--quiet",
+      "--allow-empty",
+      "-m",
+      "forged",
+    );
+    git(forging, "push", "--quiet", "origin", "main");
+
+    const server = await gitHttpServer(served);
+    const artifacts = `${server.url}/artifacts.git`;
+    const forged = `${server.url}/forged.git`;
+
     const home = join(root, "home");
     await mkdir(home);
     if (poisonedHome) {
-      const forged = join(root, "forged.git");
-      git(root, "clone", "--quiet", "--bare", bare, forged);
-      const forging = join(root, "forging");
-      git(root, "clone", "--quiet", forged, forging);
-      await writeFile(join(forging, "gq.ops.json"), `${JSON.stringify(ACME)}\n`);
-      git(forging, "add", "-A");
-      commit(forging, "forged");
-      git(forging, "push", "--quiet", "origin", "main");
-      await writeFile(join(home, ".gitconfig"), `[url "${forged}"]\n\tinsteadOf = ${bare}\n`);
+      await writeFile(join(home, ".gitconfig"), `[url "${forged}"]\n\tinsteadOf = ${artifacts}\n`);
     }
     const workspace = join(root, "workspace");
     await mkdir(workspace);
@@ -511,29 +537,39 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
     // records where it ran: a fresh runner, or the install step's workspace.
     const ran = [];
     let output = "";
+    // bash, asynchronously: the admission's git talks to the in-process
+    // Artifacts server over HTTP, so this must not block the event loop.
     const execute = (where) => ({
       async runner({ name, command, sourceControlCredentials }) {
         ran.push(`${where}:${name}`);
-        const result = spawnSync("bash", ["-c", command], {
-          cwd: workspace,
-          encoding: "utf8",
-          env: {
-            ...environment,
-            HOME: home,
-            SECRET: "s3cret",
-            ...(sourceControlCredentials
-              ? { ARTIFACTS_REMOTE: bare, ARTIFACTS_TOKEN: "artifacts-token" }
-              : {}),
-          },
+        const status = await new Promise((done, fail) => {
+          const child = spawn("bash", ["-c", command], {
+            cwd: workspace,
+            env: {
+              ...environment,
+              HOME: home,
+              SECRET: "s3cret",
+              ...(sourceControlCredentials
+                ? { ARTIFACTS_REMOTE: artifacts, ARTIFACTS_TOKEN: "artifacts-token" }
+                : {}),
+            },
+          });
+          child.stdout.on("data", (chunk) => (output += chunk));
+          child.stderr.on("data", (chunk) => (output += chunk));
+          child.once("error", fail);
+          child.once("close", (code) => done(code));
         });
-        output += result.stdout + result.stderr;
-        if (result.status !== 0) throw new Error(`${name} failed`);
+        if (status !== 0) throw new Error(`${name} failed`);
         return execute("workspace");
       },
     });
-    await runSteps(execute("fresh"), placed).catch(() => {});
+    try {
+      await runSteps(execute("fresh"), placed).catch(() => {});
+    } finally {
+      await server.close();
+    }
     const markers = await readFile(join(workspace, "MARKERS"), "utf8").catch(() => "");
-    return { ran, markers, output };
+    return { ran, markers, output, requests: server.requests, forged, artifacts };
   }
 
   const admitted = await release({ current: ACME });
@@ -588,6 +624,18 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
     assert.equal(result.markers, "", "none of the tag's code ran");
     assert.match(result.output, message);
     assert.doesNotMatch(result.output, /artifacts-token/u);
+    // Whatever the runner's git config says, the read goes to the
+    // authoritative Artifacts repository, never the forged one.
+    const forgedPath = new URL(result.forged).pathname;
+    assert.deepEqual(
+      result.requests.filter((request) => request.path.startsWith(forgedPath)),
+      [],
+      JSON.stringify(options),
+    );
+    assert.ok(
+      result.requests.some((request) => request.path.startsWith("/artifacts.git")),
+      "the authoritative remote was read",
+    );
   }
   assert.deepEqual((await release({ current: guarded, requested: guarded })).ran.length, 4);
 
@@ -599,6 +647,117 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
     /Not a commit or tag object id/u,
   );
   assert.throws(() => admissionCommand("1".repeat(40), "v1; rm -rf /"), /Not a release tag/u);
+});
+
+// Regression: a tag tree can commit a `config`, `HEAD`, `objects/` and
+// `refs/` at its root, so the restored workspace — the admission's working
+// directory in both the fresh runner and the release step — can look like a
+// bare git repository. A planted `url.<forged>.insteadOf = <ARTIFACTS_REMOTE>`
+// in it (directly and through an include) steers `ls-remote --symref HEAD` to
+// a forged endpoint whose HEAD names an attacker-pushed branch (`aaa`) that
+// also exists on the real Artifacts carrying an "authorized" policy; the
+// default-branch read then follows that branch from the real remote and
+// admits a held Site. The admission must read the real remote's own HEAD
+// (main, paused) and refuse, and send the forged endpoint nothing. (Before
+// the fix, this admitted.)
+test("the admission isn't steered by the tag's workspace shaped as a bare repository", async () => {
+  const fixture = await createFixtureSite({ ops: ACME });
+  assert.equal((await fixture.run(["sync"])).code, 0);
+  const { admissionCommand } = await import(join(fixture.root, "infra/ci/release.ts"));
+  const environment = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => !name.startsWith("GIT_") && name !== "NODE_TEST_CONTEXT",
+    ),
+  );
+  const git = (cwd, ...args) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", ...args], {
+      cwd,
+      env: environment,
+      encoding: "utf8",
+    }).trim();
+
+  const paused = {
+    ...ACME,
+    deployment: { protected: true, state: "paused", reason: "Controlled release" },
+  };
+  const root = await temporaryDirectory();
+  const served = await temporaryDirectory();
+  const bare = join(served, "artifacts.git");
+  git(served, "init", "--quiet", "--bare", "--initial-branch=main", bare);
+  const work = join(root, "work");
+  git(root, "init", "--quiet", "--initial-branch=main", work);
+  // The release commit (authorized), tagged v1.0.0.
+  await writeFile(join(work, "gq.ops.json"), `${JSON.stringify(ACME)}\n`);
+  git(work, "add", "-A");
+  git(work, "commit", "--quiet", "-m", "tagged");
+  git(work, "tag", "-a", "v1.0.0", "-m", "v1.0.0");
+  const tagObject = git(work, "rev-parse", "v1.0.0");
+  // An attacker-pushed side branch carrying an authorized policy, kept at the
+  // tagged (authorized) commit; then main moves on to a paused policy.
+  git(work, "branch", "aaa");
+  await writeFile(join(work, "gq.ops.json"), `${JSON.stringify(paused)}\n`);
+  git(work, "commit", "--quiet", "-am", "main: paused");
+  git(work, "push", "--quiet", bare, "main", "aaa", "v1.0.0");
+
+  // The forged endpoint: the same refs, but HEAD names refs/heads/aaa, so a
+  // steered `--symref HEAD` reports aaa as the default branch.
+  const forgedBare = join(served, "forged.git");
+  git(served, "clone", "--quiet", "--bare", bare, forgedBare);
+  git(forgedBare, "symbolic-ref", "HEAD", "refs/heads/aaa");
+
+  const server = await gitHttpServer(served);
+  const artifacts = `${server.url}/artifacts.git`;
+  const forged = `${server.url}/forged.git`;
+
+  // The tag's workspace, shaped as a bare repository whose config redirects
+  // ARTIFACTS_REMOTE to the forged endpoint, directly and through an include.
+  const workspace = join(root, "workspace");
+  await mkdir(join(workspace, "objects", "pack"), { recursive: true });
+  await mkdir(join(workspace, "refs", "heads"), { recursive: true });
+  await writeFile(join(workspace, "HEAD"), "ref: refs/heads/main\n");
+  await writeFile(
+    join(workspace, "config"),
+    `[core]\n\tbare = true\n[url "${forged}"]\n\tinsteadOf = ${artifacts}\n` +
+      `[include]\n\tpath = ${join(workspace, "redirect")}\n`,
+  );
+  await writeFile(join(workspace, "redirect"), `[url "${forged}"]\n\tinsteadOf = ${artifacts}\n`);
+
+  let output = "";
+  let status;
+  try {
+    status = await new Promise((done, fail) => {
+      const child = spawn("bash", ["-c", admissionCommand(tagObject, "v1.0.0")], {
+        cwd: workspace,
+        env: {
+          ...environment,
+          HOME: join(root, "home"),
+          ARTIFACTS_REMOTE: artifacts,
+          ARTIFACTS_TOKEN: "artifacts-token",
+        },
+      });
+      child.stdout.on("data", (chunk) => (output += chunk));
+      child.stderr.on("data", (chunk) => (output += chunk));
+      child.once("error", fail);
+      child.once("close", (code) => done(code));
+    });
+  } finally {
+    await server.close();
+  }
+
+  assert.notEqual(status, 0, output);
+  assert.doesNotMatch(output, /admitted/u, "the steer must not admit a paused Site");
+  assert.match(output, /the default branch's gq\.ops\.json deployment\.state: paused/u);
+  assert.doesNotMatch(output, /artifacts-token/u);
+  const forgedPath = new URL(forged).pathname;
+  assert.deepEqual(
+    server.requests.filter((request) => request.path.startsWith(forgedPath)),
+    [],
+    "the forged endpoint got nothing",
+  );
+  assert.ok(
+    server.requests.some((request) => request.path.startsWith("/artifacts.git")),
+    "the authoritative remote was read",
+  );
 });
 
 // `pnpm plan:frontend` runs infra's plan:frontend: the deploy wrapper in
