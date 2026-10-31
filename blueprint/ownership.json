@@ -71,6 +71,11 @@
       "executable": true
     },
     {
+      "path": "deploy/ploi/admission.sh",
+      "template": "templates/deploy/ploi/admission.sh",
+      "executable": true
+    },
+    {
       "path": "deploy/ploi/polylang.sh",
       "template": "templates/deploy/ploi/polylang.sh"
     },

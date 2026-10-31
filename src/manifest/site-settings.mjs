@@ -36,6 +36,7 @@ const CONTENT_DEFAULTS = {
       MANIFEST_FILENAME,
       "infra",
       "deploy/ploi/admin.sh",
+      "deploy/ploi/admission.sh",
       "AGENTS.md",
       "apps/cms/.gitignore",
       "apps/cms/composer.json",

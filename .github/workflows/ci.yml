@@ -98,27 +98,24 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: scripts/smoke/cms-rest-gate.sh
 
-  # A guarded Site's deploy quarantine on a real WordPress (the pinned
-  # version, on SQLite, with WP-CLI): the .maintenance file the generated
-  # deploy script writes answers every web request 503, WordPress core's
-  # fatal-error scrape exception included, while WP-CLI keeps working.
-  # Public downloads only; no account.
-  quarantine:
+  # A guarded Site's request admission (deploy/ploi/admission.sh) on a real
+  # stack, in a disposable Docker container: nginx over TLS, PHP-FPM with
+  # opcache.validate_timestamps=0, and the pinned WordPress installed by
+  # Composer. Pre-hold requests drain before packages change, every PHP route
+  # answers 503 before WordPress code runs, WP-CLI works, a Composer
+  # reinstall, a kill and a late failure stay held, and the hold lifts
+  # without a reload. Public downloads only; no account.
+  admission:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.4"
-          extensions: pdo_sqlite
-          coverage: none
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24.21.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: scripts/smoke/quarantine.sh
+      - run: scripts/smoke/admission.sh
 
   # Whether this workflow has the GETQUICK Composer registry's login (the
   # COMPOSER_AUTH secret, an http-basic entry for proxy.composer.getquick.io).

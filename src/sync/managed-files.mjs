@@ -68,6 +68,8 @@ async function renderTemplate(template, manifest) {
 // `sigilloVersion` (the Sigillo CLI it is tested with). Only fully
 // generated and create-once templates, and managed keys' initial file, are
 // rendered; a section's or managed keys' template is used as it ships.
+const ADMIN_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/u;
+
 function templateValues(manifest) {
   const { project } = manifest;
   return {
@@ -95,6 +97,11 @@ function templateValues(manifest) {
     "artifacts.repo": manifest.artifacts?.repo,
     "cloudflare.accountId": manifest.cloudflare?.accountId,
     "domains.admin": manifest.domains?.admin,
+    // For a shell script: the admin domain only if it is a plain hostname,
+    // else empty (the script then refuses), so nothing else can reach a shell.
+    "domains.adminHost": ADMIN_HOST.test(manifest.domains?.admin ?? "")
+      ? manifest.domains.admin
+      : "",
     "domains.frontend": manifest.domains?.frontend,
     // Optional: a site without one keeps its code in Artifacts only, so it
     // renders empty rather than as a placeholder to fill in.

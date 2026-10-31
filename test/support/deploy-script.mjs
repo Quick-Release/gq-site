@@ -5,7 +5,7 @@
 // caller's own tools. rsync copies (without deleting) so shipped files land;
 // curl copies the archive from a local path.
 import { spawn } from "node:child_process";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { temporaryDirectory } from "./fixture-site.mjs";
@@ -45,11 +45,11 @@ case "$1 \${2:-}" in
   "eval "*S3_UPLOADS_BUCKET*) exit 1 ;;
   *) exit 0 ;;
 esac`,
-  // Records whether the guarded-package quarantine is already in place when
+  // Records whether the guarded-package admission hold is already in place when
   // it runs (from apps/cms); COMPOSER_EXIT makes it fail, COMPOSER_KILL=1
   // kills the deploy script itself (SIGKILL: no exit trap runs).
   composer: `record composer "$@"
-if [ -f web/wp/.maintenance ]; then record composer-saw-quarantine; fi
+if [ -f ../../.gq/hold ]; then record composer-saw-hold; fi
 printf '%s' "\${COMPOSER_AUTH:-}" > "$DEPLOY_CALLS.composer-auth"
 if [ "\${COMPOSER_KILL:-0}" = 1 ]; then kill -KILL "$PPID"; fi
 exit "\${COMPOSER_EXIT:-0}"`,
@@ -58,7 +58,22 @@ source="\${@: -2:1}"
 target="\${@: -1}"
 mkdir -p "$target"
 cp -R "$source." "$target"`,
+  // The request admission's probes (--resolve) answer as a server whose gate
+  // reads the hold: 503 with its nonce while held. CURL_PROBE=stale answers
+  // another nonce, down fails to connect.
   curl: `record curl "$@"
+case " $* " in
+  *" --resolve "*)
+    [ "\${CURL_PROBE:-}" = down ] && exit 7
+    if [ -f "$SITE_PATH/.gq/hold" ]; then
+      nonce="$(cat "$SITE_PATH/.gq/hold")"
+      [ "\${CURL_PROBE:-}" = stale ] && nonce=00000000000000000000000000000000
+      printf 'HTTP/1.1 503 Service Unavailable\r\nX-GQ-Hold: %s\r\n\r\n' "$nonce"
+    else
+      printf 'HTTP/1.1 200 OK\r\n\r\n'
+    fi
+    exit 0 ;;
+esac
 while [ "$#" -gt 1 ]; do
   if [ "$1" = -o ]; then output="$2"; fi
   shift
@@ -67,13 +82,41 @@ cp "$1" "$output"`,
   php: `record php "$@"
 if [ "\${1:-}" = scripts/patch-dependencies.php ]; then exit "\${DEPENDENCY_PATCH_EXIT:-0}"; fi
 printf '8.3'`,
-  sudo: `record sudo "$@"`,
+  // A PHP-FPM reload marks the reload done; SUDO_EXIT makes sudo fail.
+  sudo: `record sudo "$@"
+[ "\${SUDO_EXIT:-0}" = 0 ] || exit "$SUDO_EXIT"
+case "$*" in *"fpm reload"*) touch "$DEPLOY_CALLS.reloaded" ;; esac`,
+  // PHP-FPM 8.3's master (pid 10) and workers: one before the reload, a new
+  // one after (PS_STUCK=1 keeps the old one, PS_NONE=1 shows no worker,
+  // PS_NO_MASTER=1 no PHP-FPM process at all); PHP-FPM 8.2's master (20) and
+  // its worker, which never goes, always; and a grep whose arguments name
+  // PHP-FPM 8.3's master, which isn't one.
+  ps: `processes() {
+  echo "  999   500 grep Sat Oct 31 08:00:00 2026 grep -F php-fpm: master process (/etc/php/8.3/fpm/php-fpm.conf)"
+  [ "\${PS_NO_MASTER:-0}" = 1 ] && return
+  echo "   10     1 php-fpm8.3 Sat Oct 31 08:00:00 2026 php-fpm: master process (/etc/php/8.3/fpm/php-fpm.conf)"
+  echo "   20     1 php-fpm8.2 Sat Oct 31 08:00:00 2026 php-fpm: master process (/etc/php/8.2/fpm/php-fpm.conf)"
+  echo "  301    20 php-fpm8.2 Sat Oct 31 08:30:00 2026 php-fpm: pool other"
+  [ "\${PS_NONE:-0}" = 1 ] && return
+  if [ ! -f "$DEPLOY_CALLS.reloaded" ] || [ "\${PS_STUCK:-0}" = 1 ]; then
+    echo "  101    10 php-fpm8.3 Sat Oct 31 09:00:00 2026 php-fpm: pool www"
+  fi
+  if [ -f "$DEPLOY_CALLS.reloaded" ]; then
+    echo "  202    10 php-fpm8.3 Sat Oct 31 09:10:00 2026 php-fpm: pool www"
+  fi
+}
+case "$*" in
+  *comm=*) processes ;;
+  *lstart=*) processes | awk '{ print $1, $4, $5, $6, $7, $8 }' ;;
+  *) exec /bin/ps "$@" ;;
+esac`,
 };
 
 // Deploys a release holding `releaseFiles` (site-relative path → content;
 // RELEASE, apps/cms/composer.json, apps/cms/web/index.php and the script
 // itself as deploy/ploi/admin.sh are added) with `script`, to a site holding
-// `siteFiles` and an installed WordPress (none with `installed: false`),
+// `siteFiles` (and `siteLinks`, path → symlink target, and `siteDirectories`)
+// and an installed WordPress (none with `installed: false`),
 // with every core language installed (none with `languageInstalled: false`),
 // Polylang holding `polylangLanguages` (lines of slug, locale and order;
 // none by default), `permalinkStructure` as its permalink structure (plain,
@@ -87,6 +130,8 @@ export async function deploy(
   {
     releaseFiles = {},
     siteFiles = {},
+    siteLinks = {},
+    siteDirectories = [],
     installed = true,
     languageInstalled = true,
     polylangLanguages = [],
@@ -97,6 +142,7 @@ export async function deploy(
     composerOnly = false,
     composerExit = 0,
     composerKill = false,
+    env: extraEnv = {},
   } = {},
 ) {
   const directory = await temporaryDirectory();
@@ -118,6 +164,11 @@ export async function deploy(
     ...(installed ? { "apps/cms/web/wp/wp-load.php": "<?php\n" } : {}),
     ...siteFiles,
   });
+  for (const [path, target] of Object.entries(siteLinks)) {
+    await mkdir(dirname(join(site, path)), { recursive: true });
+    await symlink(target, join(site, path));
+  }
+  for (const path of siteDirectories) await mkdir(join(site, path), { recursive: true });
   const scriptPath = join(directory, "admin.sh");
   await writeFile(scriptPath, script);
 
@@ -140,6 +191,7 @@ export async function deploy(
       COMPOSER_ONLY: composerOnly ? "true" : "false",
       COMPOSER_EXIT: String(composerExit),
       COMPOSER_KILL: composerKill ? "1" : "0",
+      ...extraEnv,
     },
   });
   const recorded = await readFile(calls, "utf8");

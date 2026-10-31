@@ -302,47 +302,117 @@ against the record before upload, and the lock's hash again on the server),
 and the package's own files, its version header included, must be exactly the
 approved ones.
 
-### Out of service for the whole deploy
+### Held for the whole deploy: the request admission
 
 The install is **not atomic**: Composer replaces files as it goes, and
-nothing rolls them back. So a guarded Site is taken out of service **before**
-the deploy replaces or installs anything, in a full and a Composer-only
-deploy alike, and stays out until that deploy has verified its packages and
-finished every step:
+nothing rolls them back. So a guarded Site is **held** before the deploy
+replaces or installs anything, in a full and a Composer-only deploy alike,
+and stays held until that deploy has verified its packages and finished
+every step. The hold is `deploy/ploi/admission.sh` (managed by `gq sync`,
+shipped in the release), one module the deploy calls as `admission.sh begin`
+and `admission.sh lift`. Everything it writes is outside what Composer or
+the release's rsync own:
 
-- right after the preflight, the deploy writes `apps/cms/web/wp/.maintenance`
-  (WordPress's ABSPATH) and a `.gq-quarantine` marker in the site root. If it
-  can't, it stops there, before anything changes. A full deploy doesn't use
-  WordPress's own maintenance mode, which would replace it.
-- WordPress loads `.maintenance` first on every request. This one answers a
-  web request itself (503, `Retry-After`, no caching) and exits, so
-  WordPress's own checks never run: not its ten-minute expiry, and not its
-  fatal-error scrape exception, which lets anyone through who sends
-  `wp_scrape_key = md5($upgrading)` and `wp_scrape_nonce = $upgrading`
-  (readable from a plain `.maintenance`). There is no timestamp or secret
-  to guess. For command-line PHP it sets an expired `$upgrading`, so WP-CLI
-  (this deploy's own steps, and a recovery's) runs normally.
-- only the end of a deploy that verified the guarded packages and finished
-  every step removes both. A failed Composer install, a failed
-  verification, a failed later step (activation, database, an extension), a
-  timeout or a killed deploy leaves them: nothing (no exit trap, no timer)
-  puts the Site back in service. PHP-FPM is reloaded only after a
-  verification succeeds.
-- recovery is another guarded deploy of an approved version, which needs its
-  own fresh approval; a version the approval service doesn't approve (an
-  unsigned legacy package among them) can't be deployed through this path,
-  and removing the file by hand serves files that didn't verify.
+| Path                                        | What                                                                                   |
+| ------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `$SITE/.gq/admission.php`                   | the gate: PHP-FPM prepends it to every script under the web root                       |
+| `$SITE/.gq/hold`                            | present: held. Its content is this hold's nonce, public freshness evidence (no secret) |
+| a managed block in `apps/cms/web/.user.ini` | `auto_prepend_file` for the gate; every other setting there stays                      |
 
-`scripts/smoke/quarantine.sh` (CI job `quarantine`) checks the file the
-generated deploy script writes against a real WordPress (the pinned version,
-on SQLite, with real WP-CLI and PHP's built-in server): every web request,
-scrape requests and command-line spoofing included, answers 503; WP-CLI
-runs; and WordPress's own `.maintenance`, for contrast, lets the scrape
-request through. It isn't checked on PHP-FPM itself (the SAPI check treats
-anything but `cli` as a web request). PHP files reached without loading
-WordPress (a plugin's own PHP entry point requested directly) aren't covered
-by `.maintenance`. An unguarded Site's deploy uses WordPress's own
-maintenance mode, as before.
+The release's rsync protects `web/.user.ini` (a release that ships one is
+refused), and Composer never writes under `.gq/`, so a Composer install that
+deletes and reinstalls `web/wp` (as `roots/wordpress` does) leaves the hold
+alone; WordPress's own `.maintenance` lives in `web/wp` and doesn't survive
+one.
+
+While held, the gate answers every **non-CLI PHP request** 503 (`Retry-After`,
+`Cache-Control: no-store`, `X-GQ-Hold: <nonce>`, a body naming nothing)
+before any other PHP code runs: WordPress, its installer and upgrader,
+`setup-config.php` (which loads `wp-settings.php` without `wp-config.php` or
+`.maintenance`), and a plugin's own PHP file requested directly.
+Command-line PHP (WP-CLI: this deploy's own steps, and a recovery) is never
+held. **The gate covers PHP only**: nginx still serves static files.
+
+`begin`, after the deploy's preflight and before anything changes:
+
+1. refuses, changing nothing, a managed path that is a symlink or not a
+   regular file (`.gq` not a directory), a `.user.ini` that already sets
+   `auto_prepend_file` outside gq's block (gq neither replaces nor chains
+   unknown prepend code), an admin domain (`gq.ops.json` `domains.admin`)
+   that isn't a plain hostname, and a PHP-FPM master for the CLI's PHP
+   version (`php-fpm: master process (/etc/php/<v>/fpm/php-fpm.conf)`) that
+   this user can't see;
+2. writes the gate and the `.user.ini` block if they differ, and the hold
+   with a fresh nonce, each atomically (a rename in the same directory);
+3. reloads PHP-FPM (`sudo -n service php<v>-fpm reload`), which must succeed:
+   new workers read the new `.user.ini` and the gate (PHP caches both per
+   worker, and opcache may not revalidate files);
+4. waits, bounded (`GQ_ADMISSION_DRAIN_SECONDS`, 120 by default), until no
+   worker of that master that existed before the reload still runs
+   (matched by pid and start time, wherever it is now), so no request that
+   started before the hold still runs WordPress code when packages change.
+   Another PHP version's pools aren't reloaded, so they aren't waited for;
+5. requests, over TLS for the admin domain resolved to 127.0.0.1 with the
+   certificate checked, no redirect followed, bounded timeouts and only the
+   headers kept, the front page and `/wp/wp-admin/setup-config.php`, each of
+   which must answer 503 with this hold's nonce;
+6. requires a worker of that master to be visible (so the drain wasn't
+   vacuous).
+
+If any step fails, `begin` fails before any package file changes. It removes
+a hold it created (the Site's code is still the previous, verified one) and
+keeps one an earlier failed deploy left. It says what it did change (the
+gate, `.user.ini`, a reload) rather than "nothing changed".
+
+`lift` removes the hold. The gate checks the hold file on every request (stat
+cache cleared, never opcache), so lifting needs no reload, and nor does a
+hold appearing. Only the end of a deploy that verified the guarded packages
+and finished every step lifts it. A failed Composer install, a failed
+verification, a failed later step (activation, database, an extension), a
+timeout or a killed deploy leaves it: nothing (no exit trap, no timer)
+releases the hold. Recovery is another guarded deploy of an approved
+version, which needs its own fresh approval; removing `.gq/hold` by hand
+serves files that didn't verify. An unguarded Site's deploy uses WordPress's
+own maintenance mode, as before.
+
+#### What the server must provide
+
+The admission refuses or fails closed when one of these doesn't hold; none
+is provisioned by gq:
+
+- PHP-FPM honours `.user.ini` (`user_ini.filename` is the default) and
+  `auto_prepend_file` in it under the web root;
+- nginx answers HTTPS for the admin domain on 127.0.0.1 with a certificate
+  the server trusts;
+- the deploy user may run `sudo -n service php<v>-fpm reload` (Ploi's own
+  deploy scripts reload PHP-FPM this way);
+- PHP-FPM's processes are visible to the deploy user (no `hidepid` on
+  `/proc`).
+
+A reload restarts every pool of that PHP version's master, other Sites'
+included, as Ploi's own deploy reload already does. With PHP-FPM's default
+`process_control_timeout = 0`, the reload ends requests in flight at once
+(they get a 502); with a positive one, they finish first, up to that long,
+and `begin` waits for them. Either way no pre-hold request still runs when
+packages change.
+
+#### Checked on a real stack
+
+`scripts/smoke/admission.sh` (CI job `admission`) generates a guarded Site
+and runs its `admission.sh` verbatim in a disposable Docker container
+(`scripts/smoke/admission/`): nginx over TLS for the admin domain (a
+throwaway CA), PHP-FPM with `opcache.validate_timestamps=0` running a static
+pool as the Site's user, the WordPress the CMS skeleton pins installed by
+Composer under the generated Bedrock config, on SQLite. It checks a
+pre-hold slow request with both reload behaviours; every PHP route answering
+503 with the nonce while no WordPress or plugin code runs; static files
+still served; WP-CLI while held; a real `composer reinstall` deleting
+`web/wp` while held; lifting and holding without a reload; a killed and a
+late-failing deploy staying held; a failed `begin` keeping an earlier hold
+and removing its own; and `.user.ini` settings kept and a foreign prepend
+refused. The generated `admin.sh`'s order of steps (hold proven before the
+rsync and Composer, lifted only at the end) is checked with stand-ins in
+`test/cms/deploy-script.test.mjs`.
 
 ### Remaining gaps
 

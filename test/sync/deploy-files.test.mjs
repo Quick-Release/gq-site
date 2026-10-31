@@ -175,6 +175,8 @@ test("a gq new site's deploy files hold placeholders until gq.ops.json has the v
     check.stdout,
     [
       "gq.ops.json: up to date (schema v1).",
+      // The request admission renders the admin domain.
+      "deploy/ploi/admission.sh: pending, gq sync would update it.",
       "infra/ci/wrangler.jsonc: pending, gq sync would update it.",
       "gq.lock.json: pending, gq sync would update it.",
       "",

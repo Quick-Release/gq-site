@@ -385,7 +385,11 @@ test("gq sync --manifest folds the content site's release config into its v1 man
     "gq.ops.json: migrated schema v0 → v1.\n" +
       "gq.ops.json: folded in shop-devtools.config.mjs and removed it.\n",
   );
-  assert.equal(result.stderr, RELEASE_BRANCH_WARNING);
+  // The 0.8.0 site predates the request admission, a default release path since.
+  assert.equal(
+    result.stderr,
+    `${RELEASE_BRANCH_WARNING}warning: shop-devtools.config.mjs omits the content default release path deploy/ploi/admission.sh, which gq now adds.\n`,
+  );
   const { project, ...rest } = CONTENT_SITE_V0;
   const expected = {
     $schema: SCHEMA_URL,
@@ -427,6 +431,7 @@ test("the content site's folded manifest releases, verifies and doctors as 0.8.0
       "gq.ops.json",
       "infra",
       "deploy/ploi/admin.sh",
+      "deploy/ploi/admission.sh",
       "AGENTS.md",
       "apps/cms/.gitignore",
       "apps/cms/composer.json",
@@ -564,6 +569,7 @@ test("folding keeps only what differs from the defaults and names defaults it ad
         "gq.ops.json",
         "infra",
         "deploy/ploi/admin.sh",
+        "deploy/ploi/admission.sh",
         "AGENTS.md",
         "apps/cms/.gitignore",
         "apps/cms/composer.json",

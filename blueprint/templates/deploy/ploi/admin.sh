@@ -73,55 +73,14 @@ composer_install() {
   verify_package_expectations
 }
 
-# A guarded Site is out of service for the whole deploy: quarantine_site
-# runs before anything on the server is replaced or installed, and only the
-# end of a deploy that verified the Site's packages and finished every step
-# lifts it (lift_quarantine). A failure, a timeout or a killed deploy leaves
-# it in place; nothing (no exit trap, no timer) makes the Site available
-# again. The quarantine is WordPress's .maintenance file, which WordPress
-# loads before anything else on every request: this one answers every web
-# request itself (503, then exit), so WordPress's own checks (its ten-minute
-# expiry, its fatal-error scrape exception) never run, and gives command-line
-# PHP (WP-CLI, so this deploy and a recovery) an expired timestamp, so
-# WordPress isn't in maintenance there. A marker beside the site says why.
-QUARANTINE_MARKER=".gq-quarantine"
-QUARANTINE_TAG="GETQUICK guarded-package quarantine"
-quarantine_site() {
-  local wordpress="$SITE_PATH/$APP_PATH/web/wp"
-  mkdir -p "$wordpress"
-  cat >"$wordpress/.maintenance" <<'GQ_QUARANTINE'
-<?php
-// GETQUICK guarded-package quarantine: a deploy is installing guarded
-// packages, or one did and they didn't verify. Only a deploy whose guarded
-// packages verify lifts it; removing it by hand serves unverified code.
-if (PHP_SAPI !== 'cli') {
-    if (!headers_sent()) {
-        http_response_code(503);
-        header('Retry-After: 600');
-        header('Cache-Control: no-store');
-        header('Content-Type: text/plain; charset=utf-8');
-    }
-    echo "This site is temporarily unavailable.\n";
-    exit;
-}
-$upgrading = 0;
-GQ_QUARANTINE
-  printf 'quarantined %s: guarded packages are being installed or failed to verify\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$SITE_PATH/$QUARANTINE_MARKER"
-  if ! grep -q "$QUARANTINE_TAG" "$wordpress/.maintenance" || [ ! -f "$SITE_PATH/$QUARANTINE_MARKER" ]; then
-    echo "Couldn't put the Site out of service before installing its guarded packages." >&2
-    exit 1
-  fi
-  echo "The Site is out of service until this deploy verifies its guarded packages."
-}
-
-# At the very end of a deploy that verified the Site's guarded packages and
-# finished every step.
-lift_quarantine() {
-  local maintenance="$SITE_PATH/$APP_PATH/web/wp/.maintenance"
-  if grep -q "$QUARANTINE_TAG" "$maintenance" 2>/dev/null; then rm -f "$maintenance"; fi
-  rm -f "$SITE_PATH/$QUARANTINE_MARKER"
-  echo "The guarded packages verified and the deploy finished: the Site is back in service."
+# A guarded Site is held for the whole deploy by its request admission
+# (deploy/ploi/admission.sh, from the release being deployed): `begin`, before
+# anything is replaced or installed, holds every PHP web request at 503 and
+# proves it; only the end of a deploy that verified its packages and
+# finished every step runs `lift`. A failure, a timeout or a killed deploy
+# leaves the hold: nothing (no exit trap, no timer) serves the Site again.
+admission() {
+  SITE_PATH="$SITE_PATH" APP_PATH="$APP_PATH" bash "$tmp_dir/release/deploy/ploi/admission.sh" "$1"
 }
 
 # Runs from $APP_PATH after composer install: each package the release's
@@ -309,9 +268,19 @@ echo "Deploying $(tr '\n' ' ' < "$tmp_dir/release/RELEASE")"
 # checked against the approval. The installed files are checked after
 # composer install (verify_package_expectations).
 verify_release_lock
-# A guarded Site goes out of service before anything changes, until this
-# deploy verifies its packages and finishes.
-[ -z "$GUARDED_PACKAGES" ] || quarantine_site
+# A guarded Site is held, and the hold proven, before anything changes.
+if [ -n "$GUARDED_PACKAGES" ]; then
+  if [ ! -f "$tmp_dir/release/deploy/ploi/admission.sh" ]; then
+    echo "This Site guards $GUARDED_PACKAGES, but the release has no deploy/ploi/admission.sh: run gq sync and release again." >&2
+    exit 1
+  fi
+  # admission.sh manages web/.user.ini; a release can't ship its own.
+  if [ -e "$tmp_dir/release/$APP_PATH/web/.user.ini" ]; then
+    echo "The release ships $APP_PATH/web/.user.ini, which the Site's request admission manages." >&2
+    exit 1
+  fi
+  admission begin
+fi
 
 # Replace the shipped code, keeping what the server owns: the .env, Composer's
 # vendor/ and installed WordPress core/plugins/themes, language packs and
@@ -327,6 +296,7 @@ for path in "${SHIPPED_PATHS[@]}"; do
     --filter='P /web/app/plugins/*/' \
     --filter='P /web/app/themes/*/' \
     --filter='P /web/app/mu-plugins/*/' \
+    --filter='P /web/.user.ini' \
     "$tmp_dir/release/$path/" "$path/"
 done
 cp "$tmp_dir/release/RELEASE" RELEASE
@@ -369,13 +339,13 @@ if [ "${COMPOSER_ONLY:-false}" = "true" ]; then
   composer_install
   mkdir -p web/app/uploads
   reload_php_fpm
-  [ -z "$GUARDED_PACKAGES" ] || lift_quarantine
+  [ -z "$GUARDED_PACKAGES" ] || admission lift
   echo "Composer dependencies deployed; skipping WordPress and database operations."
   exit 0
 fi
 
-# A guarded Site is already out of service (quarantine_site), and WordPress's
-# own maintenance mode would replace that with one that expires.
+# A guarded Site is already held (admission.sh), and needs no maintenance
+# mode of WordPress's own.
 if [ -z "$GUARDED_PACKAGES" ] && [ -f "$APP_PATH/web/wp/wp-load.php" ] \
   && (cd "$APP_PATH" && wp core is-installed); then
   (cd "$APP_PATH" && wp maintenance-mode activate) || true
@@ -525,7 +495,7 @@ if wp core is-installed; then
 fi
 
 if [ -n "$GUARDED_PACKAGES" ]; then
-  lift_quarantine
+  admission lift
 else
   wp maintenance-mode deactivate || true
   maintenance_enabled=false

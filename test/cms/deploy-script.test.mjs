@@ -468,10 +468,15 @@ const SUPPORT = {
 };
 const LOCK = '{"packages":[{"name":"getquick/gq-support","version":"0.1.11"}]}\n';
 
+// The guarded Site's request admission, as gq sync renders it (set by
+// guardedScript); every guarded release ships it.
+let admissionScript;
+
 async function guardedScript() {
   const fixture = await createFixtureSite({
     ops: {
       ...ACME,
+      domains: { admin: "cms.acme.test", frontend: "www.acme.test" },
       deployment: {
         protected: true,
         state: "authorized",
@@ -482,7 +487,16 @@ async function guardedScript() {
   });
   const result = await fixture.run(["sync"]);
   assert.equal(result.code, 0, result.stderr);
+  admissionScript = await readSite(fixture.root, "deploy/ploi/admission.sh");
   return readSite(fixture.root, "deploy/ploi/admin.sh");
+}
+
+// deploy(), for a guarded release: it ships the request admission.
+function deployGuarded(script, { releaseFiles = {}, ...options } = {}) {
+  return deploy(script, {
+    ...options,
+    releaseFiles: { "deploy/ploi/admission.sh": admissionScript, ...releaseFiles },
+  });
 }
 
 // A guarded deploy whose server has `tree` installed (path → content), with
@@ -496,13 +510,15 @@ function guardedDeploy(
     releasedLock = LOCK,
     expectations = true,
     siteFiles = {},
+    releaseFiles = {},
     ...options
   } = {},
 ) {
-  return deploy(script, {
+  return deployGuarded(script, {
     ...options,
     composerOnly,
     releaseFiles: {
+      ...releaseFiles,
       "apps/cms/composer.lock": lock,
       ...(expectations
         ? { PACKAGE_EXPECTATIONS: renderServerExpectations([SUPPORT], releasedLock) }
@@ -518,11 +534,15 @@ function guardedDeploy(
 }
 
 // No PHP-FPM reload (sudo), activation, database or rewrite step ran.
+// PHP-FPM reloads after Composer started (a guarded deploy's request
+// admission reloads it once before anything changes).
+function reloadsAfterComposer(calls) {
+  const composer = calls.findIndex(([tool]) => tool === "composer");
+  return composer === -1 ? [] : calls.slice(composer).filter(([tool]) => tool === "sudo");
+}
+
 function assertStoppedBeforeWordPress(result) {
-  assert.deepEqual(
-    result.calls.filter(([tool]) => tool === "sudo"),
-    [],
-  );
+  assert.deepEqual(reloadsAfterComposer(result.calls), []);
   for (const step of ["plugin", "core update-db", "rewrite", "theme", "option", "language"]) {
     assert.deepEqual(wpCalls(result.calls, step), [], step);
   }
@@ -538,8 +558,7 @@ test("a guarded deploy verifies the installed tree after Composer and before the
     assert.equal(result.code, 0, result.output);
     assert.match(result.stdout, /Verified getquick\/gq-support 0\.1\.11: 3 files match 57661d4d/u);
     const composer = result.calls.findIndex(([tool]) => tool === "composer");
-    const reload = result.calls.findIndex(([tool]) => tool === "sudo");
-    assert.ok(composer !== -1 && reload > composer);
+    assert.ok(composer !== -1 && reloadsAfterComposer(result.calls).length === 1);
     if (composerOnly) {
       // Composer-only: no WP-CLI call at all, so no activation or database step.
       assert.deepEqual(
@@ -619,33 +638,76 @@ test("an unguarded Site's deploy ignores package expectations it doesn't guard",
   assert.doesNotMatch(result.stdout, /Verified/u);
 });
 
-// --- guarded packages: out of service for the whole deploy ----------------
+// --- guarded packages: held by the request admission for the whole deploy --
 
-const MAINTENANCE = "apps/cms/web/wp/.maintenance";
-const QUARANTINED = {
-  [MAINTENANCE]:
-    "<?php\n// GETQUICK guarded-package quarantine: a deploy is installing guarded\nif (PHP_SAPI !== 'cli') { exit; }\n$upgrading = 0;\n",
-  ".gq-quarantine": "quarantined\n",
-};
-const installedTree = () =>
-  Object.fromEntries(
-    Object.entries(SUPPORT_TREE).map(([path, content]) => [`${SUPPORT_PATH}/${path}`, content]),
+const HOLD = ".gq/hold";
+const GATE = ".gq/admission.php";
+const INI = "apps/cms/web/.user.ini";
+const exists = (path) =>
+  access(path).then(
+    () => true,
+    () => false,
   );
 
-async function assertQuarantined(result) {
-  const maintenance = await readFile(join(result.site, MAINTENANCE), "utf8");
-  assert.match(maintenance, /GETQUICK guarded-package quarantine/u);
-  // Web requests get a 503 from the file itself; no public timestamp.
-  assert.match(
-    maintenance,
-    /if \(PHP_SAPI !== 'cli'\) \{[\s\S]*http_response_code\(503\);[\s\S]*exit;/u,
+// The index of the first call to `tool` (with `arg`), or -1.
+const firstCall = (calls, tool, arg) =>
+  calls.findIndex(([name, ...args]) => name === tool && (!arg || args.includes(arg)));
+
+async function assertHeld(result) {
+  assert.match(await readFile(join(result.site, HOLD), "utf8"), /^[0-9a-f]{32}\n$/u);
+  assert.ok(
+    result.calls.some(([tool]) => tool === "composer-saw-hold"),
+    "held before Composer",
   );
-  assert.match(maintenance, /^\$upgrading = 0;$/mu);
-  assert.match(await readFile(join(result.site, ".gq-quarantine"), "utf8"), /^quarantined /u);
+  assert.doesNotMatch(result.stdout, /hold is lifted/u);
   assert.deepEqual(wpCalls(result.calls, "maintenance-mode"), []);
 }
 
-test("a guarded Site is out of service before Composer changes anything, in both modes", async () => {
+test("a guarded deploy holds the Site, and proves it, before replacing or installing anything", async () => {
+  const script = await guardedScript();
+  for (const composerOnly of [false, true]) {
+    const result = await guardedDeploy(script, { composerOnly });
+    assert.equal(result.code, 0, result.output);
+    const reload = firstCall(result.calls, "sudo");
+    const probes = result.calls.filter(
+      ([tool, ...args]) => tool === "curl" && args.includes("--resolve"),
+    );
+    const rsync = firstCall(result.calls, "rsync");
+    const composer = firstCall(result.calls, "composer");
+    assert.ok(
+      reload !== -1 && reload < rsync && rsync < composer,
+      "reloaded before anything changed",
+    );
+    // TLS for the admin domain on this machine, the certificate checked, no
+    // redirect followed: the front page and setup-config.php.
+    assert.deepEqual(
+      probes.map((call) => call.at(-1)),
+      ["https://cms.acme.test/", "https://cms.acme.test/wp/wp-admin/setup-config.php"],
+    );
+    for (const probe of probes) {
+      assert.ok(probe.includes("cms.acme.test:443:127.0.0.1"));
+      assert.ok(probe.includes("=https") && probe.includes("--max-redirs"));
+      assert.ok(!probe.includes("--insecure") && !probe.includes("-k"));
+      assert.ok(result.calls.indexOf(probe) < rsync);
+    }
+    assert.ok(result.calls.some(([tool]) => tool === "composer-saw-hold"));
+    assert.match(
+      result.stdout,
+      /Held: PHP-FPM reloaded, every worker that ran before the hold has gone/u,
+    );
+    // Lifted only at the very end; the gate and .user.ini stay.
+    assert.match(result.stdout, /The hold is lifted/u);
+    assert.equal(await exists(join(result.site, HOLD)), false);
+    assert.match(await readFile(join(result.site, GATE), "utf8"), /PHP_SAPI !== 'cli'/u);
+    assert.match(
+      await readFile(join(result.site, INI), "utf8"),
+      new RegExp(`auto_prepend_file = "${join(result.site, GATE).replaceAll("/", "\\/")}"`, "u"),
+    );
+    assert.deepEqual(wpCalls(result.calls, "maintenance-mode"), []);
+  }
+});
+
+test("a guarded deploy that fails or is killed once the hold is proven keeps it", async () => {
   const script = await guardedScript();
   for (const composerOnly of [false, true]) {
     for (const [options, label] of [
@@ -655,80 +717,142 @@ test("a guarded Site is out of service before Composer changes anything, in both
     ]) {
       const result = await guardedDeploy(script, { ...options, composerOnly });
       assert.notEqual(result.code, 0, `${label}: ${result.output}`);
-      // The quarantine was already there when Composer ran, and stays.
-      assert.ok(
-        result.calls.some(([tool]) => tool === "composer-saw-quarantine"),
-        `${label}: quarantined before Composer`,
-      );
-      await assertQuarantined(result);
-      assert.deepEqual(
-        result.calls.filter(([tool]) => tool === "sudo"),
-        [],
-        label,
-      );
+      await assertHeld(result);
+      assert.deepEqual(reloadsAfterComposer(result.calls), [], label);
       for (const step of ["plugin", "core update-db", "rewrite", "option"]) {
         assert.deepEqual(wpCalls(result.calls, step), [], `${label}: ${step}`);
       }
     }
   }
-});
-
-test("only a guarded deploy that verified and finished puts the Site back in service", async () => {
-  const script = await guardedScript();
-  for (const composerOnly of [false, true]) {
-    const result = await guardedDeploy(script, { composerOnly });
-    assert.equal(result.code, 0, result.output);
-    assert.ok(result.calls.some(([tool]) => tool === "composer-saw-quarantine"));
-    assert.match(result.stdout, /verified and the deploy finished: the Site is back in service/u);
-    await assert.rejects(access(join(result.site, MAINTENANCE)));
-    await assert.rejects(access(join(result.site, ".gq-quarantine")));
-    // WordPress's own maintenance mode, which expires, never replaces it.
-    assert.deepEqual(wpCalls(result.calls, "maintenance-mode"), []);
-  }
-
-  // A later deploy that verifies lifts an earlier quarantine; one that
-  // doesn't leaves it.
-  const recovered = await deploy(script, {
-    releaseFiles: {
-      "apps/cms/composer.lock": LOCK,
-      PACKAGE_EXPECTATIONS: renderServerExpectations([SUPPORT], LOCK),
-    },
-    siteFiles: { ...QUARANTINED, ...installedTree() },
-  });
-  assert.equal(recovered.code, 0, recovered.output);
-  await assert.rejects(access(join(recovered.site, MAINTENANCE)));
-  await assert.rejects(access(join(recovered.site, ".gq-quarantine")));
-
-  // A step after verification failing (a deploy extension) leaves it too.
-  const extension = await deploy(script, {
-    releaseFiles: {
-      "apps/cms/composer.lock": LOCK,
-      PACKAGE_EXPECTATIONS: renderServerExpectations([SUPPORT], LOCK),
-      "deploy/ploi/admin.d/10-fail.sh": recordingExtension("10-fail.sh", 4),
-    },
-    siteFiles: installedTree(),
+  // A step after verification (a deploy extension) failing keeps it too.
+  const extension = await guardedDeploy(script, {
+    releaseFiles: { "deploy/ploi/admin.d/10-fail.sh": recordingExtension("10-fail.sh", 4) },
   });
   assert.equal(extension.code, 4, extension.output);
-  await assertQuarantined(extension);
+  await assertHeld(extension);
 });
 
-test("a guarded deploy that can't put the Site out of service changes nothing", async () => {
-  const result = await guardedDeploy(await guardedScript(), {
-    installed: false,
-    siteFiles: { "apps/cms/web/wp": "not a directory" },
+test("a guarded deploy whose hold can't be proven changes no package, removes only its own hold, and says what it did change", async () => {
+  const script = await guardedScript();
+  const cases = [
+    [{ SUDO_EXIT: "1" }, /PHP-FPM couldn't be reloaded \(sudo -n service php8\.3-fpm reload\)/u],
+    [{ CURL_PROBE: "stale" }, /didn't answer 503 with this hold's nonce/u],
+    [{ CURL_PROBE: "down" }, /didn't answer 503 with this hold's nonce/u],
+    [
+      { PS_STUCK: "1", GQ_ADMISSION_DRAIN_SECONDS: "1" },
+      /1 PHP-FPM 8\.3 worker\(s\) that ran before the hold were still running after 1s/u,
+    ],
+    [{ PS_NONE: "1" }, /no PHP-FPM 8\.3 worker is visible to this user/u],
+  ];
+  for (const [env, message] of cases) {
+    // A first hold: removed again.
+    const first = await guardedDeploy(script, { env });
+    assert.notEqual(first.code, 0, first.output);
+    assert.match(first.stderr, message);
+    assert.match(
+      first.stderr,
+      /No package file was changed; the admission gate apps\/cms\/web\/\.user\.ini .*changed\. The hold this attempt placed was removed\./u,
+    );
+    assert.doesNotMatch(first.stderr, /nothing changed/u);
+    assert.equal(await exists(join(first.site, HOLD)), false);
+    assert.deepEqual(
+      first.calls.filter(([tool]) => ["rsync", "composer"].includes(tool)),
+      [],
+    );
+
+    // A hold an earlier failed deploy left: kept.
+    const earlier = await guardedDeploy(script, {
+      env,
+      siteFiles: { [HOLD]: "f".repeat(32) + "\n" },
+    });
+    assert.notEqual(earlier.code, 0, earlier.output);
+    assert.match(earlier.stderr, /The hold an earlier failed deploy left stays\./u);
+    assert.equal(await exists(join(earlier.site, HOLD)), true);
+    assert.deepEqual(
+      earlier.calls.filter(([tool]) => ["rsync", "composer"].includes(tool)),
+      [],
+    );
+  }
+});
+
+test("the request admission keeps a .user.ini's other settings, and refuses a prepend it didn't write", async () => {
+  const script = await guardedScript();
+  const kept = await guardedDeploy(script, {
+    siteFiles: { [INI]: "memory_limit = 256M\nupload_max_filesize = 64M\n" },
   });
-  assert.notEqual(result.code, 0, result.output);
-  assert.deepEqual(
-    result.calls.filter(([tool]) => ["rsync", "composer", "wp"].includes(tool)),
-    [],
+  assert.equal(kept.code, 0, kept.output);
+  const ini = await readFile(join(kept.site, INI), "utf8");
+  assert.match(
+    ini,
+    /^memory_limit = 256M\nupload_max_filesize = 64M\n\n; BEGIN GETQUICK request admission/u,
   );
+  assert.match(ini, /auto_prepend_file = /u);
+
+  for (const conflicting of [
+    "auto_prepend_file = /srv/other/prepend.php\n",
+    "  AUTO_PREPEND_FILE=/srv/other/prepend.php\n",
+  ]) {
+    const refused = await guardedDeploy(script, { siteFiles: { [INI]: conflicting } });
+    assert.notEqual(refused.code, 0, refused.output);
+    assert.match(
+      refused.stderr,
+      /already sets auto_prepend_file; gq won't replace or chain unknown prepend code/u,
+    );
+    assert.equal(await readFile(join(refused.site, INI), "utf8"), conflicting);
+    assert.equal(await exists(join(refused.site, HOLD)), false);
+    assert.equal(firstCall(refused.calls, "sudo"), -1);
+    assert.deepEqual(
+      refused.calls.filter(([tool]) => ["rsync", "composer"].includes(tool)),
+      [],
+    );
+  }
+});
+
+test("the request admission refuses symlinks and other files where it writes, an invisible PHP-FPM, a release shipping .user.ini, and an unusable admin domain", async () => {
+  const script = await guardedScript();
+  for (const [options, message] of [
+    [{ siteLinks: { [HOLD]: "/etc/passwd" } }, /\.gq\/hold isn't a regular file gq can manage/u],
+    [{ siteLinks: { [INI]: "/etc/php.ini" } }, /\.user\.ini isn't a regular file gq can manage/u],
+    [{ siteLinks: { ".gq": "/tmp" } }, /\.gq isn't a directory gq can manage/u],
+    [{ siteDirectories: [HOLD] }, /\.gq\/hold isn't a regular file/u],
+    [{ env: { PS_NO_MASTER: "1" } }, /PHP-FPM 8\.3's master process isn't visible to this user/u],
+    [
+      { releaseFiles: { [INI]: "memory_limit = 1G\n" } },
+      /The release ships apps\/cms\/web\/\.user\.ini/u,
+    ],
+  ]) {
+    const result = await guardedDeploy(script, options);
+    assert.notEqual(result.code, 0, result.output);
+    assert.match(result.stderr, message);
+    assert.equal(firstCall(result.calls, "sudo"), -1);
+    assert.deepEqual(
+      result.calls.filter(([tool]) => ["rsync", "composer"].includes(tool)),
+      [],
+    );
+  }
+
+  const fixture = await createFixtureSite({
+    ops: {
+      ...ACME,
+      domains: { admin: 'cms.acme.test"; touch /tmp/x; "', frontend: "www.acme.test" },
+      deployment: {
+        protected: true,
+        state: "authorized",
+        guardedPackages: ["getquick/gq-support"],
+        approval: { slot: "acme/production", stage: "prod" },
+      },
+    },
+  });
+  assert.equal((await fixture.run(["sync"])).code, 0);
+  const admission = await readSite(fixture.root, "deploy/ploi/admission.sh");
+  assert.match(admission, /^ADMIN_HOST=""$/mu);
 });
 
 test("an unguarded Site's failed deploy still lifts maintenance mode as before", async () => {
   const result = await deploy(await generatedScript(), { patchExit: 3 });
   assert.equal(result.code, 3, result.output);
   assert.equal(wpCalls(result.calls, "maintenance-mode deactivate").length, 1);
-  await assert.rejects(access(join(result.site, ".gq-quarantine")));
+  await assert.rejects(access(join(result.site, ".gq")));
 });
 
 test("a guarded deploy refuses expectations that don't state exactly its guarded packages, before changing anything", async () => {
@@ -745,7 +869,7 @@ test("a guarded deploy refuses expectations that don't state exactly its guarded
       /states getquick\/gq-design getquick\/gq-support, but this Site guards exactly getquick\/gq-support\./u,
     ],
   ]) {
-    const result = await deploy(script, {
+    const result = await deployGuarded(script, {
       releaseFiles: {
         "apps/cms/composer.lock": LOCK,
         PACKAGE_EXPECTATIONS: renderServerExpectations(packages, LOCK),
@@ -758,7 +882,7 @@ test("a guarded deploy refuses expectations that don't state exactly its guarded
       [],
     );
   }
-  const malformed = await deploy(script, {
+  const malformed = await deployGuarded(script, {
     releaseFiles: {
       "apps/cms/composer.lock": LOCK,
       PACKAGE_EXPECTATIONS: `${renderServerExpectations([SUPPORT], LOCK)}file ${"0".repeat(64)} ../wp-config.php\n`,
