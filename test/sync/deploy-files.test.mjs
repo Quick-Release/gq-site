@@ -4,7 +4,7 @@
 // renders the content site's own files (test/fixtures/content-site).
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -380,35 +380,39 @@ test("preview config uses site.bind after Website initialization", async () => {
   assert.doesNotMatch(frontend, /PUBLIC_GQ_PREVIEW/u);
 });
 
-// The CI Worker's release admission (infra/ci/release.ts admissionCommand),
-// run as the release step runs it: bash, git and node, with a local bare
-// repository standing in for Artifacts and the generated Site as the tagged
-// workspace. An old tag runs its own scripts, so this is what holds it.
-test("the CI Worker's release admission holds an old tag by the default branch's current policy, and fails closed", async () => {
+// The CI Worker's steps (infra/ci/release.ts ciSteps), executed in order as
+// the Worker runs them: bash, git and node, a local bare repository standing
+// in for Artifacts, and a tagged workspace whose install, verify and release
+// are marker scripts the tag controls. An old tag runs its own scripts, so
+// the admission must stop a held or historical release before any of them.
+test("the CI Worker admits a release first, so a held or historical tag runs none of its own code", async () => {
+  for (const variant of ["content", "commerce"]) {
+    const parent = await temporaryDirectory();
+    const created = await runGq(["new", "site", "--project", "acme-shop", "--variant", variant], {
+      cwd: parent,
+    });
+    assert.equal(created.code, 0, created.stderr);
+    const worker = await readSite(join(parent, "site"), "infra/ci/cloudflare.ci.ts");
+    // The Worker runs exactly ciSteps' list, through one runner call each.
+    assert.match(
+      worker,
+      /for \(const \{ on, step \} of ciSteps\(params, \{ install, verify, release \}\)\)/u,
+    );
+    assert.equal(worker.split("ci.runner(").length - 1, 1);
+    assert.equal(worker.split("workspace.runner(").length - 1, 1);
+  }
+
   const fixture = await createFixtureSite({ ops: ACME });
   assert.equal((await fixture.run(["sync"])).code, 0);
-  const { admissionCommand } = await import(join(fixture.root, "infra/ci/release.ts"));
+  const { ciSteps, admissionCommand } = await import(join(fixture.root, "infra/ci/release.ts"));
   const environment = Object.fromEntries(
     Object.entries(process.env).filter(
       ([name]) => !name.startsWith("GIT_") && name !== "NODE_TEST_CONTEXT",
     ),
   );
   const git = (cwd, ...args) =>
-    execFileSync("git", args, { cwd, env: environment, encoding: "utf8" });
-  const sha = "0123456789abcdef0123456789abcdef01234567";
-
-  // `current` on the default branch (none with null), the workspace's own
-  // gq.ops.json as `requested`.
-  async function admit({ current, requested = ACME, remote = true }) {
-    const root = await temporaryDirectory();
-    const bare = join(root, "artifacts.git");
-    git(root, "init", "--quiet", "--bare", "--initial-branch=main", bare);
-    const work = join(root, "work");
-    git(root, "init", "--quiet", "--initial-branch=main", work);
-    if (current !== null)
-      await writeFile(join(work, "gq.ops.json"), `${JSON.stringify(current)}\n`);
-    else await writeFile(join(work, "README.md"), "no manifest\n");
-    git(work, "add", "-A");
+    execFileSync("git", args, { cwd, env: environment, encoding: "utf8" }).trim();
+  const commit = (work, message) =>
     git(
       work,
       "-c",
@@ -418,38 +422,89 @@ test("the CI Worker's release admission holds an old tag by the default branch's
       "commit",
       "--quiet",
       "-m",
-      "main",
+      message,
     );
-    git(work, "push", "--quiet", bare, "main");
+
+  // Artifacts: `requested` tagged v1.0.0, then `current` on main (null:
+  // none). The workspace holds the tag's marker scripts.
+  async function release({ current, requested = ACME, trigger = "tag", wrongSha = false }) {
+    const root = await temporaryDirectory();
+    const bare = join(root, "artifacts.git");
+    git(root, "init", "--quiet", "--bare", "--initial-branch=main", bare);
+    const work = join(root, "work");
+    git(root, "init", "--quiet", "--initial-branch=main", work);
+    await writeFile(join(work, "gq.ops.json"), `${JSON.stringify(requested)}\n`);
+    git(work, "add", "-A");
+    commit(work, "tagged");
+    git(
+      work,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.test",
+      "tag",
+      "-a",
+      "v1.0.0",
+      "-m",
+      "v1.0.0",
+    );
+    const tagObject = git(work, "rev-parse", "v1.0.0");
+    if (current === null) await rm(join(work, "gq.ops.json"));
+    else await writeFile(join(work, "gq.ops.json"), `${JSON.stringify(current)}\n`);
+    await writeFile(join(work, "README.md"), "later\n");
+    git(work, "add", "-A");
+    commit(work, "main");
+    git(work, "push", "--quiet", bare, "main", "v1.0.0");
+
     const workspace = join(root, "workspace");
     await mkdir(workspace);
-    await writeFile(join(workspace, "gq.ops.json"), `${JSON.stringify(requested)}\n`);
-    return spawnSync("bash", ["-c", admissionCommand(sha)], {
-      cwd: workspace,
-      encoding: "utf8",
-      env: {
-        ...environment,
-        ...(remote ? { ARTIFACTS_REMOTE: bare, ARTIFACTS_TOKEN: "artifacts-token" } : {}),
+    // The tag's own code: each step records that it ran, and what secret it saw.
+    await writeFile(
+      join(workspace, "mark.mjs"),
+      'import { appendFileSync } from "node:fs"; appendFileSync("MARKERS", `${process.argv[2]} ${process.env.SECRET ?? ""}\\n`);',
+    );
+    const step = (name) => ({ name, command: `node mark.mjs ${name}` });
+    const placed = ciSteps(
+      { trigger, tag: "v1.0.0", sha: wrongSha ? "1".repeat(40) : tagObject },
+      // The release step has source control credentials, as the Worker's does.
+      {
+        install: step("install"),
+        verify: step("verify"),
+        release: { ...step("release"), sourceControlCredentials: true },
       },
-    });
+    );
+    const ran = [];
+    let output = "";
+    for (const {
+      step: { name, command, sourceControlCredentials },
+    } of placed) {
+      const result = spawnSync("bash", ["-c", command], {
+        cwd: workspace,
+        encoding: "utf8",
+        env: {
+          ...environment,
+          SECRET: "s3cret",
+          ...(sourceControlCredentials
+            ? { ARTIFACTS_REMOTE: bare, ARTIFACTS_TOKEN: "artifacts-token" }
+            : {}),
+        },
+      });
+      ran.push(name);
+      output += result.stdout + result.stderr;
+      if (result.status !== 0) break;
+    }
+    const markers = await readFile(join(workspace, "MARKERS"), "utf8").catch(() => "");
+    return { ran, markers, output };
   }
 
-  const admitted = await admit({ current: ACME });
-  assert.equal(admitted.status, 0, admitted.stderr);
-  assert.match(admitted.stdout, /Release 0123456789ab admitted/u);
+  const admitted = await release({ current: ACME });
+  assert.deepEqual(admitted.ran, ["admission", "install", "verify", "release"]);
+  assert.equal(admitted.markers, "install s3cret\nverify s3cret\nrelease s3cret\n");
+  assert.match(admitted.output, /Release [0-9a-f]{12} admitted/u);
 
   const paused = {
     ...ACME,
     deployment: { protected: true, state: "paused", reason: "Controlled release" },
-  };
-  const reserved = {
-    ...ACME,
-    deployment: {
-      protected: true,
-      state: "reserved",
-      reason: "Nightly",
-      holder: "nightly pipeline",
-    },
   };
   const guarded = {
     ...ACME,
@@ -460,46 +515,39 @@ test("the CI Worker's release admission holds an old tag by the default branch's
       approval: { slot: "acme/production", stage: "prod" },
     },
   };
-  const cases = [
+  for (const [options, message] of [
     // An old tag without the hold, held by the default branch's policy.
-    [{ current: paused }, `${deploymentRefusal(paused, "the default branch's gq.ops.json")}\n`],
+    [{ current: paused }, /the default branch's gq\.ops\.json deployment\.state: paused/u],
     [
-      { current: ACME, requested: reserved },
-      `${deploymentRefusal(reserved, "release 0123456789ab's gq.ops.json")}\n`,
+      { current: ACME, requested: paused },
+      /release [0-9a-f]{12}'s gq\.ops\.json deployment\.state: paused/u,
     ],
     [
       { current: { ...ACME, offboarded: { at: "2026-10-01T09:00:00.000Z", phase: "cut" } } },
-      /acme-shop is offboarded \(the default branch's gq\.ops\.json offboarded\)/u,
+      /offboarded \(the default branch's gq\.ops\.json offboarded\)/u,
     ],
-    // An old tag whose gq wouldn't verify the guarded package.
-    [{ current: guarded }, /Release 0123456789ab predates the default branch's deployment policy/u],
-    [
-      {
-        current: guarded,
-        requested: { ...guarded, deployment: { protected: true, state: "authorized" } },
-      },
-      /doesn't guard getquick\/gq-support/u,
-    ],
-    // Fail closed.
-    [
-      { current: null },
-      /The default branch's gq\.ops\.json can't be read.*a release refuses without it/u,
-    ],
-    [{ current: ACME, remote: false }, /The default branch's gq\.ops\.json can't be read/u],
-  ];
-  for (const [options, expected] of cases) {
-    const result = await admit(options);
-    assert.equal(result.status, 1, JSON.stringify(options));
-    if (typeof expected === "string") assert.equal(result.stderr, expected);
-    else assert.match(result.stderr, expected);
-    assert.doesNotMatch(result.stderr + result.stdout, /artifacts-token/u);
+    // A historical tag whose gq wouldn't verify the guarded package.
+    [{ current: guarded }, /predates the default branch's deployment policy/u],
+    // Fail closed: no current policy, or a tag that isn't the one asked for.
+    [{ current: null }, /The default branch's gq\.ops\.json can't be read/u],
+    [{ current: ACME, wrongSha: true }, /Release 111111111111's gq\.ops\.json can't be read/u],
+  ]) {
+    const result = await release(options);
+    assert.deepEqual(result.ran, ["admission"], JSON.stringify(options));
+    assert.equal(result.markers, "", "none of the tag's code ran");
+    assert.match(result.output, message);
+    assert.doesNotMatch(result.output, /artifacts-token/u);
   }
-  assert.equal(
-    (await admit({ current: guarded, requested: guarded })).status,
-    0,
-    "a release commit that carries the current policy is admitted",
+  assert.deepEqual((await release({ current: guarded, requested: guarded })).ran.length, 4);
+
+  // A branch push isn't a release: no admission, nothing deployed.
+  const push = await release({ current: paused, trigger: "push" });
+  assert.deepEqual(push.ran, ["install", "verify"]);
+  assert.throws(
+    () => admissionCommand("v1.0.0; rm -rf /", "v1.0.0"),
+    /Not a commit or tag object id/u,
   );
-  assert.throws(() => admissionCommand("v1.0.0; rm -rf /"), /Not a commit or tag object id/u);
+  assert.throws(() => admissionCommand("1".repeat(40), "v1; rm -rf /"), /Not a release tag/u);
 });
 
 // `pnpm plan:frontend` runs infra's plan:frontend: the deploy wrapper in

@@ -552,12 +552,12 @@
           "properties": {
             "slot": {
               "type": "string",
-              "minLength": 1,
+              "pattern": "^\\S(?:.*\\S)?$",
               "description": "The approval service's slot for this Site."
             },
             "stage": {
               "type": "string",
-              "minLength": 1,
+              "pattern": "^\\S(?:.*\\S)?$",
               "description": "The approval service's stage (staging, prod)."
             }
           },

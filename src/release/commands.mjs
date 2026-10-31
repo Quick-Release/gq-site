@@ -1,12 +1,12 @@
 import { readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 import { CMS_PATH, composerDependencyChange } from "../cms/local.mjs";
 import { COMPOSER_PACKAGE_NAME } from "../manifest/schema.mjs";
 import { loadSiteSettings } from "../manifest/site-settings.mjs";
 import { parseVersion, satisfiesConstraint } from "../packages/versions.mjs";
 import { composerContentHash } from "../cms/composer-content-hash.mjs";
-import { assertDeploymentAllowed, guardedPackages } from "../ploi/deployment-policy.mjs";
+import { readDefaultBranchManifest, releasePolicy } from "../ploi/deployment-policy.mjs";
 import {
   PACKAGE_EXPECTATIONS_PATH,
   checkLockedRecord,
@@ -380,16 +380,38 @@ async function releasePackage(
   { release, parsed, context, env, fetch, exec, io, interactive, approvals, clock },
 ) {
   const root = context.projectRoot;
-  const options = packageOptions(parsed, name, context.config);
-  // A held Site refuses before Composer runs or anything is committed;
-  // preparing a commit without deploying it is still allowed.
-  if (!options.noDeploy) assertDeploymentAllowed(context.config);
+  const options = packageOptions(parsed);
   const composerPath = join(root, COMPOSER_JSON);
   const lockPath = join(root, COMPOSER_LOCK);
   const composerText = await readFile(composerPath, "utf8");
   const composer = JSON.parse(composerText);
   if (!Object.hasOwn(composer.require ?? {}, name)) {
     throw new Error(`${CMS_PATH}/composer.json doesn't require ${name}.`);
+  }
+  if (await release.git(["status", "--porcelain"])) {
+    throw new Error("gq release package requires a clean working tree: it commits composer.lock.");
+  }
+  // Every policy before an approval lookup, Composer or a commit: the
+  // working tree's and the default branch's current one (an unreadable one
+  // refuses). Offboarding always refuses; a hold refuses a deploy, while
+  // preparing a commit without deploying it is still allowed. A package
+  // either guards is guarded.
+  const manifestPath = relative(context.projectRoot, context.configPath);
+  const { guarded, target } = releasePolicy(
+    [
+      { ops: context.config, source: "gq.ops.json" },
+      {
+        ops: await readDefaultBranchManifest((args) => release.git(args), manifestPath),
+        source: `the default branch's ${manifestPath}`,
+      },
+    ],
+    { holds: !options.noDeploy },
+  );
+  applyGuard(options, parsed, name, guarded);
+  if (options.guardedPackage && !target) {
+    throw new Error(
+      `${name} is guarded, but no gq.ops.json names deployment.approval to look approvals up for; nothing changed.`,
+    );
   }
   // Without --pin, --to changes only the lock, so the requirement must
   // already admit that version; it is never widened implicitly.
@@ -401,9 +423,6 @@ async function releasePackage(
         `${COMPOSER_JSON} requires ${name} ${constraint}, which ${admits === false ? "doesn't admit" : "gq can't tell admits"} ${options.to}; nothing changed. Add --pin to set the requirement to exactly ${options.to} (a reviewed change to ${COMPOSER_JSON}).`,
       );
     }
-  }
-  if (await release.git(["status", "--porcelain"])) {
-    throw new Error("gq release package requires a clean working tree: it commits composer.lock.");
   }
   const lockText = await readFile(lockPath, "utf8").catch((error) => {
     if (error.code === "ENOENT") return null;
@@ -434,8 +453,8 @@ async function releasePackage(
         {
           phase: "prepare",
           project: context.config.project,
-          stage: context.config.deployment.approval.stage,
-          slot: context.config.deployment.approval.slot,
+          stage: target.stage,
+          slot: target.slot,
           releaseId: options.releaseId,
           package: { name, version: options.to },
         },
@@ -521,7 +540,9 @@ async function releasePackage(
 
     const version = await release.readVersion();
     assertVersion(version);
-    await release.sync(version);
+    // Guarded preparation writes only the files it owns: the version files
+    // are checked, never synced (a drift refuses).
+    if (!options.guarded) await release.sync(version);
     await release.check(version);
 
     const changed = changedPaths(await release.git(["status", "--porcelain"]));
@@ -598,7 +619,7 @@ async function releasePackage(
 }
 
 // release package's options, checked before anything runs.
-function packageOptions(parsed, name, ops) {
+function packageOptions(parsed) {
   const options = {
     to: parsed.to,
     reference: parsed.reference,
@@ -624,11 +645,20 @@ function packageOptions(parsed, name, ops) {
   if (options.noDeploy && options.composerOnly) {
     throw new Error("--composer-only is how a deploy runs; --no-deploy doesn't deploy.");
   }
-  options.guardedPackage = guardedPackages(ops).includes(name);
+  if (parsed.releaseId !== undefined && !/^[1-9]\d*$/u.test(parsed.releaseId)) {
+    throw new Error(`--release-id takes an approved release's ID, not "${parsed.releaseId}".`);
+  }
+  options.guarded = Boolean(
+    options.to || options.reference || options.expectBefore || options.noDeploy,
+  );
+  return options;
+}
+
+// Applies the policies' guarded packages to `options` (packageOptions'):
+// a guarded package needs --to and --release-id, and never --reference.
+function applyGuard(options, parsed, name, guarded) {
+  options.guardedPackage = guarded.includes(name);
   if (parsed.releaseId !== undefined) {
-    if (!/^[1-9]\d*$/u.test(parsed.releaseId)) {
-      throw new Error(`--release-id takes an approved release's ID, not "${parsed.releaseId}".`);
-    }
     if (!options.guardedPackage) {
       throw new Error(
         `--release-id is for a guarded package (gq.ops.json deployment.guardedPackages).`,
@@ -646,10 +676,6 @@ function packageOptions(parsed, name, ops) {
       `${name} is guarded (gq.ops.json deployment.guardedPackages): name its exact version with --to and the approved release with --release-id.`,
     );
   }
-  options.guarded = Boolean(
-    options.to || options.reference || options.expectBefore || options.noDeploy,
-  );
-  return options;
 }
 
 // composer.json's text with only `name`'s require constraint set to `to`.

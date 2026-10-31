@@ -29,8 +29,9 @@ detached in its own process group, writing its output to `log`, and resolves
 with its `pid` once it has started.
 
 `approvals` is the package approval lookup ([Package expectations](package-expectations.md)),
-and `approvalLookup` builds one for the Site being released. Without either,
-every guarded package refuses. Only `bin/gq.mjs` passes `approvalLookup`: the
-Operator CLI adapter that its own environment's
-`GQ_SUPPORT_APPROVAL_CONFIG` (else `~/.config/gq/support-approval.json`)
-configures.
+and `approvalLookup` builds one for the Site being released, only when a
+lookup happens. Without either, every guarded package refuses. Only
+`bin/gq.mjs` passes `approvalLookup`: the Operator CLI adapter that
+`~/.config/gq/support-approval.json`, in the home directory the user database
+gives the user running gq, configures. The approval lookup's bounded process
+is the one child process that doesn't go through `exec`.

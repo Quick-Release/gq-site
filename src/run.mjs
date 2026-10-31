@@ -4,16 +4,18 @@ import { log } from "@clack/prompts";
 import { runCli } from "./cli/dispatch.mjs";
 
 // The whole CLI behind one in-process call: every provider request goes
-// through `fetch`, every child process through `exec`, every DNS lookup
-// through `lookup` (node:dns/promises' signature), every wait through
-// `clock` ({ now(), sleep(ms) }), the input a command reads
-// (git's credential request) from `stdin`, a guarded package's approval
-// record through `approvals` ({ lookup }), else the adapter
-// `approvalLookup({ project, projectRoot })` builds for the Site (bin/gq.mjs
-// passes the Operator CLI's), else none, so a guarded package refuses; and
-// every value a command needs from its surroundings comes from `cwd` and
-// `env`; no command reads the process's own environment or directory.
-// bin/gq.mjs is the only caller that wires in the real ones. Resolves to the process exit code.
+// through `fetch`, every child process through `exec` (except the approval
+// lookup's own bounded process, which only the adapter `approvalLookup`
+// builds runs), every DNS lookup through `lookup` (node:dns/promises'
+// signature), every wait through `clock` ({ now(), sleep(ms) }), the input a
+// command reads (git's credential request) from `stdin`, and a guarded
+// package's approval record through `approvals` ({ lookup }), else the
+// adapter `approvalLookup({ project, projectRoot })` builds for the Site,
+// only when a lookup happens, else none, so a guarded package refuses. Every
+// value a command needs from its surroundings comes from `cwd` and `env`; no
+// command reads the process's own environment or directory. bin/gq.mjs is
+// the only caller that wires in the real ones, the Operator CLI's
+// approvalLookup among them. Resolves to the process exit code.
 export async function run(
   argv,
   {

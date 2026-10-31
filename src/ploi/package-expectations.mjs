@@ -53,7 +53,8 @@ const VERSION =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 // Composer installers' WordPress paths, relative to apps/cms.
 const INSTALL_PATH = /^web\/app\/(plugins|mu-plugins|themes)\/[A-Za-z0-9][\w.-]*$/u;
-const text = z.string().trim().min(1);
+// Compared exactly: no surrounding whitespace, never trimmed.
+const text = z.string().regex(/^\S(?:.*\S)?$/u, "must not be empty or padded");
 
 // The Site's reviewed expectation: which package version and which approved
 // release (its release ID, the approval service's lookup key) it intends.

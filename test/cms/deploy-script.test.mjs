@@ -2,7 +2,7 @@
 // gq.ops.json, run as Ploi runs it: in a site directory, with stub wp,
 // composer, rsync, curl, php and sudo on PATH that record their calls.
 import assert from "node:assert/strict";
-import { access, lstat, rm, writeFile } from "node:fs/promises";
+import { access, lstat, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -611,4 +611,104 @@ test("an unguarded Site's deploy ignores package expectations it doesn't guard",
   const result = await deploy(script);
   assert.equal(result.code, 0, result.output);
   assert.doesNotMatch(result.stdout, /Verified/u);
+});
+
+// --- guarded packages: a failed install stays out of service ---------------
+
+const MAINTENANCE = "apps/cms/web/wp/.maintenance";
+
+// WordPress (wp_is_maintenance_mode) ignores a .maintenance once
+// time() - $upgrading reaches ten minutes: the quarantine must not expire.
+async function quarantineExpiry(site) {
+  const text = await readFile(join(site, MAINTENANCE), "utf8");
+  const upgrading = Number(/\$upgrading = (\d+);/u.exec(text)[1]);
+  return upgrading - Date.now() / 1000;
+}
+
+test("a guarded Site whose packages don't verify stays out of service, durably, until a deploy verifies them", async () => {
+  const script = await guardedScript();
+  for (const composerOnly of [false, true]) {
+    const failed = await guardedDeploy(script, {
+      tree: { ...SUPPORT_TREE, "src/backdoor.php": "<?php" },
+      composerOnly,
+    });
+    assert.notEqual(failed.code, 0, failed.output);
+    assert.match(failed.stderr, /out of service \(WordPress maintenance mode, no expiry\)/u);
+    // Not lifted by the cleanup, and far beyond WordPress's ten minutes.
+    assert.deepEqual(wpCalls(failed.calls, "maintenance-mode deactivate"), []);
+    assert.ok((await quarantineExpiry(failed.site)) > 10 * 365 * 24 * 3600);
+    assert.match(await readFile(join(failed.site, ".gq-quarantine"), "utf8"), /^quarantined /u);
+    assertStoppedBeforeWordPress(failed);
+  }
+
+  // A later Composer-only deploy whose packages verify lifts it.
+  const quarantined = {
+    [MAINTENANCE]:
+      "<?php\n// GETQUICK guarded-package quarantine: a deploy failed before its packages verified.\n$upgrading = 4102444800;\n",
+    ".gq-quarantine": "quarantined\n",
+  };
+  const recovered = await deploy(script, {
+    composerOnly: true,
+    releaseFiles: {
+      "apps/cms/composer.lock": LOCK,
+      PACKAGE_EXPECTATIONS: renderServerExpectations([SUPPORT], LOCK),
+    },
+    siteFiles: {
+      ...quarantined,
+      ...Object.fromEntries(
+        Object.entries(SUPPORT_TREE).map(([path, content]) => [`${SUPPORT_PATH}/${path}`, content]),
+      ),
+    },
+  });
+  assert.equal(recovered.code, 0, recovered.output);
+  assert.match(recovered.stdout, /lifted the quarantine/u);
+  await assert.rejects(access(join(recovered.site, MAINTENANCE)));
+  await assert.rejects(access(join(recovered.site, ".gq-quarantine")));
+});
+
+test("an unguarded Site's failed deploy still lifts maintenance mode as before", async () => {
+  const result = await deploy(await generatedScript(), { patchExit: 3 });
+  assert.equal(result.code, 3, result.output);
+  assert.equal(wpCalls(result.calls, "maintenance-mode deactivate").length, 1);
+  await assert.rejects(access(join(result.site, ".gq-quarantine")));
+});
+
+test("a guarded deploy refuses expectations that don't state exactly its guarded packages, before changing anything", async () => {
+  const script = await guardedScript();
+  const other = {
+    ...SUPPORT,
+    name: "getquick/gq-design",
+    installPath: "web/app/plugins/gq-design",
+  };
+  for (const [packages, message] of [
+    [[other], /states getquick\/gq-design , but this Site guards exactly getquick\/gq-support/u],
+    [
+      [SUPPORT, other],
+      /states getquick\/gq-design getquick\/gq-support , but this Site guards exactly getquick\/gq-support/u,
+    ],
+  ]) {
+    const result = await deploy(script, {
+      releaseFiles: {
+        "apps/cms/composer.lock": LOCK,
+        PACKAGE_EXPECTATIONS: renderServerExpectations(packages, LOCK),
+      },
+    });
+    assert.notEqual(result.code, 0, result.output);
+    assert.match(result.stderr, message);
+    assert.deepEqual(
+      result.calls.filter(([tool]) => ["rsync", "composer", "sudo", "wp", "php"].includes(tool)),
+      [],
+    );
+  }
+  const malformed = await deploy(script, {
+    releaseFiles: {
+      "apps/cms/composer.lock": LOCK,
+      PACKAGE_EXPECTATIONS: `${renderServerExpectations([SUPPORT], LOCK)}file ${"0".repeat(64)} ../wp-config.php\n`,
+    },
+  });
+  assert.match(malformed.stderr, /PACKAGE_EXPECTATIONS has a line gq doesn't write/u);
+  assert.deepEqual(
+    malformed.calls.filter(([tool]) => tool === "rsync"),
+    [],
+  );
 });

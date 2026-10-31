@@ -392,6 +392,12 @@ test("bin/gq.mjs looks guarded packages up through the Operator CLI, and refuses
     execFileSync("git", ["-C", fixture.root, ...args], { env: GIT_ENV, encoding: "utf8" });
   git("add", "-A");
   git("-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "--quiet", "-m", "site");
+  // Its origin, whose default branch is the Site as committed.
+  const origin = join(await temporaryDirectory(), "origin.git");
+  execFileSync("git", ["init", "--quiet", "--bare", origin], { env: GIT_ENV });
+  git("remote", "add", "origin", origin);
+  git("push", "--quiet", "origin", "HEAD:refs/heads/main");
+  execFileSync("git", ["-C", origin, "symbolic-ref", "HEAD", "refs/heads/main"], { env: GIT_ENV });
   const gq = (env) =>
     spawnSync(
       process.execPath,

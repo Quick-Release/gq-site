@@ -70,17 +70,23 @@ origin HEAD`, then `git fetch origin refs/heads/<branch>`, which changes
   a Site whose current branch protects it. Guarded packages named by any of
   them are guarded.
 - **The CI Worker** (`infra/ci/cloudflare.ci.ts`, deployed by `gq ci
-deploy`): a tag runs its own `scripts/ci-release.mjs` and its own gq, which
-  may predate the hold, so the Worker admits the release first with its own
-  code (`infra/ci/release.ts`), in the release step's container, using only
-  its `git` and `node`. It reads the default branch's `gq.ops.json` from
-  Artifacts and the tagged commit's from the workspace, and refuses when
-  either is offboarded or holds, when the default branch's can't be read, or
-  when the default branch protects the Site or guards packages and the tagged
-  commit doesn't (its gq wouldn't enforce that). The tagged scripts never run
-  after a refusal. The release step's `ci-release.mjs` passes the Artifacts
-  token to `gq ploi release` in the environment, never argv, so it can read
-  the default branch too.
+deploy`): a tag carries its own `scripts/ci-release.mjs`, gq, package
+  scripts and checks, which may predate the hold. So for a `v*` tag the
+  Worker's first step (`infra/ci/release.ts` `ciSteps`) is the admission,
+  alone in a fresh runner with the Worker's own code and only the CI image's
+  `git` and `node`, before anything the tag controls is installed, run or
+  given a secret: no `pnpm install`, Composer install or lifecycle script, no
+  `pnpm verify`, no release. It fetches the release tag and the default
+  branch from Artifacts into a scratch repository and reads `gq.ops.json` from
+  both commits with `git show` (never the restored workspace). It refuses
+  when either is offboarded or holds, when either can't be read, when the tag
+  doesn't point at the release's commit, or when the default branch protects
+  the Site or guards packages and the tagged commit doesn't (its gq wouldn't
+  enforce that). The release step admits again first. The Artifacts token
+  reaches each git call in its environment only: never argv, an exported
+  variable or a global git setting, and the Frontend deploy runs without it.
+  `gq ploi release` (run by `ci-release.mjs`) likewise puts it only in its
+  own two git reads of the default branch.
 
 ## Not covered
 

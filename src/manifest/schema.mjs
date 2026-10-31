@@ -404,11 +404,14 @@ export const manifestSchema = z
           ),
         approval: z
           .strictObject({
-            slot: z.string().trim().min(1).describe("The approval service's slot for this Site."),
+            // Compared exactly with the approval record's: never trimmed.
+            slot: z
+              .string()
+              .regex(/^\S(?:.*\S)?$/u, "must not be empty or padded")
+              .describe("The approval service's slot for this Site."),
             stage: z
               .string()
-              .trim()
-              .min(1)
+              .regex(/^\S(?:.*\S)?$/u, "must not be empty or padded")
               .describe("The approval service's stage (staging, prod)."),
           })
           .optional()

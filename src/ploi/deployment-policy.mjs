@@ -36,23 +36,33 @@ export function guardedPackages(ops) {
   return ops.deployment?.guardedPackages ?? [];
 }
 
-// Every policy a release of commit `sha` must pass: `manifests` are
-// [{ ops, source }] (validated manifests and where each came from). Throws
-// the first refusal: an offboarded or held manifest. Resolves to the union of
-// their guarded packages and the approval target the first one naming it
-// gives.
-export function releasePolicy(manifests) {
+// Every policy a release must pass: `manifests` are [{ ops, source }]
+// (validated manifests and where each came from). Throws the first refusal:
+// an offboarded manifest, or (unless `holds` is false, for preparing a commit
+// without deploying it) a held one, or manifests naming different approval
+// targets. Resolves to the union of their guarded packages and the approval
+// target they name.
+export function releasePolicy(manifests, { holds = true } = {}) {
   for (const { ops, source } of manifests) {
     if (ops.offboarded) {
       throw new Error(
         `${ops.project} is offboarded (${source} offboarded): a release would expose it again. Nothing was uploaded, synced or deployed.`,
       );
     }
-    const refusal = deploymentRefusal(ops, source);
+    const refusal = holds ? deploymentRefusal(ops, source) : null;
     if (refusal) throw new Error(refusal);
   }
   const guarded = [...new Set(manifests.flatMap(({ ops }) => guardedPackages(ops)))];
-  const target = manifests.find(({ ops }) => ops.deployment?.approval)?.ops.deployment.approval;
+  const targets = manifests.filter(({ ops }) => ops.deployment?.approval);
+  const target = targets[0]?.ops.deployment.approval;
+  for (const { ops, source } of targets) {
+    const { stage, slot } = ops.deployment.approval;
+    if (stage !== target.stage || slot !== target.slot) {
+      throw new Error(
+        `${source} names approval target ${stage} slot ${slot}, but ${targets[0].source} names ${target.stage} slot ${target.slot}; nothing was uploaded or deployed.`,
+      );
+    }
+  }
   return { guarded, target };
 }
 

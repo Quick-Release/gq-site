@@ -15,9 +15,9 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   uploaded, synced or deployed. No flag lifts a hold; a reviewed Site change
   does. A Site without the block deploys as before. A release also checks
   the default branch's current policy, which it can't proceed without, so an
-  old commit can't release a Site held since; in CI the Worker checks it with
-  its own code before the tagged scripts run (once the Site has redeployed
-  its CI Worker). See
+  old commit can't release a Site held since; in CI the Worker admits a
+  release with its own code as its first step, before the tag's install,
+  checks or release run (once the Site has redeployed its CI Worker). See
   [Deployment policy](docs/reference/deployment-policy.md). `gq sync` updates
   `scripts/ci-release.mjs`, `infra/scripts/deploy-frontend.mjs`,
   `infra/ci/release.ts` and `infra/ci/cloudflare.ci.ts`.
@@ -25,23 +25,23 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   `deployment.approval`, the Site's approval stage and slot) makes
   preparation and deploys of those packages look up gq-support's
   `gq-support.composer-approval/v1` record: through `run()`'s `approvals`
-  adapter, or, in the `gq` command only, gq-support's read-only Operator CLI
-  from a gq-support checkout clean at the reviewed commit, which only the
-  Operator's machine configures (`GQ_SUPPORT_APPROVAL_CONFIG`, else
-  `~/.config/gq/support-approval.json`; never a Site's files), binding each
-  project's stage, slot, account, databases and each gq-support version's
-  release ID and artifact. A record must
-  match exactly; the lock must install its version with both references its
-  published tag's commit; the install path comes from the release commit's
-  Composer installer paths. A deploy looks the record up before uploading
-  and again immediately before the deploy request, and the deploy script
-  checks the lock before changing anything and the installed files
-  (`gq-support.files/v1`) after `composer install`, before PHP-FPM reloads or
-  any activation or database step. Without a configured lookup, guarded
-  packages refuse. The install isn't atomic: a refusal after Composer leaves
-  its changed files in place. See
-  [Package expectations](docs/reference/package-expectations.md). `gq sync`
-  updates `deploy/ploi/admin.sh`; a Site guarding nothing deploys as before.
+  adapter, or, in the `gq` command only, gq-support's pinned read-only
+  Operator script from a checkout clean at the reviewed commit, with the
+  `node` and `git` the Operator's own `~/.config/gq/support-approval.json`
+  names (found through the user database, never `HOME`, the environment or
+  a Site). A record must match exactly; the lock must install its version
+  with both references its published tag's commit; the install path comes
+  from the release commit's Composer installer paths. A deploy looks the
+  record up before uploading and again immediately before the deploy
+  request. The deploy script checks the expectations and lock before
+  changing anything, and the installed files (`gq-support.files/v1`) after
+  `composer install`, before PHP-FPM reloads or any activation or database
+  step; a guarded Site whose install fails after Composer starts is
+  quarantined (WordPress maintenance mode that doesn't expire) until a deploy
+  verifies its packages. Without a configured lookup, guarded packages refuse.
+  See [Package expectations](docs/reference/package-expectations.md).
+  `gq sync` updates `deploy/ploi/admin.sh`; a Site guarding nothing deploys
+  as before.
 - **Guarded single-package preparation.** `gq release package` takes
   `--to <version>` (lock exactly that version through Composer's temporary
   `--with` constraint, keeping a requirement that already admits it, and

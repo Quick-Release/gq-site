@@ -334,3 +334,16 @@ test("a package's install path is the one installer-paths pattern composer/insta
     assert.throws(() => installPathOf(composer, entry), message);
   }
 });
+
+test("a record's stage, slot and tag name are compared exactly, never trimmed", () => {
+  for (const change of [
+    { stage: " prod" },
+    { slot: "nomia/production " },
+    { published_tag: { name: "v0.1.11 ", commit: TAG_COMMIT } },
+  ]) {
+    assert.throws(
+      () => checkApprovalRecord(record(change), REQUEST, NOW),
+      /must not be empty or padded/u,
+    );
+  }
+});

@@ -104,6 +104,18 @@ export async function runRelease({
   // workspace is a plain copy without .git; its release step fetches one).
   const gitDir = parsed.gitDir ? resolve(context.invocationDirectory, parsed.gitDir) : null;
   const git = gitRunner(exec, gitDir ?? context.projectRoot, env);
+  // The default branch is read from origin; in CI that is Artifacts, whose
+  // token (ARTIFACTS_TOKEN) goes in a header for these git calls only, in
+  // their environment, never argv.
+  const token = context.env.ARTIFACTS_TOKEN;
+  const originGit = token
+    ? gitRunner(exec, gitDir ?? context.projectRoot, {
+        ...env,
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "http.extraHeader",
+        GIT_CONFIG_VALUE_0: `Authorization: Bearer ${token}`,
+      })
+    : git;
   const ref = parsed.ref ?? (await defaultRef(git));
   const sha = (await git(["rev-parse", `${ref}^{commit}`])).trim();
   // Every policy that applies, before anything else reads or changes a
@@ -118,7 +130,7 @@ export async function runRelease({
       source: `release ${sha.slice(0, 12)}'s ${manifestPath}`,
     },
     {
-      ops: await readDefaultBranchManifest(git, manifestPath),
+      ops: await readDefaultBranchManifest(originGit, manifestPath),
       source: `the default branch's ${manifestPath}`,
     },
   ]);

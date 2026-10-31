@@ -138,22 +138,24 @@ function main(arguments_) {
   console.log(`release source: ${gitDir}`);
 
   // gq ploi release reads the default branch's current policy from origin
-  // (Artifacts here): it gets the token in a header via env, never argv.
-  const gitAuth = process.env.ARTIFACTS_TOKEN
-    ? {
-        GIT_CONFIG_COUNT: "1",
-        GIT_CONFIG_KEY_0: "http.extraHeader",
-        GIT_CONFIG_VALUE_0: `Authorization: Bearer ${process.env.ARTIFACTS_TOKEN}`,
-      }
-    : {};
-  const admin = run(
-    "admin",
-    "pnpm",
-    ["exec", "gq", "ploi", "release", "--ref", ref, "--git-dir", gitDir],
-    { ...process.env, ...gitAuth },
-  );
+  // (Artifacts here) with ARTIFACTS_TOKEN, which it puts in a header for
+  // those git calls only, never argv or a global setting.
+  const admin = run("admin", "pnpm", [
+    "exec",
+    "gq",
+    "ploi",
+    "release",
+    "--ref",
+    ref,
+    "--git-dir",
+    gitDir,
+  ]);
   if (admin !== 0) return admin;
-  return run("frontend", "pnpm", ["run", "deploy:frontend:raw"]);
+  // The Frontend's deploy needs no source control credentials.
+  const { ARTIFACTS_TOKEN, ARTIFACTS_REMOTE, ...frontendEnv } = process.env;
+  void ARTIFACTS_TOKEN;
+  void ARTIFACTS_REMOTE;
+  return run("frontend", "pnpm", ["run", "deploy:frontend:raw"], frontendEnv);
 }
 
 if (process.argv[1]?.endsWith("ci-release.mjs")) {

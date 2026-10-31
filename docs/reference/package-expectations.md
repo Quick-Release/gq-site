@@ -124,29 +124,35 @@ lookup unless it passes its own.
 
 ### The Operator CLI adapter
 
-It runs gq-support's read-only command from a reviewed gq-support checkout,
-with the Operator's own Cloudflare (Wrangler) and GitHub (`gh`) logins. gq
-holds no key or secret for it, and every prepare or deploy check runs the
-command afresh: no saved record is ever accepted.
+It runs gq-support's read-only command exactly as the pinned commit's
+`operator` script does, from a reviewed gq-support checkout, with the
+Operator's own Cloudflare (Wrangler) and GitHub (`gh`) logins. gq holds no
+key or secret for it, and every prepare or deploy check runs the command
+afresh: no saved record is ever accepted. Nothing about the command is
+configurable:
 
 ```
-<command> [<args>...] composer-approval <slot> <release-id> <artifactDir> <prepare|deploy> \
+<node> --import <checkout>/worker/node_modules/alchemy/bin/register-oxc.js \
+  scripts/operator.ts composer-approval <slot> <release-id> <artifactDir> <prepare|deploy> \
   --stage <stage> --account-id <accountId> --database-id <databaseId> --ledger-database-id <ledgerDatabaseId>
 ```
 
-Its configuration is only the Operator's machine's: the file
-`GQ_SUPPORT_APPROVAL_CONFIG` names (an absolute path, which must exist), else
-`$XDG_CONFIG_HOME/gq/support-approval.json` (else
-`$HOME/.config/gq/support-approval.json`), read from the environment of the
-process running `gq`. A Site's `.env`, `ops.env`, Sigillo values or
-`gq.ops.json` never configure it, and a configuration file, command, checkout
-or artifact directory inside the Site refuses.
+in `<checkout>/worker`.
+
+**Where its configuration is.** Only in the home directory of the user
+running `gq`, as the system's user database has it (`os.userInfo()`):
+`~/.config/gq/support-approval.json`. `HOME`, `XDG_CONFIG_HOME`, `PATH`, a
+Site's `.env`, `ops.env`, Sigillo values (`gq sigillo run` sets the
+environment of the `gq` it runs) and `gq.ops.json` never select or change
+it. An environment that sets `GQ_SUPPORT_APPROVAL_CONFIG` is refused rather
+than ignored. A configuration file, executable, checkout or artifact
+directory inside the Site refuses.
 
 ```json
 {
-  "schemaVersion": 1,
-  "command": "/usr/bin/pnpm",
-  "args": ["--filter", "gq-support-worker", "operator"],
+  "schemaVersion": 2,
+  "node": "/usr/local/bin/node",
+  "git": "/usr/bin/git",
   "checkout": "/srv/gq-support",
   "targets": {
     "nomia": {
@@ -163,11 +169,22 @@ or artifact directory inside the Site refuses.
 }
 ```
 
-- `command` and `checkout` are absolute and outside the Site. The checkout
-  must be a git work tree clean at the commit gq-site pins
-  (`29de3c7ec66ad96d6726bae20766c2acc7fcc312`, a reviewed gq-site change to
-  move); untracked files count, ignored ones (dependencies) don't. A checkout
-  that isn't refuses before the command runs.
+- `node` and `git` are the absolute executables gq uses: never one found on a
+  `PATH` a Site or its `node_modules/.bin` could shadow. Strings are compared
+  exactly: no surrounding whitespace.
+- **The checkout**, before each lookup, with that `git`, a fixed environment
+  and no user or system git configuration, hooks or fsmonitor: its HEAD must
+  be the commit gq-site pins (`29de3c7ec66ad96d6726bae20766c2acc7fcc312`, a
+  reviewed gq-site change to move), its work tree clean (untracked files
+  count), and `worker/scripts/operator.ts` a tracked regular file. Otherwise
+  it refuses before the command runs.
+- **Its dependencies are a trusted prerequisite.** `node_modules` is ignored
+  by git, so HEAD doesn't verify it. The Operator installs it with
+  `pnpm install --frozen-lockfile` at the pinned commit; gq checks that pnpm
+  recorded installing exactly the tracked `pnpm-lock.yaml`
+  (`node_modules/.pnpm/lock.yaml`) and that the loader resolves inside the
+  checkout's `node_modules`. That is evidence of the install, not a
+  verification of every installed file.
 - `targets` binds each project to its approval target. A lookup refuses
   unless the Site's `deployment.approval` names that same stage and slot.
 - `releases` binds each gq-support version the Operator may look up to the
@@ -175,45 +192,53 @@ or artifact directory inside the Site refuses.
   `gq-support.manifest.json`, `provenance.json`). A lookup for a version it
   doesn't bind, for another release ID, or for a package other than
   `getquick/gq-support` refuses before the command runs.
-- The command runs without a shell, in its own process group, for at most two
-  minutes and 4 MiB on each of stdout and stderr, read as they stream; when it
-  exits or passes a bound, the whole group is killed. stderr is discarded. It
-  gets only `PATH`, `HOME`, `USER`, `LOGNAME`, the locale, `TZ`, `TMPDIR`, the
-  `XDG_*` directories and the CA certificate settings: no Composer, Ploi, R2,
-  Cloudflare or GitHub tokens.
+- **The process**: no shell, its own process group, at most two minutes and
+  4 MiB on each of stdout and stderr, read as they stream. When it exits or
+  passes a bound, the whole group is killed, and so it is if `gq` itself is
+  interrupted or terminated meanwhile. stderr is discarded. Its environment
+  is fixed: `HOME`, `USER` and `LOGNAME` from the user database, `PATH` from
+  the configured `node`'s directory and `/usr/bin:/bin`, `LANG=C.UTF-8` and
+  `TMPDIR=/tmp`; no tokens, CA overrides or `NODE_OPTIONS`. A login that
+  needs anything else (a proxy, a keyring through `DBUS_*`) fails closed.
 - It must exit 0 and print exactly one JSON object, with no repeated member
   name, which gq then checks as above. Every refusal is a fixed message: none
   carries the command's output or a path from the configuration, and nothing
   from the configuration goes into a release archive.
 
-This configuration isn't enabled anywhere yet: until the approval service has
-an approved release and the Site's slot is bound to it (reviewed gq-support
-follow-ups), the command refuses, and so does every guarded package.
+Only the `gq` command wires this adapter in. This configuration isn't enabled
+anywhere yet: until the approval service has an approved release and the
+Site's slot is bound to it (reviewed gq-support follow-ups), the command
+refuses, and so does every guarded package.
 
 ## Preparing a guarded package
 
 `gq release package <package> --to <version> --release-id <id> [--pin] [--expect-before <version>] --no-deploy`
 (see [release package](release.md)):
 
-1. looks up a `phase: "prepare"` record for exactly that release and version,
+1. reads the working tree's and the default branch's current policy (see
+   [Deployment policy](deployment-policy.md)): an unreadable one, offboarding
+   or differing approval targets refuse; a package either guards is guarded.
+   With `--no-deploy` a held Site may still be prepared (nothing is uploaded
+   or deployed); without it, a hold refuses here, before Composer runs;
+2. looks up a `phase: "prepare"` record for exactly that release and version,
    before Composer runs; no record means nothing changes;
-2. locks exactly `<version>` of only that package (`composer update
+3. locks exactly `<version>` of only that package (`composer update
 <package> --with <package>:<version> --no-install`). A requirement that
    already admits `<version>` (`^0.1.3`, `*`) stays as it is; one that
    doesn't refuses unless `--pin` sets it to exactly `<version>`. A range
    never authorizes the registry's latest;
-3. refuses unless the lock changed only that package's entry: every other
+4. refuses unless the lock changed only that package's entry: every other
    `packages` and `packages-dev` entry and every other top-level field
    (aliases, platform, stability flags, minimum-stability,
    plugin-api-version) exactly as before, and `content-hash` unchanged, or,
    with `--pin`, exactly the hash Composer computes for the pinned
    `composer.json` (gq computes it, and only trusts that after reproducing
    the lock's current hash);
-4. refuses unless the lock's references are the record's
+5. refuses unless the lock's references are the record's
    `published_tag.commit`;
-5. sets the package's entry in `deploy/ploi/package-expectations.json`
+6. sets the package's entry in `deploy/ploi/package-expectations.json`
    (`<version>`, the record's `release_id`);
-6. commits exactly `composer.lock`, the expectations file and, with `--pin`,
+7. checks the version files without syncing them, and commits exactly `composer.lock`, the expectations file and, with `--pin`,
    `composer.json`: anything else changed refuses, and the index must hold
    exactly those paths.
 
@@ -250,8 +275,9 @@ On the server, `deploy/ploi/admin.sh`:
 
 - right after unpacking the archive, before it replaces, installs or runs
   anything, refuses when the Site guards a package and the archive has no
-  `PACKAGE_EXPECTATIONS` (or doesn't state that package), or when the
-  release's `composer.lock` isn't the lock gq checked;
+  `PACKAGE_EXPECTATIONS`, when a line of it isn't one gq writes, when it
+  doesn't state exactly the packages the Site guards, or when the release's
+  `composer.lock` isn't the lock gq checked;
 - after `composer install`, the restore of shipped plugins and the dependency
   patch, and **before** PHP-FPM reloads and any plugin activation, database
   update, deploy extension or rewrite flush, computes `gq-support.files/v1`
@@ -268,14 +294,29 @@ approved ones.
 
 ### What a refusal leaves
 
-The install is **not atomic**. A refusal after `composer install` fails the
-deploy (`<PROJECT>_DEPLOY_STATUS=failed`, and `gq ploi release` exits 1) after
-Composer has already replaced files: they stay on disk, not yet loaded by a
-PHP-FPM reload, and a full deploy's cleanup leaves maintenance mode as it
-always does. Nothing rolls back. Recovery is another guarded release of an
-approved version, which needs its own fresh approval; a version the approval
-service doesn't approve (an unsigned legacy package among them) can't be
-deployed through this path.
+The install is **not atomic**: a refusal after `composer install` started
+comes after Composer may have replaced files, and nothing rolls them back.
+So a guarded Site is then **quarantined** instead of returned to service:
+
+- the deploy writes `apps/cms/web/wp/.maintenance` with `$upgrading` far in
+  the future (WordPress serves a `.maintenance` only for ten minutes counted
+  from `$upgrading`, so this one doesn't expire) and a `.gq-quarantine` marker
+  in the site root, and its cleanup doesn't lift maintenance mode;
+- PHP-FPM isn't reloaded and no activation, database step or extension has
+  run; the deploy fails (`<PROJECT>_DEPLOY_STATUS=failed`) and `gq ploi
+release` exits 1;
+- it stays so until a later deploy verifies the Site's guarded packages,
+  which lifts it (in a full deploy, maintenance mode then lasts until the
+  deploy ends, as always). That needs a fresh approval of an approved
+  version; a version the approval service doesn't approve (an unsigned legacy
+  package among them) can't be deployed through this path, and lifting the
+  quarantine by hand means serving files that didn't verify.
+
+This relies on WordPress honouring `.maintenance` (`wp_is_maintenance_mode`):
+the tests check the file and its timestamp, not a running WordPress. Files
+PHP serves without loading WordPress (a plugin's own PHP entry point reached
+directly) aren't covered by maintenance mode. An unguarded Site's failed
+deploy lifts maintenance mode as before.
 
 ### Remaining gaps
 

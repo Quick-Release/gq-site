@@ -66,6 +66,9 @@ Shared helpers stay in `test/support/`, with filenames describing their roles:
   verify and doctor test recipes. Keep expected values independent of production
   defaults so the tests can detect drift.
 - `deploy-script.mjs`: the CMS deploy script harness and local tool stand-ins.
+- `ploi-release.mjs`: the Ploi release suites' Site, in-memory Ploi and R2,
+  and git stand-in, shared by `ploi/commands.test.mjs` and
+  `ploi/guarded-release.test.mjs`.
 - `offboarding.mjs`: the offboarding suites' synced Site and its in-memory
   account (Cloudflare, R2's S3 API, Ploi, Sigillo, `gh`, and git against an
   Artifacts repository, each listing a page at a time), with ZIP, git bundle
