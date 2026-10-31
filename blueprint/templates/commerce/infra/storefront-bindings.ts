@@ -90,7 +90,8 @@ export function storefrontBindings({
   const rateLimits = [];
   for (const { binding, simple } of infra.rateLimits) {
     const namespaceId = namespaces[binding];
-    if (namespaceId === undefined) missing.push(`gq.ops.json cloudflare.rateLimitNamespaces.${binding}`);
+    if (namespaceId === undefined)
+      missing.push(`gq.ops.json cloudflare.rateLimitNamespaces.${binding}`);
     else rateLimits.push({ binding, namespaceId, simple });
   }
 
@@ -107,7 +108,9 @@ export function storefrontBindings({
   const admin = (ops.domains as Ops["domains"] | undefined)?.admin;
   const known: Record<string, string> = {
     ...(admin
-      ? { GETQUICK_AUTH_UPSTREAM_URL: `https://${admin}/wp-json/getquick-config/v1/woocommerce/auth` }
+      ? {
+          GETQUICK_AUTH_UPSTREAM_URL: `https://${admin}/wp-json/getquick-config/v1/woocommerce/auth`,
+        }
       : {}),
     GETQUICK_ENVIRONMENT: production ? "production" : stage,
   };

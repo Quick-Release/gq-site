@@ -359,15 +359,16 @@ async function planKeys(root, lock, manifest, { path, template, initial }, creat
   const edits = [];
   // What each object gains and loses, by its node.
   const objects = new Map();
-  const changesTo = (node, depth) => {
-    if (!objects.has(node)) objects.set(node, { depth, added: {}, removed: new Set() });
+  const changesTo = (node, depth, sorted = false) => {
+    if (!objects.has(node)) objects.set(node, { depth, sorted, added: {}, removed: new Set() });
     return objects.get(node);
   };
   for (const { key, segments, value } of managed) {
     const found = locateKey(path, document, segments);
     if (found.member === undefined) {
       changed.push(key);
-      setNested(changesTo(found.parent, found.depth).added, found.rest, value);
+      const sorted = isDependencyMap(path, segments.slice(0, found.depth));
+      setNested(changesTo(found.parent, found.depth, sorted).added, found.rest, value);
       continue;
     }
     const { node } = found.member;
@@ -452,16 +453,47 @@ function locateKey(path, document, segments) {
   throw new Error("A key path needs at least one segment.");
 }
 
+// A package.json dependency map, whose keys formatters (Oxfmt's
+// sortPackageJson, as in a Site's own `vp fmt`) keep in order.
+const DEPENDENCY_MAPS = new Set([
+  "dependencies",
+  "devDependencies",
+  "optionalDependencies",
+  "peerDependencies",
+]);
+function isDependencyMap(path, segments) {
+  return (
+    (path === "package.json" || path.endsWith("/package.json")) &&
+    segments.length === 1 &&
+    DEPENDENCY_MAPS.has(segments[0])
+  );
+}
+
 // The text edits that remove an object's `removed` members and add its
 // `added` keys after the members that remain, each on its own line at the
-// object's `depth` + 1. An object left with no members is rewritten whole.
-function objectEdits(node, { depth, added, removed }, { indent, newline }) {
+// object's `depth` + 1. In a `sorted` object (a dependency map) whose
+// remaining keys are in order, each added key goes where it sorts instead,
+// so the Site's formatter has nothing to reorder. An object left with no
+// members is rewritten whole.
+function objectEdits(node, { depth, sorted, added, removed }, { indent, newline }) {
   const inner = newline + indent.repeat(depth + 1);
-  const lines = Object.entries(added).map(
-    ([key, value]) =>
-      `${JSON.stringify(key)}: ${JSON.stringify(value, null, indent).replaceAll("\n", inner)}`,
-  );
+  const line = ([key, value]) =>
+    `${JSON.stringify(key)}: ${JSON.stringify(value, null, indent).replaceAll("\n", inner)}`;
   const remaining = node.members.filter((member) => !removed.has(member));
+  const keys = remaining.map(({ key }) => key);
+  let entries = Object.entries(added);
+  const before = new Map();
+  if (sorted && keys.every((key, index) => index === 0 || keys[index - 1] < key)) {
+    entries = entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    const last = [];
+    for (const entry of entries) {
+      const next = remaining.find(({ key }) => key > entry[0]);
+      if (next === undefined) last.push(entry);
+      else before.set(next, [...(before.get(next) ?? []), entry]);
+    }
+    entries = last;
+  }
+  const lines = entries.map(line);
   if (remaining.length === 0) {
     const text =
       lines.length === 0
@@ -480,6 +512,10 @@ function objectEdits(node, { depth, added, removed }, { indent, newline }) {
         : { start: member.keyStart, end: node.members[index + 1].keyStart, text: "" },
     );
   });
+  for (const [member, ahead] of before) {
+    const at = member.keyStart;
+    edits.push({ start: at, end: at, text: `${ahead.map(line).join(`,${inner}`)},${inner}` });
+  }
   if (lines.length > 0) {
     const at = remaining.at(-1).node.end;
     edits.push({ start: at, end: at, text: `,${inner}${lines.join(`,${inner}`)}` });

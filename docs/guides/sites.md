@@ -307,7 +307,9 @@ A site shares four more kinds of file with the blueprint:
   too ([The content runtime](#the-content-runtime)). Every other key, including
   the site's own scripts and its dependencies, is the site's: `gq` edits
   the file as text, so those keys stay byte for byte. A managed key the site removed is added
-  back after its siblings, in the file's indentation. One the blueprint
+  back after its siblings, in the file's indentation; in a `package.json`
+  dependency map whose keys are in order, it goes where it sorts instead,
+  as the Site's formatter would put it. One the blueprint
   retires is removed, unless the site changed it, in which case it is the
   site's.
 - **Create-once files.** `gq.ops.json`, the glossary (`GLOSSARY.md`),

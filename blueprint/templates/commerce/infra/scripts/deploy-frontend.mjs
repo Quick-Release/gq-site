@@ -22,9 +22,7 @@ if (ops.offboarded) {
 // A storefront with the storefront Runtime needs every binding the Runtime
 // declares: refused here, by name, before anything is deployed. Values are
 // never printed.
-const runtime = findStorefrontRuntime(
-  new URL("../../apps/frontend/package.json", import.meta.url),
-);
+const runtime = findStorefrontRuntime(new URL("../../apps/frontend/package.json", import.meta.url));
 if (runtime !== undefined) {
   const { missing } = storefrontBindings({ ops, ...runtime, stage: "prod", env: process.env });
   if (missing.length > 0) {
