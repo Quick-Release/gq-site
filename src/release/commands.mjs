@@ -7,6 +7,7 @@ import { loadSiteSettings } from "../manifest/site-settings.mjs";
 import { parseVersion, satisfiesConstraint } from "../packages/versions.mjs";
 import { composerContentHash } from "../cms/composer-content-hash.mjs";
 import { readDefaultBranchManifest, releasePolicy } from "../ploi/deployment-policy.mjs";
+import { trustedGit, trustedGitEnvironment } from "../ploi/trusted-git.mjs";
 import {
   PACKAGE_EXPECTATIONS_PATH,
   checkLockedRecord,
@@ -401,7 +402,7 @@ async function releasePackage(
     [
       { ops: context.config, source: "gq.ops.json" },
       {
-        ops: await readDefaultBranchManifest((args) => release.git(args), manifestPath),
+        ops: await readDefaultBranchManifest(policyGit(exec, root, env), manifestPath),
         source: `the default branch's ${manifestPath}`,
       },
     ],
@@ -435,7 +436,7 @@ async function releasePackage(
       `${COMPOSER_LOCK} locks ${name} ${describePackage(before)}, not ${options.expectBefore} (--expect-before); nothing changed.`,
     );
   }
-  if (options.guarded && !before) {
+  if (options.lockOnly && !before) {
     throw new Error(`${COMPOSER_LOCK} doesn't lock ${name}; nothing changed.`);
   }
   // A guarded package moves only to a version the approval service approves
@@ -517,14 +518,16 @@ async function releasePackage(
         name,
         ...(options.to ? ["--with", `${name}:${options.to}`] : []),
         "--no-interaction",
-        ...(options.guarded ? ["--no-install"] : []),
+        // Lock-only: no install, and none of the Site's Composer scripts or
+        // plugins run while gq holds an approval it has checked.
+        ...(options.lockOnly ? ["--no-install", "--no-scripts", "--no-plugins"] : []),
       ],
       { exec, env, stdio: "inherit" },
     );
     const afterLock = await readLockFile(root);
     after = lockedPackage(afterLock, name);
     if (!after) throw new Error(`${COMPOSER_LOCK} has no ${name} after composer update.`);
-    if (options.guarded) checkLockChange(beforeLock, afterLock, name, options, contentHash);
+    if (options.lockOnly) checkLockChange(beforeLock, afterLock, name, options, contentHash);
     // A guarded package is locked from exactly the approved published tag,
     // and the Site's expectation names the approved release for review with
     // the lock change.
@@ -542,12 +545,12 @@ async function releasePackage(
     assertVersion(version);
     // Guarded preparation writes only the files it owns: the version files
     // are checked, never synced (a drift refuses).
-    if (!options.guarded) await release.sync(version);
+    if (!options.lockOnly) await release.sync(version);
     await release.check(version);
 
     const changed = changedPaths(await release.git(["status", "--porcelain"]));
     if (changed.length > 0) {
-      if (options.guarded) {
+      if (options.lockOnly) {
         const unexpected = changed.filter((path) => !allowed.has(path));
         if (unexpected.length > 0) {
           throw new Error(
@@ -567,7 +570,10 @@ async function releasePackage(
       } else {
         await release.stage();
       }
+      // Lock-only: none of the Site's git hooks run either, for this commit
+      // only (the repository's configuration isn't changed).
       await release.runCommand("git", [
+        ...(options.lockOnly ? ["-c", "core.hooksPath=/dev/null"] : []),
         "commit",
         "-m",
         `Update ${name} to ${describePackage(after)}`,
@@ -582,7 +588,7 @@ async function releasePackage(
       io.out(`${COMPOSER_LOCK} already pins ${name} ${describePackage(before)}; deploying HEAD.`);
     }
   } catch (error) {
-    if (options.guarded && !committed) {
+    if (options.lockOnly && !committed) {
       if (staged) await release.git(["reset", "--quiet", "--", ...allowed]).catch(() => {});
       await restore();
       const left = await release
@@ -618,6 +624,20 @@ async function releasePackage(
   return code;
 }
 
+// A git runner for reading the policy: a system git (trusted-git.mjs), never
+// one a Site could put on PATH. Resolves to stdout, or throws.
+function policyGit(exec, cwd, env) {
+  const git = trustedGit();
+  const policyEnv = trustedGitEnvironment(env, git);
+  return async (args) => {
+    const { code, stdout, stderr } = await exec(git, args, { cwd, env: policyEnv });
+    if (code !== 0) {
+      throw new Error(`git ${args.join(" ")} failed: ${stderr.trim() || `exit code ${code}`}`);
+    }
+    return stdout;
+  };
+}
+
 // release package's options, checked before anything runs.
 function packageOptions(parsed) {
   const options = {
@@ -648,7 +668,7 @@ function packageOptions(parsed) {
   if (parsed.releaseId !== undefined && !/^[1-9]\d*$/u.test(parsed.releaseId)) {
     throw new Error(`--release-id takes an approved release's ID, not "${parsed.releaseId}".`);
   }
-  options.guarded = Boolean(
+  options.lockOnly = Boolean(
     options.to || options.reference || options.expectBefore || options.noDeploy,
   );
   return options;

@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 
+import { trustedGit } from "../../src/ploi/trusted-git.mjs";
 import { createFixtureSite, recordingExec, recordingFetch } from "./fixture-site.mjs";
 
 export const SHA = "0123456789abcdef0123456789abcdef01234567";
@@ -157,7 +158,7 @@ export function fakeGit({
   current = manifest,
 } = {}) {
   return recordingExec(async ({ command, args }) => {
-    assert.equal(command, "git");
+    assert.ok(isGit(command), command);
     if (args[0] === "ls-remote") {
       return { stdout: `ref: refs/heads/main\tHEAD\n${"9".repeat(40)}\tHEAD\n` };
     }
@@ -209,3 +210,63 @@ export const RESERVED = Object.freeze({
   reason: "The nightly pipeline is updating the Site",
   holder: "nightly pipeline",
 });
+
+// A git command: `git` from PATH, or the system git the policy reads use
+// (trusted-git.mjs).
+export const isGit = (command) => command === "git" || command === TRUSTED_GIT;
+export const TRUSTED_GIT = trustedGit();
+
+// --- guarded packages: the approval record and lookup stand-ins ----------
+
+// The Site's approval slot and stage, which every record must name.
+export const APPROVAL = Object.freeze({ slot: "fixture/production", stage: "prod" });
+
+// The commit refs/tags/v0.1.11 points to: the lock's source.reference.
+export const PUBLISHED_REFERENCE = "b".repeat(40);
+
+// gq-support.php ("hello\n") alone, and its gq-support.files/v1 digest, from
+// printf 'gq-support.php\0<sha256>\n' | sha256sum.
+export const SUPPORT_FILES = Object.freeze({
+  "gq-support.php": "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
+});
+
+export const SUPPORT_DIGEST = "335b71ade6b432f03f1858a221294a017f4d6dc1f635a504e85194dcf30b26ce";
+
+// fakeClock's now.
+export const OBSERVED = "2026-10-01T09:00:00Z";
+
+// A gq-support.composer-approval/v1 record, as the approval service returns it.
+export function approvalRecord(overrides = {}) {
+  return {
+    schema: "gq-support.composer-approval/v1",
+    stage: APPROVAL.stage,
+    slot: APPROVAL.slot,
+    phase: "deploy",
+    release_id: 11,
+    package: { name: "getquick/gq-support", version: "0.1.11", zip_sha256: "f".repeat(64) },
+    // The gq-support source commit: never the lock's reference.
+    provenance: { source_commit: "c".repeat(40), release_run: "4242" },
+    published_tag: { name: "v0.1.11", commit: PUBLISHED_REFERENCE },
+    files: SUPPORT_FILES,
+    files_digest: SUPPORT_DIGEST,
+    normalization: "gq-support.files/v1",
+    observed_at: OBSERVED,
+    ...overrides,
+  };
+}
+
+// An approval adapter answering each lookup with the next of `answers` (a
+// record, or an Error it rejects with), noting each request and, when given
+// `fetch`, the provider requests made before it.
+export function scriptedApprovals(answers, fetch) {
+  const requests = [];
+  return {
+    requests,
+    async lookup(request) {
+      requests.push({ ...request, before: fetch?.requests.map(requestLine) });
+      const answer = answers[Math.min(requests.length - 1, answers.length - 1)];
+      if (answer instanceof Error) throw answer;
+      return answer;
+    },
+  };
+}

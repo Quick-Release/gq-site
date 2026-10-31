@@ -190,6 +190,60 @@ test("the checkout must be clean at the reviewed commit, by the configured git, 
   }
 });
 
+test("index flags can't hide a tampered file: assume-unchanged, skip-worktree, and a shadowing node_modules", async () => {
+  // A tracked helper beside the entry point, to tamper with too.
+  const setUp = async () => {
+    const m = await machine();
+    await writeFile(join(m.checkout, "worker/scripts/helper.ts"), "export const x = 1;\n");
+    m.git("add", "worker/scripts/helper.ts");
+    m.git(
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.test",
+      "commit",
+      "--quiet",
+      "-m",
+      "helper",
+    );
+    return { ...m, commit: m.git("rev-parse", "HEAD").trim() };
+  };
+  for (const [flag, path] of [
+    ["--assume-unchanged", "worker/scripts/operator.ts"],
+    ["--skip-worktree", "worker/scripts/operator.ts"],
+    ["--skip-worktree", "worker/scripts/helper.ts"],
+  ]) {
+    const m = await setUp();
+    m.git("update-index", flag, path);
+    await writeFile(join(m.checkout, path), 'console.log("TAMPERED");\n');
+    assert.equal(m.git("status", "--porcelain"), "", "git status says clean");
+    await assert.rejects(
+      adapterOn(m).lookup(REQUEST),
+      /has files git status wouldn't check \(assume-unchanged or skip-worktree\)/u,
+      `${flag} ${path}`,
+    );
+    // Even with the flag cleared from what git reports, the bytes differ.
+    await assert.rejects(readFile(m.recorded, "utf8"), { code: "ENOENT" });
+  }
+
+  const shadowed = await setUp();
+  await mkdir(join(shadowed.checkout, "worker/scripts/node_modules/effect"), { recursive: true });
+  await writeFile(join(shadowed.checkout, "worker/scripts/node_modules/effect/index.js"), "");
+  await assert.rejects(
+    adapterOn(shadowed).lookup(REQUEST),
+    /has node_modules outside its workspace dependency directories/u,
+  );
+});
+
+test("a tampered entry point staged into the index is refused too", async () => {
+  const m = await machine();
+  // Write the tampered bytes into the index too, so git sees nothing: only
+  // the comparison with HEAD's blobs catches it.
+  await writeFile(join(m.checkout, "worker/scripts/operator.ts"), 'console.log("TAMPERED");\n');
+  m.git("add", "worker/scripts/operator.ts");
+  await assert.rejects(adapterOn(m).lookup(REQUEST), /isn't clean at the reviewed commit/u);
+});
+
 test("the pinned entry point and its frozen install are checked, not assumed", async () => {
   const unlocked = await machine();
   await writeFile(join(unlocked.checkout, "node_modules/.pnpm/lock.yaml"), "other\n");
@@ -363,9 +417,9 @@ test("the adapter's refusals are fixed messages, never the command's output", as
 });
 
 // bin/gq.mjs wires the Operator CLI adapter in: a real gq process in a
-// committed guarded Site. Without a configuration in the user's real home,
-// there is no lookup; an environment choosing a configuration is refused.
-test("bin/gq.mjs looks guarded packages up through the Operator CLI, and refuses an environment choosing its configuration", async () => {
+// committed guarded Site, whose environment choosing a configuration is
+// refused before any configuration (the machine's real one included) is read.
+test("bin/gq.mjs wires the Operator CLI lookup in, refusing an environment that chooses its configuration", async () => {
   const { createFixtureSite } = await import("../support/fixture-site.mjs");
   const fixture = await createFixtureSite({
     ops: {
@@ -423,11 +477,10 @@ test("bin/gq.mjs looks guarded packages up through the Operator CLI, and refuses
   assert.equal(chosen.status, 1, chosen.stderr);
   assert.match(chosen.stderr, /GQ_SUPPORT_APPROVAL_CONFIG is set/u);
 
-  // This machine's own configuration doesn't bind this test's project.
-  const machineConfigured = gq({});
-  assert.equal(machineConfigured.status, 1, machineConfigured.stderr);
-  assert.match(
-    machineConfigured.stderr,
-    /No package approval lookup is configured|binds no approval target for nomia-bin-test/u,
+  // Hermetic: the refusal comes before any configuration is read, so this
+  // test never reads the machine's real Operator configuration.
+  assert.doesNotMatch(
+    chosen.stderr,
+    /No package approval lookup is configured|binds no approval target/u,
   );
 });

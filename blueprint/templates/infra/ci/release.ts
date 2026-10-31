@@ -39,6 +39,28 @@ export function ciSteps(
   ];
 }
 
+// A runner the CI SDK gives (ci.runner, workspace.runner): each step runs in
+// one, and a fresh one's workspace can run the steps after it.
+export type Runner = { runner(step: Step): Promise<Runner> };
+
+// Runs `placed` (ciSteps') in order: "fresh" and "install" steps in a fresh
+// runner from `ci`, keeping the install step's workspace, and "workspace"
+// steps in that workspace. Both CI Worker templates run their steps through
+// this, so the admission is in its own fresh runner before any workspace
+// exists.
+export async function runSteps(ci: Runner, placed: Placed[]): Promise<void> {
+  let workspace: Runner | undefined;
+  for (const { on, step } of placed) {
+    if (on === "workspace") {
+      if (!workspace) throw new Error(`${step.name} needs the install step's workspace`);
+      await workspace.runner(step);
+    } else {
+      const runner = await ci.runner(step);
+      if (on === "install") workspace = runner;
+    }
+  }
+}
+
 // The release admission, with this Worker's code (deployed by `gq ci
 // deploy`), never the tag's: an old tag carries its own scripts and gq, which
 // may predate the Site's current deployment policy. It fetches the release

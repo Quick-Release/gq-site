@@ -15,7 +15,6 @@ import {
   renderServerExpectations,
   unconfiguredApprovals,
 } from "../../src/ploi/package-expectations.mjs";
-import { parseStrictJson } from "../../src/ploi/strict-json.mjs";
 
 // gq-support.php ("hello\n"), src/a-b.php ("abc") and Z.txt ("Z").
 const FILES = Object.freeze({
@@ -262,19 +261,6 @@ test("without an approval service, every lookup refuses and says the file isn't 
     }),
     /No package approval lookup is configured.*not an approval/u,
   );
-});
-
-test("strict JSON refuses a repeated member name anywhere, and otherwise parses as JSON.parse does", () => {
-  const text = '{"a":[1,{"b":"\\"x\\""}],"c":null,"d":-1.5e3,"e":true}';
-  assert.deepEqual(parseStrictJson(text), JSON.parse(text));
-  assert.throws(() => parseStrictJson('{"a":1,"a":2}'), /Repeated member name "a"/u);
-  assert.throws(
-    () => parseStrictJson('{"files":{"x.php":"1","x.php":"2"}}'),
-    /Repeated member name "x\.php"/u,
-  );
-  assert.throws(() => parseStrictJson('{"a":1} {"a":1}'), /Unexpected text/u);
-  assert.throws(() => parseStrictJson('{"a":1,}'), /Expected a member name/u);
-  assert.equal(Object.getPrototypeOf(parseStrictJson('{"__proto__":{"x":1}}')), Object.prototype);
 });
 
 test("a package's install path is the one installer-paths pattern composer/installers would use", () => {

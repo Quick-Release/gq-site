@@ -32,10 +32,6 @@ SHIPPED_PATHS=("$APP_PATH" deploy/ploi)
 # The site's own deploy steps, shipped with deploy/ploi.
 EXTENSIONS_PATH="deploy/ploi/admin.d"
 maintenance_enabled=false
-# A guarded Site's install, once composer install has started, stays out of
-# service until its packages verify: see quarantine_site.
-guarded_install_started=false
-guarded_verified=false
 tmp_dir=""
 
 cd "$SITE_PATH"
@@ -61,7 +57,6 @@ reload_php_fpm() {
 # also what removes files a shipped plugin or theme no longer has: the main
 # rsync protects those directories.
 composer_install() {
-  [ -z "$GUARDED_PACKAGES" ] || guarded_install_started=true
   composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
   for kind in plugins themes; do
     for shipped_dir in "$tmp_dir/release/$APP_PATH/web/app/$kind"/*/; do
@@ -76,43 +71,57 @@ composer_install() {
     php scripts/patch-dependencies.php
   fi
   verify_package_expectations
-  if [ -n "$GUARDED_PACKAGES" ]; then
-    guarded_verified=true
-    lift_quarantine
-  fi
 }
 
-# A guarded Site whose install failed once composer install started (its
-# packages unverified, or verified and then a later step failed before they
-# could be) is put out of service, durably: WordPress serves a .maintenance
-# file only for ten minutes counted from its $upgrading, so this one's is far
-# in the future, and the cleanup doesn't lift it. It stays until a later
-# deploy verifies the Site's packages (lift_quarantine). A marker beside the
-# site says why. PHP-FPM isn't reloaded and no activation or database step
-# has run.
+# A guarded Site is out of service for the whole deploy: quarantine_site
+# runs before anything on the server is replaced or installed, and only the
+# end of a deploy that verified the Site's packages and finished every step
+# lifts it (lift_quarantine). A failure, a timeout or a killed deploy leaves
+# it in place; nothing (no exit trap, no timer) makes the Site available
+# again. The quarantine is WordPress's .maintenance file, which WordPress
+# loads before anything else on every request: this one answers every web
+# request itself (503, then exit), so WordPress's own checks (its ten-minute
+# expiry, its fatal-error scrape exception) never run, and gives command-line
+# PHP (WP-CLI, so this deploy and a recovery) an expired timestamp, so
+# WordPress isn't in maintenance there. A marker beside the site says why.
 QUARANTINE_MARKER=".gq-quarantine"
+QUARANTINE_TAG="GETQUICK guarded-package quarantine"
 quarantine_site() {
   local wordpress="$SITE_PATH/$APP_PATH/web/wp"
   mkdir -p "$wordpress"
-  printf '%s\n' '<?php' \
-    '// GETQUICK guarded-package quarantine: a deploy failed before its packages verified.' \
-    '// Lifted only by a deploy whose guarded packages verify.' \
-    '$upgrading = 4102444800;' >"$wordpress/.maintenance"
-  printf 'quarantined %s: guarded packages unverified after a failed deploy\n' \
+  cat >"$wordpress/.maintenance" <<'GQ_QUARANTINE'
+<?php
+// GETQUICK guarded-package quarantine: a deploy is installing guarded
+// packages, or one did and they didn't verify. Only a deploy whose guarded
+// packages verify lifts it; removing it by hand serves unverified code.
+if (PHP_SAPI !== 'cli') {
+    if (!headers_sent()) {
+        http_response_code(503);
+        header('Retry-After: 600');
+        header('Cache-Control: no-store');
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    echo "This site is temporarily unavailable.\n";
+    exit;
+}
+$upgrading = 0;
+GQ_QUARANTINE
+  printf 'quarantined %s: guarded packages are being installed or failed to verify\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$SITE_PATH/$QUARANTINE_MARKER"
-  echo "The Site is out of service (WordPress maintenance mode, no expiry) until a deploy verifies its guarded packages." >&2
+  if ! grep -q "$QUARANTINE_TAG" "$wordpress/.maintenance" || [ ! -f "$SITE_PATH/$QUARANTINE_MARKER" ]; then
+    echo "Couldn't put the Site out of service before installing its guarded packages." >&2
+    exit 1
+  fi
+  echo "The Site is out of service until this deploy verifies its guarded packages."
 }
 
-# After a successful verification: a previous quarantine is lifted. In a full
-# deploy, maintenance mode then lasts until the deploy ends, as always.
+# At the very end of a deploy that verified the Site's guarded packages and
+# finished every step.
 lift_quarantine() {
   local maintenance="$SITE_PATH/$APP_PATH/web/wp/.maintenance"
-  [ -f "$SITE_PATH/$QUARANTINE_MARKER" ] || return 0
+  if grep -q "$QUARANTINE_TAG" "$maintenance" 2>/dev/null; then rm -f "$maintenance"; fi
   rm -f "$SITE_PATH/$QUARANTINE_MARKER"
-  if [ "$maintenance_enabled" != true ] && grep -q "GETQUICK guarded-package quarantine" "$maintenance" 2>/dev/null; then
-    rm -f "$maintenance"
-  fi
-  echo "The guarded packages verified: lifted the quarantine."
+  echo "The guarded packages verified and the deploy finished: the Site is back in service."
 }
 
 # Runs from $APP_PATH after composer install: each package the release's
@@ -197,9 +206,9 @@ verify_release_lock() {
     exit 1
   fi
   local stated wanted
-  stated="$(sed -n 's/^package \([^ ]*\) .*/\1/p' "$expectations" | LC_ALL=C sort | tr '\n' ' ')"
+  stated="$(sed -n 's/^package \([^ ]*\) .*/\1/p' "$expectations" | LC_ALL=C sort | paste -sd ' ' -)"
   # shellcheck disable=SC2086 # one package per word
-  wanted="$(printf '%s\n' $GUARDED_PACKAGES | LC_ALL=C sort | tr '\n' ' ')"
+  wanted="$(printf '%s\n' $GUARDED_PACKAGES | LC_ALL=C sort | paste -sd ' ' -)"
   if [ -n "$GUARDED_PACKAGES" ] && [ "$stated" != "$wanted" ]; then
     echo "PACKAGE_EXPECTATIONS states ${stated:-no package}, but this Site guards exactly $wanted." >&2
     exit 1
@@ -252,12 +261,6 @@ cleanup() {
   exit_code=$?
   trap - EXIT
 
-  if [ "$exit_code" -ne 0 ] && [ "$guarded_install_started" = true ] \
-    && [ "$guarded_verified" != true ]; then
-    quarantine_site || true
-    maintenance_enabled=false
-  fi
-
   if [ "$maintenance_enabled" = true ] && [ -f "$SITE_PATH/$APP_PATH/web/wp/wp-load.php" ]; then
     (cd "$SITE_PATH/$APP_PATH" && wp maintenance-mode deactivate) || true
   fi
@@ -306,6 +309,9 @@ echo "Deploying $(tr '\n' ' ' < "$tmp_dir/release/RELEASE")"
 # checked against the approval. The installed files are checked after
 # composer install (verify_package_expectations).
 verify_release_lock
+# A guarded Site goes out of service before anything changes, until this
+# deploy verifies its packages and finishes.
+[ -z "$GUARDED_PACKAGES" ] || quarantine_site
 
 # Replace the shipped code, keeping what the server owns: the .env, Composer's
 # vendor/ and installed WordPress core/plugins/themes, language packs and
@@ -363,11 +369,15 @@ if [ "${COMPOSER_ONLY:-false}" = "true" ]; then
   composer_install
   mkdir -p web/app/uploads
   reload_php_fpm
+  [ -z "$GUARDED_PACKAGES" ] || lift_quarantine
   echo "Composer dependencies deployed; skipping WordPress and database operations."
   exit 0
 fi
 
-if [ -f "$APP_PATH/web/wp/wp-load.php" ] && (cd "$APP_PATH" && wp core is-installed); then
+# A guarded Site is already out of service (quarantine_site), and WordPress's
+# own maintenance mode would replace that with one that expires.
+if [ -z "$GUARDED_PACKAGES" ] && [ -f "$APP_PATH/web/wp/wp-load.php" ] \
+  && (cd "$APP_PATH" && wp core is-installed); then
   (cd "$APP_PATH" && wp maintenance-mode activate) || true
   maintenance_enabled=true
 fi
@@ -514,5 +524,9 @@ if wp core is-installed; then
   fi
 fi
 
-wp maintenance-mode deactivate || true
-maintenance_enabled=false
+if [ -n "$GUARDED_PACKAGES" ]; then
+  lift_quarantine
+else
+  wp maintenance-mode deactivate || true
+  maintenance_enabled=false
+fi

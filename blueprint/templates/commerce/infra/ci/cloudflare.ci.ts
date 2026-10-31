@@ -5,8 +5,8 @@ import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
 import type { Bindings } from "./env";
 import { githubToken, hasGithubCredentials, postCommitStatus } from "./github.ts";
 import type { CommitState } from "./github.ts";
-import { ciSteps } from "./release.ts";
-import type { Step } from "./release.ts";
+import { ciSteps, runSteps } from "./release.ts";
+import type { Runner, Step } from "./release.ts";
 
 // Steps restore the install step's workspace snapshot, but pnpm's store lives
 // outside it, so `pnpm run`'s dependency check would reinstall everything in
@@ -149,19 +149,8 @@ export class CI extends CIWorkflow<CloudflareArtifacts, Bindings> {
     };
 
     // In ciSteps' order: a release is admitted first, by this Worker's own
-    // code, before anything the tag controls is installed, run or given a
-    // secret (release.ts).
-    type Runner = Awaited<ReturnType<CiContext["runner"]>>;
-    type Options = Parameters<CiContext["runner"]>[0];
-    let workspace: Runner | undefined;
-    for (const { on, step } of ciSteps(params, { install, verify, release })) {
-      if (on === "workspace") {
-        if (!workspace) throw new Error(`${step.name} needs the install step's workspace`);
-        await workspace.runner(step as Options);
-      } else {
-        const runner = await ci.runner(step as Options);
-        if (on === "install") workspace = runner;
-      }
-    }
+    // code, in its own fresh runner, before anything the tag controls is
+    // installed, run or given a secret (release.ts).
+    await runSteps(ci as unknown as Runner, ciSteps(params, { install, verify, release }));
   }
 }

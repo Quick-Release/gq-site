@@ -23,13 +23,16 @@
 // Before each lookup, with that `git` and a fixed environment (no PATH a
 // Site could shadow, no user or system git configuration, no hooks or
 // fsmonitor): the checkout's HEAD must be OPERATOR_COMMIT, its work tree
-// clean (untracked files count), and worker/scripts/operator.ts a tracked
-// regular file. Its dependencies (node_modules, ignored by git) are a trusted
-// prerequisite the Operator installs with `pnpm install --frozen-lockfile`
-// at that commit: gq checks pnpm recorded installing exactly the tracked
-// pnpm-lock.yaml and that the loader resolves inside the checkout's
-// node_modules, which is evidence of the install, not a verification of
-// every installed file.
+// clean (untracked files count), no file flagged assume-unchanged or
+// skip-worktree, every tracked file's bytes equal to the pinned tree's blobs
+// (hashed here, whatever the index says), and worker/scripts/operator.ts a
+// tracked regular file. Its dependencies (node_modules, ignored by git) are a
+// trusted prerequisite the Operator installs with
+// `pnpm install --frozen-lockfile` at that commit: gq checks pnpm recorded
+// installing exactly the tracked pnpm-lock.yaml, that the loader resolves
+// inside the checkout's node_modules, and that no other node_modules could
+// shadow the entry point's imports. That is evidence of the install, not a
+// verification of every installed file.
 //
 // The command runs without a shell, in its own process group, bounded in
 // time and in stdout and stderr (bounded-process.mjs), with a fixed
@@ -39,7 +42,8 @@
 // holds no key or secret. No saved record is ever accepted: every lookup
 // runs the command. Refusals are fixed messages naming no configured path
 // and carrying no command output.
-import { readFileSync, realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { userInfo } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 
@@ -56,6 +60,13 @@ export const OPERATOR_COMMIT = "29de3c7ec66ad96d6726bae20766c2acc7fcc312";
 export const OPERATOR_DIRECTORY = "worker";
 export const OPERATOR_ENTRY = "worker/scripts/operator.ts";
 export const OPERATOR_LOADER = "worker/node_modules/alchemy/bin/register-oxc.js";
+// Where the pinned commit's pnpm workspace installs dependencies: the root
+// and its two packages (pnpm-workspace.yaml: plugin/app, worker).
+export const DEPENDENCY_DIRECTORIES = Object.freeze([
+  "node_modules/",
+  "worker/node_modules/",
+  "plugin/app/node_modules/",
+]);
 export const APPROVAL_CONFIG_FILE = ".config/gq/support-approval.json";
 export const APPROVAL_CONFIG_VARIABLE = "GQ_SUPPORT_APPROVAL_CONFIG";
 // The one package the Operator CLI approves.
@@ -272,7 +283,7 @@ async function requireReviewedCheckout({ git, checkout, commit, homedir, label }
           LANG: "C.UTF-8",
         },
         timeoutMs: GIT_TIMEOUT_MS,
-        maxBytes: 1024 * 1024,
+        maxBytes: 16 * 1024 * 1024,
       },
     );
     if (result.code !== 0) throw new Error("git failed");
@@ -280,19 +291,72 @@ async function requireReviewedCheckout({ git, checkout, commit, homedir, label }
   };
   let head;
   let status;
-  let entry;
+  let flags;
+  let tree;
+  let ignored;
   try {
     head = (await run(["rev-parse", "HEAD"])).trim();
     status = await run(["status", "--porcelain", "--untracked-files=normal"]);
-    entry = await run(["ls-files", "--stage", "--", OPERATOR_ENTRY]);
+    flags = await run(["ls-files", "-v"]);
+    tree = await run(["ls-tree", "-r", "-z", "HEAD"]);
+    ignored = await run([
+      "ls-files",
+      "--others",
+      "--ignored",
+      "--exclude-standard",
+      "--directory",
+      "-z",
+    ]);
   } catch {
     head = null;
   }
   if (head !== commit || status !== "") {
     throw refuse(`isn't clean at the reviewed commit ${commit.slice(0, 12)}`);
   }
-  if (!/^100(644|755) [0-9a-f]{40} 0\t/u.test(entry)) {
+  // `git status` doesn't look at files flagged assume-unchanged (a lowercase
+  // tag) or skip-worktree (S): no index flag but H is accepted.
+  if (flags.split("\n").some((line) => line !== "" && !line.startsWith("H "))) {
+    throw refuse("has files git status wouldn't check (assume-unchanged or skip-worktree)");
+  }
+  // And every tracked file's bytes are compared with the pinned tree's
+  // blobs, hashed here, whatever git's index says.
+  const entries = tree
+    .split("\0")
+    .filter(Boolean)
+    .map((line) => /^(\d{6}) (\w+) ([0-9a-f]{40})\t(.+)$/su.exec(line));
+  if (entries.some((match) => !match)) throw refuse("has a tree gq can't read");
+  for (const [, mode, type, blob, path] of entries) {
+    const full = join(checkout, path);
+    let bytes;
+    try {
+      if (type !== "blob") throw new Error("not a file");
+      if (mode === "120000") bytes = Buffer.from(readlinkSync(full));
+      else if (mode === "100644" || mode === "100755") {
+        if (!lstatSync(full).isFile()) throw new Error("not a regular file");
+        bytes = readFileSync(full);
+      } else throw new Error("unexpected mode");
+    } catch {
+      throw refuse(`doesn't hold ${path} as the reviewed commit has it`);
+    }
+    if (gitBlob(bytes) !== blob) {
+      throw refuse(`doesn't hold ${path} as the reviewed commit has it`);
+    }
+  }
+  const entry = entries.find(([, , , , path]) => path === OPERATOR_ENTRY);
+  if (!entry || !["100644", "100755"].includes(entry[1])) {
     throw refuse(`doesn't track ${OPERATOR_ENTRY} as a regular file`);
+  }
+  // Ignored dependencies are a trusted prerequisite, but only where pnpm
+  // installs them: a node_modules elsewhere could shadow the entry point's
+  // imports.
+  const strays = ignored
+    .split("\0")
+    .filter(Boolean)
+    .filter(
+      (path) => /(^|\/)node_modules(\/|$)/u.test(path) && !DEPENDENCY_DIRECTORIES.includes(path),
+    );
+  if (strays.length > 0) {
+    throw refuse("has node_modules outside its workspace dependency directories");
   }
   let installed;
   try {
@@ -309,6 +373,11 @@ async function requireReviewedCheckout({ git, checkout, commit, homedir, label }
     throw refuse("has no installed Operator loader");
   }
   return loader;
+}
+
+// The git blob id of `bytes`.
+function gitBlob(bytes) {
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
 function refusing(reason) {

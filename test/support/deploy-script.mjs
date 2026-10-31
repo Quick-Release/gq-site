@@ -45,8 +45,14 @@ case "$1 \${2:-}" in
   "eval "*S3_UPLOADS_BUCKET*) exit 1 ;;
   *) exit 0 ;;
 esac`,
+  // Records whether the guarded-package quarantine is already in place when
+  // it runs (from apps/cms); COMPOSER_EXIT makes it fail, COMPOSER_KILL=1
+  // kills the deploy script itself (SIGKILL: no exit trap runs).
   composer: `record composer "$@"
-printf '%s' "\${COMPOSER_AUTH:-}" > "$DEPLOY_CALLS.composer-auth"`,
+if [ -f web/wp/.maintenance ]; then record composer-saw-quarantine; fi
+printf '%s' "\${COMPOSER_AUTH:-}" > "$DEPLOY_CALLS.composer-auth"
+if [ "\${COMPOSER_KILL:-0}" = 1 ]; then kill -KILL "$PPID"; fi
+exit "\${COMPOSER_EXIT:-0}"`,
   rsync: `record rsync "$@"
 source="\${@: -2:1}"
 target="\${@: -1}"
@@ -89,6 +95,8 @@ export async function deploy(
     composerAuth = '{"http-basic":{}}',
     patchExit = 0,
     composerOnly = false,
+    composerExit = 0,
+    composerKill = false,
   } = {},
 ) {
   const directory = await temporaryDirectory();
@@ -130,6 +138,8 @@ export async function deploy(
       WP_FAILING: failing.join("\n"),
       DEPENDENCY_PATCH_EXIT: String(patchExit),
       COMPOSER_ONLY: composerOnly ? "true" : "false",
+      COMPOSER_EXIT: String(composerExit),
+      COMPOSER_KILL: composerKill ? "1" : "0",
     },
   });
   const recorded = await readFile(calls, "utf8");

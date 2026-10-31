@@ -60,14 +60,23 @@ A hold added today isn't in a commit made yesterday. So a release checks
 every policy that applies to it, and refuses when any of them is offboarded
 or holds, before anything else:
 
-- **`gq ploi release`** (and `gq release package`'s deploy): the working
-  tree's `gq.ops.json`, the release commit's, and the **default branch's
-  current one**. It reads the last from `origin` (`git ls-remote --symref
+- **`gq ploi release`** (and `gq release package`, which reads the working
+  tree's and the default branch's before anything else): the working tree's
+  `gq.ops.json`, the release commit's, and the **default branch's current
+  one**, all read with a system git (`/usr/bin/git`, `/usr/local/bin/git`,
+  `/opt/homebrew/bin/git` or Homebrew on Linux's), never one a Site's
+  `node_modules/.bin` or Sigillo values put first on `PATH`. It reads the last from `origin` (`git ls-remote --symref
 origin HEAD`, then `git fetch origin refs/heads/<branch>`, which changes
   only `FETCH_HEAD` and objects, never the working tree or a branch). A
   release commit or default branch whose `gq.ops.json` is missing, invalid or
-  unreadable refuses, for every Site: an old unprotected commit can't release
-  a Site whose current branch protects it. Guarded packages named by any of
+  unreadable refuses, **for every Site**, protected or not: an old
+  unprotected commit can't release a Site whose current branch protects it.
+  This changes ordinary Sites too. A release now needs `origin` reachable
+  (offline, it refuses), a default branch it names, and a `gq.ops.json` on
+  that branch and in the release commit that this gq validates (an old tag
+  whose manifest predates a schema change refuses; release a current
+  commit). An online Site with a valid manifest and no `deployment` block
+  releases as before. Guarded packages named by any of
   them are guarded.
 - **The CI Worker** (`infra/ci/cloudflare.ci.ts`, deployed by `gq ci
 deploy`): a tag carries its own `scripts/ci-release.mjs`, gq, package

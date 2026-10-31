@@ -24,6 +24,7 @@ import {
   releasePolicy,
 } from "./deployment-policy.mjs";
 import { validateManifest } from "../manifest/manifest.mjs";
+import { trustedGit, trustedGitEnvironment } from "./trusted-git.mjs";
 import {
   SERVER_EXPECTATIONS_FILE,
   prepareGuardedRelease,
@@ -104,18 +105,27 @@ export async function runRelease({
   // workspace is a plain copy without .git; its release step fetches one).
   const gitDir = parsed.gitDir ? resolve(context.invocationDirectory, parsed.gitDir) : null;
   const git = gitRunner(exec, gitDir ?? context.projectRoot, env);
-  // The default branch is read from origin; in CI that is Artifacts, whose
-  // token (ARTIFACTS_TOKEN) goes in a header for these git calls only, in
-  // their environment, never argv.
+  // The policies are read with a system git (trusted-git.mjs), never one on
+  // a PATH a Site could set. The default branch is read from origin; in CI
+  // that is Artifacts, whose token (ARTIFACTS_TOKEN) goes in a header for
+  // those git calls only, in their environment, never argv.
+  const systemGit = trustedGit();
+  const policyEnv = trustedGitEnvironment(env, systemGit);
+  const policyGit = gitRunner(exec, gitDir ?? context.projectRoot, policyEnv, systemGit);
   const token = context.env.ARTIFACTS_TOKEN;
   const originGit = token
-    ? gitRunner(exec, gitDir ?? context.projectRoot, {
-        ...env,
-        GIT_CONFIG_COUNT: "1",
-        GIT_CONFIG_KEY_0: "http.extraHeader",
-        GIT_CONFIG_VALUE_0: `Authorization: Bearer ${token}`,
-      })
-    : git;
+    ? gitRunner(
+        exec,
+        gitDir ?? context.projectRoot,
+        {
+          ...policyEnv,
+          GIT_CONFIG_COUNT: "1",
+          GIT_CONFIG_KEY_0: "http.extraHeader",
+          GIT_CONFIG_VALUE_0: `Authorization: Bearer ${token}`,
+        },
+        systemGit,
+      )
+    : policyGit;
   const ref = parsed.ref ?? (await defaultRef(git));
   const sha = (await git(["rev-parse", `${ref}^{commit}`])).trim();
   // Every policy that applies, before anything else reads or changes a
@@ -126,11 +136,11 @@ export async function runRelease({
   const { guarded, target } = releasePolicy([
     { ops, source: "gq.ops.json" },
     {
-      ops: await requestedManifest(git, sha, manifestPath),
+      ops: await requestedManifest(policyGit, sha, manifestPath),
       source: `release ${sha.slice(0, 12)}'s ${manifestPath}`,
     },
     {
-      ops: await readDefaultBranchManifest(originGit, manifestPath),
+      ops: await readDefaultBranchManifest(originGit, manifestPath, policyGit),
       source: `the default branch's ${manifestPath}`,
     },
   ]);
@@ -244,9 +254,9 @@ export async function runRelease({
 
 // git runs with run()'s own `env` (PATH and the like); secrets are read from
 // the layered `context.env` and never reach a child process.
-function gitRunner(exec, cwd, env) {
+function gitRunner(exec, cwd, env, command = "git") {
   return async (args) => {
-    const result = await exec("git", args, { cwd, env });
+    const result = await exec(command, args, { cwd, env });
     if (result.code !== 0) {
       const detail = result.stderr.trim() || `exit ${result.code}`;
       throw new Error(`git ${args[0]} failed: ${detail}`);

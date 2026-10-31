@@ -8,7 +8,6 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
-import { deploymentRefusal } from "../../src/ploi/deployment-policy.mjs";
 import { createFixtureSite, runGq, temporaryDirectory } from "../support/fixture-site.mjs";
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
@@ -325,16 +324,23 @@ test("the generated Frontend deploy and CI release step refuse an offboarded Sit
 });
 
 test("the generated CI release step and Frontend deploy refuse a paused or reserved Site exactly as gq ploi release does", async () => {
+  // Each hold, and the message gq ploi release gives for it, written out.
   const holds = [
-    { protected: true, state: "paused", reason: "Controlled release in preparation" },
-    {
-      protected: true,
-      state: "reserved",
-      reason: "Nightly update running",
-      holder: "nightly pipeline",
-    },
+    [
+      { protected: true, state: "paused", reason: "Controlled release in preparation" },
+      'acme-shop is paused (gq.ops.json deployment.state: paused): Controlled release in preparation. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the hold.',
+    ],
+    [
+      {
+        protected: true,
+        state: "reserved",
+        reason: "Nightly update running",
+        holder: "nightly pipeline",
+      },
+      'acme-shop is reserved by nightly pipeline (gq.ops.json deployment.state: reserved): Nightly update running. Nothing was uploaded, synced or deployed. A reviewed Site change that sets deployment.state to "authorized" lifts the hold.',
+    ],
   ];
-  for (const deployment of holds) {
+  for (const [deployment, message] of holds) {
     const ops = { ...ACME, deployment };
     const fixture = await createFixtureSite({ ops });
     assert.equal((await fixture.run(["sync"])).code, 0);
@@ -348,7 +354,7 @@ test("the generated CI release step and Frontend deploy refuse a paused or reser
     });
 
     assert.equal(release.status, 1);
-    assert.equal(release.stderr, `${deploymentRefusal(ops)}\n`);
+    assert.equal(release.stderr, `${message}\n`);
     assert.equal(release.stdout, "", "it refuses before anything else");
 
     const frontend = spawnSync(process.execPath, ["infra/scripts/deploy-frontend.mjs"], {
@@ -357,7 +363,7 @@ test("the generated CI release step and Frontend deploy refuse a paused or reser
       env: { ...environment, PATH: "" },
     });
     assert.equal(frontend.status, 1);
-    assert.equal(frontend.stderr, `${deploymentRefusal(ops)}\n`);
+    assert.equal(frontend.stderr, `${message}\n`);
   }
 });
 
@@ -393,18 +399,20 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
     });
     assert.equal(created.code, 0, created.stderr);
     const worker = await readSite(join(parent, "site"), "infra/ci/cloudflare.ci.ts");
-    // The Worker runs exactly ciSteps' list, through one runner call each.
+    // The Worker runs its steps only through release.ts's runSteps, in
+    // ciSteps' order: no runner call of its own.
     assert.match(
       worker,
-      /for \(const \{ on, step \} of ciSteps\(params, \{ install, verify, release \}\)\)/u,
+      /await runSteps\(ci as unknown as Runner, ciSteps\(params, \{ install, verify, release \}\)\);/u,
     );
-    assert.equal(worker.split("ci.runner(").length - 1, 1);
-    assert.equal(worker.split("workspace.runner(").length - 1, 1);
+    assert.equal(worker.split(".runner(").length - 1, 0);
   }
 
   const fixture = await createFixtureSite({ ops: ACME });
   assert.equal((await fixture.run(["sync"])).code, 0);
-  const { ciSteps, admissionCommand } = await import(join(fixture.root, "infra/ci/release.ts"));
+  const { ciSteps, runSteps, admissionCommand } = await import(
+    join(fixture.root, "infra/ci/release.ts")
+  );
   const environment = Object.fromEntries(
     Object.entries(process.env).filter(
       ([name]) => !name.startsWith("GIT_") && name !== "NODE_TEST_CONTEXT",
@@ -473,32 +481,45 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
         release: { ...step("release"), sourceControlCredentials: true },
       },
     );
+    // Runners as the CI SDK's: each runs its step's command (bash, in the
+    // tag's workspace), with the Artifacts credentials when the step asks for
+    // them; a failed step ends the run, as a failed Workflow step does. Each
+    // records where it ran: a fresh runner, or the install step's workspace.
     const ran = [];
     let output = "";
-    for (const {
-      step: { name, command, sourceControlCredentials },
-    } of placed) {
-      const result = spawnSync("bash", ["-c", command], {
-        cwd: workspace,
-        encoding: "utf8",
-        env: {
-          ...environment,
-          SECRET: "s3cret",
-          ...(sourceControlCredentials
-            ? { ARTIFACTS_REMOTE: bare, ARTIFACTS_TOKEN: "artifacts-token" }
-            : {}),
-        },
-      });
-      ran.push(name);
-      output += result.stdout + result.stderr;
-      if (result.status !== 0) break;
-    }
+    const execute = (where) => ({
+      async runner({ name, command, sourceControlCredentials }) {
+        ran.push(`${where}:${name}`);
+        const result = spawnSync("bash", ["-c", command], {
+          cwd: workspace,
+          encoding: "utf8",
+          env: {
+            ...environment,
+            SECRET: "s3cret",
+            ...(sourceControlCredentials
+              ? { ARTIFACTS_REMOTE: bare, ARTIFACTS_TOKEN: "artifacts-token" }
+              : {}),
+          },
+        });
+        output += result.stdout + result.stderr;
+        if (result.status !== 0) throw new Error(`${name} failed`);
+        return execute("workspace");
+      },
+    });
+    await runSteps(execute("fresh"), placed).catch(() => {});
     const markers = await readFile(join(workspace, "MARKERS"), "utf8").catch(() => "");
     return { ran, markers, output };
   }
 
   const admitted = await release({ current: ACME });
-  assert.deepEqual(admitted.ran, ["admission", "install", "verify", "release"]);
+  // The admission in its own fresh runner, before the install's fresh runner
+  // and the workspace it leaves.
+  assert.deepEqual(admitted.ran, [
+    "fresh:admission",
+    "fresh:install",
+    "workspace:verify",
+    "workspace:release",
+  ]);
   assert.equal(admitted.markers, "install s3cret\nverify s3cret\nrelease s3cret\n");
   assert.match(admitted.output, /Release [0-9a-f]{12} admitted/u);
 
@@ -533,7 +554,7 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
     [{ current: ACME, wrongSha: true }, /Release 111111111111's gq\.ops\.json can't be read/u],
   ]) {
     const result = await release(options);
-    assert.deepEqual(result.ran, ["admission"], JSON.stringify(options));
+    assert.deepEqual(result.ran, ["fresh:admission"], JSON.stringify(options));
     assert.equal(result.markers, "", "none of the tag's code ran");
     assert.match(result.output, message);
     assert.doesNotMatch(result.output, /artifacts-token/u);
@@ -542,7 +563,7 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
 
   // A branch push isn't a release: no admission, nothing deployed.
   const push = await release({ current: paused, trigger: "push" });
-  assert.deepEqual(push.ran, ["install", "verify"]);
+  assert.deepEqual(push.ran, ["fresh:install", "workspace:verify"]);
   assert.throws(
     () => admissionCommand("v1.0.0; rm -rf /", "v1.0.0"),
     /Not a commit or tag object id/u,

@@ -176,15 +176,22 @@ directory inside the Site refuses.
   and no user or system git configuration, hooks or fsmonitor: its HEAD must
   be the commit gq-site pins (`29de3c7ec66ad96d6726bae20766c2acc7fcc312`, a
   reviewed gq-site change to move), its work tree clean (untracked files
-  count), and `worker/scripts/operator.ts` a tracked regular file. Otherwise
-  it refuses before the command runs.
+  count), no file flagged assume-unchanged or skip-worktree (`git status`
+  doesn't look at those), and every tracked file's bytes (symlinks' targets)
+  equal to the pinned tree's blobs, hashed by gq itself, whatever the index
+  says; `worker/scripts/operator.ts` must be a tracked regular file.
+  Otherwise it refuses before the command runs.
 - **Its dependencies are a trusted prerequisite.** `node_modules` is ignored
-  by git, so HEAD doesn't verify it. The Operator installs it with
+  by git, so the pin doesn't verify it. The Operator installs it with
   `pnpm install --frozen-lockfile` at the pinned commit; gq checks that pnpm
   recorded installing exactly the tracked `pnpm-lock.yaml`
-  (`node_modules/.pnpm/lock.yaml`) and that the loader resolves inside the
-  checkout's `node_modules`. That is evidence of the install, not a
-  verification of every installed file.
+  (`node_modules/.pnpm/lock.yaml`), that the loader resolves inside the
+  checkout's `node_modules`, and that no ignored `node_modules` exists outside
+  the workspace's own dependency directories (`node_modules`,
+  `worker/node_modules`, `plugin/app/node_modules`), where one could shadow
+  the entry point's imports. That is evidence of the install, not a
+  verification of every installed file: anyone who can write the
+  checkout's `node_modules` can change what runs.
 - `targets` binds each project to its approval target. A lookup refuses
   unless the Site's `deployment.approval` names that same stage and slot.
 - `releases` binds each gq-support version the Operator may look up to the
@@ -223,7 +230,9 @@ refuses, and so does every guarded package.
 2. looks up a `phase: "prepare"` record for exactly that release and version,
    before Composer runs; no record means nothing changes;
 3. locks exactly `<version>` of only that package (`composer update
-<package> --with <package>:<version> --no-install`). A requirement that
+<package> --with <package>:<version> --no-install --no-scripts
+--no-plugins`: none of the Site's Composer scripts or plugins run). A
+   requirement that
    already admits `<version>` (`^0.1.3`, `*`) stays as it is; one that
    doesn't refuses unless `--pin` sets it to exactly `<version>`. A range
    never authorizes the registry's latest;
@@ -238,7 +247,8 @@ refuses, and so does every guarded package.
    `published_tag.commit`;
 6. sets the package's entry in `deploy/ploi/package-expectations.json`
    (`<version>`, the record's `release_id`);
-7. checks the version files without syncing them, and commits exactly `composer.lock`, the expectations file and, with `--pin`,
+7. checks the version files without syncing them, and commits (with the
+   Site's git hooks off, for that commit only) exactly `composer.lock`, the expectations file and, with `--pin`,
    `composer.json`: anything else changed refuses, and the index must hold
    exactly those paths.
 
@@ -292,31 +302,47 @@ against the record before upload, and the lock's hash again on the server),
 and the package's own files, its version header included, must be exactly the
 approved ones.
 
-### What a refusal leaves
+### Out of service for the whole deploy
 
-The install is **not atomic**: a refusal after `composer install` started
-comes after Composer may have replaced files, and nothing rolls them back.
-So a guarded Site is then **quarantined** instead of returned to service:
+The install is **not atomic**: Composer replaces files as it goes, and
+nothing rolls them back. So a guarded Site is taken out of service **before**
+the deploy replaces or installs anything, in a full and a Composer-only
+deploy alike, and stays out until that deploy has verified its packages and
+finished every step:
 
-- the deploy writes `apps/cms/web/wp/.maintenance` with `$upgrading` far in
-  the future (WordPress serves a `.maintenance` only for ten minutes counted
-  from `$upgrading`, so this one doesn't expire) and a `.gq-quarantine` marker
-  in the site root, and its cleanup doesn't lift maintenance mode;
-- PHP-FPM isn't reloaded and no activation, database step or extension has
-  run; the deploy fails (`<PROJECT>_DEPLOY_STATUS=failed`) and `gq ploi
-release` exits 1;
-- it stays so until a later deploy verifies the Site's guarded packages,
-  which lifts it (in a full deploy, maintenance mode then lasts until the
-  deploy ends, as always). That needs a fresh approval of an approved
-  version; a version the approval service doesn't approve (an unsigned legacy
-  package among them) can't be deployed through this path, and lifting the
-  quarantine by hand means serving files that didn't verify.
+- right after the preflight, the deploy writes `apps/cms/web/wp/.maintenance`
+  (WordPress's ABSPATH) and a `.gq-quarantine` marker in the site root. If it
+  can't, it stops there, before anything changes. A full deploy doesn't use
+  WordPress's own maintenance mode, which would replace it.
+- WordPress loads `.maintenance` first on every request. This one answers a
+  web request itself (503, `Retry-After`, no caching) and exits, so
+  WordPress's own checks never run: not its ten-minute expiry, and not its
+  fatal-error scrape exception, which lets anyone through who sends
+  `wp_scrape_key = md5($upgrading)` and `wp_scrape_nonce = $upgrading`
+  (readable from a plain `.maintenance`). There is no timestamp or secret
+  to guess. For command-line PHP it sets an expired `$upgrading`, so WP-CLI
+  (this deploy's own steps, and a recovery's) runs normally.
+- only the end of a deploy that verified the guarded packages and finished
+  every step removes both. A failed Composer install, a failed
+  verification, a failed later step (activation, database, an extension), a
+  timeout or a killed deploy leaves them: nothing (no exit trap, no timer)
+  puts the Site back in service. PHP-FPM is reloaded only after a
+  verification succeeds.
+- recovery is another guarded deploy of an approved version, which needs its
+  own fresh approval; a version the approval service doesn't approve (an
+  unsigned legacy package among them) can't be deployed through this path,
+  and removing the file by hand serves files that didn't verify.
 
-This relies on WordPress honouring `.maintenance` (`wp_is_maintenance_mode`):
-the tests check the file and its timestamp, not a running WordPress. Files
-PHP serves without loading WordPress (a plugin's own PHP entry point reached
-directly) aren't covered by maintenance mode. An unguarded Site's failed
-deploy lifts maintenance mode as before.
+`scripts/smoke/quarantine.sh` (CI job `quarantine`) checks the file the
+generated deploy script writes against a real WordPress (the pinned version,
+on SQLite, with real WP-CLI and PHP's built-in server): every web request,
+scrape requests and command-line spoofing included, answers 503; WP-CLI
+runs; and WordPress's own `.maintenance`, for contrast, lets the scrape
+request through. It isn't checked on PHP-FPM itself (the SAPI check treats
+anything but `cli` as a web request). PHP files reached without loading
+WordPress (a plugin's own PHP entry point requested directly) aren't covered
+by `.maintenance`. An unguarded Site's deploy uses WordPress's own
+maintenance mode, as before.
 
 ### Remaining gaps
 

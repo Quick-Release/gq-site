@@ -70,7 +70,8 @@ export function releasePolicy(manifests, { holds = true } = {}) {
 // through `git` (a runner resolving to stdout or throwing) without touching
 // the working tree: only FETCH_HEAD and objects change. Throws when the
 // default branch or its manifest can't be read: a release refuses without it.
-export async function readDefaultBranchManifest(git, manifestPath) {
+// `local` reads the fetched commit (no network, so no credential).
+export async function readDefaultBranchManifest(git, manifestPath, local = git) {
   const refuse = (detail, cause) =>
     new Error(
       `The default branch's ${manifestPath} can't be read (${detail}), so its current deployment policy can't be checked: a release refuses without it. Nothing was uploaded, synced or deployed.`,
@@ -87,7 +88,7 @@ export async function readDefaultBranchManifest(git, manifestPath) {
   let text;
   try {
     await git(["fetch", "--quiet", "--no-tags", "origin", `refs/heads/${branch}`]);
-    text = await git(["show", `FETCH_HEAD:${manifestPath}`]);
+    text = await local(["show", `FETCH_HEAD:${manifestPath}`]);
   } catch (error) {
     throw refuse(error.message, error);
   }

@@ -315,8 +315,9 @@ Site refuses before the CMS or the Frontend deploys, with the same message
 site's manifest has no `deployment` block, so its release is unchanged.
 `sync/deploy-files.test.mjs` exercises both holds. The release admission
 updates the `infra/ci/release.ts` and `infra/ci/cloudflare.ci.ts` baselines:
-the CI Worker runs `ciSteps`' list, whose first step for a release is the
-admission (before the tag's install, verify and release), and
+the CI Worker runs its steps through `runSteps(ciSteps(...))`, whose first
+step for a release is the admission, in its own fresh runner (before the
+tag's install, verify and release), and
 `scripts/ci-release.mjs` runs the Frontend deploy without the Artifacts
 credentials; `sync/deploy-files.test.mjs` executes the steps with git, bash
 and node against a tagged workspace of marker scripts. Written by hand and reviewed against the
