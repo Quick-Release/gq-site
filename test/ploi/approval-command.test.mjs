@@ -277,6 +277,29 @@ test("a replacement object or graft can't stand in for the pinned commit", async
   await assert.rejects(adapterOn(grafted).lookup(REQUEST), /has replacement objects or grafts/u);
 });
 
+test("a graft in a linked worktree's common git directory can't stand in for the pinned commit", async () => {
+  // The checkout is a linked worktree: its own git directory
+  // (.git/worktrees/<name>) has no info/grafts; the shared one does.
+  const m = await machine();
+  const linked = join(m.root, "linked");
+  m.git("worktree", "add", "--quiet", "--detach", linked, m.commit);
+  execFileSync("cp", ["-a", join(m.checkout, "node_modules"), join(linked, "node_modules")]);
+  await mkdir(join(linked, "worker/node_modules"), { recursive: true });
+  await symlink(
+    join(linked, "node_modules/.pnpm/alchemy/node_modules/alchemy"),
+    join(linked, "worker/node_modules/alchemy"),
+  );
+  const worktree = { ...m, checkout: linked };
+  // As it is, the linked checkout is the pin: the lookup runs.
+  assert.deepEqual(await adapterOn(worktree).lookup(REQUEST), RECORD);
+
+  await writeFile(join(m.checkout, ".git/info/grafts"), `${m.commit}\n`);
+  await assert.rejects(
+    adapterOn(worktree).lookup(REQUEST),
+    /has replacement objects or grafts, which could stand in for the reviewed commit/u,
+  );
+});
+
 test("a file git's stat check misses is caught by comparing its bytes with the pinned blob", async () => {
   const m = await machine();
   // A local configuration that makes git trust a file's size and mtime, and

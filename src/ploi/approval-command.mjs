@@ -313,6 +313,7 @@ async function requireReviewedCheckout({
   let headTree;
   let replacements;
   let gitDir;
+  let commonDir;
   let status;
   let flags;
   let tree;
@@ -322,6 +323,8 @@ async function requireReviewedCheckout({
     headTree = (await run(["rev-parse", "HEAD^{tree}"])).trim();
     replacements = await run(["for-each-ref", "refs/replace"]);
     gitDir = (await run(["rev-parse", "--absolute-git-dir"])).trim();
+    // A linked worktree's shared directory, where git reads info/grafts.
+    commonDir = (await run(["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim();
     status = await run(["status", "--porcelain", "--untracked-files=normal"]);
     flags = await run(["ls-files", "-v"]);
     tree = await run(["ls-tree", "-r", "-z", pinnedTree]);
@@ -337,7 +340,8 @@ async function requireReviewedCheckout({
     head = null;
   }
   // Neither a replacement object nor a graft may stand in for the pin.
-  if (head && (replacements !== "" || existsSync(join(gitDir, "info/grafts")))) {
+  const grafts = [gitDir, commonDir].some((dir) => existsSync(join(dir, "info/grafts")));
+  if (head && (replacements !== "" || grafts)) {
     throw refuse("has replacement objects or grafts, which could stand in for the reviewed commit");
   }
   if (head !== commit || headTree !== pinnedTree || status !== "") {
