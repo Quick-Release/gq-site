@@ -292,7 +292,7 @@ test("gq sync adds GQ Design's packages where they sort in a sorted dependency m
   ]);
 });
 
-test("gq new --variant commerce prints its provisioning, with no events, refresh or readiness", async () => {
+test("gq new --variant commerce prints its provisioning, with no events or refresh, ending at readiness", async () => {
   const site = await newCommerceSite(["--locale", "pt_PT_ao90"]);
   const { stdout } = site.created;
 
@@ -300,10 +300,12 @@ test("gq new --variant commerce prints its provisioning, with no events, refresh
   for (const script of ["ploi:provision", "cf:media", "frontend:secrets", "ci:deploy"]) {
     assert.match(stdout, new RegExp(`^ {2}pnpm ${script} `, "mu"), script);
   }
-  for (const script of ["ploi:events", "frontend:refresh", "site:check"]) {
+  for (const script of ["ploi:events", "frontend:refresh"]) {
     assert.doesNotMatch(stdout, new RegExp(`^ {2}pnpm ${script} `, "mu"), script);
   }
-  assert.match(stdout, /no readiness check yet \(gq-site#26\)/u);
+  assert.match(stdout, /^ {2}pnpm site:check {11}# gq site check$/mu);
+  assert.match(stdout, /Ready only when every part holds \(ADR 0021\)/u);
+  assert.doesNotMatch(stdout, /#26/u);
   assert.deepEqual(
     site.created.exec.calls.map(({ command }) => command),
     ["git"],

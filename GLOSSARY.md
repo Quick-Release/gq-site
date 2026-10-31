@@ -167,8 +167,13 @@ refresh, the CMS's scheduler having it reconcile, and an upload proving
 independent media. A multilingual Site's holds in every language: each
 exists in the CMS, and its front page, chrome and homepage are served. A
 running Worker, a running DDEV, an HTTP 200 or a matching title is not
-readiness. A commerce Site has no readiness defined yet: nothing it passes,
-formatting and manifest validation included, makes it ready.
+readiness. A commerce Site's, through the same command
+([ADR 0021](docs/adr/0021-declare-a-commerce-site-ready-through-the-same-gate.md)):
+the CMS serving WooCommerce's Store API, the GETQUICK plugins and theme and
+holding the storefront's proxy secret, a cart round-tripped through the
+storefront's Worker, its rate limiters bound, the legal pages assigned and
+independent media. Payments, shipping, tax and checkout aren't part of it.
+Formatting and manifest validation are readiness on neither variant.
 _Avoid_: up, healthy, deployed (for a ready Site)
 
 **Cold lookup**:

@@ -58,6 +58,10 @@ for each that fails. What a Site that isn't ready looks like:
 | `spam-controls`     | a Site with `forms` chose Turnstile, and Sigillo lacks `TURNSTILE_SECRET_KEY` or `TURNSTILE_SITE_KEY`                        | every post is refused                                    |
 | media checks        | `gq media check --upload` isn't ready (see [Independent media](#independent-media))                                          | uploads go down with the CMS                             |
 
+A commerce Site's sequence and checks differ: see
+[Commerce sites](commerce-sites.md#readiness)
+([ADR 0021](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0021-declare-a-commerce-site-ready-through-the-same-gate.md)).
+
 The consent and legal checks are [the consent guide](consent.md)'s; the form
 checks are [the forms guide](forms.md#readiness)'s. Warnings
 don't block readiness: a legal page without a translation

@@ -113,7 +113,10 @@ retentionDays: env.CONSENT_RETENTION_DAYS ? Number(env.CONSENT_RETENTION_DAYS) :
   - `cms-events` also requires the CMS's `GETQUICK_CONSENT_READ_TOKEN` to
     match Sigillo's, when Sigillo has one.
 
-  `gq site check` covers content Sites; it refuses commerce until #26.
+  On a commerce Site the same three checks read GQ Config's storefront
+  settings (`getquick-config/v1/storefront`) instead of WPGraphQL; its Legal
+  Contract's required roles include terms of sale, returns and shipping
+  ([ADR 0021](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0021-declare-a-commerce-site-ready-through-the-same-gate.md)).
 
 ## Wiring a Frontend
 

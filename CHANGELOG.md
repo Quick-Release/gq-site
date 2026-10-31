@@ -7,6 +7,39 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ### Added
 
+- **`gq site check` is a commerce Site's readiness gate**
+  ([ADR 0021](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0021-declare-a-commerce-site-ready-through-the-same-gate.md),
+  [#26](https://github.com/Quick-Release/gq-site/issues/26)). It no longer
+  refuses a commerce Site; `pnpm site:check` checks what the storefront
+  Runtime (`@quick-release/storefront` 0.2.2) and GQ eCommerce expose, each
+  where it can be observed:
+  - **CMS:** `/wp-json/` serves WordPress's REST index (installed, pretty
+    permalinks); WooCommerce, GQ Config, GQ eCommerce and GQ Design register
+    their routes; `getquick-theme` (or a child) is active, read as the CMS
+    check user; the Store API lists products (an empty catalogue warns); and
+    GQ eCommerce's customer auth accepts Sigillo staging's
+    `GETQUICK_STOREFRONT_PROXY_SECRET`, which also says whether customer
+    sign-in is on.
+  - **Storefront:** the homepage is a 200 no edge or shared cache could hold;
+    a cart round-trips through the Worker (a WooCommerce cart and a cart
+    handle kept in `CART_SESSIONS`, found again by a second read); with
+    sign-in on, the Worker's `/api/auth/configuration` is `available` (its
+    proxy secret is the CMS's) and Sigillo staging has Turnstile's pair, and
+    with sign-in off that check warns, since storefront 0.2.2 can't prove the
+    Worker's secret then; and a sign-in probe for a made-up account is
+    refused at Turnstile, proving the three rate limiters are bound.
+  - **Consent and legal pages:** ADR 0019's checks, from GQ Config's
+    storefront settings: the Legal Contract's required pages (commerce roles
+    included) and controller, GA4 behind the consent Runtime, and no
+    third-party host on the homepage.
+  - **Independent media:** `gq media check --upload`, as on content.
+
+  Nothing creates an order, a customer or a sign-in. Payments, checkout,
+  shipping, tax and catalogue delivery are out of scope. `--local` checks
+  the DDEV CMS's REST API, plugins, Store API and theme, and local uploads.
+  `gq new --variant commerce` now ends its provisioning sequence with
+  `site:check`. Content Site readiness is unchanged.
+
 - **Protected Sites can hold their deploys.** A `gq.ops.json` `deployment`
   block (`protected: true` with `state` `paused`, `reserved` or `authorized`,
   and a `reason` and `holder` while holding) makes `gq ploi release`,

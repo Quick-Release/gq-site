@@ -30,13 +30,54 @@ exits 0). It prints its provisioning sequence and runs none of it.
 | Content delivery       | None: no publication store, publication or settings events, reconciliation or refresh, and no gq-content consent wiring.                                                |
 | Languages              | `wordpress.locale` only; `wordpress.languages` is refused until multilingual commerce is decided.                                                                       |
 
-## No readiness yet
+## Readiness
 
-A commerce site has no readiness check: which health checks make one ready is
-[#26](https://github.com/Quick-Release/gq-site/issues/26)'s decision. Until
-then nothing it passes, `pnpm verify`, formatting or manifest validation
-included, makes it ready, and `gq site check` refuses to run. `gq media check`
-applies to both variants.
+`pnpm site:check` (`gq site check` under Sigillo staging) is a commerce
+site's only "ready", as it is a content site's
+([ADR 0021](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0021-declare-a-commerce-site-ready-through-the-same-gate.md)).
+`pnpm verify`, formatting and manifest validation never are. It exits 1 until
+no check is ✗, and says what to run for each that fails. Warnings (⚠) don't
+block.
+
+| Check               | Not ready when                                                                                                                                                                         |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wordpress`         | `https://<domains.admin>/wp-json/` doesn't answer, redirects to the installer, or redirects anywhere else (plain permalinks: GQ Config sends `/wp-json/` to the Frontend)              |
+| `plugins`           | the REST API lacks a route WooCommerce, GQ Config, GQ eCommerce or GQ Design registers (each named)                                                                                    |
+| `theme`             | the active theme isn't `getquick-theme` or a child of it (read as the CMS check user)                                                                                                  |
+| `store-api`         | the Store API doesn't list products (an empty catalogue only warns)                                                                                                                    |
+| `proxy-secret`      | GQ eCommerce's customer auth refuses Sigillo staging's `GETQUICK_STOREFRONT_PROXY_SECRET`: the CMS's `.env` lacks it or has another                                                    |
+| `homepage`          | the storefront's homepage isn't a 200, or Cloudflare's edge or a shared cache could hold it                                                                                            |
+| `cart`              | a cart doesn't round-trip through the Worker: the Runtime isn't mounted, `CART_SESSIONS` isn't bound or migrated, a secret is missing, or the second read gets a new cart              |
+| `customer-auth`     | with sign-in on, the Worker's `/api/auth/configuration` isn't `available`: its proxy secret isn't the CMS's, or the auth upstream isn't bound (with sign-in off: a warning, see below) |
+| `turnstile`         | with sign-in on, Sigillo staging lacks `TURNSTILE_SECRET` or `TURNSTILE_EXPECTED_HOSTNAMES`                                                                                            |
+| `rate-limiters`     | a sign-in probe for a made-up account isn't refused at Turnstile: a rate limiter isn't bound                                                                                           |
+| `legal-pages`       | GQ Config's Legal Contract lacks a required page (terms of sale, returns and shipping included) or the data controller                                                                 |
+| `consent-runtime`   | GQ Config's GA4 toggle is on and the homepage has no consent Runtime                                                                                                                   |
+| `third-party-hosts` | the homepage loads from a host outside the site before consent                                                                                                                         |
+| media checks        | `gq media check --upload` isn't ready                                                                                                                                                  |
+
+The proxy secret is proven twice: `proxy-secret` asks the CMS with Sigillo
+staging's, and `customer-auth` has the Worker ask with its own. With customer
+sign-in off (GQ Config's customer accounts setting), the CMS answers the
+Worker "unavailable" either way, and storefront 0.2.2 can't tell that from a
+refused secret. So `customer-auth` only warns until sign-in is on. Turn sign-in
+on, then check again before shoppers sign in.
+
+The checks read, except three probes. The media upload deletes what it
+uploads. The cart round-trip leaves an empty guest cart, as a visitor's first
+cart read does. A sign-in attempt for `gq-site-check@example.invalid` is
+refused at the Worker's Turnstile check, before WordPress. Nothing creates an
+order or a customer.
+
+Payments, checkout, shipping, tax, orders, end-to-end sign-in, catalogue
+delivery and multilingual commerce aren't checked: test an order before taking
+real ones.
+
+`pnpm site:check:local` checks the DDEV CMS's REST API, plugins, Store API,
+theme and local uploads. The storefront isn't checked locally: `vp dev` has no
+Worker bindings, so the Runtime answers 503 there.
+
+`gq media check` applies to both variants.
 
 `gq frontend refresh`, `gq frontend events check` and `gq ploi events` are
 content-only: a commerce site has no publication store or publication events,
@@ -53,7 +94,9 @@ and each refuses there, saying why.
 - `pnpm ploi:provision` gives the CMS's `.env` the proxy secret
   (`GETQUICK_STOREFRONT_PROXY_SECRET`). It shows the step, never the value, and
   warns until the secret is in Sigillo.
-- There is no `ploi:events`, `frontend:refresh` or `site:check`.
+- There is no `ploi:events` or `frontend:refresh`. It ends with
+  `media:check:upload` and `site:check`, as a content site's does, with the
+  checks in [Readiness](#readiness).
 
 `pnpm ci:deploy` gives the CI Worker the storefront's secrets and a
 `GITHUB_PACKAGES_TOKEN` when Sigillo staging has them. CI's install step
