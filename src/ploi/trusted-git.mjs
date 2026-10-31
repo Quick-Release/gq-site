@@ -1,9 +1,10 @@
-// The git the deployment policy is read with: a system location, never one a
-// Site (its node_modules/.bin, under `pnpm exec`) or Sigillo values could put
-// first on PATH. The policy decides whether a release may happen at all, so
-// its reads don't trust the environment's PATH; the Site's own git
-// operations (status, commit, archive) still use whichever git it runs.
+// The git the deployment policy is read with: a system git, run with an
+// environment gq builds itself, never one a Site (its node_modules/.bin,
+// under `pnpm exec`) or Sigillo values could shape. The policy decides
+// whether a release may happen at all. The Site's own git operations
+// (status, commit, archive) still use whichever git it runs.
 import { accessSync, constants, realpathSync } from "node:fs";
+import { userInfo } from "node:os";
 import { dirname } from "node:path";
 
 export const TRUSTED_GIT_LOCATIONS = Object.freeze([
@@ -13,7 +14,7 @@ export const TRUSTED_GIT_LOCATIONS = Object.freeze([
   "/home/linuxbrew/.linuxbrew/bin/git",
 ]);
 
-// The first executable git at TRUSTED_GIT_LOCATIONS (`locations`), or throws.
+// The first executable git at `locations`, or throws.
 export function trustedGit(locations = TRUSTED_GIT_LOCATIONS) {
   for (const location of locations) {
     try {
@@ -28,9 +29,62 @@ export function trustedGit(locations = TRUSTED_GIT_LOCATIONS) {
   );
 }
 
-// The environment for a policy read: the caller's, with PATH limited to the
-// trusted git's own directory and the system's, so git's own helpers (ssh, a
-// credential helper named without a path) don't come from a Site either.
-export function trustedGitEnvironment(env, git) {
-  return { ...env, PATH: `${dirname(git)}:/usr/bin:/bin` };
+// Git settings every policy read has: no replacement object, hook or
+// fsmonitor can change what it reads or run anything.
+const POLICY_CONFIG = Object.freeze([
+  ["core.hooksPath", "/dev/null"],
+  ["core.fsmonitor", "false"],
+]);
+
+// The environment of a policy read, built from nothing the caller's
+// environment chooses but SSH_AUTH_SOCK (how an ssh origin authenticates):
+// no GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY,
+// GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_EXEC_PATH, GIT_CONFIG_* or any other
+// GIT_* variable; HOME and the user from the user database; PATH limited to
+// the trusted git's directory and the system's. `header` (an Authorization
+// header for the fixed origin) is added as git configuration, in the
+// environment, never argv.
+export function policyGitEnvironment(
+  git,
+  env = {},
+  { header, homedir = userInfo().homedir, username = userInfo().username } = {},
+) {
+  const config = header ? [...POLICY_CONFIG, ["http.extraHeader", header]] : POLICY_CONFIG;
+  return {
+    PATH: `${dirname(git)}:/usr/bin:/bin`,
+    HOME: homedir,
+    USER: username,
+    LOGNAME: username,
+    LANG: "C.UTF-8",
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_NO_REPLACE_OBJECTS: "1",
+    ...(env.SSH_AUTH_SOCK ? { SSH_AUTH_SOCK: env.SSH_AUTH_SOCK } : {}),
+    GIT_CONFIG_COUNT: String(config.length),
+    ...Object.fromEntries(
+      config.flatMap(([key, value], index) => [
+        [`GIT_CONFIG_KEY_${index}`, key],
+        [`GIT_CONFIG_VALUE_${index}`, value],
+      ]),
+    ),
+  };
+}
+
+// The policy's git runners in `cwd`, through `exec`: `local` reads the
+// repository (no network, no credential), `origin` reads origin (with
+// `token`, a bearer token for it, when given). Each resolves to stdout, or
+// throws.
+export function policyGit({ exec, cwd, env, token, homedir, username }) {
+  const git = trustedGit();
+  const runner = (header) => {
+    const runEnv = policyGitEnvironment(git, env, { header, homedir, username });
+    return async (args) => {
+      const { code, stdout, stderr } = await exec(git, args, { cwd, env: runEnv });
+      if (code !== 0) {
+        throw new Error(`git ${args[0]} failed: ${stderr.trim() || `exit ${code}`}`);
+      }
+      return stdout;
+    };
+  };
+  const local = runner();
+  return { local, origin: token ? runner(`Authorization: Bearer ${token}`) : local };
 }

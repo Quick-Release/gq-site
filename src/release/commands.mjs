@@ -7,7 +7,7 @@ import { loadSiteSettings } from "../manifest/site-settings.mjs";
 import { parseVersion, satisfiesConstraint } from "../packages/versions.mjs";
 import { composerContentHash } from "../cms/composer-content-hash.mjs";
 import { readDefaultBranchManifest, releasePolicy } from "../ploi/deployment-policy.mjs";
-import { trustedGit, trustedGitEnvironment } from "../ploi/trusted-git.mjs";
+import { policyGit } from "../ploi/trusted-git.mjs";
 import {
   PACKAGE_EXPECTATIONS_PATH,
   checkLockedRecord,
@@ -398,11 +398,12 @@ async function releasePackage(
   // preparing a commit without deploying it is still allowed. A package
   // either guards is guarded.
   const manifestPath = relative(context.projectRoot, context.configPath);
+  const policy = policyGit({ exec, cwd: root, env, token: context.env.ARTIFACTS_TOKEN });
   const { guarded, target } = releasePolicy(
     [
       { ops: context.config, source: "gq.ops.json" },
       {
-        ops: await readDefaultBranchManifest(policyGit(exec, root, env), manifestPath),
+        ops: await readDefaultBranchManifest(policy.origin, manifestPath, policy.local),
         source: `the default branch's ${manifestPath}`,
       },
     ],
@@ -622,20 +623,6 @@ async function releasePackage(
     io.out("Deployed. Push the commit to the default branch so the site's history keeps it.");
   }
   return code;
-}
-
-// A git runner for reading the policy: a system git (trusted-git.mjs), never
-// one a Site could put on PATH. Resolves to stdout, or throws.
-function policyGit(exec, cwd, env) {
-  const git = trustedGit();
-  const policyEnv = trustedGitEnvironment(env, git);
-  return async (args) => {
-    const { code, stdout, stderr } = await exec(git, args, { cwd, env: policyEnv });
-    if (code !== 0) {
-      throw new Error(`git ${args.join(" ")} failed: ${stderr.trim() || `exit code ${code}`}`);
-    }
-    return stdout;
-  };
 }
 
 // release package's options, checked before anything runs.

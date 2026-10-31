@@ -43,7 +43,7 @@
 // runs the command. Refusals are fixed messages naming no configured path
 // and carrying no command output.
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { userInfo } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 
@@ -56,6 +56,9 @@ import { parseStrictJson } from "./strict-json.mjs";
 // The reviewed gq-support commit whose Operator CLI gq trusts: gq-support PR
 // 154's merge. A new pin is a reviewed gq-site change.
 export const OPERATOR_COMMIT = "29de3c7ec66ad96d6726bae20766c2acc7fcc312";
+// That commit's tree: what is compared, whatever replacement or graft could
+// make "HEAD" or the commit name another tree.
+export const OPERATOR_TREE = "cf7691365b81673b35a62f6f54635cc5cd329364";
 // The pinned commit's `operator` script, relative to its checkout.
 export const OPERATOR_DIRECTORY = "worker";
 export const OPERATOR_ENTRY = "worker/scripts/operator.ts";
@@ -112,6 +115,7 @@ export function approvalsFor({
   project,
   projectRoot,
   operatorCommit = OPERATOR_COMMIT,
+  operatorTree = OPERATOR_TREE,
   homedir = userInfo().homedir,
   username = userInfo().username,
 }) {
@@ -163,6 +167,7 @@ export function approvalsFor({
     checkout: config.checkout,
     target,
     operatorCommit,
+    operatorTree,
     homedir,
     username,
   });
@@ -176,6 +181,7 @@ export function createCommandApprovals({
   checkout,
   target,
   operatorCommit = OPERATOR_COMMIT,
+  operatorTree = OPERATOR_TREE,
   homedir,
   username,
   timeoutMs = APPROVAL_TIMEOUT_MS,
@@ -214,6 +220,7 @@ export function createCommandApprovals({
         git,
         checkout,
         commit: operatorCommit,
+        tree: operatorTree,
         homedir,
         label,
       });
@@ -268,18 +275,36 @@ export function createCommandApprovals({
 // Refuses unless `checkout` is a git work tree at exactly `commit`, clean,
 // with the Operator entry point a tracked regular file and its dependencies
 // installed from the tracked lockfile. Resolves to the loader's real path.
-async function requireReviewedCheckout({ git, checkout, commit, homedir, label }) {
+async function requireReviewedCheckout({
+  git,
+  checkout,
+  commit,
+  tree: pinnedTree,
+  homedir,
+  label,
+}) {
   const refuse = (what) => new Error(`${label} refused: the gq-support checkout ${what}.`);
   const run = async (args) => {
     const result = await runBounded(
       git,
-      ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-C", checkout, ...args],
+      [
+        // No replacement object, graft-free reading, no fsmonitor or hooks.
+        "--no-replace-objects",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-C",
+        checkout,
+        ...args,
+      ],
       {
         env: {
           HOME: homedir,
           PATH: "/usr/bin:/bin",
           GIT_CONFIG_NOSYSTEM: "1",
           GIT_CONFIG_GLOBAL: "/dev/null",
+          GIT_NO_REPLACE_OBJECTS: "1",
           LANG: "C.UTF-8",
         },
         timeoutMs: GIT_TIMEOUT_MS,
@@ -290,15 +315,21 @@ async function requireReviewedCheckout({ git, checkout, commit, homedir, label }
     return result.stdout;
   };
   let head;
+  let headTree;
+  let replacements;
+  let gitDir;
   let status;
   let flags;
   let tree;
   let ignored;
   try {
     head = (await run(["rev-parse", "HEAD"])).trim();
+    headTree = (await run(["rev-parse", "HEAD^{tree}"])).trim();
+    replacements = await run(["for-each-ref", "refs/replace"]);
+    gitDir = (await run(["rev-parse", "--absolute-git-dir"])).trim();
     status = await run(["status", "--porcelain", "--untracked-files=normal"]);
     flags = await run(["ls-files", "-v"]);
-    tree = await run(["ls-tree", "-r", "-z", "HEAD"]);
+    tree = await run(["ls-tree", "-r", "-z", pinnedTree]);
     ignored = await run([
       "ls-files",
       "--others",
@@ -310,7 +341,11 @@ async function requireReviewedCheckout({ git, checkout, commit, homedir, label }
   } catch {
     head = null;
   }
-  if (head !== commit || status !== "") {
+  // Neither a replacement object nor a graft may stand in for the pin.
+  if (head && (replacements !== "" || existsSync(join(gitDir, "info/grafts")))) {
+    throw refuse("has replacement objects or grafts, which could stand in for the reviewed commit");
+  }
+  if (head !== commit || headTree !== pinnedTree || status !== "") {
     throw refuse(`isn't clean at the reviewed commit ${commit.slice(0, 12)}`);
   }
   // `git status` doesn't look at files flagged assume-unchanged (a lowercase
@@ -318,8 +353,9 @@ async function requireReviewedCheckout({ git, checkout, commit, homedir, label }
   if (flags.split("\n").some((line) => line !== "" && !line.startsWith("H "))) {
     throw refuse("has files git status wouldn't check (assume-unchanged or skip-worktree)");
   }
-  // And every tracked file's bytes are compared with the pinned tree's
-  // blobs, hashed here, whatever git's index says.
+  // And every file of the pinned tree is compared, byte for byte, with its
+  // blob, hashed here: whatever git's index, configuration, attributes or
+  // filters say (a smudged or converted file differs, and refuses).
   const entries = tree
     .split("\0")
     .filter(Boolean)

@@ -8,7 +8,7 @@
 // configuration choice injected into the environment, must change nothing.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, symlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -62,6 +62,7 @@ async function machine({ stdout = JSON.stringify(RECORD), stderr = "", code = 0 
   git("add", "-A");
   git("-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "--quiet", "-m", "pin");
   const commit = git("rev-parse", "HEAD").trim();
+  const tree = git("rev-parse", "HEAD^{tree}").trim();
   // The frozen install: pnpm's copy of the lockfile and the loader, linked
   // from the worker as pnpm links it.
   const loaderPackage = join(checkout, "node_modules/.pnpm/alchemy/node_modules/alchemy");
@@ -82,7 +83,7 @@ async function machine({ stdout = JSON.stringify(RECORD), stderr = "", code = 0 
   await chmod(fakeGit, 0o755);
   const artifacts = join(root, "artifacts");
   await mkdir(artifacts);
-  return { root, checkout, commit, recorded, home, site, artifacts, git };
+  return { root, checkout, commit, tree, recorded, home, site, artifacts, git };
 }
 
 function adapterOn(m, overrides = {}) {
@@ -92,6 +93,7 @@ function adapterOn(m, overrides = {}) {
     checkout: m.checkout,
     target: TARGET,
     operatorCommit: m.commit,
+    operatorTree: m.tree,
     homedir: m.home,
     username: "operator",
     ...overrides,
@@ -126,6 +128,7 @@ const lookupFor = (m, env = {}) =>
     project: "nomia",
     projectRoot: m.site,
     operatorCommit: m.commit,
+    operatorTree: m.tree,
     homedir: m.home,
     username: "operator",
   });
@@ -206,7 +209,11 @@ test("index flags can't hide a tampered file: assume-unchanged, skip-worktree, a
       "-m",
       "helper",
     );
-    return { ...m, commit: m.git("rev-parse", "HEAD").trim() };
+    return {
+      ...m,
+      commit: m.git("rev-parse", "HEAD").trim(),
+      tree: m.git("rev-parse", "HEAD^{tree}").trim(),
+    };
   };
   for (const [flag, path] of [
     ["--assume-unchanged", "worker/scripts/operator.ts"],
@@ -233,6 +240,64 @@ test("index flags can't hide a tampered file: assume-unchanged, skip-worktree, a
     adapterOn(shadowed).lookup(REQUEST),
     /has node_modules outside its workspace dependency directories/u,
   );
+});
+
+test("a replacement object or graft can't stand in for the pinned commit", async () => {
+  // The review's probe: a tampered commit replaces the pinned one, so HEAD,
+  // status and ls-tree HEAD all look like the pin.
+  const replaced = await machine();
+  await writeFile(
+    join(replaced.checkout, "worker/scripts/operator.ts"),
+    `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(replaced.recorded)}, "{}"); process.stdout.write('{"forged":true}');\n`,
+  );
+  replaced.git("add", "-A");
+  replaced.git(
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@example.test",
+    "commit",
+    "--quiet",
+    "-m",
+    "evil",
+  );
+  const evil = replaced.git("rev-parse", "HEAD").trim();
+  replaced.git("update-ref", "HEAD", replaced.commit);
+  replaced.git("replace", replaced.commit, evil);
+  assert.equal(replaced.git("rev-parse", "HEAD").trim(), replaced.commit);
+  assert.equal(replaced.git("status", "--porcelain"), "", "git status says clean");
+  await assert.rejects(
+    adapterOn(replaced).lookup(REQUEST),
+    /has replacement objects or grafts, which could stand in for the reviewed commit/u,
+  );
+  await assert.rejects(readFile(replaced.recorded, "utf8"), { code: "ENOENT" });
+
+  const grafted = await machine();
+  await writeFile(join(grafted.checkout, ".git/info/grafts"), `${grafted.commit}\n`);
+  await assert.rejects(adapterOn(grafted).lookup(REQUEST), /has replacement objects or grafts/u);
+});
+
+test("a file git's stat check misses is caught by comparing its bytes with the pinned blob", async () => {
+  const m = await machine();
+  // A local configuration that makes git trust a file's size and mtime, and
+  // same-length tampered bytes with the old mtime: git status says clean.
+  m.git("config", "core.trustctime", "false");
+  m.git("config", "core.checkStat", "minimal");
+  const entry = join(m.checkout, "worker/scripts/operator.ts");
+  const original = await readFile(entry, "utf8");
+  // An mtime well before the index's, recorded in it, so git isn't racy.
+  const old = new Date("2001-01-01T00:00:00Z");
+  await utimes(entry, old, old);
+  m.git("update-index", "--refresh");
+  await writeFile(entry, original.replace("writeFileSync", "writeFileSynX"));
+  await utimes(entry, old, old);
+  assert.equal(m.git("status", "--porcelain"), "", "git status says clean");
+
+  await assert.rejects(
+    adapterOn(m).lookup(REQUEST),
+    /doesn't hold worker\/scripts\/operator\.ts as the reviewed commit has it/u,
+  );
+  await assert.rejects(readFile(m.recorded, "utf8"), { code: "ENOENT" });
 });
 
 test("a tampered entry point staged into the index is refused too", async () => {
@@ -278,9 +343,10 @@ test("the pinned entry point and its frozen install are checked, not assumed", a
     "untrack",
   );
   await assert.rejects(
-    adapterOn(untracked, { operatorCommit: untracked.git("rev-parse", "HEAD").trim() }).lookup(
-      REQUEST,
-    ),
+    adapterOn(untracked, {
+      operatorCommit: untracked.git("rev-parse", "HEAD").trim(),
+      operatorTree: untracked.git("rev-parse", "HEAD^{tree}").trim(),
+    }).lookup(REQUEST),
     /doesn't track worker\/scripts\/operator\.ts as a regular file/u,
   );
   for (const m of [unlocked, outside, untracked]) {

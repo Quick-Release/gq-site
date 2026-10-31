@@ -502,17 +502,27 @@ test("a guarded release whose approval is withdrawn or changed before the deploy
 
 // --- guarded package preparation (release package --to / --no-deploy) --------
 
-test("ploi release reads the policies with the system git, and the Artifacts token only on its two origin reads", async () => {
+test("ploi release reads the policies with the system git and its own environment, the Artifacts token only on its two origin reads", async () => {
   const fixture = await site();
   const { fetch } = fakeProviders();
   const exec = fakeGit();
+  // A caller (Sigillo values, a Site's tools) setting git's environment.
+  const injected = {
+    GIT_DIR: "/elsewhere/.git",
+    GIT_WORK_TREE: "/elsewhere",
+    GIT_INDEX_FILE: "/elsewhere/index",
+    GIT_OBJECT_DIRECTORY: "/elsewhere/objects",
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: "/elsewhere/objects",
+    GIT_EXEC_PATH: "/elsewhere/libexec",
+    GIT_CONFIG_PARAMETERS: "'url.file:///elsewhere.insteadOf=git@github.com:'",
+    GIT_CONFIG_GLOBAL: "/elsewhere/gitconfig",
+    HOME: "/elsewhere",
+    XDG_CONFIG_HOME: "/elsewhere/.config",
+    PATH: "/site/node_modules/.bin:/usr/bin",
+  };
 
   const result = await fixture.run(["ploi", "release"], {
-    env: {
-      ...RELEASE_ENV,
-      ARTIFACTS_TOKEN: "artifacts-secret",
-      PATH: "/site/node_modules/.bin:/usr/bin",
-    },
+    env: { ...RELEASE_ENV, ...injected, ARTIFACTS_TOKEN: "artifacts-secret" },
     fetch,
     exec,
   });
@@ -526,18 +536,18 @@ test("ploi release reads the policies with the system git, and the Artifacts tok
   assert.equal(policyReads.length, 4);
   for (const { command, env } of policyReads) {
     assert.equal(command, TRUSTED_GIT);
-    assert.doesNotMatch(env.PATH, /node_modules/u);
+    for (const [name, value] of Object.entries(injected)) {
+      assert.notEqual(env[name], value, name);
+    }
+    assert.doesNotMatch(JSON.stringify(env), /elsewhere|node_modules/u);
+    assert.equal(env.GIT_NO_REPLACE_OBJECTS, "1");
   }
   // The token: only in the environment of ls-remote and fetch, never argv.
-  const withToken = exec.calls.filter(
-    ({ env }) => JSON.stringify(env ?? {}).includes("artifacts-secret") && env.GIT_CONFIG_VALUE_0,
-  );
   assert.deepEqual(
-    withToken.map(({ args }) => args[0]),
+    exec.calls
+      .filter(({ env }) => JSON.stringify(env ?? {}).includes("artifacts-secret"))
+      .map(({ args }) => args[0]),
     ["ls-remote", "fetch"],
   );
-  for (const { args, env } of exec.calls) {
-    assert.ok(!args.join(" ").includes("artifacts-secret"));
-    if (!["ls-remote", "fetch"].includes(args[0])) assert.equal(env?.GIT_CONFIG_VALUE_0, undefined);
-  }
+  for (const { args } of exec.calls) assert.ok(!args.join(" ").includes("artifacts-secret"));
 });
