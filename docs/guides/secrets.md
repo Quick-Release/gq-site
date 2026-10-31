@@ -54,12 +54,13 @@ The GETQUICK CI GitHub App and its token broker
 are fleet-wide, so their secrets live in the GQ Platform Sigillo project
 (`01M5Z0QYDH1PPN7N3C4A7KZAXJ`), environment `ops`, not in any Site:
 
-| Secret                                              | Written by                              | Read by                                        |
-| --------------------------------------------------- | --------------------------------------- | ---------------------------------------------- |
-| `GQ_CI_GITHUB_APP_ID`, `GQ_CI_GITHUB_APP_SLUG`      | `gq github app create`                  | `gq ci broker deploy`                          |
-| `GQ_CI_GITHUB_APP_PRIVATE_KEY` (PKCS#8, base64 DER) | `gq github app create`                  | `gq ci broker deploy` (into the broker only)   |
-| `GQ_CI_GITHUB_APP_INSTALLATION_ID`                  | `gq github app create`                  | `gq github setup --app`, `gq ci broker deploy` |
-| `GQ_CI_BROKER_KEY`                                  | `gq github app create` (generated once) | `gq ci broker deploy`, `gq github setup --app` |
+| Secret                                              | Written by                              | Read by                                                                                                |
+| --------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `GQ_CI_GITHUB_APP_ID`                               | `gq github app create`                  | `gq ci broker deploy`, `gq github setup --app`                                                         |
+| `GQ_CI_GITHUB_APP_SLUG`                             | `gq github app create`                  | `gq ci broker deploy`                                                                                  |
+| `GQ_CI_GITHUB_APP_PRIVATE_KEY` (PKCS#8, base64 DER) | `gq github app create`                  | `gq ci broker deploy` (into the broker), `gq github setup --app` (in memory, to read the installation) |
+| `GQ_CI_GITHUB_APP_INSTALLATION_ID`                  | `gq github app create`                  | `gq github setup --app`, `gq ci broker deploy`                                                         |
+| `GQ_CI_BROKER_KEY`                                  | `gq github app create` (generated once) | `gq ci broker deploy`, `gq github setup --app`                                                         |
 
 `gq` reads them per command through the Site's Sigillo CLI on the same
 server (`sigillo.apiUrl`), so the person running the command needs access to

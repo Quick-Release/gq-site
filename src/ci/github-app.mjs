@@ -74,17 +74,57 @@ export function pkcs8Base64(pem) {
 
 export class AppCheckError extends Error {}
 
-async function githubJson(fetch, route, bearer) {
+async function githubJson(fetch, route, bearer, { method = "GET", body } = {}) {
   const response = await fetch(`https://api.github.com${route}`, {
+    method,
     headers: {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${bearer}`,
       "User-Agent": "gq-github-app",
       "X-GitHub-Api-Version": "2022-11-28",
+      ...(body ? { "Content-Type": "application/json" } : {}),
     },
+    body: body ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok) throw new AppCheckError(`GitHub GET ${route} answered ${response.status}`);
-  return response.json();
+  if (!response.ok) {
+    throw new AppCheckError(`GitHub ${method} ${route.split("?")[0]} answered ${response.status}`);
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+// Whether `repository` is among the installation's repositories, asked as the
+// App: an installation token (Metadata read only), then every page of
+// GET /installation/repositories. The token is revoked afterwards. Needs no
+// user login, so it answers the same for an org owner and a repo admin.
+export async function installationHasRepository({
+  fetch,
+  appId,
+  privateKey,
+  installationId,
+  repository,
+}) {
+  const jwt = await appJwt(appId, privateKey);
+  const { token } = await githubJson(
+    fetch,
+    `/app/installations/${installationId}/access_tokens`,
+    jwt,
+    { method: "POST", body: { permissions: { metadata: "read" } } },
+  );
+  const wanted = repository.toLowerCase();
+  try {
+    for (let page = 1, seen = 0; ; page += 1) {
+      const { total_count: total, repositories = [] } = await githubJson(
+        fetch,
+        `/installation/repositories?per_page=100&page=${page}`,
+        token,
+      );
+      if (repositories.some((entry) => entry.full_name?.toLowerCase() === wanted)) return true;
+      seen += repositories.length;
+      if (repositories.length === 0 || seen >= total) return false;
+    }
+  } finally {
+    await githubJson(fetch, "/installation/token", token, { method: "DELETE" }).catch(() => {});
+  }
 }
 
 // The App's installation on Quick-Release, or null before it is installed.

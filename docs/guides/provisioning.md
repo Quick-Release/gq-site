@@ -299,17 +299,50 @@ Once for the fleet (an organization owner, then whoever deploys):
 
 Then in each Site:
 
-1. `gq sigillo run staging -- gq github setup --app`. Through your `gh` login
-   (admin on the repository) it adds the repository to the App's
-   installation, creates or updates the push webhook as before, and stores
+1. `gq sigillo run staging -- gq github setup --app`. Before writing
+   anything it asks GitHub, as the App (an installation token limited to
+   Metadata read, revoked afterwards), whether the repository is already in
+   the installation, reading every page of `GET /installation/repositories`;
+   the plan, and `--dry-run`, show the answer. Only when the repository is
+   missing does it add it through your `gh` login (admin on the repository).
+   It then creates or updates the push webhook as before, and stores
    `GQ_CI_BROKER_TOKEN` and `GQ_CI_BROKER_URL` in Sigillo staging. It ends by
    asking the broker for a token for the repository, and fails if the broker
-   doesn't mint one.
+   doesn't mint one. When GitHub refuses the addition, it stops before
+   writing anything else; see below.
 2. `pnpm ci:deploy` (`gq ci deploy`). With the broker pair in staging it sends
    it instead of `GITHUB_CI_TOKEN`, and removes a `GITHUB_CI_TOKEN` an earlier
    deploy left on the Worker.
 3. Delete `GITHUB_CI_TOKEN` from Sigillo staging and revoke it on GitHub.
    `gq doctor` reports the mode and flags a leftover token.
+
+#### When GitHub refuses to add the repository
+
+`PUT /user/installations/{installation_id}/repositories/{repository_id}`,
+the call that adds a repository, can answer 403 ("You do not have permission
+to modify this app on Quick-Release. Please contact an Organization Owner.")
+or 404 to a `gh` login. GitHub documents it for fine-grained personal access
+tokens with the repository permission "GitHub App installation repository
+access" (write), and for GitHub App user access tokens; the classic-PAT
+`repo` scope is documented only for the matching `DELETE`. `gh`'s own login
+is an OAuth app token (`gho_`, scopes such as `repo`, `read:org`), which no
+list names, and GitHub refused it for Quick-Release/bruaa on 2026-10-31 even
+though the login was an organization owner. `github setup --app` then stops
+with the remedy, before storing a webhook secret, broker credential or URL,
+or touching the webhook. An organization owner either:
+
+- adds the repository in the browser at
+  `https://github.com/organizations/Quick-Release/settings/installations/<installation id>`
+  (Repository access → Only select repositories → Select repositories →
+  Save; the ID is `GQ_CI_GITHUB_APP_INSTALLATION_ID`), or
+- switches that installation to **All repositories**. Each Site's broker
+  credential still binds to its one repository, so a Site still can't mint
+  for another, but the App then reaches every Quick-Release repository, and
+  `gq ci broker deploy` refuses such an installation, as gq-platform ADR 0012
+  requires selected repositories. Prefer the first.
+
+Then re-run `gq sigillo run staging -- gq github setup --app`: it finds the
+repository in the installation and skips the addition.
 
 To cut one Site off, remove its repository from the installation (GitHub →
 Quick-Release settings → GitHub Apps → GETQUICK CI → Repository access): the
