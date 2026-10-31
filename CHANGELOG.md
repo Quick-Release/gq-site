@@ -65,6 +65,8 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   before the release is copied now still prints its status line. Until now only the
   deploy script understood `COMPOSER_ONLY`; no gq command set it.
 
+## 0.31.1 — 2026-10-31
+
 ### Fixed
 
 - **`gq github setup --app` no longer stops on a repository already in the
