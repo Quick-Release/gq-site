@@ -645,7 +645,11 @@ test("an unguarded Site's deploy ignores package expectations it doesn't guard",
 // headers, PHP_VERSION and the worker's pid; ps shows PHP-FPM 8.3's master
 // with pools www and other, and PHP-FPM 8.2's.
 
-const HOLD = ".gq/hold";
+const STATE = ".gq/state";
+const OPEN = "open\n";
+const HELD = /^held [0-9a-f]{32}\n$/u;
+const EARLIER = `held ${"f".repeat(32)}\n`;
+const state = (site) => readFile(join(site, STATE), "utf8").catch(() => undefined);
 const GATE = ".gq/admission.php";
 const PROBES = "apps/cms/web/gq-admission";
 const exists = (path) =>
@@ -675,7 +679,7 @@ const attempts = async (site) => {
 };
 
 async function assertHeld(result) {
-  assert.match(await readFile(join(result.site, HOLD), "utf8"), /^[0-9a-f]{32}\n$/u);
+  assert.match(await state(result.site), HELD);
   assert.ok(
     result.calls.some(([tool]) => tool === "composer-saw-hold"),
     "held before Composer",
@@ -715,7 +719,7 @@ test("a guarded deploy proves the pool enforces the gate, holds, and proves the 
       /Held: the gate answered a nested override challenge, PHP-FPM 8\.3 \(pool www\) reloaded, every worker that ran before the hold has gone, and 4 requests to new workers of pool www answered 503 with this hold's nonce/u,
     );
     assert.match(result.stdout, /The hold is lifted/u);
-    assert.equal(await exists(join(result.site, HOLD)), false);
+    assert.equal(await state(result.site), OPEN);
     // The gate names this Site's web root; gq writes no .user.ini; the
     // attempt's own challenge is gone.
     const gate = await readFile(join(result.site, GATE), "utf8");
@@ -759,7 +763,18 @@ test("a guarded deploy that fails or is killed once the hold is proven keeps it"
   await assertHeld(extension);
 });
 
-test("a pool that doesn't enforce the gate, or a server gq can't bind to the reloaded master, refuses before any hold, reload or package change", async () => {
+// The deploy's result for a failed begin: the admission's message, nothing
+// replaced or installed, no challenge left.
+async function assertBeginFailed(result, message, outcome) {
+  assert.notEqual(result.code, 0, result.output);
+  assert.match(result.stderr, message);
+  assert.ok(result.stderr.includes(outcome), `${outcome}\n${result.stderr}`);
+  assert.doesNotMatch(result.stderr, /nothing changed/u);
+  changedNothingOnTheSite(result.calls);
+  assert.deepEqual(await attempts(result.site), [], "its challenge removed");
+}
+
+test("a pool that doesn't enforce the gate, or a server gq can't bind to the reloaded master, refuses before any hold, reload or package change, leaving the state as it was", async () => {
   const script = await guardedScript();
   const cases = [
     [
@@ -780,69 +795,210 @@ test("a pool that doesn't enforce the gate, or a server gq can't bind to the rel
     [{ PS_NONE: "1" }, /worker 101 that answered isn't a worker of PHP-FPM 8\.3's master/u],
   ];
   for (const [env, message] of cases) {
-    for (const prior of [false, true]) {
-      const siteFiles = prior ? { [HOLD]: `${"f".repeat(32)}\n` } : {};
+    for (const [prior, word] of [
+      [OPEN, "open"],
+      [EARLIER, "held"],
+      [undefined, "held"],
+    ]) {
+      const siteFiles = prior ? { [STATE]: prior } : {};
       const result = await guardedDeploy(script, { env, siteFiles });
-      assert.notEqual(result.code, 0, result.output);
-      assert.match(result.stderr, message);
-      assert.match(result.stderr, /No package file was changed; the admission gate changed\./u);
+      await assertBeginFailed(
+        result,
+        message,
+        `No package file was changed; the admission gate changed. The admission state is unchanged: ${word}.`,
+      );
       assert.equal(firstCall(result.calls, "sudo"), -1, "no reload");
-      changedNothingOnTheSite(result.calls);
-      assert.deepEqual(await attempts(result.site), [], "its challenge removed");
-      if (prior) {
-        assert.equal(await readFile(join(result.site, HOLD), "utf8"), `${"f".repeat(32)}\n`);
-        assert.match(result.stderr, /The hold an earlier failed deploy left stays\./u);
-      } else {
-        assert.equal(await exists(join(result.site, HOLD)), false);
-      }
+      assert.equal(await state(result.site), prior);
     }
   }
 });
 
-test("a hold that can't be proven from a fresh generation of the same pool fails before any package change, removing only its own hold", async () => {
+test("a hold that can't be proven from a fresh generation of the same pool fails before any package change: an open Site opens again, a held one stays held", async () => {
   const script = await guardedScript();
+  // The reload is named only when it happened.
+  const held = "the admission gate and the admission state (held) changed.";
+  const reloaded =
+    "the admission gate, the admission state (held) and a PHP-FPM 8.3 reload changed.";
   const cases = [
     [
       { SUDO_EXIT: "1" },
       /PHP-FPM 8\.3 couldn't be reloaded \(sudo -n service php8\.3-fpm reload\)/u,
+      held,
     ],
-    [{ CURL_PROBE: "stale" }, /answered 503 without this hold's nonce/u],
+    [{ CURL_PROBE: "stale" }, /answered 503 without this hold's nonce/u, reloaded],
     [
       { PS_STUCK: "1", GQ_ADMISSION_DRAIN_SECONDS: "1" },
       /2 PHP-FPM 8\.3 worker\(s\) that ran before the hold were still running after 1s/u,
+      reloaded,
     ],
     [
       { CURL_PID_AFTER: "303" },
       /worker 303 that answered after the reload isn't a worker of PHP-FPM 8\.3's master/u,
+      reloaded,
     ],
     [
       { CURL_PID_AFTER: "304" },
       /worker 304 of pool other answered, but the challenge was answered by pool www/u,
+      reloaded,
     ],
-    [{ CURL_UNGATED_AFTER: "1" }, /ran without the gate/u],
+    [{ CURL_UNGATED_AFTER: "1" }, /ran without the gate after the reload/u, reloaded],
+    // Defence in depth past the drain: ps's two listings disagree.
+    [
+      { PS_GHOST: "1", CURL_PID_AFTER: "101" },
+      /the worker 101 that answered after the reload started before it/u,
+      reloaded,
+    ],
   ];
-  for (const [env, message] of cases) {
-    const first = await guardedDeploy(script, { env });
-    assert.notEqual(first.code, 0, first.output);
-    assert.match(first.stderr, message);
-    assert.match(
-      first.stderr,
-      /No package file was changed; the admission gate and a PHP-FPM 8\.3 reload changed\. The hold this attempt placed was removed\.|No package file was changed; the admission gate changed\. The hold this attempt placed was removed\./u,
+  for (const [env, message, changes] of cases) {
+    const open = await guardedDeploy(script, { env, siteFiles: { [STATE]: OPEN } });
+    await assertBeginFailed(
+      open,
+      message,
+      `No package file was changed; ${changes} The hold this attempt placed was lifted again: the Site was open before it.`,
     );
-    assert.doesNotMatch(first.stderr, /nothing changed/u);
-    assert.equal(await exists(join(first.site, HOLD)), false);
-    changedNothingOnTheSite(first.calls);
-    assert.deepEqual(await attempts(first.site), []);
+    assert.equal(await state(open.site), OPEN);
 
-    const earlier = await guardedDeploy(script, {
-      env,
-      siteFiles: { [HOLD]: `${"f".repeat(32)}\n` },
-    });
-    assert.notEqual(earlier.code, 0, earlier.output);
-    assert.match(earlier.stderr, /The hold an earlier failed deploy left stays\./u);
-    assert.match(await readFile(join(earlier.site, HOLD), "utf8"), /^[0-9a-f]{32}\n$/u);
-    changedNothingOnTheSite(earlier.calls);
+    const earlier = await guardedDeploy(script, { env, siteFiles: { [STATE]: EARLIER } });
+    await assertBeginFailed(
+      earlier,
+      message,
+      `No package file was changed; ${changes} The Site stays held.`,
+    );
+    assert.match(await state(earlier.site), HELD);
+    assert.notEqual(await state(earlier.site), EARLIER, "this attempt's own fresh hold");
   }
+});
+
+test('only a positive, exact "open" state counts as open: an absent, unreadable, malformed, symlinked or non-regular state is held', async (t) => {
+  const script = await guardedScript();
+  // Each of these is held before the deploy (so a failed begin keeps it
+  // held) and a successful deploy ends open.
+  for (const [label, options] of [
+    ["absent", {}],
+    ["malformed", { siteFiles: { [STATE]: "opened\n" } }],
+    ["without its newline", { siteFiles: { [STATE]: "open" } }],
+    ["with more after it", { siteFiles: { [STATE]: "open\nopen\n" } }],
+    ["a hold with a malformed nonce", { siteFiles: { [STATE]: "held xyz\n" } }],
+  ]) {
+    const failed = await guardedDeploy(script, { ...options, env: { SUDO_EXIT: "1" } });
+    await assertBeginFailed(
+      failed,
+      /PHP-FPM 8\.3 couldn't be reloaded/u,
+      "No package file was changed; the admission gate and the admission state (held) changed. The Site stays held.",
+    );
+    assert.match(await state(failed.site), HELD, label);
+    const deployed = await guardedDeploy(script, options);
+    assert.equal(deployed.code, 0, `${label}: ${deployed.output}`);
+    assert.equal(await state(deployed.site), OPEN, label);
+  }
+  // A state this user can't read is held, too (not when running as root,
+  // which reads anything).
+  if (process.getuid?.() !== 0) {
+    const site = await guardedDeploy(script, {
+      siteFiles: { [STATE]: OPEN },
+      siteModes: { [STATE]: 0o000 },
+      env: { SUDO_EXIT: "1" },
+    });
+    await assertBeginFailed(
+      site,
+      /PHP-FPM 8\.3 couldn't be reloaded/u,
+      "No package file was changed; the admission gate and the admission state (held) changed. The Site stays held.",
+    );
+  } else {
+    t.diagnostic("running as root: the unreadable state case is skipped");
+  }
+  // A symlink or a directory where the state goes refuses before anything.
+  for (const options of [
+    { siteLinks: { [STATE]: "/etc/hostname" } },
+    { siteDirectories: [STATE] },
+  ]) {
+    const refused = await guardedDeploy(script, options);
+    assert.notEqual(refused.code, 0, refused.output);
+    assert.match(
+      refused.stderr,
+      /\.gq\/state isn't a regular file gq can manage; nothing changed\./u,
+    );
+    assert.equal(firstCall(refused.calls, "curl", "--resolve"), -1);
+    changedNothingOnTheSite(refused.calls);
+  }
+});
+
+test("a begin that stops unexpectedly removes only its own files and never opens the Site", async () => {
+  const script = await guardedScript();
+  // The state's rename fails: the hold isn't written; the temporary file it
+  // left is removed; the state is as it was.
+  for (const prior of [OPEN, EARLIER]) {
+    const result = await guardedDeploy(script, {
+      siteFiles: { [STATE]: prior },
+      env: { MV_FAIL: ".gq/state" },
+    });
+    assert.notEqual(result.code, 0, result.output);
+    const word = prior === OPEN ? "open" : "held";
+    assert.ok(
+      result.stderr.includes(
+        `admission.sh begin stopped unexpectedly (exit 1) before proving the hold. No package file was changed; the admission state is ${word} and stays so.`,
+      ),
+      result.stderr,
+    );
+    assert.equal(await state(result.site), prior);
+    assert.deepEqual((await readdir(join(result.site, ".gq"))).sort(), ["admission.php", "state"]);
+    assert.deepEqual(await attempts(result.site), []);
+    changedNothingOnTheSite(result.calls);
+  }
+  // A challenge file's rename fails: before any hold.
+  const challenge = await guardedDeploy(script, {
+    siteFiles: { [STATE]: OPEN },
+    env: { MV_FAIL: "/probe.php" },
+  });
+  assert.ok(
+    challenge.stderr.includes(
+      "admission.sh begin stopped unexpectedly (exit 1) before proving the hold. No package file was changed; the admission state is open and stays so.",
+    ),
+    challenge.stderr,
+  );
+  assert.equal(await state(challenge.site), OPEN);
+  assert.deepEqual(await attempts(challenge.site), []);
+  assert.deepEqual(
+    (await readdir(join(challenge.site, PROBES))).filter((name) =>
+      name.startsWith(".gq-admission"),
+    ),
+    [],
+  );
+});
+
+test("a begin killed once its hold is written leaves the hold and its challenge, and the deploy stops before any package change", async () => {
+  const script = await guardedScript();
+  const result = await guardedDeploy(script, {
+    siteFiles: { [STATE]: OPEN },
+    env: { SUDO_KILL: "1" },
+  });
+  assert.notEqual(result.code, 0, result.output);
+  assert.match(await state(result.site), HELD);
+  assert.equal((await attempts(result.site)).length, 1, "SIGKILL runs no cleanup");
+  changedNothingOnTheSite(result.calls);
+  assert.match(result.stdout, /DEPLOY_STATUS=failed/u);
+});
+
+test("a late failure stays held, and only the next guarded deploy that finishes opens the Site", async () => {
+  const script = await guardedScript();
+  const late = await guardedDeploy(script, {
+    siteFiles: { [STATE]: OPEN },
+    releaseFiles: { "deploy/ploi/admin.d/10-fail.sh": recordingExtension("10-fail.sh", 4) },
+  });
+  assert.equal(late.code, 4, late.output);
+  const hold = await state(late.site);
+  assert.match(hold, HELD);
+  // The recovery starts from that hold: a failed begin keeps the Site held,
+  // a deploy that finishes opens it.
+  const failed = await guardedDeploy(script, {
+    siteFiles: { [STATE]: hold },
+    env: { SUDO_EXIT: "1" },
+  });
+  assert.match(failed.stderr, /The Site stays held\./u);
+  assert.match(await state(failed.site), HELD);
+  const recovered = await guardedDeploy(script, { siteFiles: { [STATE]: hold } });
+  assert.equal(recovered.code, 0, recovered.output);
+  assert.equal(await state(recovered.site), OPEN);
 });
 
 test("a custom user_ini.filename is challenged too, in a fresh directory; a disabled one needs only the default", async () => {
@@ -904,7 +1060,7 @@ test("the release's real rsync --delete keeps web/gq-admission, another attempt'
 test("the request admission refuses symlinks and other files where it writes, a release shipping web/gq-admission, and an unusable admin domain", async () => {
   const script = await guardedScript();
   for (const [options, message] of [
-    [{ siteLinks: { [HOLD]: "/etc/passwd" } }, /\.gq\/hold isn't a regular file gq can manage/u],
+    [{ siteLinks: { [STATE]: "/etc/passwd" } }, /\.gq\/state isn't a regular file gq can manage/u],
     [
       { siteLinks: { [GATE]: "/etc/passwd" } },
       /\.gq\/admission\.php isn't a regular file gq can manage/u,
@@ -912,7 +1068,7 @@ test("the request admission refuses symlinks and other files where it writes, a 
     [{ siteLinks: { ".gq": "/tmp" } }, /\.gq isn't a directory gq can manage/u],
     [{ siteLinks: { [PROBES]: "/tmp" } }, /gq-admission isn't a directory gq can manage/u],
     [{ siteFiles: { [PROBES]: "x" } }, /gq-admission isn't a directory gq can manage/u],
-    [{ siteDirectories: [HOLD] }, /\.gq\/hold isn't a regular file/u],
+    [{ siteDirectories: [STATE] }, /\.gq\/state isn't a regular file/u],
     [
       { releaseFiles: { [`${PROBES}/x/probe.php`]: "<?php\n" } },
       /The release ships apps\/cms\/web\/gq-admission/u,

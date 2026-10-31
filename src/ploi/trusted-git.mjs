@@ -31,10 +31,12 @@ export function trustedGit(locations = TRUSTED_GIT_LOCATIONS) {
 
 // The environment every git gq trusts runs with (a policy read, the Operator
 // checkout's checks): built from nothing the caller's environment chooses,
-// with no system or global git configuration (so no url.insteadOf,
-// credential helper, alias, include or other machine-wide setting can
-// redirect or change a read) and replacement objects off
-// (GIT_NO_REPLACE_OBJECTS; grafts are refused where they matter).
+// with no system or global git configuration (/etc/gitconfig, ~/.gitconfig,
+// ~/.config/git/config: no url.insteadOf, credential helper, alias or
+// include from there) and replacement objects off (GIT_NO_REPLACE_OBJECTS;
+// grafts are refused where they matter). The repository's own config
+// (.git/config) still applies; the policy reads pin what matters from it
+// (core.hooksPath, core.fsmonitor) in POLICY_CONFIG.
 export function isolatedGitEnvironment({ homedir, path }) {
   return {
     PATH: path,
@@ -57,8 +59,8 @@ const POLICY_CONFIG = Object.freeze([
 // the caller's environment chooses but SSH_AUTH_SOCK (how an ssh origin
 // authenticates): no GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE,
 // GIT_OBJECT_DIRECTORY, GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_EXEC_PATH,
-// GIT_CONFIG_* or any other GIT_* variable, and no ~/.gitconfig or
-// /etc/gitconfig; HOME and the user from the user database; PATH limited to
+// GIT_CONFIG_* or any other GIT_* variable, and no system or global git
+// configuration (the repository's own .git/config still applies); HOME and the user from the user database; PATH limited to
 // the trusted git's directory and the system's. The only credential is
 // `header` (an Authorization header for the fixed origin), added as git
 // configuration in the environment, never argv; an HTTPS origin that needs

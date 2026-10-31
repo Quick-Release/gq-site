@@ -46,7 +46,9 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   worker, a mandatory reload, a drain of pre-hold workers of at most 120
   seconds and 503s from the reloaded pool; WP-CLI still works; static files
   aren't covered; a server without that setting refuses, and gq configures
-  none), verifies the installed files
+  none; the Site is served only while the gate reads exactly `open` from
+  `.gq/state`, so a missing, unreadable or malformed state, an
+  `open_basedir` hiding it included, holds it), verifies the installed files
   (`gq-support.files/v1`) after `composer install`, and lifts the hold
   only when the deploy verified and finished. Without a configured lookup,
   guarded packages refuse. See

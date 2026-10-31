@@ -21,7 +21,7 @@ HOME_DIR=/home/ploi
 SITE=$HOME_DIR/$HOST
 APP=$SITE/apps/cms
 WEB=$APP/web
-HOLD=$SITE/.gq/hold
+STATE=$SITE/.gq/state
 GATE=$SITE/.gq/admission.php
 FPM=/etc/php/$PHP_VERSION/fpm
 POOL=$FPM/pool.d/www.conf
@@ -95,6 +95,9 @@ request() {
   curl -sS -o "$WORK/body" -D "$WORK/headers" -w '%{http_code}' --max-time 30 \
     --resolve "$HOST:443:127.0.0.1" --resolve "$OTHER_HOST:443:127.0.0.1" "$@" "$url" 2>/dev/null || true
 }
+# The admission state: open only when it reads exactly "open".
+is_open() { [ "$(od -An -tx1 "$STATE" 2>/dev/null | tr -d ' \n')" = 6f70656e0a ]; }
+is_held() { ! is_open; }
 gate_header() { tr -d '\r' <"$WORK/headers" | sed -n 's/^[Xx]-[Gg][Qq]-[Gg]ate: //p'; }
 # Restarts PHP-FPM (stopped, gone, started) and waits until both pools
 # accept connections.
@@ -150,7 +153,8 @@ admin_pool() {
 # nginx's own 404 while no PHP file exists for the path at all).
 
 POLL_URLS=(/ /wp/wp-login.php /wp/wp-admin/install.php /wp/wp-admin/upgrade.php
-  /wp/wp-admin/setup-config.php /app/plugins/gq-support/gq-support.php /app/plugins/sneaky/sneaky.php)
+  /wp/wp-admin/setup-config.php /app/plugins/gq-support/gq-support.php /app/plugins/sneaky/sneaky.php
+  /app/plugins/basedir/basedir.php /app/plugins/basedir/lowmem/lowmem.php)
 start_poller() {
   : >"$WORK/polled"
   : >"$WORK/holds"
@@ -167,7 +171,7 @@ start_poller() {
   (
     last=""
     while [ ! -e "$WORK/stop-poller" ]; do
-      if [ -f "$HOLD" ]; then now=on; else now=off; fi
+      if is_open; then now=off; else now=on; fi
       if [ "$now" != "$last" ]; then echo "$(date +%s.%N) $now" >>"$WORK/holds"; last=$now; fi
       sleep 0.02
     done
@@ -295,8 +299,8 @@ NGINX
   # --- the reviewed human bootstrap: the gate first, then the pool setting --
   local code=0 status label nonce held slow deployer session
   admission prepare >"$WORK/prepare" 2>&1 || code=$?
-  check "bootstrap: admission.sh prepare installs the gate, with no hold and no package" \
-    "$({ [ "$code" = 0 ] && [ -f "$GATE" ] && [ ! -e "$HOLD" ] && [ ! -e "$WEB/wp" ] && [ -d "$WEB/gq-admission" ]; } && echo ok)" \
+  check "bootstrap: admission.sh prepare installs the gate, writes no admission state (so the Site is held) and installs no package" \
+    "$({ [ "$code" = 0 ] && [ -f "$GATE" ] && [ ! -e "$STATE" ] && [ ! -e "$WEB/wp" ] && [ -d "$WEB/gq-admission" ]; } && echo ok)" \
     "$(cat "$WORK/prepare")"
 
   # --- false controls: only php_admin_value on the serving pool enforces it -
@@ -321,7 +325,7 @@ NGINX
     deploy r1 "$WORK/false-$setting.log" || code=$?
     check "false control, $label: the deploy refuses before any hold or package change" \
       "$({ [ "$code" != 0 ] && grep -q "ran without the gate" "$WORK/false-$setting.log" \
-        && [ ! -e "$WEB/wp" ] && [ ! -e "$APP/vendor" ] && [ ! -e "$HOLD" ] \
+        && [ ! -e "$WEB/wp" ] && [ ! -e "$APP/vendor" ] && [ ! -e "$STATE" ] \
         && [ -z "$(ls -A "$WEB/gq-admission")" ]; } && echo ok)" "exit $code: $(tail -n 3 "$WORK/false-$setting.log")"
     rm -f "$WEB/.user.ini"
   done
@@ -339,6 +343,9 @@ NGINX
   rm -f "$WEB/x.php"
 
   # --- a pre-hold request with PHP-FPM's default process_control_timeout ----
+  # From an open Site (as a finished deploy leaves it): without a state the
+  # Site is held, and the request wouldn't run at all.
+  admission lift >/dev/null
   echo '<?php usleep(8000000); file_put_contents("/home/ploi/slow-abrupt", "done"); echo "slow\n";' >"$WEB/slow-abrupt.php"
   chown ploi:ploi "$WEB/slow-abrupt.php"
   (request "https://$HOST/slow-abrupt.php" >"$WORK/abrupt") &
@@ -361,7 +368,7 @@ NGINX
   code=0
   deploy r1 "$WORK/first.log" || code=$?
   check "first guarded deploy without core or web/index.php, through the real admin.sh" \
-    "$({ [ "$code" = 0 ] && [ -f "$WEB/wp/wp-settings.php" ] && [ -f "$WEB/index.php" ] && [ ! -e "$HOLD" ] \
+    "$({ [ "$code" = 0 ] && [ -f "$WEB/wp/wp-settings.php" ] && [ -f "$WEB/index.php" ] && is_open \
       && grep -q "Verified getquick/gq-support 0.1.11" "$WORK/first.log"; } && echo ok)" "exit $code: $(tail -n 5 "$WORK/first.log")"
   check_held_window "first deploy" "$WORK/first.log"
   code=0
@@ -378,7 +385,7 @@ NGINX
   deploy r1 "$WORK/second.log" || code=$?
   wait "$slow" || true
   check "an installed Site's guarded deploy activates the theme and plugins and finishes" \
-    "$({ [ "$code" = 0 ] && [ ! -e "$HOLD" ] && [ "$(wp theme list --status=active --field=name)" = getquick-theme ] \
+    "$({ [ "$code" = 0 ] && is_open && [ "$(wp theme list --status=active --field=name)" = getquick-theme ] \
       && wp plugin is-active gq-support; } && echo ok)" "exit $code: $(tail -n 5 "$WORK/second.log")"
   held=$(awk '/ Held: / { print $1; exit }' "$WORK/second.log")
   check "a request that started before the hold finished (200) before the hold was proven" \
@@ -399,17 +406,29 @@ NGINX
   check "lifted: the package's nested .user.ini doesn't turn the pool's prepend off" \
     "$({ [ "$status" = 200 ] && grep -qx "sneaky ran; prepend=$GATE" "$WORK/body"; } && echo ok)" "$status $(cat "$WORK/body")"
 
+  # A package whose .user.ini keeps PHP from reading the admission state
+  # (open_basedir), or starves it (memory_limit), is held even while open:
+  # its scripts never run, which is the cost of failing closed.
+  status=$(request "https://$HOST/app/plugins/basedir/basedir.php")
+  check "open: a package's nested open_basedir that hides the state holds its own scripts (503), never runs them" \
+    "$({ [ "$status" = 503 ] && [ "$(gate_header)" = invalid ] && ! grep -q basedir "$HOME_DIR/plugin-ran"; } && echo ok)" \
+    "$status $(gate_header)"
+  status=$(request "https://$HOST/app/plugins/basedir/lowmem/lowmem.php")
+  check "open: a package directory whose .user.ini starves memory doesn't run its script (PHP answers $status)" \
+    "$({ [ "$status" != 200 ] && ! grep -q lowmem "$HOME_DIR/plugin-ran" \
+      && ! tr -d '\r' <"$WORK/headers" | grep -qi '^x-gq-smoke-ran:'; } && echo ok)" "$status"
+
   # --- a late extension failure keeps the hold ------------------------------
   code=0
   deploy r3 "$WORK/late.log" || code=$?
   check "a deploy whose extension fails after verification exits 4 and stays held" \
-    "$({ [ "$code" = 4 ] && [ -f "$HOLD" ]; } && echo ok)" "exit $code"
+    "$({ [ "$code" = 4 ] && is_held; } && echo ok)" "exit $code"
   check_held_window "late failure" "$WORK/late.log"
 
   # While held: every PHP route and a plugin's own file; a script without
   # DOCUMENT_ROOT; static files and another Site in the same pool aren't
   # held; WP-CLI works.
-  nonce=$(cat "$HOLD" 2>/dev/null || true)
+  nonce=$(sed -n 's/^held \([0-9a-f]\{32\}\)$/\1/p' "$STATE" 2>/dev/null || true)
   for path in / /wp/wp-login.php /wp/wp-admin/ /wp/wp-admin/install.php /wp/wp-admin/upgrade.php \
     /wp/wp-admin/setup-config.php /wp/xmlrpc.php /wp-json/ /app/plugins/gq-support/gq-support.php \
     /app/plugins/sneaky/sneaky.php /no-such-page/; do
@@ -437,7 +456,7 @@ NGINX
   deploy r2 "$WORK/no-reload.log" || code=$?
   mv "$WORK/sudoers" "$SUDOERS"
   check "a deploy whose reload is refused fails before any package change and keeps the earlier hold" \
-    "$({ [ "$code" != 0 ] && [ -f "$HOLD" ] && grep -q "The hold an earlier failed deploy left stays" "$WORK/no-reload.log" \
+    "$({ [ "$code" != 0 ] && is_held && grep -q "The Site stays held." "$WORK/no-reload.log" \
       && ! grep -q "Verified" "$WORK/no-reload.log"; } && echo ok)" "exit $code: $(tail -n 3 "$WORK/no-reload.log")"
 
   # --- recovery: another guarded deploy lifts it -----------------------------
@@ -445,7 +464,7 @@ NGINX
   deploy r2 "$WORK/recover.log" || code=$?
   status=$(request "https://$HOST/wp/wp-login.php")
   check "recovery: a guarded deploy of an approved release lifts the earlier hold" \
-    "$({ [ "$code" = 0 ] && [ ! -e "$HOLD" ] && [ "$status" = 200 ]; } && echo ok)" "exit $code, $status"
+    "$({ [ "$code" = 0 ] && is_open && [ "$status" = 200 ]; } && echo ok)" "exit $code, $status"
 
   # --- killed during Composer's core install; then recovered ----------------
   rm -rf "$WEB/wp"
@@ -460,21 +479,46 @@ NGINX
   wait "$deployer" 2>/dev/null || true
   status=$(request "https://$HOST/wp/wp-login.php")
   check "a deploy killed while Composer installs (no trap runs) stays held" \
-    "$({ [ -n "$session" ] && [ -f "$HOLD" ] && [ "$status" = 503 ]; } && echo ok)" "session ${session:-none}, $status"
+    "$({ [ -n "$session" ] && is_held && [ "$status" = 503 ]; } && echo ok)" "session ${session:-none}, $status"
   code=0
   deploy r2 "$WORK/recover-killed.log" || code=$?
   status=$(request "https://$HOST/wp/wp-login.php")
   check "recovery after the kill: the next guarded deploy restores core and lifts the hold" \
-    "$({ [ "$code" = 0 ] && [ -f "$WEB/wp/wp-settings.php" ] && [ ! -e "$HOLD" ] && [ "$status" = 200 ]; } && echo ok)" \
+    "$({ [ "$code" = 0 ] && [ -f "$WEB/wp/wp-settings.php" ] && is_open && [ "$status" = 200 ]; } && echo ok)" \
     "exit $code, $status: $(tail -n 3 "$WORK/recover-killed.log")"
   check_held_window "recovery after the kill" "$WORK/recover-killed.log"
+
+  # --- only a positive "open" serves: the state tampered with, on PHP-FPM ---
+  local tamper
+  for tamper in unreadable malformed absent symlink directory; do
+    case "$tamper" in
+      unreadable) chmod 000 "$STATE" ;;
+      malformed) printf 'opened\n' >"$STATE" ;;
+      absent) rm -f "$STATE" ;;
+      symlink)
+        printf 'open\n' >"$HOME_DIR/open-elsewhere"
+        rm -f "$STATE"
+        ln -s "$HOME_DIR/open-elsewhere" "$STATE"
+        ;;
+      directory) rm -f "$STATE" && mkdir "$STATE" ;;
+    esac
+    status=$(request "https://$HOST/wp/wp-login.php")
+    check "a state that is $tamper holds every PHP request (503), opcache.validate_timestamps=0 and no reload" \
+      "$({ [ "$status" = 503 ]; } && echo ok)" "$status"
+    rm -rf "$STATE"
+    printf 'open\n' >"$STATE"
+    chown ploi:ploi "$STATE"
+    chmod 0644 "$STATE"
+  done
+  status=$(request "https://$HOST/wp/wp-login.php")
+  check "the state back to exactly open serves again at once, no reload" "$({ [ "$status" = 200 ]; } && echo ok)" "$status"
 
   # --- a custom user_ini.filename is challenged too -------------------------
   pool_setting admin .htuser
   code=0
   deploy r2 "$WORK/htuser.log" || code=$?
   check "php_admin_value with user_ini.filename .htuser: the challenge covers .htuser and the deploy finishes" \
-    "$({ [ "$code" = 0 ] && [ ! -e "$HOLD" ] && [ -z "$(ls -A "$WEB/gq-admission")" ]; } && echo ok)" \
+    "$({ [ "$code" = 0 ] && is_open && [ -z "$(ls -A "$WEB/gq-admission")" ]; } && echo ok)" \
     "exit $code: $(tail -n 3 "$WORK/htuser.log")"
 
   stop_poller

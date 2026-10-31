@@ -49,10 +49,13 @@ esac`,
   // it runs (from apps/cms); COMPOSER_EXIT makes it fail, COMPOSER_KILL=1
   // kills the deploy script itself (SIGKILL: no exit trap runs).
   composer: `record composer "$@"
-if [ -f ../../.gq/hold ]; then record composer-saw-hold; fi
+if [ "$(cat ../../.gq/state 2>/dev/null)" != open ]; then record composer-saw-hold; fi
 printf '%s' "\${COMPOSER_AUTH:-}" > "$DEPLOY_CALLS.composer-auth"
 if [ "\${COMPOSER_KILL:-0}" = 1 ]; then kill -KILL "$PPID"; fi
 exit "\${COMPOSER_EXIT:-0}"`,
+  // mv fails for a target containing MV_FAIL; otherwise the system's.
+  mv: `if [ -n "\${MV_FAIL:-}" ] && [[ "\${@: -1}" == *"$MV_FAIL"* ]]; then record mv-failed "\${@: -1}"; exit 1; fi
+exec /bin/mv "$@"`,
   // REAL_RSYNC=1 runs the system's rsync with the script's own arguments
   // (its --delete and protect filters included).
   rsync: `record rsync "$@"
@@ -96,13 +99,20 @@ case " $* " in
         fi
         pid="\${CURL_PID:-101}"
         [ "$reloaded" = 1 ] && pid="\${CURL_PID_AFTER:-202}"
-        if [ -f "$SITE_PATH/.gq/hold" ]; then
-          status="503 Service Unavailable"
-          gate="$(cat "$SITE_PATH/.gq/hold")"
-          [ "\${CURL_PROBE:-}" = stale ] && gate=00000000000000000000000000000000
-        else
+        # The gate: open only on a read of exactly "open\\n".
+        state="$SITE_PATH/.gq/state"
+        value="$( { [ -L "$state" ] || ! od -An -tx1 "$state" 2>/dev/null; } | tr -d ' \\n')"
+        if [ "$value" = 6f70656e0a ]; then
           status="200 OK"
           gate=open
+        else
+          status="503 Service Unavailable"
+          gate=invalid
+          if [ -f "$state" ] && [ ! -L "$state" ] && [ -r "$state" ] \\
+            && grep -qxE 'held [0-9a-f]{32}' "$state" && [ "$(wc -l <"$state")" = 1 ]; then
+            gate="$(sed 's/^held //' "$state")"
+          fi
+          [ "\${CURL_PROBE:-}" = stale ] && gate=00000000000000000000000000000000
         fi
         printf 'gq admission probe\\n' >"$output"
         printf 'HTTP/1.1 %s\\r\\nX-GQ-Gate: %s\\r\\nX-GQ-Php: %s\\r\\nX-GQ-Pid: %s\\r\\nX-GQ-User-Ini: %s\\r\\n\\r\\n' \\
@@ -120,8 +130,10 @@ cp "$1" "$output"`,
   php: `record php "$@"
 if [ "\${1:-}" = scripts/patch-dependencies.php ]; then exit "\${DEPENDENCY_PATCH_EXIT:-0}"; fi
 printf '8.3'`,
-  // A PHP-FPM reload marks the reload done; SUDO_EXIT makes sudo fail.
+  // A PHP-FPM reload marks the reload done; SUDO_EXIT makes sudo fail,
+  // SUDO_KILL=1 kills its caller (SIGKILL: no trap runs).
   sudo: `record sudo "$@"
+[ "\${SUDO_KILL:-0}" = 1 ] && kill -KILL "$PPID"
 [ "\${SUDO_EXIT:-0}" = 0 ] || exit "$SUDO_EXIT"
 case "$*" in *"fpm reload"*) touch "$DEPLOY_CALLS.reloaded" ;; esac`,
   // PHP-FPM 8.3's master (pid 10) with two pools: www's worker 101 before
@@ -137,8 +149,10 @@ case "$*" in *"fpm reload"*) touch "$DEPLOY_CALLS.reloaded" ;; esac`,
   echo "   20     1 php-fpm8.2 Sat Oct 31 08:00:00 2026 php-fpm: master process (/etc/php/8.2/fpm/php-fpm.conf)"
   echo "  401    20 php-fpm8.2 Sat Oct 31 08:30:00 2026 php-fpm: pool www"
   [ "\${PS_NONE:-0}" = 1 ] && return
-  if [ ! -f "$DEPLOY_CALLS.reloaded" ] || [ "\${PS_STUCK:-0}" = 1 ]; then
+  if [ ! -f "$DEPLOY_CALLS.reloaded" ] || [ "\${PS_STUCK:-0}" = 1 ] || [ "\${PS_GHOST:-0}" = 1 ]; then
     echo "  101    10 php-fpm8.3 Sat Oct 31 09:00:00 2026 php-fpm: pool www"
+  fi
+  if [ ! -f "$DEPLOY_CALLS.reloaded" ] || [ "\${PS_STUCK:-0}" = 1 ]; then
     echo "  303    10 php-fpm8.3 Sat Oct 31 09:00:00 2026 php-fpm: pool other"
   fi
   if [ -f "$DEPLOY_CALLS.reloaded" ]; then
@@ -148,7 +162,10 @@ case "$*" in *"fpm reload"*) touch "$DEPLOY_CALLS.reloaded" ;; esac`,
 }
 case "$*" in
   *comm=*) processes ;;
-  *lstart=*) processes | awk '{ print $1, $4, $5, $6, $7, $8 }' ;;
+  *lstart=*)
+    # PS_GHOST=1: the plain listing no longer shows www's old worker 101,
+    # though the PHP-FPM listing still does.
+    processes | awk -v ghost="\${PS_GHOST:-0}" 'ghost == 1 && $1 == 101 { next } { print $1, $4, $5, $6, $7, $8 }' ;;
   *) exec /bin/ps "$@" ;;
 esac`,
 };
@@ -173,6 +190,7 @@ export async function deploy(
     siteFiles = {},
     siteLinks = {},
     siteDirectories = [],
+    siteModes = {},
     installed = true,
     languageInstalled = true,
     polylangLanguages = [],
@@ -210,6 +228,7 @@ export async function deploy(
     await symlink(target, join(site, path));
   }
   for (const path of siteDirectories) await mkdir(join(site, path), { recursive: true });
+  for (const [path, mode] of Object.entries(siteModes)) await chmod(join(site, path), mode);
   const scriptPath = join(directory, "admin.sh");
   await writeFile(scriptPath, script);
 

@@ -328,11 +328,23 @@ What gq owns, all outside what Composer or the release's rsync write:
 | Path                                         | What                                                                                                                                                                             |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `$SITE/.gq/admission.php`                    | the gate the pool prepends; rewritten only when it differs, never removed                                                                                                        |
-| `$SITE/.gq/hold`                             | present: held. Its content is this hold's nonce, public freshness evidence (no secret)                                                                                           |
+| `$SITE/.gq/state`                            | the admission state: the Site is served only while the gate reads exactly `open`; `held <nonce>` (public freshness evidence, no secret) and every other outcome hold it          |
 | `$SITE/apps/cms/web/gq-admission/<attempt>/` | one attempt's challenge (`probe.php` and INI files that empty `auto_prepend_file`), removed by that attempt; a killed attempt's stays, harmless, and no other attempt removes it |
 
 The release's rsync protects `web/gq-admission/`, and a release that ships
 anything there is refused. gq writes no `.user.ini`.
+
+**The state fails closed.** The gate reads `.gq/state` on every request, as
+data (never through opcache, never inferred from a failed stat), and serves
+only when the read succeeds and returns exactly `open` and a newline. No
+state file, one PHP can't read (its permissions, or an `open_basedir` a
+package's `.user.ini` sets that lets the gate itself load but hides the
+state), a symlink, a directory, `held <nonce>` or any other content: held.
+So a package that restricts `open_basedir` that way gets its own scripts
+held even while the Site is open, and one whose `.user.ini` starves PHP's
+memory gets its scripts failed (both checked on PHP-FPM). These are the
+per-directory settings checked; it isn't a claim that no other one could
+matter.
 
 While held, the gate answers every **non-CLI PHP request for the Site's web
 root** 503 (`Retry-After`, `Cache-Control: no-store`, `X-GQ-Gate: <nonce>`, a
@@ -369,7 +381,7 @@ value missing or unresolvable is treated as the Site's.
    not the CLI's) must be visible, and the worker that answered must be one
    of its workers; that worker's pool is the Site's. A version whose master
    isn't there, or a worker of another master, refuses;
-5. writes the hold (fresh nonce), reloads PHP-FPM `<version>` (`sudo -n
+5. writes the state `held <nonce>` (a fresh nonce), reloads PHP-FPM `<version>` (`sudo -n
 service php<version>-fpm reload`), which must succeed, and waits, at
    most 120 seconds (`GQ_ADMISSION_DRAIN_SECONDS` may only shorten it),
    until no worker of that master that ran before the reload still runs
@@ -378,20 +390,29 @@ service php<version>-fpm reload`), which must succeed, and waits, at
 6. requires 4 more probes to answer 503 with this hold's nonce, each from a
    worker of **the same pool** that started **after** the reload.
 
-If any step fails, `begin` fails before any package file changes. It removes
-a hold it created (the Site's code is still the previous, verified one),
-keeps one an earlier failed deploy left, removes its own challenges, and
-says what it did change (the gate, a reload) rather than "nothing changed".
+If a step fails in a way `begin` checks for, it fails before any package
+file changes, removes its own challenges, and says exactly what it changed
+(the gate, the state, a reload) and what the state is now. The state goes
+back to `open` only if the Site was open before and the state is still this
+attempt's own hold (the Site's code is still the previous, verified one); a
+Site that was held (an earlier failed deploy, or no state at all) stays
+held. If `begin` stops any other way (an unexpected error), it removes only
+its own temporary and challenge files it knows of, never opens the Site,
+and says what the state is; a temporary file can remain if the shell itself
+dies. A `begin` killed with SIGKILL runs no cleanup: its hold (and its
+challenge directory) can remain **before** Composer has changed anything,
+and the Site stays held until a guarded deploy finishes.
 
-`lift` removes the hold. The gate checks the hold file on every request (stat
-cache cleared, never opcache), so lifting needs no reload. Only the end of a
-deploy that verified the guarded packages and finished every step lifts it.
-A failed Composer install, a failed verification, a failed later step
-(activation, database, an extension), a timeout or a killed deploy leaves
-it: nothing (no exit trap, no timer) releases the hold. Recovery is another
-guarded deploy of an approved version, which needs its own fresh approval;
-removing `.gq/hold` by hand serves files that didn't verify. An unguarded
-Site's deploy uses WordPress's own maintenance mode, as before.
+`lift` writes `open`: the only way to open the Site besides that restore,
+run only at the end of a deploy that verified the guarded packages and
+finished every step. The gate reads the state on every request, so opening
+and holding need no reload. A failed Composer install, a failed
+verification, a failed later step (activation, database, an extension), a
+timeout or a killed deploy leaves it held: nothing (no exit trap, no timer)
+opens it. Recovery is another guarded deploy of an approved version, which
+needs its own fresh approval; writing `open` by hand serves files that
+didn't verify. An unguarded Site's deploy uses WordPress's own maintenance
+mode, as before.
 
 #### The hosting contract
 
@@ -413,8 +434,14 @@ review before any guarded deploy on a real host:
   two guarded Sites can't share one pool: each needs its own pool, or a
   different reviewed design.
 - **P2:** nginx answers HTTPS for the admin domain on 127.0.0.1 with a
-  certificate the server trusts, and serves `/gq-admission/` (no rule
-  denying it).
+  certificate the server trusts, its document root is the managed
+  `apps/cms/web` (Ploi's web directory set to it, or a `public` symlink to
+  it already in place) **before** the first guarded deploy, and it serves
+  `/gq-admission/` (no rule denying it). The deploy script's own `public`
+  symlink fix runs after the hold, too late for the challenge: on a fresh
+  Ploi Site with its default `/public` web directory, the challenge gets
+  nginx's 404 and the deploy refuses (safely); that setup is unsupported
+  until reviewed.
 - **P3:** the deploy user may run `sudo -n service php<version>-fpm reload`
   (Ploi's own deploy scripts reload PHP-FPM this way).
 - **P4:** PHP-FPM's processes are visible to the deploy user (no `hidepid`
@@ -426,14 +453,16 @@ review before any guarded deploy on a real host:
   positive one they finish first, up to that long. gq changes neither;
   which one a host runs needs that review.
 
-**Bootstrap**, by a person, once per Site, in this order: install the gate
-with `SITE_PATH=… APP_PATH=apps/cms bash deploy/ploi/admission.sh prepare`
-(from a checkout of a release that carries it; it holds nothing and touches
-no package), then add P1 to the pool and reload PHP-FPM. With P1 set and the
-gate missing, every PHP request of that pool fails (500): fail-closed, but
-an outage, so the gate goes first. The first guarded deploy needs neither
-WordPress core nor `web/index.php` (the challenge is its own script). There
-is no workaround through an unguarded install.
+**Bootstrap**, by a person, once per Site, in this order: make nginx serve
+`apps/cms/web` (P2); install the gate with `SITE_PATH=… APP_PATH=apps/cms
+bash deploy/ploi/admission.sh prepare` (from a checkout of a release that
+carries it; it writes no state and touches no package); then add P1 to the
+pool and reload PHP-FPM. From then on the Site is **held** (no state reads
+`open`) until the first guarded deploy finishes, so schedule it. With P1
+set and the gate missing, every PHP request of that pool fails (500):
+fail-closed, but an outage, so the gate goes first. The first guarded
+deploy needs neither WordPress core nor `web/index.php` (the challenge is
+its own script). There is no workaround through an unguarded install.
 
 #### Checked on a real stack
 
@@ -463,14 +492,23 @@ checked**. It checks:
   `web/index.php`; an installed Site's activation; a deploy that reinstalls
   core and installs a package shipping `.user.ini` with `auto_prepend_file
 =` during Composer; a late extension failure; a refused reload keeping an
-  earlier hold; a kill during Composer; and the recoveries. A poller
+  earlier hold; a kill during Composer; and the recoveries. Among the
+  packages Composer installs during the held deploys, one ships a
+  `.user.ini` emptying `auto_prepend_file`, and one ships the exploit's
+  `.user.ini` (an `open_basedir` that allows the gate and the web root but
+  not the state), plus a directory whose `.user.ini` starves memory. A poller
   requests the Site's PHP routes throughout, and must-use and plugin
   markers note any WordPress or plugin code a web request runs: in every
-  held window (the "Held:" line to the hold going, less 100ms for the
+  held window (the "Held:" line to the state reading `open`, less 100ms for the
   watcher's granularity) nothing runs and every request answers 503;
 - while held: every PHP route and plugin file answering 503 with the nonce,
   a script reaching PHP without `DOCUMENT_ROOT` held, static files served,
   another Site in the same pool not held, WP-CLI working;
+- the state, on PHP-FPM with `opcache.validate_timestamps=0` and no reload:
+  unreadable, malformed, absent, a symlink to a file saying `open`, or a
+  directory each hold every PHP request; exactly `open` again serves;
+- open: the `open_basedir` package's scripts are held (503), the
+  starved-memory script doesn't run;
 - a custom `user_ini.filename` (`.htuser`) under P1 challenged and passing.
 
 What it can't show: the same-version pools stand in for two PHP versions

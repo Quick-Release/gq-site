@@ -8,12 +8,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { exec } from "../../src/exec.mjs";
-import {
-  isolatedGitEnvironment,
-  policyGit,
-  policyGitEnvironment,
-  trustedGit,
-} from "../../src/ploi/trusted-git.mjs";
+import { policyGit, policyGitEnvironment, trustedGit } from "../../src/ploi/trusted-git.mjs";
 import { temporaryDirectory } from "../support/fixture-site.mjs";
 
 const GIT_ENV = Object.fromEntries(
@@ -142,7 +137,7 @@ test("no global or system git configuration can redirect a policy read: ~/.gitco
   assert.deepEqual(JSON.parse(await local(["show", "HEAD:gq.ops.json"])), { state: "paused" });
 });
 
-test("a policy read's environment turns off system and global git configuration, as the Operator checkout's checks do", () => {
+test("a policy read's environment is exactly gq's: system and global git configuration off, the fixed origin's header the only credential", () => {
   const env = policyGitEnvironment(
     "/usr/bin/git",
     { SSH_AUTH_SOCK: "/run/agent", HOME: "/elsewhere" },
@@ -155,7 +150,13 @@ test("a policy read's environment turns off system and global git configuration,
   assert.deepEqual(
     { ...env },
     {
-      ...isolatedGitEnvironment({ homedir: "/home/u", path: "/usr/bin:/usr/bin:/bin" }),
+      PATH: "/usr/bin:/usr/bin:/bin",
+      HOME: "/home/u",
+      LANG: "C.UTF-8",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_NO_REPLACE_OBJECTS: "1",
+      GIT_TERMINAL_PROMPT: "0",
       USER: "u",
       LOGNAME: "u",
       SSH_AUTH_SOCK: "/run/agent",
@@ -168,6 +169,4 @@ test("a policy read's environment turns off system and global git configuration,
       GIT_CONFIG_VALUE_2: "Authorization: Bearer t",
     },
   );
-  assert.equal(env.GIT_CONFIG_NOSYSTEM, "1");
-  assert.equal(env.GIT_CONFIG_GLOBAL, "/dev/null");
 });

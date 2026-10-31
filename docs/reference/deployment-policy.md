@@ -71,8 +71,10 @@ origin HEAD`, then `git fetch origin refs/heads/<branch>`, which changes
   git runs with an environment gq builds: none of the caller's `GIT_*`
   variables, no system or global git configuration (`/etc/gitconfig`,
   `~/.gitconfig` and `~/.config/git/config` are ignored, so no
-  `url.insteadOf`, alias or credential helper applies), no replacement
-  objects, hooks or fsmonitor. `origin` authenticates over SSH (your
+  `url.insteadOf`, alias or credential helper from them applies), no
+  replacement objects, hooks or fsmonitor. The repository's own
+  `.git/config` still applies (gq pins its hooks and fsmonitor settings,
+  not the rest, such as its `remote.origin.url`). `origin` authenticates over SSH (your
   `SSH_AUTH_SOCK`) or, in CI, with the Artifacts token in a header for those
   reads only; an HTTPS `origin` that needs a credential helper from your git
   configuration can't be read, so the release refuses. A

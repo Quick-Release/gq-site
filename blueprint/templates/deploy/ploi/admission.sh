@@ -23,13 +23,18 @@
 #
 #   SITE_PATH=… APP_PATH=apps/cms admission.sh prepare  # install the gate
 #   SITE_PATH=… APP_PATH=apps/cms admission.sh begin    # hold, and prove it
-#   SITE_PATH=… APP_PATH=apps/cms admission.sh lift     # end the hold
+#   SITE_PATH=… APP_PATH=apps/cms admission.sh lift     # open (a deploy's end)
 #
 # What it owns, all outside what Composer or the release's rsync write:
 #   $SITE_PATH/.gq/admission.php    the gate (rewritten only when it differs)
-#   $SITE_PATH/.gq/hold             present: held; its content is this hold's
-#                                   nonce (public freshness evidence, no
-#                                   secret)
+#   $SITE_PATH/.gq/state            the admission state: the Site is served
+#                                   only while the gate reads exactly
+#                                   "open"; "held <nonce>" (the nonce is
+#                                   public freshness evidence, no secret),
+#                                   no file, a file it can't read (an
+#                                   open_basedir that excludes it
+#                                   included), a symlink or anything else
+#                                   is held
 #   $SITE_PATH/$APP_PATH/web/gq-admission/<attempt>/
 #                                   one attempt's challenge: probe.php and
 #                                   per-directory INI files that try to turn
@@ -44,15 +49,22 @@
 #      custom one is challenged too, in another fresh directory, so no
 #      worker's INI cache hides it). The worker must be a worker of PHP-FPM
 #      <version>'s master; its pool is the pool serving the Site;
-#   3. writes the hold, reloads PHP-FPM <version> (which must succeed) and
+#   3. writes the state "held <nonce>", reloads PHP-FPM <version> (which
+#      must succeed) and
 #      waits, at most 120 seconds, until no worker of that master that ran
 #      before the reload still runs, so no request that started before the
 #      hold still runs WordPress code;
 #   4. requires 4 more probes to answer 503 with this hold's nonce, each from
 #      a worker of the same pool started after the reload.
-# Anything it can't prove fails before any package file changes: a hold this
-# attempt created is removed (the Site's code is the previous, verified one),
-# a hold an earlier failed deploy left stays, and it says what it changed.
+# Anything it can't prove fails before any package file changes. A known
+# failure removes its own challenges and puts the state back to "open" only
+# if the Site was open before and the state is still this attempt's hold
+# (the Site's code is the previous, verified one); a Site that was held
+# stays held. Any other exit of `begin` (an unexpected error) removes only
+# its own temporary and challenge files and never opens the Site; a killed
+# `begin` (SIGKILL) can leave its hold and challenge directory before any
+# package changed. `lift` is the only other way to "open": the end of a
+# deploy that verified and finished every step.
 # The probes sample the workers serving one URL: they prove the pool's
 # setting, not how nginx routes every other script (the hosting contract).
 set -euo pipefail
@@ -90,7 +102,7 @@ esac
 
 GQ_DIR="$SITE_PATH/.gq"
 GATE="$GQ_DIR/admission.php"
-HOLD="$GQ_DIR/hold"
+STATE="$GQ_DIR/state"
 WEB="$SITE_PATH/$APP_PATH/web"
 PROBES="$WEB/gq-admission"
 
@@ -112,16 +124,42 @@ check_paths() {
   plain_directory "$WEB"
   plain_directory "$PROBES"
   plain_file "$GATE"
-  plain_file "$HOLD"
+  plain_file "$STATE"
 }
 
 # Replaces $1 with $2's content atomically (a rename in the same directory).
+# Until the rename, the temporary file is in temporaries, for cleanup.
+temporaries=()
 write_atomically() {
   local target="$1" temporary
   temporary="$(mktemp "$(dirname "$target")/.gq-admission.XXXXXX")"
+  temporaries+=("$temporary")
   printf '%s' "$2" >"$temporary"
   chmod 0644 "$temporary"
   mv -f "$temporary" "$target"
+  temporaries=("${temporaries[@]:0:${#temporaries[@]}-1}")
+}
+
+# Removes this process's own temporary files a failed write left.
+remove_temporaries() {
+  local temporary
+  for temporary in "${temporaries[@]}"; do
+    if [ -f "$temporary" ] && [ ! -L "$temporary" ]; then rm -f "$temporary"; fi
+  done
+  temporaries=()
+}
+
+# Whether the state file says exactly "open" (a regular file, not a
+# symlink, readable): every other state is held.
+state_is_open() {
+  [ -f "$STATE" ] && [ ! -L "$STATE" ] && [ -r "$STATE" ] \
+    && [ "$(head -c 80 "$STATE" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "6f70656e0a" ]
+}
+
+# Whether the state file is exactly "held $1".
+state_is_hold() {
+  [ -f "$STATE" ] && [ ! -L "$STATE" ] && [ "$(cat "$STATE" 2>/dev/null)" = "held $1" ] \
+    && [ "$(wc -c <"$STATE")" = "$((${#1} + 6))" ]
 }
 
 new_nonce() {
@@ -137,7 +175,7 @@ gate_source() {
 <?php
 // GETQUICK request admission (deploy/ploi/admission.sh). PHP-FPM's pool
 // prepends this to every script (php_admin_value[auto_prepend_file]). While
-// a guarded deploy holds the Site (a hold file beside this one), every web
+// the admission state beside this file isn't exactly "open", every web
 // request for its web root ends here, 503, before any other PHP code; a
 // challenge probe is always answered here. Command-line PHP is never held.
 if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
@@ -155,9 +193,12 @@ if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
         if (\$script !== false && \$root !== false && !\$inside(\$script) && !\$inside(\$root)) {
             return;
         }
-        \$hold = __DIR__ . '/hold';
-        clearstatcache(true, \$hold);
-        \$held = is_file(\$hold);
+        // Served only on a positive read of exactly "open\n". Anything else is
+        // held: no state file, one PHP can't read (permissions, or an
+        // open_basedir a package's .user.ini set), a symlink, other content.
+        \$state = __DIR__ . '/state';
+        \$value = @is_link(\$state) ? false : @file_get_contents(\$state, false, null, 0, 80);
+        \$held = \$value !== "open\n";
         \$probe = \$script !== false
             && preg_match('#^' . preg_quote(\$web, '#') . '/gq-admission/[0-9a-f]{32}/probe\.php\$#', \$script) === 1;
         if (!\$held && !\$probe) {
@@ -165,10 +206,8 @@ if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
         }
         \$nonce = 'open';
         if (\$held) {
-            \$nonce = trim((string) @file_get_contents(\$hold, false, null, 0, 64));
-            if (preg_match('/^[0-9a-f]{32}\$/', \$nonce) !== 1) {
-                \$nonce = 'invalid';
-            }
+            \$nonce = is_string(\$value) && preg_match('/^held ([0-9a-f]{32})\n\$/', \$value, \$match) === 1
+                ? \$match[1] : 'invalid';
         }
         if (!headers_sent()) {
             http_response_code(\$held ? 503 : 200);
@@ -211,8 +250,8 @@ changed=()
 challenges=()
 challenge_files=(.user.ini)
 
-# Installs the gate (and the challenge directory) if it differs; no hold, no
-# reload.
+# Installs the gate (and the challenge directory) if it differs; it never
+# writes the admission state, so a Site without one stays held.
 prepare() {
   check_paths
   mkdir -p "$GQ_DIR" "$PROBES"
@@ -271,6 +310,7 @@ probe() {
   local headers body
   status="" gate="" php="" pid="" user_ini="" ungated=false
   body="$(mktemp)"
+  temporaries+=("$body")
   if ! headers="$(curl --silent --show-error --output "$body" --dump-header - \
     --proto '=https' --max-redirs 0 --connect-timeout 5 --max-time 15 \
     --resolve "$ADMIN_HOST:443:127.0.0.1" "https://$ADMIN_HOST/gq-admission/$1/probe.php" 2>/dev/null)"; then
@@ -285,6 +325,7 @@ probe() {
   user_ini="$(printf '%s\n' "$headers" | sed -n 's/^x-gq-user-ini: //Ip' | head -n 1)"
   if [ -z "$gate" ] && grep -qx UNGATED "$body"; then ungated=true; fi
   rm -f "$body"
+  temporaries=("${temporaries[@]:0:${#temporaries[@]}-1}")
 }
 
 # A fresh challenge directory for this attempt (its name in challenge), with
@@ -320,30 +361,60 @@ begin() {
   [[ "$ADMIN_HOST" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
     || refuse "gq.ops.json domains.admin isn't a hostname the admission check can request; nothing changed."
   check_paths
-  local prior_hold=false nonce="" version pool old left deadline attempt workers line url
-  [ -f "$HOLD" ] && prior_hold=true
+  local prior_open=false version pool old left deadline attempt workers line url
+  nonce=""
+  failing=false
+  state_is_open && prior_open=true
   prepare
 
-  # Fails the attempt: its challenges go; a hold it created goes (no package
-  # file has changed, so the Site's code is the previous, verified one); one
-  # an earlier failed deploy left stays.
+  # A known failure: its challenges go. The state goes back to "open" only
+  # if the Site was open before and the state is still this attempt's hold
+  # (no package file has changed, so the Site's code is the previous,
+  # verified one); otherwise it stays as it is.
   fail() {
-    local kept="" what="nothing else"
+    local what="nothing else" outcome
+    failing=true
+    remove_temporaries
     remove_challenges
-    if [ "$prior_hold" = true ]; then
-      kept=" The hold an earlier failed deploy left stays."
-    elif [ -n "$nonce" ]; then
-      rm -f "$HOLD"
-      kept=" The hold this attempt placed was removed."
+    if [ -z "$nonce" ]; then
+      if [ "$prior_open" = true ]; then
+        outcome="The admission state is unchanged: open."
+      else
+        outcome="The admission state is unchanged: held."
+      fi
+    elif [ "$prior_open" = true ] && state_is_hold "$nonce"; then
+      write_atomically "$STATE" $'open\n'
+      outcome="The hold this attempt placed was lifted again: the Site was open before it."
+    else
+      outcome="The Site stays held."
     fi
-    if [ "${#changed[@]}" -gt 0 ]; then
+    # Every change, as "a", "a and b" or "a, b and c".
+    local count="${#changed[@]}" index
+    if [ "$count" -gt 0 ]; then
       what="${changed[0]}"
-      [ "${#changed[@]}" -lt 2 ] || what="$what and ${changed[1]}"
+      for ((index = 1; index < count; index++)); do
+        if [ "$index" -eq $((count - 1)) ]; then what="$what and ${changed[index]}"; else what="$what, ${changed[index]}"; fi
+      done
     fi
-    echo "The admission check failed: $1. No package file was changed; $what changed.$kept" >&2
+    echo "The admission check failed: $1. No package file was changed; $what changed. $outcome" >&2
     exit 1
   }
-  trap 'remove_challenges' EXIT
+  # Any other exit (an unexpected error): only this attempt's own files go;
+  # the state stays as it is, never opened.
+  unexpected() {
+    local code=$?
+    [ "$failing" = false ] || return 0
+    remove_temporaries
+    remove_challenges
+    local now="held"
+    if state_is_open; then
+      now="open"
+    elif [ -n "$nonce" ] && state_is_hold "$nonce"; then
+      now="held (this attempt's hold)"
+    fi
+    echo "admission.sh begin stopped unexpectedly (exit $code) before proving the hold. No package file was changed; the admission state is $now and stays so." >&2
+  }
+  trap unexpected EXIT
 
   # The challenge: the gate must answer for a script beside a .user.ini that
   # empties auto_prepend_file.
@@ -378,7 +449,8 @@ begin() {
   [ -n "$pool" ] || fail "the worker $pid that answered isn't a worker of PHP-FPM $version's master"
 
   nonce="$(new_nonce)"
-  write_atomically "$HOLD" "$nonce"$'\n'
+  write_atomically "$STATE" "held $nonce"$'\n'
+  changed+=("the admission state (held)")
   old="$(fpm_workers "$version")"
   sudo -n service "php$version-fpm" reload >/dev/null \
     || fail "PHP-FPM $version couldn't be reloaded (sudo -n service php$version-fpm reload), so workers that ran before the hold may still serve"
@@ -401,6 +473,9 @@ begin() {
     workers="$(fpm_workers "$version")"
     line="$(printf '%s\n' "$workers" | awk -v pid="$pid" '$1 == pid')"
     [ -n "$line" ] || fail "the worker $pid that answered after the reload isn't a worker of PHP-FPM $version's master"
+    # Defence in depth: the drain already waited for every pre-reload
+    # worker, so a worker from before it answering means ps disagrees with
+    # itself.
     if printf '%s\n' "$old" | cut -d ' ' -f 1-6 | grep -qxF "$(printf '%s\n' "$line" | cut -d ' ' -f 1-6)"; then
       fail "the worker $pid that answered after the reload started before it"
     fi
@@ -413,17 +488,20 @@ begin() {
   echo "Held: the gate answered a nested override challenge, PHP-FPM $version (pool $pool) reloaded, every worker that ran before the hold has gone, and $HELD_PROBES requests to new workers of pool $pool answered 503 with this hold's nonce ($nonce)."
 }
 
+# Opens the Site: the end of a deploy that verified and finished every step.
 lift() {
-  plain_directory "$GQ_DIR"
-  plain_file "$HOLD"
-  rm -f "$HOLD"
+  check_paths
+  trap 'remove_temporaries' EXIT
+  write_atomically "$STATE" $'open\n'
+  trap - EXIT
   echo "The hold is lifted: PHP requests are served again."
 }
 
 case "${1:-}" in
   prepare)
+    trap 'remove_temporaries' EXIT
     prepare
-    echo "The admission gate is $GATE${changed[*]:+ (written now)}: no hold, no reload."
+    echo "The admission gate is $GATE${changed[*]:+ (written now)}; the admission state is unchanged ($(state_is_open && echo open || echo held)); no reload."
     ;;
   begin) begin ;;
   lift) lift ;;

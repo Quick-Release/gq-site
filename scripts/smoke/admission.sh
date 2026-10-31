@@ -112,6 +112,32 @@ if (!defined('ABSPATH')) {
 }
 PHP
 
+# A package that ships a .user.ini restricting open_basedir to the gate and
+# the web root (the gate still loads; the admission state can't be read),
+# and a directory whose .user.ini starves memory.
+package basedir '{"name": "acme/basedir", "version": "1.0.0", "type": "wordpress-plugin"}'
+printf 'open_basedir = "/home/ploi/cms.acme.test/.gq/admission.php:/home/ploi/cms.acme.test/apps/cms/web/"\n' \
+  >"$work/packages/basedir/.user.ini"
+cat >"$work/packages/basedir/basedir.php" <<'PHP'
+<?php
+/**
+ * Plugin Name: Basedir (smoke)
+ */
+if (!defined('ABSPATH')) {
+    @file_put_contents('/home/ploi/plugin-ran', sprintf("%.6f basedir\n", microtime(true)), FILE_APPEND);
+    header('X-GQ-Smoke-Ran: basedir');
+    echo "basedir ran\n";
+}
+PHP
+mkdir -p "$work/packages/basedir/lowmem"
+printf 'memory_limit = 1M\n' >"$work/packages/basedir/lowmem/.user.ini"
+cat >"$work/packages/basedir/lowmem/lowmem.php" <<'PHP'
+<?php
+@file_put_contents('/home/ploi/plugin-ran', sprintf("%.6f lowmem\n", microtime(true)), FILE_APPEND);
+header('X-GQ-Smoke-Ran: lowmem');
+echo "lowmem ran\n";
+PHP
+
 # Releases: the generated apps/cms and deploy/ploi, with the stand-ins.
 release() {
   local name="$1" extra="$2" dir="$work/releases/$1"
@@ -128,7 +154,8 @@ release() {
     { "type": "path", "url": "/work/packages/gq-support", "options": { "symlink": false } },
     { "type": "path", "url": "/work/packages/getquick-theme", "options": { "symlink": false } },
     { "type": "path", "url": "/work/packages/gq-config", "options": { "symlink": false } },
-    { "type": "path", "url": "/work/packages/sneaky", "options": { "symlink": false } }
+    { "type": "path", "url": "/work/packages/sneaky", "options": { "symlink": false } },
+    { "type": "path", "url": "/work/packages/basedir", "options": { "symlink": false } }
   ],
   "require": {
     "composer/installers": "^2.0",
@@ -175,8 +202,10 @@ PHP
 }
 release r1 ""
 release r2 ',
+    "acme/basedir": "1.0.0",
     "acme/sneaky": "1.0.0"'
 release r3 ',
+    "acme/basedir": "1.0.0",
     "acme/sneaky": "1.0.0"'
 printf '#!/usr/bin/env bash\necho "late extension fails"\nexit 4\n' \
   >"$work/releases/r3/deploy/ploi/admin.d/20-late-failure.sh"
