@@ -5,7 +5,7 @@
   "scripts": {
     "deploy:frontend": "node scripts/deploy-frontend.mjs",
     "deploy:frontend:adopt": "node scripts/deploy-frontend.mjs --adopt",
-    "plan:frontend": "alchemy deploy --stage prod --config frontend.run.ts --dry-run --detailed --yes --no-input",
+    "plan:frontend": "node scripts/deploy-frontend.mjs --dry-run --detailed",
     "check": "tsc --noEmit"
   },
   "dependencies": {

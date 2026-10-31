@@ -20,8 +20,9 @@ const STUBS = {
   // WP_LANGUAGE_INSTALLED=0.
   // Of the wp eval checks, the gq-config one passes and the S3 Uploads
   // one doesn't (no bucket). Polylang's languages (polylang.sh's
-  // `wp eval-file - languages`) are WP_POLYLANG_LANGUAGES. A call starting
-  // with a line of WP_FAILING fails.
+  // `wp eval-file - languages`) are WP_POLYLANG_LANGUAGES, and the
+  // permalink structure (`wp option get permalink_structure`) is
+  // WP_PERMALINK_STRUCTURE. A call starting with a line of WP_FAILING fails.
   wp: `record wp "$@"
 while IFS= read -r failing; do
   if [ -n "$failing" ] && [[ "$*" == "$failing"* ]]; then exit 1; fi
@@ -32,6 +33,10 @@ if [ "$1 \${2:-} \${3:-}" = "language core is-installed" ]; then
 fi
 if [ "$1 \${2:-} \${3:-}" = "eval-file - languages" ]; then
   [ -z "\${WP_POLYLANG_LANGUAGES:-}" ] || printf '%s\\n' "$WP_POLYLANG_LANGUAGES"
+  exit
+fi
+if [ "$1 \${2:-} \${3:-}" = "option get permalink_structure" ]; then
+  printf '%s\\n' "\${WP_PERMALINK_STRUCTURE:-}"
   exit
 fi
 case "$1 \${2:-}" in
@@ -65,7 +70,8 @@ printf '8.3'`,
 // `siteFiles` and an installed WordPress (none with `installed: false`),
 // with every core language installed (none with `languageInstalled: false`),
 // Polylang holding `polylangLanguages` (lines of slug, locale and order;
-// none by default) and each wp call that starts with one of `failing`
+// none by default), `permalinkStructure` as its permalink structure (plain,
+// "", by default) and each wp call that starts with one of `failing`
 // exiting 1.
 // Resolves to the exit `code`, `stdout`, `stderr`, both as `output`, the
 // `site` directory, the recorded `calls` (each an array: tool, then
@@ -78,6 +84,7 @@ export async function deploy(
     installed = true,
     languageInstalled = true,
     polylangLanguages = [],
+    permalinkStructure = "",
     failing = [],
     composerAuth = '{"http-basic":{}}',
     patchExit = 0,
@@ -119,6 +126,7 @@ export async function deploy(
       WP_INSTALLED: installed ? "1" : "0",
       WP_LANGUAGE_INSTALLED: languageInstalled ? "1" : "0",
       WP_POLYLANG_LANGUAGES: polylangLanguages.join("\n"),
+      WP_PERMALINK_STRUCTURE: permalinkStructure,
       WP_FAILING: failing.join("\n"),
       DEPENDENCY_PATCH_EXIT: String(patchExit),
       COMPOSER_ONLY: composerOnly ? "true" : "false",

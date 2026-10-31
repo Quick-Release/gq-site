@@ -25,15 +25,16 @@ warning fix, existing-Site adoption and Nomia extension retirement.
 
 ## Reference
 
-| Document                                                | Use it for                                                                                       |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| [Site manifest and environment](reference/manifest.md)  | Site discovery, schema v1, manifest migrations and provider token/ID precedence.                 |
-| [Frontend frameworks](reference/frontend-frameworks.md) | Framework selection, Start skeleton, deployment proof and adoption boundaries.                   |
-| [Commands](reference/commands.md)                       | Command syntax, output and mutation confirmation.                                                |
-| [Release and version commands](reference/release.md)    | Variant defaults, release/verify/doctor additions and release-config migration.                  |
-| [Blueprint packages](reference/packages.md)             | The package catalogue, `gq packages check` and `propose`, and the deferred fleet rollout.        |
-| [Programmatic use](reference/programmatic-use.md)       | The existing `run()` interface and injected adapters.                                            |
-| [Reference Site](reference/reference-site.md)           | Cooldown Gaming, the live content Site the blueprint is tested against: its repository and URLs. |
+| Document                                                    | Use it for                                                                                       |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [Site manifest and environment](reference/manifest.md)      | Site discovery, schema v1, manifest migrations and provider token/ID precedence.                 |
+| [Frontend frameworks](reference/frontend-frameworks.md)     | Framework selection, Start skeleton, deployment proof and adoption boundaries.                   |
+| [Commands](reference/commands.md)                           | Command syntax, output and mutation confirmation.                                                |
+| [Release and version commands](reference/release.md)        | Variant defaults, release/verify/doctor additions and release-config migration.                  |
+| [Blueprint packages](reference/packages.md)                 | The package catalogue, `gq packages check` and `propose`, and the deferred fleet rollout.        |
+| [Programmatic use](reference/programmatic-use.md)           | The existing `run()` interface and injected adapters.                                            |
+| [Reference Site](reference/reference-site.md)               | Cooldown Gaming, the live content Site the blueprint is tested against: its repository and URLs. |
+| [Rate-limit namespaces](reference/rate-limit-namespaces.md) | The fleet's register of commerce Sites' rate-limit namespace IDs, by Cloudflare account.         |
 
 ## Contributors
 

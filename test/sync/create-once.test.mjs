@@ -174,7 +174,8 @@ test("gq sync --recreate refuses a path the blueprint doesn't create once", asyn
       result.stderr,
       `gq: gq sync can't recreate ${path}: --recreate takes a file the blueprint creates once ` +
         "(GLOSSARY.md, README.md, VERSION, deploy/ploi/admin.d/README.md, pnpm-workspace.yaml, " +
-        "or a file of the apps/cms or apps/frontend skeleton).\n",
+        "or a file of the apps/cms or apps/frontend skeleton), " +
+        "or package.json, to add the keys a new one starts with.\n",
     );
   }
   const manifestOnly = await site.run(["sync", "--manifest", "--recreate", "README.md"]);

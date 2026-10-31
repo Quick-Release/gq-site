@@ -22,4 +22,6 @@ site's theme or a one-off data migration. This directory is the site's;
   the next `gq ploi release`.
 
 Activating a plugin needs no extension: add it to `wordpress.plugins` in
-`gq.ops.json` and run `gq sync`.
+`gq.ops.json` and run `gq sync`. Nor do pretty permalinks: after the
+extensions, the deploy sets `/%postname%/` when the site has plain ones. An
+extension that sets another structure keeps it.

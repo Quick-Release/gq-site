@@ -7,7 +7,10 @@
 // section or key edited since gq last wrote it stops sync with a diff, and
 // nothing is written. On a Site with the content package pair, --check also
 // fails while the pair's two pins disagree. `--recreate <path>` writes a
-// create-once file again.
+// create-once file again, or adds the root package.json's missing initial
+// keys. A Site that adopted the blueprint over its own files is warned about
+// what those files still lack (adoption.mjs), with the --recreate that
+// closes each gap.
 // `--manifest` limits sync to the manifest. Needs no network and no secrets.
 import { rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -27,6 +30,7 @@ import {
 } from "../manifest/legacy-release-config.mjs";
 import { SCHEMA_VERSION, VARIANTS } from "../manifest/schema.mjs";
 import { locateProjectConfig } from "../ops/project-context.mjs";
+import { adoptionGaps } from "./adoption.mjs";
 import { contentPairProblem } from "./content-pair.mjs";
 import { unifiedDiff } from "./diff.mjs";
 import { applyManagedFiles, LOCK_FILENAME, planManagedFiles } from "./managed-files.mjs";
@@ -92,6 +96,11 @@ export async function runSyncCommand(args, { cwd, io }) {
   const editedFiles = files.filter(({ status }) => status === "edited");
   // The pair's two halves as the Site declares them now (ADR 0020).
   const pairProblem = plan ? await contentPairProblem(root, manifest) : undefined;
+  if (plan) {
+    for (const { path, message, fix } of await adoptionGaps(root, manifest)) {
+      if (!options.recreate.includes(path)) io.err(`warning: ${message}. Run ${fix}.`);
+    }
+  }
 
   // Report, write nothing: with --check, or when writing would discard an edit.
   if (options.check || editedFiles.length > 0) {

@@ -5,6 +5,9 @@ import { readFileSync } from "node:fs";
 
 import { findStorefrontRuntime, storefrontBindings } from "../storefront-bindings.ts";
 
+// Deploys the Frontend; `pnpm plan:frontend` runs it with `--dry-run
+// --detailed`, so a plan has the same checks, account and bindings as the
+// deploy it previews. Arguments pass through to `alchemy deploy`.
 const alchemy = process.platform === "win32" ? "alchemy.cmd" : "alchemy";
 // Public deploy configuration lives in gq.ops.json; the API token and the
 // storefront's secrets come from Sigillo/CI.

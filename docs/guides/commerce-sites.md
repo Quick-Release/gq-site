@@ -94,9 +94,12 @@ site records its own in `gq.ops.json`:
 }
 ```
 
-Pick unused IDs from the fleet's register of the account and add the site's
-to it. Once the Frontend depends on the Runtime, the deploy refuses to run
-without them and names each missing one.
+These are the IDs reserved for documentation (1004–1006): don't deploy them.
+Take unused IDs in the Site's account from the fleet's
+[register of rate-limit namespaces](../reference/rate-limit-namespaces.md),
+and add the Site's to it. `gq doctor` warns when a Site's IDs are another
+Site's, reserved, or not in the register. Once the Frontend depends on the
+Runtime, the deploy refuses to run without them and names each missing one.
 
 ## Private packages
 
@@ -144,9 +147,21 @@ its own repository:
    `engines` key of `package.json`.
 2. Set `wordpress.plugins` to the list above and remove the blocked check
    from `verify.checks`.
-3. Bump `@getquick/site` and run `gq sync`. It creates `apps/cms` and
-   `apps/frontend` (neither exists yet), with the storefront Runtime mounted,
-   and the managed files.
-4. Run `pnpm install` with a `read:packages` token in your user-level npm
+3. Bump `@getquick/site` and install it (`pnpm install`), so the new `gq`
+   runs. With no `pnpm-workspace.yaml`, pnpm writes one of its own (its
+   `allowBuilds`, no `packages`), and `gq sync` keeps a create-once file it
+   finds.
+4. Run `pnpm exec gq sync --recreate pnpm-workspace.yaml --recreate package.json`.
+   It creates `apps/cms` and `apps/frontend` (neither exists yet), with the
+   storefront Runtime mounted, and the managed files; it replaces pnpm's
+   workspace file with the blueprint's; and it adds to the existing root
+   `package.json` the keys a new Site's starts with, which only a
+   `package.json` gq creates gets: the `dev`, `frontend:dev`, `build`,
+   `check`, `lint`, `format` and `test` scripts (`gq verify` runs `check`,
+   `lint`, `test` and `build`) and the `sigillo`, `vite` and `vite-plus`
+   devDependencies. It changes no key the file has. A plain `gq sync` warns
+   about both instead, naming the `--recreate` that fixes each, and
+   `gq doctor` fails on them.
+5. Run `pnpm install` with a `read:packages` token in your user-level npm
    config (see [Private packages](#private-packages)), commit the lockfile,
    and run `pnpm verify`.

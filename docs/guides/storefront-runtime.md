@@ -194,7 +194,8 @@ missing, until the Site has:
 - **Rate-limit namespaces** in `gq.ops.json`
   `cloudflare.rateLimitNamespaces` (`AUTH_IDENTIFIER_RATE_LIMITER`,
   `AUTH_IP_RATE_LIMITER`, `AUTH_PENALTY_RATE_LIMITER`), unused IDs from the
-  fleet's register; see [Commerce sites](commerce-sites.md#rate-limit-namespaces).
+  [fleet's register](../reference/rate-limit-namespaces.md); see
+  [Commerce sites](commerce-sites.md#rate-limit-namespaces).
 - **Secrets** in Sigillo staging: `pnpm frontend:secrets` generates
   `GETQUICK_STOREFRONT_PROXY_SECRET`, `GETQUICK_AUTH_COOKIE_SECRET` and
   `GETQUICK_CART_SESSION_SECRET`. `TURNSTILE_SECRET` (from Cloudflare) is
