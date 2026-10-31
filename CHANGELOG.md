@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.32.0 — 2026-10-31
 
 ### Changed
 
