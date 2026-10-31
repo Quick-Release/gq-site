@@ -4,11 +4,13 @@
 // standing in for Wrangler, gh, git and Sigillo, and a recording fetch for
 // Cloudflare and GitHub. Nothing here reaches the network.
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import { Readable } from "node:stream";
 import test from "node:test";
 
 import { githubWorkerSecrets, secretsPayload, workerSecrets } from "../../src/ci/deploy.mjs";
 import { helperCommand } from "../../src/ci/git-artifacts.mjs";
+import { pkcs8Base64 } from "../../src/ci/github-app.mjs";
 import { webhookConfig, webhookUrl } from "../../src/ci/github-setup.mjs";
 import { createFixtureSite, recordingExec, recordingFetch } from "../support/fixture-site.mjs";
 
@@ -555,6 +557,7 @@ function appExec({
   hooks = [],
   admin = true,
   workerSecrets = [],
+  putRefusal,
 } = {}) {
   const stores = { platform: { ...platform }, staging: { ...staging } };
   const exec = recordingExec(({ command, args, input }) => {
@@ -564,6 +567,7 @@ function appExec({
       if (line === "api repos/example/fixture") {
         return { stdout: JSON.stringify({ id: 555, permissions: { admin } }) };
       }
+      if (putRefusal && args.includes("PUT")) return { code: 1, stderr: `${putRefusal}\n` };
       return { stdout: "" };
     }
     if (command.endsWith(SIGILLO_BIN)) {
@@ -590,18 +594,52 @@ function appExec({
   return { exec, stores };
 }
 
+const APP_KEY = pkcs8Base64(
+  generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs1", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
+  }).privateKey,
+);
+
 const PLATFORM = Object.freeze({
   GQ_CI_GITHUB_APP_ID: "4242",
+  GQ_CI_GITHUB_APP_PRIVATE_KEY: APP_KEY,
   GQ_CI_GITHUB_APP_SLUG: "getquick-ci",
   GQ_CI_GITHUB_APP_INSTALLATION_ID: "77",
   GQ_CI_BROKER_KEY: "broker-key",
 });
 
-// Cloudflare's subdomain and the broker, which mints for a right credential.
-function appFetch({ brokerStatus = 200 } = {}) {
-  return recordingFetch(({ url, headers }) => {
+// Cloudflare's subdomain; GitHub as the App (installation 77 holds
+// `installed`, 100 a page); and the broker, which mints for a right credential.
+function appFetch({ brokerStatus = 200, installed = ["example/fixture"] } = {}) {
+  return recordingFetch(({ url, method, headers, body }) => {
     if (url.endsWith("/accounts/account-1/workers/subdomain")) {
       return { success: true, result: { subdomain: "fixture-sub" } };
+    }
+    if (url === "https://api.github.com/app/installations/77/access_tokens") {
+      assert.equal(method, "POST");
+      assert.match(headers.Authorization, /^Bearer [\w-]+\.[\w-]+\.[\w-]+$/u, "an App JWT");
+      assert.deepEqual(JSON.parse(body), { permissions: { metadata: "read" } });
+      return { token: "ghs_lookup", expires_at: "2026-10-31T13:00:00Z" };
+    }
+    const listing =
+      /^https:\/\/api\.github\.com\/installation\/repositories\?per_page=100&page=(\d+)$/u.exec(
+        url,
+      );
+    if (listing) {
+      assert.equal(headers.Authorization, "Bearer ghs_lookup");
+      const page = Number(listing[1]);
+      return {
+        total_count: installed.length,
+        repositories: installed
+          .slice((page - 1) * 100, page * 100)
+          .map((full_name) => ({ full_name })),
+      };
+    }
+    if (url === "https://api.github.com/installation/token") {
+      assert.equal(method, "DELETE");
+      return new Response(null, { status: 204 });
     }
     if (url === `${BROKER}/token`) {
       assert.match(headers.Authorization, /^Bearer gqci1_/u);
@@ -617,7 +655,7 @@ test("github setup --app adds the repository to the App, stores the broker crede
   const { brokerCredential } = await import("../../src/ci/broker/broker.mjs");
   const fixture = await site();
   const { exec, stores } = appExec({ platform: PLATFORM });
-  const fetch = appFetch();
+  const fetch = appFetch({ installed: ["example/other"] });
 
   const result = await fixture.run(["github", "setup", "--app"], {
     env: { CI_DEPLOY_API_TOKEN: "ci-deploy", GITHUB_WEBHOOK_SECRET: "kept" },
@@ -645,6 +683,91 @@ test("github setup --app adds the repository to the App, stores the broker crede
     "ops untouched",
   );
   assert.doesNotMatch(result.stdout + result.stderr, /gqci1_|broker-key|ghs_minted/u);
+});
+
+test("github setup --app finds the repository already in the installation and doesn't add it", async () => {
+  const fixture = await site();
+  const { exec, stores } = appExec({ platform: PLATFORM });
+  const others = Array.from({ length: 150 }, (_, index) => `example/other-${index}`);
+  const fetch = appFetch({ installed: [...others, "Example/Fixture"] });
+
+  const result = await fixture.run(["github", "setup", "--app"], {
+    env: { CI_DEPLOY_API_TOKEN: "ci-deploy", GITHUB_WEBHOOK_SECRET: "kept" },
+    fetch,
+    exec,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /✓ example\/fixture in the GETQUICK CI installation 77/u);
+  assert.ok(
+    exec.calls.every(({ args }) => !args.includes("PUT")),
+    "no PUT",
+  );
+  const pages = fetch.requests.filter(({ url }) => url.includes("/installation/repositories"));
+  assert.equal(pages.length, 2, "read every page");
+  assert.ok(
+    fetch.requests.some(
+      ({ url, method }) => method === "DELETE" && url.endsWith("/installation/token"),
+    ),
+    "the lookup token is revoked",
+  );
+  assert.ok(stores.staging.GQ_CI_BROKER_TOKEN);
+  assert.doesNotMatch(result.stdout + result.stderr, /ghs_lookup/u);
+});
+
+test("github setup --app --dry-run plans from the installation's real repositories", async () => {
+  for (const [installed, line] of [
+    [["example/fixture"], /✓ example\/fixture in the GETQUICK CI installation 77/u],
+    [["example/other"], /\+ add example\/fixture to the GETQUICK CI installation 77/u],
+  ]) {
+    const fixture = await site();
+    const { exec, stores } = appExec({ platform: PLATFORM });
+
+    const result = await fixture.run(["github", "setup", "--app", "--dry-run"], {
+      env: { CI_DEPLOY_API_TOKEN: "ci-deploy" },
+      fetch: appFetch({ installed }),
+      exec,
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, line);
+    assert.match(result.stdout, /Dry run: nothing changed/u);
+    assert.deepEqual(stores.staging, {});
+    assert.ok(exec.calls.every(({ args }) => !args.includes("-X")));
+  }
+});
+
+test("github setup --app stops with the owner's remedy when GitHub refuses to add the repository", async () => {
+  const fixture = await site();
+  const { exec, stores } = appExec({
+    platform: PLATFORM,
+    putRefusal:
+      "gh: You do not have permission to modify this app on Quick-Release. Please contact an Organization Owner. (HTTP 403)",
+  });
+
+  const result = await fixture.run(["github", "setup", "--app"], {
+    env: { CI_DEPLOY_API_TOKEN: "ci-deploy" },
+    fetch: appFetch({ installed: [] }),
+    exec,
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stderr,
+    /GitHub refused to add example\/fixture to the GETQUICK CI installation 77/u,
+  );
+  assert.match(result.stderr, /Please contact an Organization Owner\. \(HTTP 403\)/u);
+  assert.match(
+    result.stderr,
+    /https:\/\/github\.com\/organizations\/Quick-Release\/settings\/installations\/77/u,
+  );
+  assert.match(result.stderr, /"All repositories"/u);
+  assert.match(result.stderr, /re-run: gq sigillo run staging -- gq github setup --app/u);
+  assert.deepEqual(stores.staging, {}, "no webhook secret, broker credential or URL");
+  assert.ok(
+    exec.calls.every(({ args }) => !args.includes("POST") && !args.includes("PATCH")),
+    "no webhook",
+  );
 });
 
 test("github setup --app refuses before changing anything until the App exists", async () => {

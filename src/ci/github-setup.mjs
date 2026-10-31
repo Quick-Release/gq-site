@@ -10,9 +10,10 @@
 //
 // With --app (gq-platform ADR 0012) there is no token to paste: step 2 is
 //
-//   2. the repository added to the GETQUICK CI App's installation through your
-//      `gh` login (needs repo admin, as the webhook does), and the Site's
-//      broker credential (derived from GQ Platform `ops`' broker key) and the
+//   2. the repository in the GETQUICK CI App's installation (read as the App;
+//      added through your `gh` login only when it's missing, which GitHub may
+//      refuse: then an organization owner adds it in the browser), and the
+//      Site's broker credential (derived from GQ Platform `ops`' broker key) and the
 //      broker's URL in Sigillo `staging` as GQ_CI_BROKER_TOKEN and
 //      GQ_CI_BROKER_URL. The CI Worker then asks the broker for a token for
 //      each run instead of holding GITHUB_CI_TOKEN.
@@ -34,8 +35,10 @@ import { brokerCredential } from "./broker/broker.mjs";
 import { ciDeployToken } from "./deploy.mjs";
 import {
   APP_NAME,
+  APP_OWNER,
   APP_SECRETS,
   brokerUrl,
+  installationHasRepository,
   platformSecrets,
   SITE_BROKER_SECRETS,
 } from "./github-app.mjs";
@@ -148,13 +151,15 @@ export async function runGithubSetup({ context, parsed, env, fetch, exec, io, in
     return 0;
   }
 
+  // Credentials first: a step GitHub refuses (adding the repository to the
+  // App) then stops the run before anything else is written.
+  await credentials.apply();
+
   if (!secret) {
     secret = randomBytes(32).toString("hex");
     await secrets.set("GITHUB_WEBHOOK_SECRET", secret);
     ui.success("Webhook secret stored in Sigillo");
   }
-
-  await credentials.apply();
 
   // Always (re)send the config: GitHub never returns the secret, so this is
   // the only way to be sure the webhook signs with the one in Sigillo.
@@ -209,12 +214,38 @@ async function tokenCredentials({ context, fetch, ui, secrets, repository, proje
   };
 }
 
+// Where an organization owner changes the installation's repositories.
+export function installationSettingsUrl(installationId) {
+  return `https://github.com/organizations/${APP_OWNER}/settings/installations/${installationId}`;
+}
+
+// What to do when GitHub refuses to add the repository through gh.
+export function membershipRemedy({ repository, installationId, reason }) {
+  return [
+    `GitHub refused to add ${repository} to the ${APP_NAME} installation ${installationId} through your gh login (${reason}).`,
+    "PUT /user/installations/{id}/repositories/{repo} is documented for fine-grained personal access tokens " +
+      '(repository permission "GitHub App installation repository access": write) and GitHub App user access tokens. ' +
+      "gh's own login is an OAuth app token (gho_), which GitHub can refuse here even for an organization owner.",
+    "To fix it, an organization owner either:",
+    `  - adds ${repository} at ${installationSettingsUrl(installationId)} (Repository access → Only select repositories → Select repositories → Save), or`,
+    '  - switches that installation to "All repositories". Each Site\'s broker credential still binds to its one repository, ' +
+      "but the App then reaches every Quick-Release repository, and gq ci broker deploy refuses such an installation " +
+      "until gq-platform ADR 0012 allows it.",
+    "Then re-run: gq sigillo run staging -- gq github setup --app",
+  ].join("\n");
+}
+
 // The App path: the repository in the App's installation, and the Site's
 // broker credential and URL in Sigillo staging.
 async function appCredentials({ context, env, exec, fetch, gh, repository, subdomain }) {
   const platform = await platformSecrets({ context, env, exec });
   const names = await platform.names();
-  const required = [APP_SECRETS.installationId, APP_SECRETS.brokerKey];
+  const required = [
+    APP_SECRETS.appId,
+    APP_SECRETS.privateKey,
+    APP_SECRETS.installationId,
+    APP_SECRETS.brokerKey,
+  ];
   const missing = required.filter((name) => !names.has(name));
   if (missing.length > 0) {
     throw new Error(
@@ -228,8 +259,22 @@ async function appCredentials({ context, env, exec, fetch, gh, repository, subdo
   const site = await sigilloSecrets({ context, env, exec }, SECRETS_ENVIRONMENT);
   const repo = await gh(["api", `repos/${repository}`]);
   if (repo?.permissions && !repo.permissions.admin) {
+    throw new Error(`Your gh login isn't an admin of ${repository}: its webhook needs one.`);
+  }
+  let member;
+  try {
+    member = await installationHasRepository({
+      fetch,
+      appId: await platform.get(APP_SECRETS.appId),
+      privateKey: await platform.get(APP_SECRETS.privateKey),
+      installationId,
+      repository,
+    });
+  } catch (error) {
     throw new Error(
-      `Your gh login isn't an admin of ${repository}: adding it to the App and its webhook need one.`,
+      `Couldn't read the ${APP_NAME} installation ${installationId}'s repositories as the App: ${error.message}. ` +
+        "Is the App's key in Sigillo GQ Platform ops current (gq ci broker deploy proves it)?",
+      { cause: error },
     );
   }
   const stored = {
@@ -238,7 +283,9 @@ async function appCredentials({ context, env, exec, fetch, gh, repository, subdo
   };
   return {
     plan: [
-      `~ add ${repository} to the ${APP_NAME} installation ${installationId} (through gh; no change if it's there)`,
+      member
+        ? `✓ ${repository} in the ${APP_NAME} installation ${installationId}`
+        : `+ add ${repository} to the ${APP_NAME} installation ${installationId} (through gh; GitHub may ask for an organization owner)`,
       stored.token
         ? `✓ broker credential in Sigillo ${site.name}`
         : `+ store the broker credential in Sigillo ${site.name} (${SITE_BROKER_SECRETS.token})`,
@@ -250,12 +297,22 @@ async function appCredentials({ context, env, exec, fetch, gh, repository, subdo
         : "· no GITHUB_CI_TOKEN to retire",
     ],
     async apply() {
-      await gh([
-        "api",
-        "-X",
-        "PUT",
-        `user/installations/${installationId}/repositories/${repo.id}`,
-      ]);
+      if (!member) {
+        try {
+          await gh([
+            "api",
+            "-X",
+            "PUT",
+            `user/installations/${installationId}/repositories/${repo.id}`,
+          ]);
+        } catch (error) {
+          if (!/\(HTTP 40[34]\)/u.test(error.message)) throw error;
+          const reason = error.message.replace(/^gh .*? failed: (gh: )?/u, "").trim();
+          throw new Error(membershipRemedy({ repository, installationId, reason }), {
+            cause: error,
+          });
+        }
+      }
       if (!stored.token) await site.set(SITE_BROKER_SECRETS.token, credential);
       if (!stored.url) await site.set(SITE_BROKER_SECRETS.url, url);
     },
