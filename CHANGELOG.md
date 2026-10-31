@@ -3,6 +3,41 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **CI reaches GitHub through the GETQUICK CI App, with no token to paste**
+  ([gq-platform ADR 0012](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0012-fleet-ci-credentials-through-a-github-app-and-token-broker.md)).
+  One Quick-Release GitHub App (Contents read, Commit statuses write,
+  Metadata read; selected repositories) replaces each Site's fine-grained
+  `GITHUB_CI_TOKEN`. Its private key lives only in GQ Platform Sigillo `ops`
+  and in the `gq-ci-broker` Worker, which mints installation tokens narrowed
+  to one repository for each Site's CI Worker.
+  - `gq github app create` creates the App from a manifest: it serves a
+    loopback page that posts the manifest to GitHub, an organization owner
+    confirms and installs it in a browser, and it stores the App's ID, slug,
+    installation and PKCS#8 key, and a generated broker key, in GQ Platform
+    `ops`. `--dry-run` prints the manifest.
+  - `gq ci broker deploy` (from a Site, under `staging`) refuses until the App
+    exists, proves it against GitHub, deploys the broker with the Site's CI
+    Wrangler and deploy token from a throwaway directory, sends its secrets
+    over stdin and checks its `/health`.
+  - `gq github setup --app` adds the Site's repository to the installation
+    through your `gh` login, creates or updates the push webhook, stores the
+    Site's broker credential and the broker's URL in Sigillo `staging`
+    (`GQ_CI_BROKER_TOKEN`, `GQ_CI_BROKER_URL`), and proves the broker mints for
+    the repository.
+  - The generated CI Worker asks the broker for a token inside each mirror
+    and commit-status step, and falls back to `GITHUB_CI_TOKEN`. `gq sync`
+    updates `infra/ci` (both variants).
+  - `gq ci deploy` sends the broker pair instead of `GITHUB_CI_TOKEN` when the
+    secret store has it, and removes a `GITHUB_CI_TOKEN` an earlier deploy left
+    on the Worker. Without the pair it works as before.
+  - `gq doctor` reports which credential a Site on GitHub uses, warns about a
+    leftover `GITHUB_CI_TOKEN`, and fails when the broker's `/health` isn't
+    configured.
+
 ## 0.29.3 — 2026-10-31
 
 ### Fixed
