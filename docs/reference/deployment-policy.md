@@ -36,7 +36,9 @@ is started:
   prepares a commit and calls no provider; the refusal comes before
   Composer runs or anything is committed;
 - the generated CI release step (`scripts/ci-release.mjs`, run by Cloudflare
-  CI for a `v*` tag), before the CMS or the Frontend deploys.
+  CI for a `v*` tag), before the CMS or the Frontend deploys;
+- the generated Frontend deploy (`infra/scripts/deploy-frontend.mjs`, behind
+  `pnpm deploy:frontend`), before Alchemy runs.
 
 The refusal reads, for example:
 
@@ -54,14 +56,12 @@ check, whatever its deployment policy says.
 
 ## Not covered
 
-- The policy is read from the Site's own `gq.ops.json`: the working tree's
-  for a local release, the tagged commit's in CI. A `v*` tag on a commit that
-  predates the hold doesn't carry it, so CI would release that commit. Until
-  CI also reads the default branch's policy, don't push release tags for a
-  held Site, and pause any automation that pushes them.
-
-- A standalone Frontend deploy (`pnpm deploy:frontend`) doesn't read the
-  policy; the CI release step refuses before reaching it.
+- **A stale tag can release a held Site.** CI reads the policy from the
+  tagged commit's `gq.ops.json` (a local release from the working tree's). A
+  `v*` tag on a commit that predates the hold doesn't carry it, so CI would
+  release that commit. Until CI also reads the reviewed default branch's
+  policy, don't push release tags for a held Site, and pause any automation
+  that pushes them.
 - The policy is the Site's own source of truth. A pipeline outside gq (such as
   a nightly updater) has to read it, or hold the Site through it, to be
   bound by it.

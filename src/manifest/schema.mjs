@@ -400,7 +400,20 @@ export const manifestSchema = z
           .min(1)
           .optional()
           .describe(
-            "Composer packages a deploy verifies against deploy/ploi/package-expectations.json and an authenticated approval before uploading, and again on the server after composer install.",
+            "Composer packages prepared and deployed only with an approval record looked up for this Site's approval slot, verified again on the server after composer install.",
+          ),
+        approval: z
+          .strictObject({
+            slot: z.string().trim().min(1).describe("The approval service's slot for this Site."),
+            stage: z
+              .string()
+              .trim()
+              .min(1)
+              .describe("The approval service's stage (staging, prod)."),
+          })
+          .optional()
+          .describe(
+            "Where the package approval lookup reads this Site's approvals; every record must name this slot and stage.",
           ),
       })
       .superRefine(checkDeployment)
@@ -486,6 +499,12 @@ function checkDeployment(deployment, context) {
     new Set(deployment.guardedPackages ?? []).size !== (deployment.guardedPackages ?? []).length
   ) {
     issue("guardedPackages", "repeats a package");
+  }
+  if (deployment.guardedPackages && !deployment.approval) {
+    issue(
+      "approval",
+      "is required with guardedPackages: the slot and stage approvals are looked up for",
+    );
   }
 }
 

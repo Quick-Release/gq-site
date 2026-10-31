@@ -69,6 +69,7 @@ import {
   runOffboardCommand,
 } from "../offboard/commands.mjs";
 import { refuseWhenOffboarded } from "../offboard/guard.mjs";
+import { approvalsFromSettings } from "../ploi/approval-command.mjs";
 import { VERSION } from "../version.mjs";
 
 const COMMAND_OPTIONS = new Map([
@@ -144,6 +145,13 @@ export async function runCli(
   });
   // An offboarded Site refuses whatever would expose it again (ADR 0011).
   refuseWhenOffboarded(parsed, context.config);
+  // A guarded package's approval lookup: the injected one, else the Operator
+  // CLI the environment configures, else none (every guarded package refuses).
+  approvals ??= approvalsFromSettings(context.config, context.env, {
+    exec,
+    env,
+    resolvePath: context.resolvePath,
+  });
   const [provider, resource, action = "list"] = parsed.command;
 
   if (isReleaseCommand(parsed.command)) {
@@ -361,6 +369,7 @@ function parseArguments(argv) {
     "--to",
     "--reference",
     "--expect-before",
+    "--release-id",
     "--url",
     "--uri",
   ]);

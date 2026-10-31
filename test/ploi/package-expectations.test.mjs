@@ -8,7 +8,7 @@ import test from "node:test";
 
 import {
   checkApprovalRecord,
-  checkLockedIdentity,
+  checkLockedRecord,
   filesDigest,
   parsePackageExpectations,
   renderServerExpectations,
@@ -23,17 +23,24 @@ const FILES = Object.freeze({
 });
 const DIGEST = "57661d4dc252d72859e8ac659219b6948230f73e2916aa631a04761219bf77d3";
 const NOW = Date.parse("2026-10-31T12:00:00Z");
-const REQUEST = Object.freeze({ phase: "deploy", name: "getquick/gq-support", version: "0.1.11" });
+const REQUEST = Object.freeze({
+  phase: "deploy",
+  name: "getquick/gq-support",
+  version: "0.1.11",
+  releaseId: 11,
+});
+const TAG_COMMIT = "b".repeat(40);
 
 function record(overrides = {}) {
   return {
     schema: "gq-support.composer-approval/v1",
-    stage: "production",
-    slot: "nomia",
+    stage: "prod",
+    slot: "nomia/production",
     phase: "deploy",
-    release_id: "release-0.1.11",
+    release_id: 11,
     package: { name: "getquick/gq-support", version: "0.1.11", zip_sha256: "f".repeat(64) },
-    provenance: { source_commit: "c".repeat(40), release_run: "run-42" },
+    provenance: { source_commit: "c".repeat(40), release_run: "4242" },
+    published_tag: { name: "v0.1.11", commit: TAG_COMMIT },
     files: FILES,
     files_digest: DIGEST,
     normalization: "gq-support.files/v1",
@@ -64,6 +71,13 @@ test("an approval record is acted on only for its phase, package and version, fr
     [record({ observed_at: "2026-10-31T12:02:00Z" }), /not within 5 minutes of now/u],
     [record({ normalization: "gq-tree-v1" }), /normalization/u],
     [record({ schema: "gq-support.composer-approval/v2" }), /schema/u],
+    [record({ release_id: 12 }), /is release 12, not release 11/u],
+    [record({ release_id: "11" }), /release_id/u],
+    [
+      record({ provenance: { source_commit: "c".repeat(40), release_run: "run-42" } }),
+      /release_run/u,
+    ],
+    [record({ published_tag: { name: "v0.1.11" } }), /published_tag\.commit/u],
     [record({ files: {} }), /lists no files/u],
   ];
   for (const [candidate, message] of refusals) {
@@ -89,13 +103,24 @@ test("an approval record refuses package paths gq-support refuses", () => {
   }
 });
 
-test("a lookup's own approval-looking keys grant nothing", () => {
+test("a record has exactly the contract's keys: a missing or unknown one refuses it", () => {
   assert.throws(
     () => checkApprovalRecord({ approved: true, signature: "x" }, REQUEST, NOW),
     /is invalid/u,
   );
-  const extra = checkApprovalRecord(record({ approved: true }), REQUEST, NOW);
-  assert.equal(Object.hasOwn(extra, "approved"), false);
+  assert.throws(() => checkApprovalRecord(record({ approved: true }), REQUEST, NOW), /approved/u);
+  const { schema, ...unnamed } = record();
+  void schema;
+  assert.throws(() => checkApprovalRecord(unnamed, REQUEST, NOW), /schema/u);
+  assert.throws(
+    () =>
+      checkApprovalRecord(
+        record({ package: { name: "getquick/gq-support", version: "0.1.11" } }),
+        REQUEST,
+        NOW,
+      ),
+    /package\.zip_sha256/u,
+  );
 });
 
 test("the Site's expectations file is strict and refuses approval-looking fields", () => {
@@ -105,17 +130,19 @@ test("the Site's expectations file is strict and refuses approval-looking fields
       {
         name: "getquick/gq-support",
         version: "0.1.11",
-        lockReference: "b".repeat(40),
+        releaseId: 11,
         installPath: "web/app/plugins/gq-support",
-        filesDigest: DIGEST,
       },
     ],
   };
-  assert.equal(parsePackageExpectations(JSON.stringify(valid)).packages[0].filesDigest, DIGEST);
+  assert.equal(parsePackageExpectations(JSON.stringify(valid)).packages[0].releaseId, 11);
   for (const [change, message] of [
     [{ approved: true }, /approved/u],
     [{ installPath: "vendor/x" }, /installPath/u],
-    [{ filesDigest: "x" }, /filesDigest/u],
+    // Identity and contents come from the record, never from the Site.
+    [{ filesDigest: DIGEST }, /filesDigest/u],
+    [{ lockReference: TAG_COMMIT }, /lockReference/u],
+    [{ releaseId: "11" }, /releaseId/u],
   ]) {
     const candidate = { ...valid, packages: [{ ...valid.packages[0], ...change }] };
     assert.throws(() => parsePackageExpectations(JSON.stringify(candidate)), message);
@@ -126,36 +153,46 @@ test("the Site's expectations file is strict and refuses approval-looking fields
   );
 });
 
-test("the lock must install the expected version at the expected reference, not as a dev package", () => {
-  const pkg = { name: "getquick/gq-support", version: "0.1.11", lockReference: "b".repeat(40) };
-  const lock = (entry, section = "packages") => ({ [section]: [{ name: pkg.name, ...entry }] });
+test("the lock must install the approved version from the published tag's commit, not as a dev package", () => {
+  const approved = checkApprovalRecord(record(), REQUEST, NOW);
+  const lock = (entry, section = "packages") => ({
+    [section]: [{ name: "getquick/gq-support", ...entry }],
+  });
 
-  checkLockedIdentity(lock({ version: "0.1.11", dist: { reference: "b".repeat(40) } }), pkg);
-  checkLockedIdentity(lock({ version: "v0.1.11", source: { reference: "b".repeat(40) } }), pkg);
-
-  assert.throws(
-    () =>
-      checkLockedIdentity(lock({ version: "0.1.12", dist: { reference: "b".repeat(40) } }), pkg),
-    /locks getquick\/gq-support 0\.1\.12, not the expected 0\.1\.11/u,
+  // The registry's dist reference (a repacked ZIP) doesn't matter.
+  checkLockedRecord(
+    lock({
+      version: "0.1.11",
+      source: { reference: TAG_COMMIT },
+      dist: { reference: "e".repeat(40) },
+    }),
+    approved,
   );
-  // The source repository's main commit is not the published reference.
+  checkLockedRecord(lock({ version: "v0.1.11", source: { reference: TAG_COMMIT } }), approved);
+
   assert.throws(
     () =>
-      checkLockedIdentity(
-        lock({
-          version: "0.1.11",
-          dist: { reference: "b".repeat(40) },
-          source: { reference: "c".repeat(40) },
-        }),
-        pkg,
+      checkLockedRecord(lock({ version: "0.1.12", source: { reference: TAG_COMMIT } }), approved),
+    /locks getquick\/gq-support 0\.1\.12, not the approved 0\.1\.11/u,
+  );
+  // The gq-support source commit is not the published package's commit.
+  assert.throws(
+    () =>
+      checkLockedRecord(
+        lock({ version: "0.1.11", source: { reference: "c".repeat(40) } }),
+        approved,
       ),
-    /at reference b{40} \/ c{40}, not the expected b{40}/u,
+    /from source reference c{40}, not b{40}, the commit the approved v0\.1\.11 tag points to/u,
+  );
+  assert.throws(
+    () => checkLockedRecord(lock({ version: "0.1.11", dist: { reference: TAG_COMMIT } }), approved),
+    /from source reference \(none\)/u,
   );
   assert.throws(
     () =>
-      checkLockedIdentity(
-        lock({ version: "0.1.11", dist: { reference: "b".repeat(40) } }, "packages-dev"),
-        pkg,
+      checkLockedRecord(
+        lock({ version: "0.1.11", source: { reference: TAG_COMMIT } }, "packages-dev"),
+        approved,
       ),
     /only as a dev package/u,
   );
@@ -195,6 +232,6 @@ test("without an approval service, every lookup refuses and says the file isn't 
       phase: "deploy",
       package: { name: "getquick/gq-support", version: "0.1.11" },
     }),
-    /No authenticated package approval service is configured.*not an approval/u,
+    /No package approval lookup is configured.*not an approval/u,
   );
 });

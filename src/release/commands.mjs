@@ -8,7 +8,7 @@ import { parseVersion, satisfiesConstraint } from "../packages/versions.mjs";
 import { assertDeploymentAllowed, guardedPackages } from "../ploi/deployment-policy.mjs";
 import {
   PACKAGE_EXPECTATIONS_PATH,
-  lockedReference,
+  checkLockedRecord,
   lookUpApproval,
   packageExpectationsText,
   parsePackageExpectations,
@@ -34,8 +34,8 @@ const RELEASE_COMMANDS = new Map([
   [
     "release package",
     [
-      "gq release package <composer-package> [--to <version> [--pin]] [--reference <ref>] [--expect-before <version>] [--no-deploy | --composer-only]",
-      ["to", "pin", "reference", "expectBefore", "noDeploy", "composerOnly"],
+      "gq release package <composer-package> [--to <version> [--pin] [--release-id <id>]] [--reference <ref>] [--expect-before <version>] [--no-deploy | --composer-only]",
+      ["to", "pin", "releaseId", "reference", "expectBefore", "noDeploy", "composerOnly"],
     ],
   ],
 ]);
@@ -365,13 +365,15 @@ function createRelease({ config, root, env, exec, io }) {
 // --no-install (only the lock changes) and refuses, restoring composer.json
 // and composer.lock, when the update changes any other locked package, the
 // version or the reference isn't the one asked for, or any other file
-// changed (composer.json too, without --pin). A package in gq.ops.json deployment.guardedPackages is
-// only ever prepared this way, with --to, and only once the approval service
-// returns a fresh phase "prepare" record for that exact version (looked up
-// before Composer runs; without a service it refuses). Its entry in
-// deploy/ploi/package-expectations.json then takes the approved files' digest
-// and the lock's new reference, and is committed with the lock. Preparing
-// isn't permission to deploy: the deploy looks the approval up again.
+// changed (composer.json too, without --pin). A package in gq.ops.json
+// deployment.guardedPackages is only ever prepared this way, with --to and
+// --release-id, and only once the approval lookup returns that release's
+// fresh phase "prepare" record (before Composer runs; without a lookup it
+// refuses). The lock must then install it from the commit the record's
+// published tag points to (never a caller's --reference), and its entry in
+// deploy/ploi/package-expectations.json (version, release ID, install path)
+// is committed with the lock. Preparing isn't permission to deploy: the
+// deploy looks the approval up again.
 async function releasePackage(
   name,
   { release, parsed, context, env, fetch, exec, io, interactive, approvals, clock },
@@ -431,6 +433,7 @@ async function releasePackage(
         {
           phase: "prepare",
           project: context.config.project,
+          releaseId: options.releaseId,
           package: { name, version: options.to },
         },
         clock,
@@ -482,17 +485,18 @@ async function releasePackage(
     after = lockedPackage(afterLock, name);
     if (!after) throw new Error(`${COMPOSER_LOCK} has no ${name} after composer update.`);
     if (options.guarded) checkLockChange(beforeLock, afterLock, name, options);
-    // The Site's expectation follows: the approved files' digest and the
-    // reference the lock now records, for review with the lock change.
+    // A guarded package is locked from exactly the approved published tag,
+    // and the Site's expectation names the approved release for review with
+    // the lock change.
     if (approval) {
+      checkLockedRecord(afterLock, approval);
       const existing = expectationsText ? parsePackageExpectations(expectationsText).packages : [];
       const previous = existing.find((pkg) => pkg.name === name);
       const entry = {
         name,
         version: options.to,
-        lockReference: lockedReference(afterLock, name),
+        releaseId: approval.release_id,
         installPath: previous?.installPath ?? `web/app/plugins/${name.split("/")[1]}`,
-        filesDigest: approval.files_digest,
       };
       await writeFile(
         expectationsPath,
@@ -590,9 +594,25 @@ function packageOptions(parsed, name, ops) {
     throw new Error("--composer-only is how a deploy runs; --no-deploy doesn't deploy.");
   }
   options.guardedPackage = guardedPackages(ops).includes(name);
-  if (options.guardedPackage && !options.to) {
+  if (parsed.releaseId !== undefined) {
+    if (!/^[1-9]\d*$/u.test(parsed.releaseId)) {
+      throw new Error(`--release-id takes an approved release's ID, not "${parsed.releaseId}".`);
+    }
+    if (!options.guardedPackage) {
+      throw new Error(
+        `--release-id is for a guarded package (gq.ops.json deployment.guardedPackages).`,
+      );
+    }
+    options.releaseId = Number(parsed.releaseId);
+  }
+  if (options.guardedPackage && options.reference !== undefined) {
     throw new Error(
-      `${name} is guarded (gq.ops.json deployment.guardedPackages): name its exact version with --to.`,
+      `${name} is guarded: its reference comes from the approval record (the published tag's commit), not --reference.`,
+    );
+  }
+  if (options.guardedPackage && (!options.to || options.releaseId === undefined)) {
+    throw new Error(
+      `${name} is guarded (gq.ops.json deployment.guardedPackages): name its exact version with --to and the approved release with --release-id.`,
     );
   }
   options.guarded = Boolean(

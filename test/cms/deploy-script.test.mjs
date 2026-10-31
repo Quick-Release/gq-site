@@ -428,6 +428,7 @@ async function guardedScript() {
         protected: true,
         state: "authorized",
         guardedPackages: ["getquick/gq-support"],
+        approval: { slot: "acme/production", stage: "prod" },
       },
     },
   });

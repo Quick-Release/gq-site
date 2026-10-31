@@ -538,13 +538,34 @@
           "minLength": 1
         },
         "guardedPackages": {
-          "description": "Composer packages a deploy verifies against deploy/ploi/package-expectations.json and an authenticated approval before uploading, and again on the server after composer install.",
+          "description": "Composer packages prepared and deployed only with an approval record looked up for this Site's approval slot, verified again on the server after composer install.",
           "minItems": 1,
           "type": "array",
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9]([_.-]?[a-z0-9]+)*\\/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$"
           }
+        },
+        "approval": {
+          "description": "Where the package approval lookup reads this Site's approvals; every record must name this slot and stage.",
+          "type": "object",
+          "properties": {
+            "slot": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The approval service's slot for this Site."
+            },
+            "stage": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The approval service's stage (staging, prod)."
+            }
+          },
+          "required": [
+            "slot",
+            "stage"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

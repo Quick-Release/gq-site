@@ -5,8 +5,8 @@
 // Two inputs, kept apart (docs/reference/package-expectations.md):
 //
 // - deploy/ploi/package-expectations.json, the Site's reviewed EXPECTATION
-//   (contract v1): each guarded package's version, the reference its lock
-//   records, where it installs, and the digest of the files the Site expects.
+//   (contract v1): each guarded package's version, the approved release it
+//   intends (the release ID the approval lookup takes) and where it installs.
 //   Anyone who can change the Site can edit it, so it is never authority.
 // - An approval record (gq-support.composer-approval/v1) that `approvals`, an
 //   injected adapter for an authenticated, read-only approval service, looks
@@ -16,7 +16,8 @@
 //
 // A deploy looks a record up (phase "deploy") before it uploads anything and
 // looks it up again, fresh, immediately before it changes the Ploi site; a
-// record that is withdrawn, changed, stale or for another phase stops it.
+// lookup that fails, or a record that changed, is stale or is for another
+// phase, stops it. A "prepare" record never authorizes an install.
 //
 // Identity: the record's files are the approved contents. The registry may
 // repack a ZIP, so its bytes can differ while the files are the same; the
@@ -50,17 +51,18 @@ const SHA256 = /^[0-9a-f]{64}$/u;
 const COMMIT = /^[0-9a-f]{40}$/u;
 const VERSION =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
-const REFERENCE = /^[0-9A-Za-z._-]{7,128}$/u;
 // Composer installers' WordPress paths, relative to apps/cms.
 const INSTALL_PATH = /^web\/app\/(plugins|mu-plugins|themes)\/[A-Za-z0-9][\w.-]*$/u;
 const text = z.string().trim().min(1);
 
+// The Site's reviewed expectation: which package version and which approved
+// release (its release ID, the approval service's lookup key) it intends, and
+// where Composer installs it. Identity and contents come only from the record.
 const expectation = z.strictObject({
   name: z.string().regex(COMPOSER_PACKAGE_NAME, "must be a Composer package name"),
   version: z.string().regex(VERSION, "must be an exact version like 1.2.3"),
-  lockReference: z.string().regex(REFERENCE, "must be the reference composer.lock records"),
+  releaseId: z.number().int().positive(),
   installPath: z.string().regex(INSTALL_PATH, "must be web/app/<plugins|mu-plugins|themes>/<slug>"),
-  filesDigest: z.string().regex(SHA256, `must be a ${FILES_NORMALIZATION} digest`),
 });
 
 const expectations = z.strictObject({
@@ -68,20 +70,24 @@ const expectations = z.strictObject({
   packages: z.array(expectation).min(1),
 });
 
-// The approval record as gq reads it. Keys gq doesn't know are dropped,
-// never trusted.
-const approvalRecord = z.object({
-  schema: z.literal(APPROVAL_SCHEMA).optional(),
+// The approval record (gq-support.composer-approval/v1): exactly these keys;
+// a missing or unknown one refuses it.
+const approvalRecord = z.strictObject({
+  schema: z.literal(APPROVAL_SCHEMA),
   stage: text,
   slot: text,
   phase: z.enum(APPROVAL_PHASES),
-  release_id: text,
-  package: z.object({
+  release_id: z.number().int().positive(),
+  package: z.strictObject({
     name: z.string().regex(COMPOSER_PACKAGE_NAME),
     version: z.string().regex(VERSION),
     zip_sha256: z.string().regex(SHA256),
   }),
-  provenance: z.object({ source_commit: z.string().regex(COMMIT), release_run: text }),
+  provenance: z.strictObject({
+    source_commit: z.string().regex(COMMIT),
+    release_run: z.string().regex(/^[1-9]\d*$/u, "must be a GitHub Actions run id"),
+  }),
+  published_tag: z.strictObject({ name: text, commit: z.string().regex(COMMIT) }),
   files: z
     .record(
       z.string().regex(PACKAGE_FILE_PATH, "must be a relative package path"),
@@ -128,14 +134,18 @@ export function filesDigest(files) {
 }
 
 // The approval record `record` as gq may act on it for `request` at `now`
-// (ms): a record for the same phase, package and version, whose files hash to
-// its files_digest, observed within APPROVAL_MAX_AGE_MS. Throws otherwise.
-export function checkApprovalRecord(record, { phase, name, version }, now) {
+// (ms): a record for the same phase, package, exact version and (when asked
+// for one) release ID, whose files hash to its files_digest, observed within
+// APPROVAL_MAX_AGE_MS. Throws naming the problem otherwise.
+export function checkApprovalRecord(record, { phase, name, version, releaseId }, now) {
   const label = `The approval record for ${name} ${version}`;
   const data = parseWith(approvalRecord, record, label);
   if (data.phase !== phase) throw new Error(`${label} is for phase ${data.phase}, not ${phase}.`);
   if (data.package.name !== name || data.package.version !== version) {
     throw new Error(`${label} approves ${data.package.name} ${data.package.version} instead.`);
+  }
+  if (releaseId !== undefined && data.release_id !== releaseId) {
+    throw new Error(`${label} is release ${data.release_id}, not release ${releaseId}.`);
   }
   const digest = filesDigest(data.files);
   if (digest !== data.files_digest) {
@@ -155,17 +165,21 @@ export function checkApprovalRecord(record, { phase, name, version }, now) {
 // Asks `approvals` for a record and checks it (checkApprovalRecord).
 export async function lookUpApproval(approvals, request, clock) {
   const record = await approvals.lookup(request);
-  return checkApprovalRecord(record, { phase: request.phase, ...request.package }, clock.now());
+  return checkApprovalRecord(
+    record,
+    { phase: request.phase, releaseId: request.releaseId, ...request.package },
+    clock.now(),
+  );
 }
 
-// Throws unless `lock` (a parsed composer.lock) installs `name` at `version`
-// in `packages` (a --no-dev install skips packages-dev) and, with
-// `lockReference`, with every reference it records equal to it.
-export function checkLockedIdentity(
-  lock,
-  { name, version, lockReference },
-  lockPath = "apps/cms/composer.lock",
-) {
+// Throws unless `lock` (a parsed composer.lock) installs `record`'s package:
+// in `packages` (a --no-dev install skips packages-dev), at its version, from
+// the commit its published tag points to (source.reference). The record's
+// provenance.source_commit is the gq-support source commit, never compared
+// with the lock, and the registry's dist ZIP is never compared with
+// zip_sha256: the registry may repack it.
+export function checkLockedRecord(lock, record, lockPath = "apps/cms/composer.lock") {
+  const { name, version } = record.package;
   const entry = lockedEntry(lock, name);
   if (!entry) {
     const dev = (lock["packages-dev"] ?? []).some((candidate) => candidate.name === name);
@@ -176,28 +190,15 @@ export function checkLockedIdentity(
     );
   }
   if (normaliseVersion(entry.version) !== version) {
-    throw new Error(`${lockPath} locks ${name} ${entry.version}, not the expected ${version}.`);
+    throw new Error(`${lockPath} locks ${name} ${entry.version}, not the approved ${version}.`);
   }
-  if (lockReference) {
-    const references = lockReferences(entry);
-    if (references.length === 0 || references.some((reference) => reference !== lockReference)) {
-      throw new Error(
-        `${lockPath} locks ${name} at reference ${references.join(" / ") || "(none)"}, not the expected ${lockReference}.`,
-      );
-    }
-  }
-  return entry;
-}
-
-// The single reference `lock` records for `name`, or throws.
-export function lockedReference(lock, name, lockPath = "apps/cms/composer.lock") {
-  const references = [...new Set(lockReferences(lockedEntry(lock, name) ?? {}))];
-  if (references.length !== 1) {
+  const reference = entry.source?.reference;
+  if (reference !== record.published_tag.commit) {
     throw new Error(
-      `${lockPath} records ${references.length ? `several references (${references.join(", ")})` : "no reference"} for ${name}.`,
+      `${lockPath} locks ${name} from source reference ${reference ?? "(none)"}, not ${record.published_tag.commit}, the commit the approved ${record.published_tag.name} tag points to.`,
     );
   }
-  return references[0];
+  return entry;
 }
 
 // The PACKAGE_EXPECTATIONS file the deploy script reads: line-based, so the
@@ -215,24 +216,24 @@ export function renderServerExpectations(packages, lockText) {
   return `${lines.join("\n")}\n`;
 }
 
-// The approval seam. `lookup({ phase, project, releaseCommit?, package: {
-// name, version } })` resolves to the authenticated service's current
-// gq-support.composer-approval/v1 record for that package and phase, or
-// rejects when it has none (never approved, withdrawn, unreachable). gq-site
-// has no adapter for that service yet, so this one refuses.
+// The approval seam. `lookup({ phase, project, releaseId, releaseCommit?,
+// package: { name, version } })` resolves to the approval service's current
+// gq-support.composer-approval/v1 record for that release and phase, or
+// rejects when there is none (not approved, withdrawn, unreadable). Without a
+// configured adapter (approval-command.mjs), this one refuses.
 export const unconfiguredApprovals = Object.freeze({
   async lookup({ phase, package: pkg }) {
     throw new Error(
-      `No authenticated package approval service is configured, so gq can't look up ${pkg.name} ${pkg.version} (phase ${phase}); a guarded package refuses. ${PACKAGE_EXPECTATIONS_PATH} is an expectation, not an approval.`,
+      `No package approval lookup is configured, so gq can't look up ${pkg.name} ${pkg.version} (phase ${phase}); a guarded package refuses. ${PACKAGE_EXPECTATIONS_PATH} is an expectation, not an approval.`,
     );
   },
 });
 
 // For a release of a Site guarding `guarded` packages at commit `sha`: reads
 // the expectations and composer.lock from that commit through `show(path)`,
-// checks every guarded package is expected and locked as expected, looks up
-// each one's deploy approval, and requires its files to be the ones the Site
-// expects. Resolves to { expectations: the PACKAGE_EXPECTATIONS text, records }.
+// looks up each guarded package's deploy approval for the release the Site
+// expects, and checks the lock installs exactly that record's package.
+// Resolves to { expectations: the PACKAGE_EXPECTATIONS text, records }.
 // Throws, before anything is uploaded, on any failure.
 export async function prepareGuardedRelease({ project, guarded, sha, show, approvals, clock }) {
   const read = async (path) => {
@@ -247,36 +248,35 @@ export async function prepareGuardedRelease({ project, guarded, sha, show, appro
   const expected = parsePackageExpectations(await read(PACKAGE_EXPECTATIONS_PATH));
   const lockText = await read("apps/cms/composer.lock");
   const lock = JSON.parse(lockText);
-  const packages = [];
-  for (const name of guarded) {
+  const packages = guarded.map((name) => {
     const pkg = expected.packages.find((candidate) => candidate.name === name);
     if (!pkg) {
       throw new Error(
         `${PACKAGE_EXPECTATIONS_PATH} doesn't state ${name}, which gq.ops.json guards.`,
       );
     }
-    checkLockedIdentity(lock, pkg);
-    packages.push(pkg);
-  }
+    return pkg;
+  });
   const records = [];
   for (const pkg of packages) {
     const record = await lookUpApproval(approvals, deployRequest(project, sha, pkg), clock);
-    if (record.files_digest !== pkg.filesDigest) {
-      throw new Error(
-        `The approved ${pkg.name} ${pkg.version} files hash to ${record.files_digest}, not the ${pkg.filesDigest} ${PACKAGE_EXPECTATIONS_PATH} expects; nothing was uploaded or deployed.`,
-      );
-    }
+    checkLockedRecord(lock, record);
     records.push(record);
   }
-  const shipped = packages.map((pkg, index) => ({ ...pkg, files: records[index].files }));
+  const shipped = packages.map((pkg, index) => ({
+    ...pkg,
+    files: records[index].files,
+    filesDigest: records[index].files_digest,
+  }));
   return { expectations: renderServerExpectations(shipped, lockText), records };
 }
 
-// Looks every record up again, fresh, just before a release changes the Ploi
-// site: each must still be approved for deploy, unchanged. Throws otherwise.
+// Runs every deploy lookup again, fresh, immediately before a release changes
+// the Ploi site: each must succeed and match the record the release checked
+// in every field but observed_at. Throws otherwise.
 export async function revalidateGuardedRelease({ project, sha, records, approvals, clock }) {
   for (const before of records) {
-    const pkg = before.package;
+    const pkg = { ...before.package, releaseId: before.release_id };
     let now;
     try {
       now = await lookUpApproval(approvals, deployRequest(project, sha, pkg), clock);
@@ -286,30 +286,33 @@ export async function revalidateGuardedRelease({ project, sha, records, approval
         { cause: error },
       );
     }
-    for (const [key, was, is] of [
-      ["release_id", before.release_id, now.release_id],
-      ["files_digest", before.files_digest, now.files_digest],
-      ["package.zip_sha256", pkg.zip_sha256, now.package.zip_sha256],
-    ]) {
-      if (was !== is) {
-        throw new Error(
-          `${pkg.name} ${pkg.version}'s approval changed since this release checked it (${key} ${was} → ${is}); the Ploi site was not changed.`,
-        );
-      }
+    const changed = differingFields(before, now).filter((field) => field !== "observed_at");
+    if (changed.length > 0) {
+      throw new Error(
+        `${pkg.name} ${pkg.version}'s approval changed since this release checked it (${changed.join(", ")}); the Ploi site was not changed.`,
+      );
     }
   }
 }
 
-function deployRequest(project, releaseCommit, { name, version }) {
-  return { phase: "deploy", project, releaseCommit, package: { name, version } };
+function deployRequest(project, releaseCommit, { name, version, releaseId }) {
+  return { phase: "deploy", project, releaseId, releaseCommit, package: { name, version } };
+}
+
+// The dotted paths at which two parsed records differ.
+function differingFields(left, right, prefix = "") {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...keys].flatMap((key) => {
+    const [a, b] = [left[key], right[key]];
+    if (a && b && typeof a === "object" && typeof b === "object") {
+      return differingFields(a, b, `${prefix}${key}.`);
+    }
+    return a === b ? [] : [`${prefix}${key}`];
+  });
 }
 
 function lockedEntry(lock, name) {
   return (lock.packages ?? []).find((candidate) => candidate.name === name);
-}
-
-function lockReferences(entry) {
-  return [entry.dist?.reference, entry.source?.reference].filter(Boolean);
 }
 
 function normaliseVersion(version) {

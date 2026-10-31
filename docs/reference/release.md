@@ -87,14 +87,15 @@ version.
 
   Guarded preparation, with any of these options:
 
-  | Option                      | Effect                                                                                                                              |
-  | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-  | `--to <version>`            | Locks exactly `<version>`. `composer.json` stays as it is, so its requirement must already admit `<version>`; otherwise it refuses. |
-  | `--pin`                     | With `--to`: also sets the package's requirement to exactly `<version>`, the only change it makes to `composer.json`.               |
-  | `--expect-before <version>` | Refuses, before Composer runs, unless the lock holds `<version>` now.                                                               |
-  | `--reference <ref>`         | Refuses unless every reference the lock records for the package after the update is `<ref>`.                                        |
-  | `--no-deploy`               | Commits without deploying: nothing is uploaded and no provider is called.                                                           |
-  | `--composer-only`           | Deploys the commit Composer-only (see `gq ploi release --composer-only`).                                                           |
+  | Option                      | Effect                                                                                                                                                                      |
+  | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `--to <version>`            | Locks exactly `<version>`. `composer.json` stays as it is, so its requirement must already admit `<version>`; otherwise it refuses.                                         |
+  | `--pin`                     | With `--to`: also sets the package's requirement to exactly `<version>`, the only change it makes to `composer.json`.                                                       |
+  | `--expect-before <version>` | Refuses, before Composer runs, unless the lock holds `<version>` now.                                                                                                       |
+  | `--release-id <id>`         | For a guarded package (required there): the approved release whose record the approval lookup returns.                                                                      |
+  | `--reference <ref>`         | Refuses unless every reference the lock records for the package after the update is `<ref>`. Refused for a guarded package, whose reference comes from its approval record. |
+  | `--no-deploy`               | Commits without deploying: nothing is uploaded and no provider is called.                                                                                                   |
+  | `--composer-only`           | Deploys the commit Composer-only (see `gq ploi release --composer-only`).                                                                                                   |
 
   Guarded preparation runs `composer update <package> --no-interaction
 --no-install`, with `--with <package>:<version>` for `--to`: Composer's
@@ -108,12 +109,11 @@ version.
   (`composer.json` included, unless `--pin`). It commits only the files it
   may change. The host Composer must support `update --with` (Composer 2).
   A package in `gq.ops.json`
-  `deployment.guardedPackages` is only prepared with `--to`, and only from a
-  fresh `prepare` approval looked up before Composer runs; its expectation
-  in `deploy/ploi/package-expectations.json` is committed with the lock (see
-  [Package expectations](package-expectations.md)). `--no-deploy` is
-  allowed on a paused or reserved Site; deploying is not (see
-  [Deployment policy](deployment-policy.md)).
+  `deployment.guardedPackages` is only prepared with `--to` and
+  `--release-id`, from a fresh `prepare` approval record looked up before
+  Composer runs, and only from the commit the record's published tag points
+  to; its expectation in `deploy/ploi/package-expectations.json` is committed
+  with the lock (see [Package expectations](package-expectations.md)).
 
 `gq ploi release --composer-only` passes the deploy variable `composer_only`,
 which the deploy script reads as `COMPOSER_ONLY=true`: after replacing the

@@ -324,7 +324,7 @@ test("the generated Frontend deploy and CI release step refuse an offboarded Sit
   assert.equal(release.stdout, "", "it refuses before anything else");
 });
 
-test("the generated CI release step refuses a paused or reserved Site exactly as gq ploi release does", async () => {
+test("the generated CI release step and Frontend deploy refuse a paused or reserved Site exactly as gq ploi release does", async () => {
   const holds = [
     { protected: true, state: "paused", reason: "Controlled release in preparation" },
     {
@@ -350,6 +350,14 @@ test("the generated CI release step refuses a paused or reserved Site exactly as
     assert.equal(release.status, 1);
     assert.equal(release.stderr, `${deploymentRefusal(ops)}\n`);
     assert.equal(release.stdout, "", "it refuses before anything else");
+
+    const frontend = spawnSync(process.execPath, ["infra/scripts/deploy-frontend.mjs"], {
+      cwd: fixture.root,
+      encoding: "utf8",
+      env: { ...environment, PATH: "" },
+    });
+    assert.equal(frontend.status, 1);
+    assert.equal(frontend.stderr, `${deploymentRefusal(ops)}\n`);
   }
 });
 

@@ -10,24 +10,29 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 - **Protected Sites can hold their deploys.** A `gq.ops.json` `deployment`
   block (`protected: true` with `state` `paused`, `reserved` or `authorized`,
   and a `reason` and `holder` while holding) makes `gq ploi release`,
-  `gq release package` and the generated CI release step refuse a paused or
-  reserved Site before anything is uploaded, synced or deployed. No flag
-  lifts a hold; a reviewed Site change does. A Site without the block deploys
-  as before. See [Deployment policy](docs/reference/deployment-policy.md).
-  `gq sync` updates `scripts/ci-release.mjs`.
-- **Guarded Composer packages.** `deployment.guardedPackages` makes a
-  release check the release commit's `deploy/ploi/package-expectations.json`
-  (the Site's expectation: version, lock reference, install path and files
-  digest) against its `composer.lock`, look up a `phase: "deploy"` approval
-  record (`gq-support.composer-approval/v1`) through `run()`'s `approvals`
-  adapter, ship the approved file list, and look the record up again, fresh,
-  right before changing the Ploi site. The deploy script then verifies the
-  installed files (`gq-support.files/v1`) and the lock after
+  `gq release package`, the generated CI release step and the generated
+  Frontend deploy refuse a paused or reserved Site before anything is
+  uploaded, synced or deployed. No flag lifts a hold; a reviewed Site change
+  does. A Site without the block deploys as before. CI still reads the
+  tagged commit's policy, so a tag predating a hold isn't held yet. See
+  [Deployment policy](docs/reference/deployment-policy.md). `gq sync` updates
+  `scripts/ci-release.mjs` and `infra/scripts/deploy-frontend.mjs`.
+- **Guarded Composer packages.** `deployment.guardedPackages` (with
+  `deployment.approval`, the Site's approval slot and stage) makes
+  preparation and deploys of those packages look up gq-support's
+  `gq-support.composer-approval/v1` record: through `run()`'s `approvals`
+  adapter, or gq-support's read-only Operator CLI that the environment
+  configures (`GQ_SUPPORT_APPROVAL_COMMAND` and the service's IDs). A record
+  must match exactly; the lock must install its version from its published
+  tag's commit. A deploy looks the record up before uploading and again
+  immediately before changing the Ploi site, and the deploy script verifies
+  the installed files (`gq-support.files/v1`) and the lock after
   `composer install`, before PHP-FPM reloads or any WP-CLI or database step.
-  gq-site ships no adapter, so a Site guarding a package refuses to prepare or
-  deploy it until one is integrated. See
-  [Package expectations](docs/reference/package-expectations.md). `gq sync`
-  updates `deploy/ploi/admin.sh`; a Site guarding nothing deploys as before.
+  Without a configured lookup, guarded packages refuse. The install isn't
+  atomic: a refusal on the server leaves Composer's changed files in place.
+  See [Package expectations](docs/reference/package-expectations.md).
+  `gq sync` updates `deploy/ploi/admin.sh`; a Site guarding nothing deploys
+  as before.
 - **Guarded single-package preparation.** `gq release package` takes
   `--to <version>` (lock exactly that version through Composer's temporary
   `--with` constraint, keeping a requirement that already admits it, and
