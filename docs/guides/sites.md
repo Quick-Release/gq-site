@@ -12,6 +12,7 @@ gq new shop --project shop --variant commerce  # a commerce site: WooCommerce CM
 gq sync           # migrate gq.ops.json, regenerate managed files, update gq.lock.json
 gq sync --check   # report every pending change, exit 1, write nothing
 gq sync --recreate README.md   # write a create-once file again
+gq sync --recreate package.json   # add the starting keys an existing root package.json lacks
 ```
 
 `gq new` writes everything a content site needs to pass `pnpm verify`
@@ -300,7 +301,7 @@ A site shares four more kinds of file with the blueprint:
   `packageManager` and `engines.node` pins, the hook install (`prepare`),
   the root scripts that wrap `gq` (`verify`, `cms:*`, `ploi:*`,
   `release*` and the rest), and the ones that run the deploy wiring
-  (`deploy:frontend`, `deploy:frontend:raw`, `plan:frontend`,
+  (`deploy:frontend`, `deploy:frontend:raw`, `plan:frontend`, `plan:frontend:raw`,
   `infra:check`, `ci:check`, `test:scripts`, `media:check*` and
   `frontend:refresh`). On a Site on the content package pair, the pins in
   `apps/cms/composer.json` and `apps/frontend/package.json` are managed keys
@@ -322,7 +323,15 @@ A site shares four more kinds of file with the blueprint:
   files; `gq.ops.json` can't be recreated). A missing root `package.json`
   is created holding the site's own starting keys (Frontend scripts,
   `@getquick/site` pinned to the installed version, Sigillo, Vite+) before
-  the managed ones.
+  the managed ones. A root `package.json` the site already had never gets
+  them, so `gq sync --recreate package.json` adds each starting key it lacks
+  (a dependency counts as there in any dependency map) and changes no key it
+  has; the keys it adds are the site's, not managed. `gq sync` warns, and
+  `gq doctor` fails (only warns for a key `gq verify` doesn't run), when the
+  file lacks any, and when `pnpm-workspace.yaml` lists no workspace packages:
+  pnpm writes such a file when it installs before `gq sync` has created the
+  blueprint's, and `gq sync` keeps it, as it keeps any create-once file.
+  `gq sync --recreate pnpm-workspace.yaml` replaces it.
 - **App skeletons.** The CMS (`apps/cms`: Bedrock with the GETQUICK
   plugins, `getquick/gq-content` and `getquick-theme` from the registry, the
   content API mu-plugin, DDEV config, Pint and Pest, and its env templates)

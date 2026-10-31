@@ -3,6 +3,9 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
+// Deploys the Frontend; `pnpm plan:frontend` runs it with `--dry-run
+// --detailed`, so a plan has the same checks, account and bindings as the
+// deploy it previews. Arguments pass through to `alchemy deploy`.
 const alchemy = process.platform === "win32" ? "alchemy.cmd" : "alchemy";
 // Public deploy configuration lives in gq.ops.json; only the API token comes
 // from Sigillo/CI. Without PUBLIC_WORDPRESS_GRAPHQL_URL the frontend would

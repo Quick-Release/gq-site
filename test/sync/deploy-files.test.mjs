@@ -4,11 +4,11 @@
 // renders the content site's own files (test/fixtures/content-site).
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { chmod, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createFixtureSite, temporaryDirectory } from "../support/fixture-site.mjs";
+import { createFixtureSite, runGq, temporaryDirectory } from "../support/fixture-site.mjs";
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
 const DEPLOY_PATHS = [
@@ -340,4 +340,75 @@ test("preview config uses site.bind after Website initialization", async () => {
   );
   assert.doesNotMatch(frontend, /\.\.\.previewEnv/u);
   assert.doesNotMatch(frontend, /PUBLIC_GQ_PREVIEW/u);
+});
+
+// `pnpm plan:frontend` runs infra's plan:frontend: the deploy wrapper in
+// dry-run mode, so a plan reads the Cloudflare account from gq.ops.json as
+// the deploy does. An executable named alchemy records its arguments and
+// account; it never deploys.
+async function plan(root) {
+  const scripts = JSON.parse(await readSite(root, "package.json")).scripts;
+  assert.equal(
+    scripts["plan:frontend"],
+    "gq sigillo run staging -- pnpm --dir infra run plan:frontend",
+  );
+  assert.equal(scripts["plan:frontend:raw"], "pnpm --dir infra run plan:frontend");
+  const infra = JSON.parse(await readSite(root, "infra/package.json")).scripts;
+  assert.equal(infra["plan:frontend"], "node scripts/deploy-frontend.mjs --dry-run --detailed");
+  const alchemy = join(root, "alchemy");
+  await writeFile(
+    alchemy,
+    `#!${process.execPath}\nconsole.log(JSON.stringify({ args: process.argv.slice(2), account: process.env.CLOUDFLARE_ACCOUNT_ID }));\n`,
+  );
+  await chmod(alchemy, 0o755);
+  const environment = { ...process.env };
+  delete environment.NODE_TEST_CONTEXT;
+  delete environment.CLOUDFLARE_ACCOUNT_ID;
+  const [command, ...args] = infra["plan:frontend"].split(" ");
+  assert.equal(command, "node");
+  const result = spawnSync(process.execPath, args, {
+    cwd: join(root, "infra"),
+    encoding: "utf8",
+    env: { ...environment, PATH: root },
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  return JSON.parse(result.stdout.trim().split("\n").at(-1));
+}
+
+const PLAN_ARGS = [
+  "deploy",
+  "--stage",
+  "prod",
+  "--config",
+  "frontend.run.ts",
+  "--yes",
+  "--no-input",
+  "--dry-run",
+  "--detailed",
+];
+
+test("a content Site's plan:frontend plans through the deploy wrapper, with gq.ops.json's account", async () => {
+  const fixture = await createFixtureSite({ ops: ACME });
+  assert.equal((await fixture.run(["sync"])).code, 0);
+
+  assert.deepEqual(await plan(fixture.root), {
+    args: PLAN_ARGS,
+    account: ACME.cloudflare.accountId,
+  });
+});
+
+test("a commerce Site's plan:frontend plans through the deploy wrapper, with gq.ops.json's account", async () => {
+  const parent = await temporaryDirectory();
+  const created = await runGq(["new", "shop", "--project", "shop", "--variant", "commerce"], {
+    cwd: parent,
+  });
+  assert.equal(created.code, 0, created.stderr);
+  const root = join(parent, "shop");
+  const manifest = JSON.parse(await readSite(root, "gq.ops.json"));
+  await writeManifest(root, {
+    ...manifest,
+    cloudflare: { ...manifest.cloudflare, accountId: ACME.cloudflare.accountId },
+  });
+
+  assert.deepEqual(await plan(root), { args: PLAN_ARGS, account: ACME.cloudflare.accountId });
 });

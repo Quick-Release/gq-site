@@ -163,7 +163,7 @@ function reportProvisioning(io, { project, variant, directory }) {
   io.out("  # cloudflare, artifacts, ci, github), then regenerate the managed files.");
   if (variant === "commerce") {
     io.out("  # A commerce site also records its own cloudflare.rateLimitNamespaces, unused");
-    io.out("  # IDs from the account's register (see the commerce sites guide).");
+    io.out("  # IDs from the fleet's register (docs/reference/rate-limit-namespaces.md).");
   }
   io.out("  # Leave github out to keep the code in Cloudflare Artifacts only:");
   io.out("  pnpm exec gq sync");

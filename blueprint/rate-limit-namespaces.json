@@ -1,0 +1,31 @@
+{
+  "$comment": "The fleet's register of Cloudflare rate-limit namespace IDs. IDs are per Cloudflare account, and two Workers binding one share its counters, so each commerce Site takes its own and is listed here, by account, before it deploys with them. reserved IDs are for documentation and tests in any account: never deploy one. gq doctor warns when a Site's cloudflare.rateLimitNamespaces collide with another Site's or a reserved ID, or aren't registered. See docs/reference/rate-limit-namespaces.md.",
+  "schemaVersion": 1,
+  "reserved": [
+    {
+      "from": 1004,
+      "to": 1006,
+      "use": "documentation and tests (the commerce sites guide's example and the package suite)"
+    }
+  ],
+  "accounts": {
+    "8f38791a8c37b182239af2a385ab3c31": [
+      {
+        "project": "ekis",
+        "namespaces": {
+          "AUTH_IDENTIFIER_RATE_LIMITER": 1001,
+          "AUTH_IP_RATE_LIMITER": 1002,
+          "AUTH_PENALTY_RATE_LIMITER": 1003
+        }
+      },
+      {
+        "project": "bruaa",
+        "namespaces": {
+          "AUTH_IDENTIFIER_RATE_LIMITER": 1007,
+          "AUTH_IP_RATE_LIMITER": 1008,
+          "AUTH_PENALTY_RATE_LIMITER": 1009
+        }
+      }
+    ]
+  }
+}

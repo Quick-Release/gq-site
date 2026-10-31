@@ -10,7 +10,10 @@
 // keys are the keys of a site's JSON file that gq sets, each hashed apart.
 // A create-once file is written only when absent and never written again
 // (the lock records it as created once it exists, whoever wrote it), unless
-// gq sync --recreate asks for it. One of an app skeleton (its `app`, the
+// gq sync --recreate asks for it. A file gq manages keys of that starts from
+// an `initial` template (the root package.json) gets that template's keys
+// only when gq creates it; `gq sync --recreate <path>` adds each of them the
+// file lacks, and changes no key it has. One of an app skeleton (its `app`, the
 // app's directory) is written only with its app: while that directory is
 // missing, so an app the site already has never gains skeleton files. A
 // fully generated file with a `manifestKey` exists only while gq.ops.json
@@ -103,17 +106,25 @@ function templateValues(manifest) {
 // rendered `content` (for a symlink, its target as a line of text, so either
 // can be diffed), the `scope` gq manages when that is only part of an
 // existing file, and the lock to record (`lock.status` `unchanged`, `create`
-// or `update`). `recreate` lists the create-once files to write again.
+// or `update`). `recreate` lists the create-once files to write again, and
+// the files with initial keys to add the missing ones to.
 export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
   const applicable = ownership.createOnce.filter((entry) => appliesTo(entry, manifest));
   const recreatable = applicable.filter(({ template }) => template !== undefined);
+  const initialFiles = ownership.managedKeys
+    .filter((entry) => entry.initial !== undefined && appliesTo(entry, manifest))
+    .map(({ path }) => path);
   const apps = new Set(applicable.flatMap(({ app }) => app ?? []));
   for (const path of recreate) {
-    if (!recreatable.some((entry) => entry.path === path)) {
+    if (!recreatable.some((entry) => entry.path === path) && !initialFiles.includes(path)) {
       const rootFiles = recreatable.flatMap((entry) => (entry.app ? [] : [entry.path]));
       throw new Error(
         `gq sync can't recreate ${path}: --recreate takes a file the blueprint creates once ` +
-          `(${rootFiles.join(", ")}, or a file of the ${[...apps].join(" or ")} skeleton).`,
+          `(${rootFiles.join(", ")}, or a file of the ${[...apps].join(" or ")} skeleton)` +
+          initialFiles
+            .map((file) => `, or ${file}, to add the keys a new one starts with`)
+            .join("") +
+          ".",
       );
     }
   }
@@ -136,9 +147,11 @@ export async function planManagedFiles(root, manifest, { recreate = [] } = {}) {
       .map((plan) => [plan.path, plan]),
   );
   const keyed = await Promise.all(
-    ownership.managedKeys
-      .filter(applies)
-      .map((entry) => planKeys(root, lock, manifest, entry, writing.get(entry.path))),
+    ownership.managedKeys.filter(applies).map((entry) =>
+      planKeys(root, lock, manifest, entry, writing.get(entry.path), {
+        addInitial: recreate.includes(entry.path),
+      }),
+    ),
   );
   for (const keys of keyed) {
     const file = writing.get(keys.path);
@@ -215,7 +228,7 @@ export async function applyManagedFiles(root, plan) {
 // `contentRuntime` applies only to a Site whose gq.ops.json names that
 // runtime (ADR 0020), so a Site generated before keeps what it copied; one
 // marked with a `manifestKey` only while gq.ops.json has that key (`forms`).
-function appliesTo(entry, manifest) {
+export function appliesTo(entry, manifest) {
   return (
     (entry.variants === undefined || entry.variants.includes(manifest.variant)) &&
     (entry.framework === undefined || entry.framework === frontendFramework(manifest)) &&
@@ -319,8 +332,18 @@ async function planSection(root, lock, { path, template }) {
 // A missing file is created holding the managed keys after the site's own
 // that it starts with: the rendered `initial` template's.
 // `creating`, the plan of a create-once file at the same path, is what the
-// keys are set in instead: the file as gq is about to write it.
-async function planKeys(root, lock, manifest, { path, template, initial }, creating) {
+// keys are set in instead: the file as gq is about to write it. With
+// `addInitial` (gq sync --recreate), an existing file also gains each key of
+// the `initial` template it lacks (missingInitialLeaves), the site's own
+// from then on: the lock doesn't record them.
+async function planKeys(
+  root,
+  lock,
+  manifest,
+  { path, template, initial },
+  creating,
+  { addInitial = false } = {},
+) {
   const managed = leafKeys(JSON.parse(await readTemplate(template)));
   const record = {
     keys: { [path]: Object.fromEntries(managed.map(({ key, value }) => [key, hashValue(value)])) },
@@ -378,6 +401,16 @@ async function planKeys(root, lock, manifest, { path, template, initial }, creat
     else edited.push(key);
     edits.push({ start: node.start, end: node.end, text: JSON.stringify(value) });
   }
+  const initialAdded = [];
+  if (addInitial && initial !== undefined) {
+    const leaves = leafKeys(JSON.parse(await renderTemplate(initial, manifest)));
+    for (const { key, segments, value } of missingInitialLeaves(parsed, leaves, managed)) {
+      const found = locateKey(path, document, segments);
+      initialAdded.push(key);
+      const sorted = isDependencyMap(path, segments.slice(0, found.depth));
+      setNested(changesTo(found.parent, found.depth, sorted).added, found.rest, value);
+    }
+  }
   const retired = Object.keys(written).filter((key) => !(key in record.keys[path]));
   for (const key of retired) {
     let found;
@@ -402,17 +435,76 @@ async function planKeys(root, lock, manifest, { path, template, initial }, creat
 
   let status = "unchanged";
   if (edited.length > 0) status = "edited";
-  else if (changed.length > 0) status = "update";
+  else if (changed.length > 0 || initialAdded.length > 0) status = "update";
   const content = status === "unchanged" ? current.bytes : Buffer.from(applyEdits(text, edits));
+  const scope =
+    edited.length > 0
+      ? `managed keys ${edited.join(", ")}`
+      : [
+          ...(changed.length > 0 || initialAdded.length === 0
+            ? [`managed keys ${changed.join(", ")}`]
+            : []),
+          ...(initialAdded.length > 0 ? [`initial keys ${initialAdded.join(", ")}`] : []),
+        ].join("; ");
   return {
     path,
     status,
-    scope: `managed keys ${(edited.length > 0 ? edited : changed).join(", ")}`,
+    scope,
     current: current.bytes,
     content,
     write: { bytes: content },
     record,
   };
+}
+
+// The keys of the `initial` templates the Site's files lack, for each file
+// gq manages keys of that has one (the root package.json): `[{ path, keys }]`,
+// leaving out a file without any. A missing file has none: gq sync creates
+// it with all of them. `gq sync --recreate <path>` adds them.
+export async function missingInitialKeys(root, manifest) {
+  const missing = [];
+  for (const entry of ownership.managedKeys) {
+    const { path, template, initial } = entry;
+    if (initial === undefined || !appliesTo(entry, manifest)) continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(await readFile(join(root, path), "utf8"));
+    } catch {
+      continue;
+    }
+    if (!isPlainObject(parsed)) continue;
+    const managed = leafKeys(JSON.parse(await readTemplate(template)));
+    const leaves = leafKeys(JSON.parse(await renderTemplate(initial, manifest)));
+    const keys = missingInitialLeaves(parsed, leaves, managed).map(({ key }) => key);
+    if (keys.length > 0) missing.push({ path, keys });
+  }
+  return missing;
+}
+
+// The `leaves` of an initial template that `parsed`, a Site's file, lacks:
+// not the `managed` ones (gq sets those anyway), not one with a value in the
+// way that isn't an object, and not a dependency the file has in any
+// dependency map (`@getquick/site` under `dependencies` is there).
+function missingInitialLeaves(parsed, leaves, managed) {
+  const managedKeys = new Set(managed.map(({ key }) => key));
+  const dependencies = new Set(
+    [...DEPENDENCY_MAPS].flatMap((map) =>
+      isPlainObject(parsed[map]) ? Object.keys(parsed[map]) : [],
+    ),
+  );
+  return leaves.filter(({ key, segments }) => {
+    if (managedKeys.has(key)) return false;
+    if (segments.length === 2 && DEPENDENCY_MAPS.has(segments[0])) {
+      return !dependencies.has(segments[1]);
+    }
+    let value = parsed;
+    for (const name of segments) {
+      if (!isPlainObject(value)) return false;
+      if (!Object.hasOwn(value, name)) return true;
+      value = value[name];
+    }
+    return false;
+  });
 }
 
 // Each leaf of `object` (a value that isn't a non-empty object) with its

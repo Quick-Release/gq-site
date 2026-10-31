@@ -12,7 +12,13 @@
 // managed form route, a content runtime that reads form descriptors, and,
 // when it chose Turnstile, Turnstile's keys in Sigillo staging. A Site that
 // locks GQ Design's npm packages must lock its plugin at the same version
-// (ADR 0018).
+// (ADR 0018). A Site that adopted the blueprint over its own root files must
+// have what gq sync keeps of them complete (sync/adoption.mjs): a
+// pnpm-workspace.yaml with packages, and the initial package.json scripts
+// gq verify runs; the other initial keys it lacks only warn. A commerce
+// Site's rate-limit namespace IDs are checked against the fleet's register
+// (blueprint/rate-limit-namespaces.json): a collision or an unregistered ID
+// warns.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,6 +26,7 @@ import { join } from "node:path";
 import { CMS_PATH, commandExists, ddevStatus, phpToolchainAvailable } from "../cms/local.mjs";
 import { artifactsRemoteUrl, createArtifactsClient } from "../cloudflare/account-client.mjs";
 import { jurisdictionMismatchMessage } from "../cloudflare/ci.mjs";
+import { rateLimitNamespaceProblems } from "../cloudflare/rate-limit-register.mjs";
 import { SECRETS_ENVIRONMENT } from "../cloudflare/tokens.mjs";
 import {
   CONSENT_JURISDICTION,
@@ -41,6 +48,7 @@ import {
   siteSettings,
 } from "../manifest/site-settings.mjs";
 import { sigilloSecrets } from "../sigillo/commands.mjs";
+import { adoptionGaps } from "../sync/adoption.mjs";
 import { VERSION } from "../version.mjs";
 import { checkLocalEnvFiles } from "./env-files.mjs";
 import { FRONTEND_PATH } from "./layout.mjs";
@@ -97,6 +105,19 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
     if (present) ok("every file the site's apps require is present");
   }
 
+  io.out("\nRoot files:");
+  const gaps = await adoptionGaps(root, context.config);
+  const verifyScripts = new Set(
+    siteSettings(context.config)
+      .checks.filter(({ cmd, args, cwd }) => cmd === "pnpm" && args[0] === "run" && !cwd)
+      .map(({ args }) => `scripts.${args[1]}`),
+  );
+  for (const { keys, message, fix } of gaps) {
+    const blocking = keys === undefined || keys.some((key) => verifyScripts.has(key));
+    (blocking ? fail : warn)(`${message} — run: ${fix}`);
+  }
+  if (gaps.length === 0) ok("pnpm-workspace.yaml and package.json have what a new Site's have");
+
   io.out("\nDependencies:");
   if (existsSync(join(root, "node_modules"))) ok("workspace dependencies installed");
   else fail("node_modules is missing — run: pnpm run setup --no-ddev");
@@ -145,6 +166,13 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
     if (sigilloReady) {
       await checkLocalSecrets({ context, env, exec, requiredFiles, report });
     }
+  }
+
+  if (context.config.cloudflare?.rateLimitNamespaces) {
+    io.out("\nRate-limit namespaces:");
+    const problems = rateLimitNamespaceProblems(context.config);
+    for (const problem of problems) warn(problem);
+    if (problems.length === 0) ok("the Site's rate-limit namespaces are its own in the register");
   }
 
   if (context.config.artifacts && context.config.cloudflare?.accountId) {

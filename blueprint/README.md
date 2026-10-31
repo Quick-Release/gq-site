@@ -48,7 +48,13 @@ rendered with site values.
 
 `templates/package.initial.json` is separate: its rendered values seed a missing
 root `package.json` before managed keys are applied. Those initial values are
-site-owned thereafter; they are not reapplied to an existing package. Whole
+site-owned thereafter; they are not reapplied to an existing package, except
+that `gq sync --recreate package.json` adds the ones it lacks.
+
+[`rate-limit-namespaces.json`](rate-limit-namespaces.json) is the fleet's
+register of commerce Sites' rate-limit namespace IDs, by Cloudflare account,
+and the IDs reserved for documentation; `gq doctor` checks a Site's against
+it. See [Rate-limit namespaces](../docs/reference/rate-limit-namespaces.md). Whole
 app and infrastructure `package.json` sources retain their target-shaped names.
 
 ## Ownership categories

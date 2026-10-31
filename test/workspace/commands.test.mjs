@@ -38,8 +38,24 @@ const GITHUB_REMOTE = "git@github.com:example/fixture.git";
 
 const MANIFEST = {
   name: "fixture",
+  version: "0.0.0",
   private: true,
-  devDependencies: { "@getquick/site": VERSION },
+  type: "module",
+  scripts: {
+    dev: "pnpm frontend:dev",
+    "frontend:dev": "pnpm --filter @fixture/frontend dev",
+    build: "pnpm --filter @fixture/frontend build",
+    check: "pnpm --filter @fixture/frontend check",
+    lint: "pnpm --filter @fixture/frontend lint",
+    format: "pnpm --filter @fixture/frontend format",
+    test: "pnpm --filter @fixture/frontend test",
+  },
+  devDependencies: {
+    "@getquick/site": VERSION,
+    sigillo: "0.13.0",
+    vite: "catalog:",
+    "vite-plus": "catalog:",
+  },
   engines: { node: ">=22.12.0" },
   packageManager: "pnpm@12.6.0",
 };
@@ -271,6 +287,10 @@ test("gq doctor reports the toolchain pins, the gq version and a healthy site", 
   assert.match(result.stdout, /✓ Node\.js 24\.21\.0 \(matches the \.mise\.toml pin\)/u);
   assert.match(result.stdout, /✓ pnpm 12\.6\.0 \(matches the packageManager pin\)/u);
   assert.match(result.stdout, /✓ git git version 2\.50\.0/u);
+  assert.match(
+    result.stdout,
+    /✓ pnpm-workspace\.yaml and package\.json have what a new Site's have/u,
+  );
   assert.match(result.stdout, /✓ apps\/cms Composer dependencies installed/u);
   assert.match(result.stdout, /✓ origin pushes to GitHub only/u);
   assert.match(result.stdout, /✓ Sigillo project PROJECT1/u);
@@ -539,6 +559,78 @@ test("gq doctor detects secret names that collide with JavaScript object propert
   assert.equal(result.code, 1, result.stdout);
   assert.match(result.stdout, /apps\/frontend\/\.env sets __proto__/u);
   assert.doesNotMatch(result.stdout + result.stderr, /private-prototype-value/u);
+});
+
+test("gq doctor fails on a pnpm-written workspace file and a package.json without verify's scripts", async () => {
+  const { check, lint, ...scripts } = MANIFEST.scripts;
+  assert.ok(check && lint);
+  const fixture = await healthySite({
+    "pnpm-workspace.yaml": "allowBuilds:\n  esbuild: true\n",
+    "package.json": JSON.stringify({ ...MANIFEST, scripts }),
+  });
+  const result = await fixture.run(["doctor"], { exec: machine() });
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(
+    result.stdout,
+    /✗ pnpm-workspace\.yaml lists no workspace packages, .* — run: gq sync --recreate pnpm-workspace\.yaml$/mu,
+  );
+  assert.match(
+    result.stdout,
+    /✗ package\.json lacks keys a new Site's package\.json starts with: scripts\.check, scripts\.lint — run: gq sync --recreate package\.json \(adds them, and changes no key package\.json has\)$/mu,
+  );
+
+  // Initial keys gq verify doesn't run only warn.
+  const { format, ...withoutFormat } = MANIFEST.scripts;
+  assert.ok(format);
+  const drifted = await healthySite({
+    "pnpm-workspace.yaml": 'packages:\n  - "apps/*"\n',
+    "package.json": JSON.stringify({ ...MANIFEST, scripts: withoutFormat }),
+  });
+  const warned = await drifted.run(["doctor"], { exec: machine() });
+  assert.equal(warned.code, 0, warned.stdout);
+  assert.match(
+    warned.stdout,
+    /⚠ package\.json lacks keys a new Site's package\.json starts with: scripts\.format — run: /u,
+  );
+  assert.doesNotMatch(warned.stdout, /pnpm-workspace\.yaml lists/u);
+});
+
+test("gq doctor warns when a Site's rate-limit namespaces aren't its own in the register", async () => {
+  const account = "8f38791a8c37b182239af2a385ab3c31";
+  const shop = (project, namespaces) =>
+    healthySite(
+      {},
+      { ...OPS, project, cloudflare: { accountId: account, rateLimitNamespaces: namespaces } },
+    );
+
+  const own = await shop("bruaa", {
+    AUTH_IDENTIFIER_RATE_LIMITER: 1007,
+    AUTH_IP_RATE_LIMITER: 1008,
+  });
+  const clean = await own.run(["doctor"], { exec: machine() });
+  assert.match(clean.stdout, /✓ the Site's rate-limit namespaces are its own in the register/u);
+  assert.doesNotMatch(clean.stdout, /⚠ .*rate-limit/iu);
+
+  const taken = await shop("fixture", {
+    AUTH_IDENTIFIER_RATE_LIMITER: 1002,
+    AUTH_IP_RATE_LIMITER: 1005,
+  });
+  const warned = await taken.run(["doctor"], { exec: machine() });
+  assert.equal(warned.code, 0, warned.stdout);
+  assert.match(
+    warned.stdout,
+    /⚠ cloudflare\.rateLimitNamespaces\.AUTH_IDENTIFIER_RATE_LIMITER \(1002\) is ekis's in Cloudflare account 8f38791a8c37b182239af2a385ab3c31/u,
+  );
+  assert.match(
+    warned.stdout,
+    /⚠ cloudflare\.rateLimitNamespaces\.AUTH_IP_RATE_LIMITER \(1005\) is reserved/u,
+  );
+
+  const plain = await healthySite();
+  assert.doesNotMatch(
+    (await plain.run(["doctor"], { exec: machine() })).stdout,
+    /Rate-limit namespaces/u,
+  );
 });
 
 test("gq doctor fails when a file the site requires is missing", async () => {
