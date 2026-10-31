@@ -69,19 +69,42 @@ or holds, before anything else:
   `gq.ops.json`, the release commit's, and the **default branch's current
   one**, all read with a system git (`/usr/bin/git`, `/usr/local/bin/git`,
   `/opt/homebrew/bin/git` or Homebrew on Linux's), never one a Site's
-  `node_modules/.bin` or Sigillo values put first on `PATH`. It reads the last from `origin` (`git ls-remote --symref
-origin HEAD`, then `git fetch origin refs/heads/<branch>`, which changes
-  only `FETCH_HEAD` and objects, never the working tree or a branch). That
-  git runs with an environment gq builds: none of the caller's `GIT_*`
-  variables, no system or global git configuration (`/etc/gitconfig`,
-  `~/.gitconfig` and `~/.config/git/config` are ignored, so no
-  `url.insteadOf`, alias or credential helper from them applies), no
-  replacement objects, hooks or fsmonitor. The repository's own
-  `.git/config` still applies (gq pins its hooks and fsmonitor settings,
-  not the rest, such as its `remote.origin.url`). `origin` authenticates over SSH (your
-  `SSH_AUTH_SOCK`) or, in CI, with the Artifacts token in a header for those
-  reads only; an HTTPS `origin` that needs a credential helper from your git
-  configuration can't be read, so the release refuses. A
+  `node_modules/.bin` or Sigillo values put first on `PATH`, and an
+  environment gq builds: none of the caller's `GIT_*` variables, no system
+  or global git configuration (`/etc/gitconfig`, `~/.gitconfig` and
+  `~/.config/git/config` are ignored, so no `url.insteadOf`, alias or
+  credential helper from them applies), no replacement objects, hooks or
+  fsmonitor. Where the default branch comes from is the trust root, and it
+  differs:
+  - **In CI** (`ARTIFACTS_REMOTE` set, as the CI Worker's own configuration
+    sets it for the release step): only from that URL. The release
+    repository's origin must name exactly it (its raw `remote.origin.url`,
+    includes not followed), or the release refuses before any request. The
+    read itself (`git ls-remote --symref <ARTIFACTS_REMOTE> HEAD`, then a
+    fetch of `refs/heads/<branch>`) runs in a temporary bare repository gq
+    creates and removes, with only gq's settings: none of the release
+    repository's config (its origin, `url.insteadOf`, includes, credential
+    settings) applies, redirects aren't followed, only the remote's own
+    protocol is allowed, and `ARTIFACTS_TOKEN` reaches git as
+    `http.<ARTIFACTS_REMOTE>.extraHeader` in the environment of those two
+    calls alone. So a step before the release (the tag's install) that
+    rewrites the release repository's config or a runner's global config can
+    neither redirect the read to a forged, authorized policy nor receive the
+    token. `ARTIFACTS_TOKEN` without `ARTIFACTS_REMOTE`, or an
+    `ARTIFACTS_REMOTE` that isn't an https URL (plain http only to
+    127.0.0.1, for tests), refuses.
+  - **On an operator's machine** (neither set): from the checkout's own
+    `origin`, as its `.git/config` says (`git ls-remote --symref origin
+HEAD`, then `git fetch origin refs/heads/<branch>`, which changes only
+    `FETCH_HEAD` and objects). The operator's checkout is the trust root
+    there; its repository config applies (gq pins only its hooks and
+    fsmonitor settings). `origin` authenticates over SSH (your
+    `SSH_AUTH_SOCK`); an HTTPS `origin` that needs a credential helper from
+    your global git configuration can't be read, so the release refuses.
+
+  The CI Worker's own admission reads both policies the same way (no system
+  or global config, the token scoped to `ARTIFACTS_REMOTE`, no redirects),
+  in a scratch repository of its own. A
   release commit or default branch whose `gq.ops.json` is missing, invalid or
   unreadable refuses, **for every Site**, protected or not: an old
   unprotected commit can't release a Site whose current branch protects it.
@@ -92,6 +115,7 @@ origin HEAD`, then `git fetch origin refs/heads/<branch>`, which changes
   commit). An online Site with a valid manifest and no `deployment` block
   releases as before. Guarded packages named by any of
   them are guarded.
+
 - **The CI Worker** (`infra/ci/cloudflare.ci.ts`, deployed by `gq ci
 deploy`): a tag carries its own `scripts/ci-release.mjs`, gq, package
   scripts and checks, which may predate the hold. So for a `v*` tag the

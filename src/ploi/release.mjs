@@ -18,10 +18,7 @@ import { join, relative, resolve } from "node:path";
 
 import { createR2Client } from "../r2.mjs";
 import { createReporter } from "../cli/reporter.mjs";
-import {
-  assertDeploymentAllowed,
-  releasePolicy,
-} from "./deployment-policy.mjs";
+import { assertDeploymentAllowed, releasePolicy } from "./deployment-policy.mjs";
 import { validateManifest } from "../manifest/manifest.mjs";
 import { policyGit } from "./trusted-git.mjs";
 import {
@@ -45,11 +42,7 @@ export const shippedPaths = Object.freeze(["apps/cms", "deploy/ploi"]);
 // deploy variable composer_only → $COMPOSER_ONLY=true, which makes the deploy
 // script stop after Composer (and its verifications), before any WP-CLI,
 // activation or database step. `env` names where a missing login comes from.
-export function deployVariables(
-  archiveUrl,
-  composerAuth,
-  { composerOnly = false, env = {} } = {},
-) {
+export function deployVariables(archiveUrl, composerAuth, { composerOnly = false, env = {} } = {}) {
   if (!composerAuth) {
     throw new Error(
       `${missingRegistryCredential("COMPOSER_AUTH", env)} In CI the Worker has it from gq ci deploy.`,

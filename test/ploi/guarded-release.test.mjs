@@ -25,6 +25,7 @@ import {
   SUPPORT_DIGEST,
   SUPPORT_FILES,
   TRUSTED_GIT,
+  ARTIFACTS_REMOTE,
 } from "../support/ploi-release.mjs";
 
 test("ploi release refuses a paused or reserved Site before any provider call", async () => {
@@ -502,7 +503,7 @@ test("a guarded release whose approval is withdrawn or changed before the deploy
 
 // --- guarded package preparation (release package --to / --no-deploy) --------
 
-test("ploi release reads the policies with the system git and its own environment, the Artifacts token only on its two origin reads", async () => {
+test("ploi release reads the policies with the system git and its own environment; in CI the default branch from ARTIFACTS_REMOTE, the token only on those two network reads, scoped to it", async () => {
   const fixture = await site();
   const { fetch } = fakeProviders();
   const exec = fakeGit();
@@ -522,17 +523,25 @@ test("ploi release reads the policies with the system git and its own environmen
   };
 
   const result = await fixture.run(["ploi", "release"], {
-    env: { ...RELEASE_ENV, ...injected, ARTIFACTS_TOKEN: "artifacts-secret" },
+    env: {
+      ...RELEASE_ENV,
+      ...injected,
+      ARTIFACTS_TOKEN: "artifacts-secret",
+      ARTIFACTS_REMOTE,
+    },
     fetch,
     exec,
   });
 
   assert.equal(result.code, 0, result.stderr);
-  const policyReads = exec.calls.filter(
-    ({ args }) =>
+  const policyArgs = ({ args }) => (args[0] === "--git-dir" ? args.slice(2) : args);
+  const policyReads = exec.calls.filter((call) => {
+    const args = policyArgs(call);
+    return (
       ["ls-remote", "fetch"].includes(args[0]) ||
-      (args[0] === "show" && /:gq\.ops\.json$/u.test(args[1])),
-  );
+      (args[0] === "show" && /:gq\.ops\.json$/u.test(args[1]))
+    );
+  });
   assert.equal(policyReads.length, 4);
   for (const { command, env } of policyReads) {
     assert.equal(command, TRUSTED_GIT);
@@ -542,12 +551,28 @@ test("ploi release reads the policies with the system git and its own environmen
     assert.doesNotMatch(JSON.stringify(env), /elsewhere|node_modules/u);
     assert.equal(env.GIT_NO_REPLACE_OBJECTS, "1");
   }
-  // The token: only in the environment of ls-remote and fetch, never argv.
+  // The default branch: from ARTIFACTS_REMOTE itself, in gq's repository.
+  const network = exec.calls.filter((call) => ["ls-remote", "fetch"].includes(policyArgs(call)[0]));
+  for (const call of network) {
+    assert.equal(call.args[0], "--git-dir");
+    assert.ok(call.args.includes(ARTIFACTS_REMOTE));
+    assert.ok(!call.args.includes("origin"));
+  }
+  // The token: only in the environment of ls-remote and fetch, as a header
+  // scoped to ARTIFACTS_REMOTE, never argv.
+  const carrying = exec.calls.filter(({ env }) =>
+    JSON.stringify(env ?? {}).includes("artifacts-secret"),
+  );
   assert.deepEqual(
-    exec.calls
-      .filter(({ env }) => JSON.stringify(env ?? {}).includes("artifacts-secret"))
-      .map(({ args }) => args[0]),
+    carrying.map((call) => policyArgs(call)[0]),
     ["ls-remote", "fetch"],
   );
+  for (const { env } of carrying) {
+    const keys = Object.entries(env).filter(([name]) => name.startsWith("GIT_CONFIG_KEY_"));
+    assert.ok(keys.some(([, key]) => key === `http.${ARTIFACTS_REMOTE}.extraHeader`));
+    assert.ok(!keys.some(([, key]) => key === "http.extraHeader"));
+    assert.equal(env.GIT_CONFIG_GLOBAL, "/dev/null");
+    assert.equal(env.GIT_CONFIG_NOSYSTEM, "1");
+  }
   for (const { args } of exec.calls) assert.ok(!args.join(" ").includes("artifacts-secret"));
 });

@@ -85,7 +85,8 @@ export async function readDefaultBranchManifest(git, manifestPath, local = git, 
   } catch (error) {
     throw refuse(error.message, error);
   }
-  if (!branch) throw refuse(`${source === "origin" ? "origin" : "the remote"} names no default branch`);
+  if (!branch)
+    throw refuse(`${source === "origin" ? "origin" : "the remote"} names no default branch`);
   let text;
   try {
     await git(["fetch", "--quiet", "--no-tags", source, `refs/heads/${branch}`]);

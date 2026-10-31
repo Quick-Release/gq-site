@@ -7,7 +7,10 @@ import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { join } from "node:path";
 
-const HTTP_BACKEND = join(execFileSync("git", ["--exec-path"], { encoding: "utf8" }).trim(), "git-http-backend");
+const HTTP_BACKEND = join(
+  execFileSync("git", ["--exec-path"], { encoding: "utf8" }).trim(),
+  "git-http-backend",
+);
 
 export async function gitHttpServer(root, { redirectTo } = {}) {
   const requests = [];

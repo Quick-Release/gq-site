@@ -10,6 +10,9 @@ import { trustedGit } from "../../src/ploi/trusted-git.mjs";
 import { createFixtureSite, recordingExec, recordingFetch } from "./fixture-site.mjs";
 
 export const SHA = "0123456789abcdef0123456789abcdef01234567";
+// The CI Worker's authoritative Artifacts remote (a stand-in URL).
+export const ARTIFACTS_REMOTE =
+  "https://account-1.artifacts.cloudflare.net/git/fixture-ns/fixture.git";
 export const DEPLOY_SCRIPT = "#!/usr/bin/env bash\necho deploy v1.4.0\n";
 export const SERVER_IP = "203.0.113.7";
 
@@ -157,12 +160,19 @@ export function fakeGit({
   manifest = OPS,
   current = manifest,
 } = {}) {
-  return recordingExec(async ({ command, args }) => {
+  return recordingExec(async ({ command, args: all }) => {
     assert.ok(isGit(command), command);
+    // A CI policy read runs in gq's own repository (--git-dir) against
+    // ARTIFACTS_REMOTE, which the workspace's origin names.
+    const args = all[0] === "--git-dir" ? all.slice(2) : all;
+    if (args.join(" ") === "config --local --no-includes --get remote.origin.url") {
+      return { stdout: `${ARTIFACTS_REMOTE}\n` };
+    }
+    if (args[0] === "init" && args.includes("--bare")) return {};
     if (args[0] === "ls-remote") {
       return { stdout: `ref: refs/heads/main\tHEAD\n${"9".repeat(40)}\tHEAD\n` };
     }
-    if (args.join(" ") === "fetch --quiet --no-tags origin refs/heads/main") return {};
+    if (/^fetch --quiet --no-tags \S+ refs\/heads\/main$/u.test(args.join(" "))) return {};
     if (args.join(" ") === "show FETCH_HEAD:gq.ops.json") {
       return current === null
         ? { code: 128, stderr: "fatal: path 'gq.ops.json' does not exist in 'FETCH_HEAD'" }

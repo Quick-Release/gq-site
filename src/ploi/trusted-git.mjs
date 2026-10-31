@@ -95,7 +95,8 @@ export function policyGitEnvironment(
 export function authoritativeScheme(remote) {
   if (typeof remote !== "string") return null;
   if (/^https:\/\/[A-Za-z0-9.-]+(:[0-9]+)?(\/[A-Za-z0-9._~%/-]*)?$/u.test(remote)) return "https";
-  if (/^http:\/\/(127\.0\.0\.1|localhost)(:[0-9]+)?(\/[A-Za-z0-9._~%/-]*)?$/u.test(remote)) return "http";
+  if (/^http:\/\/(127\.0\.0\.1|localhost)(:[0-9]+)?(\/[A-Za-z0-9._~%/-]*)?$/u.test(remote))
+    return "http";
   return null;
 }
 
@@ -114,9 +115,11 @@ const nothing = "Nothing was uploaded, synced or deployed.";
 //     configuration: no repository, global or system config (so no origin,
 //     url.insteadOf, include or credential setting of the workspace can
 //     redirect it), redirects off, only the remote's own protocol allowed,
-//     and `token` (ARTIFACTS_TOKEN) as an Authorization header scoped to
-//     exactly that URL, in the environment, never argv. A token without a
-//     remote refuses.
+//     and `token` (ARTIFACTS_TOKEN) as http.<that exact URL>.extraHeader,
+//     which git adds to its HTTP requests to that URL only. The setting
+//     reaches git through GIT_CONFIG_COUNT/KEY/VALUE in the environment of
+//     the ls-remote and fetch alone, never argv. A token without a remote
+//     refuses.
 //   - on an operator's machine (no remote, no token), the repository's own
 //     origin, as its repository config says: the operator's checkout is
 //     the trust root there (global and system config still off).
@@ -142,7 +145,8 @@ export function policyGit({ exec, cwd, env, token, remote, homedir, username }) 
     }
     return {
       local,
-      defaultBranchManifest: (manifestPath) => readDefaultBranchManifest(local, manifestPath, local),
+      defaultBranchManifest: (manifestPath) =>
+        readDefaultBranchManifest(local, manifestPath, local),
     };
   }
   const scheme = authoritativeScheme(remote);
@@ -169,15 +173,11 @@ export function policyGit({ exec, cwd, env, token, remote, homedir, username }) 
       }
       const directory = mkdtempSync(join(tmpdir(), "gq-policy-"));
       try {
-        const config = [
-          ...POLICY_CONFIG,
-          ["http.followRedirects", "false"],
-          ["protocol.allow", "never"],
-          [`protocol.${scheme}.allow`, "always"],
-          ...(token ? [[`http.${remote}.extraHeader`, `Authorization: Bearer ${token}`]] : []),
-        ];
-        const runEnv = {
-          ...isolatedGitEnvironment({ homedir: homedir ?? userInfo().homedir, path: `${dirname(git)}:/usr/bin:/bin` }),
+        const environment = (config) => ({
+          ...isolatedGitEnvironment({
+            homedir: homedir ?? userInfo().homedir,
+            path: `${dirname(git)}:/usr/bin:/bin`,
+          }),
           USER: username ?? userInfo().username,
           LOGNAME: username ?? userInfo().username,
           GIT_CONFIG_COUNT: String(config.length),
@@ -187,10 +187,25 @@ export function policyGit({ exec, cwd, env, token, remote, homedir, username }) 
               [`GIT_CONFIG_VALUE_${index}`, value],
             ]),
           ),
-        };
-        await runner(runEnv, [], directory)(["init", "--bare", "--quiet", directory]);
-        const read = runner(runEnv, ["--git-dir", directory], directory);
-        return await readDefaultBranchManifest(read, manifestPath, read, remote);
+        });
+        const offline = [...POLICY_CONFIG, ["protocol.allow", "never"]];
+        const network = [
+          ...POLICY_CONFIG,
+          ["http.followRedirects", "false"],
+          ["protocol.allow", "never"],
+          [`protocol.${scheme}.allow`, "always"],
+          ...(token ? [[`http.${remote}.extraHeader`, `Authorization: Bearer ${token}`]] : []),
+        ];
+        const prefix = ["--git-dir", directory];
+        await runner(environment(offline), [], directory)(["init", "--bare", "--quiet", directory]);
+        // The token only reaches ls-remote and fetch; the fetched commit is
+        // read offline.
+        return await readDefaultBranchManifest(
+          runner(environment(network), prefix, directory),
+          manifestPath,
+          runner(environment(offline), prefix, directory),
+          remote,
+        );
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }

@@ -359,15 +359,17 @@ PHP print a warning while it starts the request, before the prepended gate
 runs: with `display_errors` and `display_startup_errors` on (PHP 8's
 built-in default for the latter; a production `php.ini` turns it off, and a
 `.user.ini` can turn both on), a `memory_limit` below what's already in use
-(`64K`, `1K`), an invalid one (`abc`) or `zend.assertions` set per
-directory each do on PHP-FPM 8.3 (checked). The gate still runs first among
+does on PHP-FPM 8.3: the real-stack smoke checks `64K` (authoritative, in
+CI); `1K`, an invalid one (`abc`) and `zend.assertions` set per directory
+did the same in a one-off hand probe, not repeated by the smoke. The gate still runs first among
 PHP code and ends the request, so the package's script doesn't run, but the
 headers have already gone: the client gets **200** with the warning, without
 the gate's 503, `Retry-After` or `no-store`, so a cache in front could keep
 it. The gate can't change headers already sent, and gq sets no PHP setting
 to prevent it. A pool that pins `php_admin_flag[display_errors] = off`
-answers those requests 503 with `no-store` (checked on PHP-FPM 8.3, with
-the nested file turning both settings on); that
+answers those requests 503 with `no-store` (the smoke checks it for `64K`
+on PHP-FPM 8.3, the nested file turning both settings on; the hand probe saw
+the same for the other variants); that
 is part of the hosting review (P5), not something gq checks or provisions.
 Other PHP versions (8.5 among them) may print such warnings in more cases.
 

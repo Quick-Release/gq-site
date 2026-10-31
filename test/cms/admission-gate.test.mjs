@@ -116,7 +116,16 @@ test(
       assert.deepEqual([held.status, held.gate], [503, NONCE]);
       assert.ok(!held.body.includes("APP RAN"));
 
-      for (const content of ["open", "opened\n", "open\nopen\n", "OPEN\n", "held xyz\n", `held ${NONCE}\n\n`, `held ${NONCE}`, ""]) {
+      for (const content of [
+        "open",
+        "opened\n",
+        "open\nopen\n",
+        "OPEN\n",
+        "held xyz\n",
+        `held ${NONCE}\n\n`,
+        `held ${NONCE}`,
+        "",
+      ]) {
         await writeFile(site.state, content);
         const result = await at();
         assert.deepEqual([result.status, result.gate], [503, "invalid"], JSON.stringify(content));

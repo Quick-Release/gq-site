@@ -57,6 +57,19 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   `deploy/ploi/admission.sh`; a guarded Site must `gq sync` and release again,
   and a guarded deploy of a release without `admission.sh` refuses before
   changing anything. A Site guarding nothing deploys as before.
+- **In CI, the default branch's policy comes only from `ARTIFACTS_REMOTE`.**
+  `gq ploi release` (and `gq release package`) reads it in a temporary bare
+  repository gq creates, from that exact URL, with no repository, global or
+  system git config, no redirects and only that remote's protocol; the
+  release repository's origin must name the same URL, and `ARTIFACTS_TOKEN`
+  goes only to that URL, only on the two network calls. A tag's install
+  rewriting the workspace's or the runner's git config can no longer
+  redirect the read to a forged policy or receive the token. The CI Worker's
+  admission and `scripts/ci-release.mjs`'s source fetch drop global and
+  system config, scope the token and refuse redirects too. A token without
+  `ARTIFACTS_REMOTE` refuses. On an operator's machine the checkout's own
+  origin stays the source. See
+  [Deployment policy](docs/reference/deployment-policy.md).
 - **Guarded single-package preparation.** `gq release package` takes
   `--to <version>` (lock exactly that version through Composer's temporary
   `--with` constraint, keeping a requirement that already admits it, and

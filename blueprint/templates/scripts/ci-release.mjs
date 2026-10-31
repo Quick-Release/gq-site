@@ -8,7 +8,7 @@
 //   node scripts/ci-release.mjs --ref <sha>
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import process from "node:process";
 
 const required = [
@@ -60,22 +60,35 @@ export function fetchSource(ref, environment, directory = "/tmp/release-source")
   if (!remote || !token) {
     throw new Error("No git repository here and no ARTIFACTS_REMOTE/ARTIFACTS_TOKEN to fetch one.");
   }
+  // A fresh directory: one that exists already (a step before this one
+  // could have made it) would bring its own repository config.
+  if (existsSync(directory)) {
+    throw new Error(
+      `${directory} already exists: the release source is fetched into a fresh directory.`,
+    );
+  }
+  // Git with no system or global config (a runner's ~/.gitconfig can't
+  // redirect the fetch); the token only on the fetch, as a header scoped to
+  // exactly ARTIFACTS_REMOTE, no redirect followed, in the environment, never
+  // argv or a URL.
+  const isolated = { ...environment, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" };
   const steps = [
-    ["init", "-q", directory],
-    ["-C", directory, "remote", "add", "origin", remote],
-    // The token goes in a header via env (GIT_CONFIG_*), never argv or a URL.
-    ["-C", directory, "fetch", "-q", "--depth=1", "origin", ref],
-  ];
-  for (const args of steps) {
-    const result = spawnSync("git", args, {
-      stdio: ["ignore", "inherit", "inherit"],
-      env: {
-        ...environment,
-        GIT_CONFIG_COUNT: "1",
-        GIT_CONFIG_KEY_0: "http.extraHeader",
+    [["init", "-q", directory], isolated],
+    [["-C", directory, "remote", "add", "origin", remote], isolated],
+    [
+      ["-C", directory, "fetch", "-q", "--depth=1", "origin", ref],
+      {
+        ...isolated,
+        GIT_CONFIG_COUNT: "2",
+        GIT_CONFIG_KEY_0: `http.${remote}.extraHeader`,
         GIT_CONFIG_VALUE_0: `Authorization: Bearer ${token}`,
+        GIT_CONFIG_KEY_1: "http.followRedirects",
+        GIT_CONFIG_VALUE_1: "false",
       },
-    });
+    ],
+  ];
+  for (const [args, env] of steps) {
+    const result = spawnSync("git", args, { stdio: ["ignore", "inherit", "inherit"], env });
     if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed`);
   }
   return directory;
@@ -137,9 +150,9 @@ function main(arguments_) {
   const gitDir = isGitRepository(process.cwd()) ? process.cwd() : fetchSource(ref, process.env);
   console.log(`release source: ${gitDir}`);
 
-  // gq ploi release reads the default branch's current policy from origin
-  // (Artifacts here) with ARTIFACTS_TOKEN, which it puts in a header for
-  // those git calls only, never argv or a global setting.
+  // gq ploi release reads the default branch's current policy only from
+  // ARTIFACTS_REMOTE (which the release source's origin must name), in a
+  // repository of its own, ARTIFACTS_TOKEN in a header scoped to that URL.
   const admin = run("admin", "pnpm", [
     "exec",
     "gq",

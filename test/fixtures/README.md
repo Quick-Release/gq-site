@@ -321,7 +321,13 @@ tag's install, verify and release), and
 `scripts/ci-release.mjs` runs the Frontend deploy without the Artifacts
 credentials; `sync/deploy-files.test.mjs` executes the steps with git, bash
 and node against a tagged workspace of marker scripts. Written by hand and reviewed against the
-templates, not regenerated.
+templates, not regenerated. The policy-authenticity change updates the same
+three baselines alongside their templates: the admission's git runs without
+system or global config, its token in a header scoped to exactly
+`ARTIFACTS_REMOTE` with redirects off and only that remote's protocol;
+`scripts/ci-release.mjs` fetches the release source into a fresh directory
+the same way; and the policy refusals name the deployment hold. Also written
+by hand.
 
 `pnpm plan:frontend` running the deploy wrapper (the Bruaa rollout) updates
 the content site's `infra/package.json` and `infra/scripts/deploy-frontend.mjs`

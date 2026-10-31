@@ -191,13 +191,30 @@ async function bareRepository(root, name, ops) {
   execFileSync("git", ["-C", work, "add", "-A"], { env: GIT_ENV });
   execFileSync(
     "git",
-    ["-C", work, "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "--quiet", "-m", name],
+    [
+      "-C",
+      work,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.test",
+      "commit",
+      "--quiet",
+      "-m",
+      name,
+    ],
     { env: GIT_ENV },
   );
-  execFileSync("git", ["init", "--quiet", "--bare", "--initial-branch=main", join(root, `${name}.git`)], {
+  execFileSync(
+    "git",
+    ["init", "--quiet", "--bare", "--initial-branch=main", join(root, `${name}.git`)],
+    {
+      env: GIT_ENV,
+    },
+  );
+  execFileSync("git", ["-C", work, "push", "--quiet", join(root, `${name}.git`), "main"], {
     env: GIT_ENV,
   });
-  execFileSync("git", ["-C", work, "push", "--quiet", join(root, `${name}.git`), "main"], { env: GIT_ENV });
 }
 
 // The authoritative endpoint (default branch `authoritative`), an impostor
@@ -233,7 +250,8 @@ async function ciSetup({ authoritative = PAUSED_OPS, impostor = AUTHORIZED_OPS, 
   };
 }
 
-const repository = (lines) => ["[core]", "\trepositoryformatversion = 0", "\tbare = false", ...lines, ""].join("\n");
+const repository = (lines) =>
+  ["[core]", "\trepositoryformatversion = 0", "\tbare = false", ...lines, ""].join("\n");
 
 test("in CI, a workspace whose config redirects origin (repository insteadOf, an include, pushurl) neither gets the token nor supplies the policy: the authoritative remote's held policy holds", async () => {
   const setup = await ciSetup({
@@ -248,7 +266,9 @@ test("in CI, a workspace whose config redirects origin (repository insteadOf, an
         `[include]`,
         `\tpath = ${join(workspace, ".git/redirect")}`,
       ]),
-      files: { ".git/redirect": `[url "${forged}"]\n\tinsteadOf = ${remote}\n[http]\n\textraHeader = X-Forged: 1\n` },
+      files: {
+        ".git/redirect": `[url "${forged}"]\n\tinsteadOf = ${remote}\n[http]\n\textraHeader = X-Forged: 1\n`,
+      },
     }),
   });
   try {
@@ -297,7 +317,10 @@ test("in CI, a workspace whose origin isn't ARTIFACTS_REMOTE refuses before any 
         homedir: setup.home,
         username: "t",
       });
-      await assert.rejects(policy.defaultBranchManifest("gq.ops.json"), /isn't ARTIFACTS_REMOTE: in CI the deployment policy is read only from the remote the CI Worker names/u);
+      await assert.rejects(
+        policy.defaultBranchManifest("gq.ops.json"),
+        /isn't ARTIFACTS_REMOTE: in CI the deployment policy is read only from the remote the CI Worker names/u,
+      );
       assert.deepEqual(setup.real.requests, []);
       assert.deepEqual(setup.fake.requests, []);
     } finally {
@@ -314,7 +337,10 @@ test("in CI, the authoritative remote's authorized policy is read, the token on 
   });
   try {
     // A global config redirecting the authoritative URL: ignored.
-    await writeFile(join(setup.home, ".gitconfig"), `[url "${setup.forged}"]\n\tinsteadOf = ${setup.remote}\n`);
+    await writeFile(
+      join(setup.home, ".gitconfig"),
+      `[url "${setup.forged}"]\n\tinsteadOf = ${setup.remote}\n`,
+    );
     const policy = policyGit({
       exec,
       cwd: setup.workspace,
@@ -342,7 +368,15 @@ test("in CI, the authoritative remote's authorized policy is read, the token on 
   execFileSync("git", ["init", "--quiet", workspace], { env: GIT_ENV });
   execFileSync("git", ["-C", workspace, "remote", "add", "origin", remote], { env: GIT_ENV });
   try {
-    const policy = policyGit({ exec, cwd: workspace, env: {}, token: TOKEN, remote, homedir: await temporaryDirectory(), username: "t" });
+    const policy = policyGit({
+      exec,
+      cwd: workspace,
+      env: {},
+      token: TOKEN,
+      remote,
+      homedir: await temporaryDirectory(),
+      username: "t",
+    });
     await assert.rejects(policy.defaultBranchManifest("gq.ops.json"), /can't be read/u);
     assert.deepEqual(target.requests, [], "the redirect wasn't followed");
   } finally {
@@ -358,15 +392,36 @@ test("a token without ARTIFACTS_REMOTE, or a remote gq won't read policy from, r
     () => policyGit({ exec, cwd: workspace, env: {}, token: TOKEN }),
     /ARTIFACTS_TOKEN is set without ARTIFACTS_REMOTE/u,
   );
-  for (const remote of ["http://example.test/site.git", "https://user:pass@example.test/x.git", "file:///tmp/x.git", "https://example.test/x.git?y", "/tmp/x.git"]) {
-    assert.throws(() => policyGit({ exec, cwd: workspace, env: {}, token: TOKEN, remote }), /ARTIFACTS_REMOTE isn't an https URL/u, remote);
+  for (const remote of [
+    "http://example.test/site.git",
+    "https://user:pass@example.test/x.git",
+    "file:///tmp/x.git",
+    "https://example.test/x.git?y",
+    "/tmp/x.git",
+  ]) {
+    assert.throws(
+      () => policyGit({ exec, cwd: workspace, env: {}, token: TOKEN, remote }),
+      /ARTIFACTS_REMOTE isn't an https URL/u,
+      remote,
+    );
   }
-  assert.equal(authoritativeScheme("https://acct.artifacts.cloudflare.net/git/site/acme.git"), "https");
+  assert.equal(
+    authoritativeScheme("https://acct.artifacts.cloudflare.net/git/site/acme.git"),
+    "https",
+  );
 
   // No token, no remote: origin, from the operator's own checkout.
   const root = await temporaryDirectory();
   await bareRepository(root, "site", PAUSED_OPS);
-  execFileSync("git", ["-C", workspace, "remote", "add", "origin", join(root, "site.git")], { env: GIT_ENV });
-  const policy = policyGit({ exec, cwd: workspace, env: {}, homedir: await temporaryDirectory(), username: "t" });
+  execFileSync("git", ["-C", workspace, "remote", "add", "origin", join(root, "site.git")], {
+    env: GIT_ENV,
+  });
+  const policy = policyGit({
+    exec,
+    cwd: workspace,
+    env: {},
+    homedir: await temporaryDirectory(),
+    username: "t",
+  });
   assert.deepEqual(await policy.defaultBranchManifest("gq.ops.json"), PAUSED_OPS);
 });

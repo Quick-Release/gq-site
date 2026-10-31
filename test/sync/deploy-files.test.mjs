@@ -437,7 +437,16 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
 
   // Artifacts: `requested` tagged v1.0.0, then `current` on main (null:
   // none). The workspace holds the tag's marker scripts.
-  async function release({ current, requested = ACME, trigger = "tag", wrongSha = false }) {
+  // `poisonedHome`: the runner's ~/.gitconfig sends ARTIFACTS_REMOTE to a
+  // forged copy whose main is authorized (as a tag's install step could
+  // write it into a shared runner's home).
+  async function release({
+    current,
+    requested = ACME,
+    trigger = "tag",
+    wrongSha = false,
+    poisonedHome = false,
+  }) {
     const root = await temporaryDirectory();
     const bare = join(root, "artifacts.git");
     git(root, "init", "--quiet", "--bare", "--initial-branch=main", bare);
@@ -466,6 +475,19 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
     commit(work, "main");
     git(work, "push", "--quiet", bare, "main", "v1.0.0");
 
+    const home = join(root, "home");
+    await mkdir(home);
+    if (poisonedHome) {
+      const forged = join(root, "forged.git");
+      git(root, "clone", "--quiet", "--bare", bare, forged);
+      const forging = join(root, "forging");
+      git(root, "clone", "--quiet", forged, forging);
+      await writeFile(join(forging, "gq.ops.json"), `${JSON.stringify(ACME)}\n`);
+      git(forging, "add", "-A");
+      commit(forging, "forged");
+      git(forging, "push", "--quiet", "origin", "main");
+      await writeFile(join(home, ".gitconfig"), `[url "${forged}"]\n\tinsteadOf = ${bare}\n`);
+    }
     const workspace = join(root, "workspace");
     await mkdir(workspace);
     // The tag's own code: each step records that it ran, and what secret it saw.
@@ -497,6 +519,7 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
           encoding: "utf8",
           env: {
             ...environment,
+            HOME: home,
             SECRET: "s3cret",
             ...(sourceControlCredentials
               ? { ARTIFACTS_REMOTE: bare, ARTIFACTS_TOKEN: "artifacts-token" }
@@ -554,6 +577,11 @@ test("the CI Worker admits a release first, so a held or historical tag runs non
     // Fail closed: no current policy, or a tag that isn't the one asked for.
     [{ current: null }, /The default branch's gq\.ops\.json can't be read/u],
     [{ current: ACME, wrongSha: true }, /Release 111111111111's gq\.ops\.json can't be read/u],
+    // The runner's global git config can't send the admission elsewhere.
+    [
+      { current: paused, poisonedHome: true },
+      /the default branch's gq\.ops\.json deployment\.state: paused/u,
+    ],
   ]) {
     const result = await release(options);
     assert.deepEqual(result.ran, ["fresh:admission"], JSON.stringify(options));
