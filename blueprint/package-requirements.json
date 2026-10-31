@@ -1,0 +1,36 @@
+{
+  "$comment": "What each GETQUICK Composer package's pinned version requires of the packages its registry serves, as the registry's metadata declares it. gq packages check compares each record with the registry, and the catalogue check fails when a pin doesn't satisfy a record (Composer couldn't install them together). gq packages propose --write updates it with the pins. See docs/reference/packages.md.",
+  "schemaVersion": 1,
+  "packages": {
+    "getquick/getquick-ecommerce": {
+      "version": "0.4.3",
+      "require": {
+        "getquick/gq-design": "^0.9.0"
+      }
+    },
+    "getquick/getquick-theme": {
+      "version": "0.6.1",
+      "require": {
+        "getquick/gq-config": ">=0.4.0 <1.0",
+        "getquick/gq-design": "^0.9.0",
+        "getquick/gq-support": ">=0.1.0 <1.0"
+      }
+    },
+    "getquick/gq-config": {
+      "version": "0.4.3",
+      "require": {}
+    },
+    "getquick/gq-content": {
+      "version": "0.4.2",
+      "require": {}
+    },
+    "getquick/gq-design": {
+      "version": "0.9.4",
+      "require": {}
+    },
+    "getquick/gq-support": {
+      "version": "0.1.10",
+      "require": {}
+    }
+  }
+}

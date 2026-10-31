@@ -5,6 +5,8 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 
 import ownCatalogue from "../../blueprint/packages.json" with { type: "json" };
+import ownRequirements from "../../blueprint/package-requirements.json" with { type: "json" };
+import ownCommerceComposer from "../../blueprint/templates/commerce/apps/cms/composer.json" with { type: "json" };
 import ownComposer from "../../blueprint/templates/apps/cms/composer.json" with { type: "json" };
 import ownNpm from "../../blueprint/templates/fragments/commerce-frontend-package.keys.json" with { type: "json" };
 import { catalogueProblems } from "../../src/packages/catalogue.mjs";
@@ -205,7 +207,12 @@ function sha(text) {
 
 // A temporary gq-site checkout: package.json, blueprint/packages.json and the
 // CMS composer.json template.
-async function checkout({ catalogue = CATALOGUE, composerText = COMPOSER_TEXT, npmText } = {}) {
+async function checkout({
+  catalogue = CATALOGUE,
+  composerText = COMPOSER_TEXT,
+  npmText,
+  files: extra = {},
+} = {}) {
   const root = await temporaryDirectory();
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")),
@@ -216,6 +223,7 @@ async function checkout({ catalogue = CATALOGUE, composerText = COMPOSER_TEXT, n
     "blueprint/packages.json": JSON.stringify(catalogue, null, 2),
     "blueprint/templates/apps/cms/composer.json": composerText,
     ...(npmText === undefined ? {} : { "blueprint/templates/fragments/npm.keys.json": npmText }),
+    ...extra,
   };
   for (const [path, content] of Object.entries(files)) {
     await mkdir(dirname(join(root, path)), { recursive: true });
@@ -226,6 +234,7 @@ async function checkout({ catalogue = CATALOGUE, composerText = COMPOSER_TEXT, n
     root,
     composer: () => readFile(composerPath, "utf8"),
     npm: () => readFile(join(root, "blueprint/templates/fragments/npm.keys.json"), "utf8"),
+    read: (path) => readFile(join(root, path), "utf8"),
     run: (argv, { world = defaultWorld(), env = ENV, fetch = worldFetch(world) } = {}) =>
       runGq(argv, { cwd: root, env, fetch }).then((result) => ({ ...result, fetch })),
   };
@@ -541,8 +550,22 @@ test("--write refuses outside a gq-site checkout, and propose states its strateg
   assert.match(result.stderr, /gq packages propose --latest/u);
 });
 
-test("the shipped catalogue agrees with the blueprint's composer.json and holds no constraints", () => {
-  assert.deepEqual(catalogueProblems(ownCatalogue, ownComposer, ownNpm), []);
+test("the shipped catalogue agrees with the blueprint's composer.json files and holds no constraints", () => {
+  const composers = [
+    { file: ownCatalogue.composerFile, variants: ["content"], json: ownComposer },
+    {
+      file: ownCatalogue.variantComposerFiles.commerce,
+      variants: ["commerce"],
+      json: ownCommerceComposer,
+    },
+  ];
+  assert.deepEqual(
+    catalogueProblems(ownCatalogue, ownComposer, ownNpm, {
+      composers,
+      requirements: ownRequirements,
+    }),
+    [],
+  );
   assert.ok(!JSON.stringify(ownCatalogue).includes('"^'), "constraints live only in composer.json");
   const gqTheme = ownCatalogue.packages.find((pkg) => pkg.name === "getquick/gq-theme");
   assert.equal(gqTheme.requirement, "none");
@@ -815,4 +838,196 @@ test("the GitHub Packages token comes from GITHUB_PACKAGES_TOKEN or the user's n
     row(denied.report, "@quick-release/design-renderer").registry.error.code,
     "permission-denied",
   );
+});
+
+// --- recorded requirements: pins Composer can't install together -------------
+
+const REQUIREMENTS_COMPOSER = (design) => `{
+  "name": "getquick/{{project}}-cms",
+  "repositories": [
+    { "name": "getquick", "type": "composer", "url": "${REGISTRY}", "only": ["getquick/*"] }
+  ],
+  "require": {
+    "php": ">=8.4.1",
+    "getquick/design": "${design}",
+    "getquick/theme":  "0.6.1"
+  }
+}
+`;
+const REQUIREMENTS_CATALOGUE = {
+  schemaVersion: 1,
+  composerFile: "templates/apps/cms/composer.json",
+  variantComposerFiles: { commerce: "templates/commerce/apps/cms/composer.json" },
+  npmFile: "templates/fragments/npm.keys.json",
+  requirementsFile: "package-requirements.json",
+  packages: [
+    {
+      name: "getquick/theme",
+      upstream: { repository: "Quick-Release/theme", discovery: "tags" },
+      install: { registry: "getquick" },
+      variants: ["content", "commerce"],
+      requirement: "blueprint",
+      policy: "manual",
+    },
+    {
+      name: "getquick/design",
+      upstream: { repository: "Quick-Release/design", discovery: "tags" },
+      install: { registry: "getquick" },
+      variants: ["content", "commerce"],
+      requirement: "blueprint",
+      policy: "exact",
+      lockstep: "design",
+    },
+    designMember("@quick-release/design-contract"),
+    designMember("@quick-release/design-renderer"),
+  ],
+};
+const RECORDS = {
+  schemaVersion: 1,
+  packages: {
+    "getquick/design": { version: "0.9.4", require: {} },
+    "getquick/theme": { version: "0.6.1", require: { "getquick/design": "^0.9.0" } },
+  },
+};
+const RECORDS_TEXT = `${JSON.stringify(RECORDS, null, 2)}\n`;
+
+function requirementsWorld(designVersions, themeRequires = { "getquick/design": "^0.9.0" }) {
+  return {
+    github: {
+      "Quick-Release/theme": { tags: ["v0.6.1"], name: "getquick/theme" },
+      "Quick-Release/design": {
+        tags: designVersions.map((version) => `v${version}`),
+        name: "getquick/design",
+      },
+    },
+    registry: {
+      "getquick/theme": [
+        {
+          version: "0.6.1",
+          require: { php: ">=8.4.1", "wp-plugin/other": "^1.0", ...themeRequires },
+        },
+      ],
+      "getquick/design": designVersions,
+    },
+    npm: {
+      "@quick-release/design-contract": designVersions,
+      "@quick-release/design-renderer": designVersions,
+    },
+  };
+}
+
+function requirementsCheckout() {
+  const pins = (version) =>
+    `{\n  "dependencies": {\n    "@quick-release/design-contract": "${version}",\n    "@quick-release/design-renderer": "${version}"\n  }\n}\n`;
+  return checkout({
+    catalogue: REQUIREMENTS_CATALOGUE,
+    composerText: REQUIREMENTS_COMPOSER("0.9.4"),
+    npmText: pins("0.9.4"),
+    files: {
+      "blueprint/templates/commerce/apps/cms/composer.json": REQUIREMENTS_COMPOSER("0.9.4"),
+      "blueprint/package-requirements.json": RECORDS_TEXT,
+    },
+  });
+}
+
+test("gq packages check fails when the registry's requirements differ from the recorded ones", async () => {
+  const site = await requirementsCheckout();
+  const current = await checkJson(site, {
+    world: requirementsWorld(["0.9.4"]),
+    env: LOCKSTEP_ENV,
+  });
+  assert.equal(current.code, 0, current.stderr);
+  assert.deepEqual(row(current.report, "getquick/theme").requires, {
+    "getquick/design": "^0.9.0",
+  });
+  assert.deepEqual(current.report.files, [
+    "blueprint/templates/apps/cms/composer.json",
+    "blueprint/templates/commerce/apps/cms/composer.json",
+    "blueprint/templates/fragments/npm.keys.json",
+    "blueprint/package-requirements.json",
+  ]);
+
+  const world = requirementsWorld(["0.9.4"], { "getquick/design": "^0.3.1" });
+  const drifted = await checkJson(site, { world, env: LOCKSTEP_ENV });
+  assert.equal(drifted.code, 1);
+  assert.deepEqual(row(drifted.report, "getquick/theme").blockers, [
+    { code: "manual", message: "getquick/theme's policy is manual: nothing is proposed." },
+    {
+      code: "requirements-drift",
+      message:
+        "The registry's getquick/theme 0.6.1 requires getquick/design ^0.3.1, but the recorded requirements say getquick/design ^0.9.0.",
+    },
+  ]);
+  const text = await site.run(["packages", "check"], { world, env: LOCKSTEP_ENV });
+  assert.equal(text.code, 1);
+  assert.match(text.stdout, /requires {4}getquick\/design \^0\.9\.0/u);
+  assert.match(
+    text.stdout,
+    /✗ requirements-drift: The registry's getquick\/theme 0\.6\.1 requires getquick\/design \^0\.3\.1/u,
+  );
+});
+
+test("a lockstep move a pinned package's requirement excludes is held, with its whole group", async () => {
+  const site = await requirementsCheckout();
+  const result = await site.run(["packages", "propose", "--latest", "--write", "--json"], {
+    world: requirementsWorld(["0.9.4", "0.9.5", "0.10.0"]),
+    env: LOCKSTEP_ENV,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const proposal = JSON.parse(result.stdout);
+  assert.deepEqual(proposal.changes, []);
+  assert.equal(proposal.written, false);
+  const design = row(proposal, "getquick/design");
+  assert.equal(design.target, "0.10.0");
+  assert.equal(design.action, "blocked");
+  assert.deepEqual(
+    design.blockers.filter((blocker) => blocker.code === "unsatisfied"),
+    [
+      {
+        code: "unsatisfied",
+        message:
+          "getquick/theme 0.6.1 requires getquick/design ^0.9.0, which getquick/design 0.10.0 doesn't satisfy.",
+      },
+    ],
+  );
+  for (const name of ["@quick-release/design-contract", "@quick-release/design-renderer"]) {
+    assert.equal(row(proposal, name).action, "blocked");
+    assert.ok(
+      row(proposal, name).blockers.some(
+        (blocker) =>
+          blocker.code === "lockstep" &&
+          blocker.message === "getquick/design can't move, so no member of design does.",
+      ),
+    );
+  }
+  assert.equal(await site.composer(), REQUIREMENTS_COMPOSER("0.9.4"));
+  assert.equal(await site.read("blueprint/package-requirements.json"), RECORDS_TEXT);
+});
+
+test("--write moves a pin in every CMS composer.json and records the new version's requirements", async () => {
+  const site = await requirementsCheckout();
+  const world = requirementsWorld(["0.9.4", "0.9.5"]);
+  const result = await site.run(["packages", "propose", "--latest", "--write", "--json"], {
+    world,
+    env: LOCKSTEP_ENV,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const proposal = JSON.parse(result.stdout);
+  assert.deepEqual(
+    proposal.changes.map(({ name, from, to }) => [name, from, to]),
+    DESIGN.map((name) => [name, "0.9.4", "0.9.5"]),
+  );
+  assert.equal(proposal.written, true);
+  assert.equal(await site.composer(), REQUIREMENTS_COMPOSER("0.9.5"));
+  assert.equal(
+    await site.read("blueprint/templates/commerce/apps/cms/composer.json"),
+    REQUIREMENTS_COMPOSER("0.9.5"),
+  );
+  const records = JSON.parse(await site.read("blueprint/package-requirements.json"));
+  assert.deepEqual(records.packages["getquick/design"], { version: "0.9.5", require: {} });
+  assert.deepEqual(records.packages["getquick/theme"], RECORDS.packages["getquick/theme"]);
+
+  const again = await checkJson(site, { world, env: LOCKSTEP_ENV });
+  assert.equal(again.code, 0, again.stderr);
+  assert.equal(row(again.report, "getquick/design").action, "none");
 });

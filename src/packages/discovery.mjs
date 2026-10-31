@@ -18,7 +18,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { isNpm } from "./catalogue.mjs";
+import { coveredBy, isNpm } from "./catalogue.mjs";
 import { compareVersions, isStable, newest, parseVersion } from "./versions.mjs";
 
 export const DISCOVERY_ERRORS = [
@@ -272,6 +272,7 @@ async function discoverRegistry(pkg, { composer, env, fetch }) {
         ...(item.dist?.shasum ? { shasum: item.dist.shasum } : {}),
       },
       php: typeof item.require?.php === "string" ? item.require.php : null,
+      requires: servedRequirements(repository, item.require),
     });
   }
   const stable = releases.filter((release) => isStable(release.version));
@@ -286,12 +287,24 @@ async function discoverRegistry(pkg, { composer, env, fetch }) {
       .map((release) => release.version.text)
       .sort(byVersionText),
     ignored: ignored.sort(),
-    // Every stable version, newest last, with its provenance and PHP floor.
+    // Every stable version, newest last, with its provenance, PHP floor and
+    // what it requires of packages this registry serves.
     releases: stable
       .sort((left, right) => compareVersions(left.version, right.version))
-      .map((release) => ({ ...describe(release), php: release.php })),
+      .map((release) => ({ ...describe(release), php: release.php, requires: release.requires })),
     declaredNames: [...names].sort(),
   };
+}
+
+// A release's requirements on packages its own registry serves (its "only"
+// patterns), sorted by name: the GETQUICK packages it needs beside it.
+function servedRequirements(repository, require) {
+  if (!repository.only || !require || typeof require !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(require)
+      .filter(([name, constraint]) => typeof constraint === "string" && coveredBy(repository, name))
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
 }
 
 // GitHub Packages: the packument at /<@scope>%2f<name> lists every version.

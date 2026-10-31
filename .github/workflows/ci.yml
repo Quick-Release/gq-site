@@ -98,6 +98,55 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: scripts/smoke/cms-rest-gate.sh
 
+  # Whether this workflow has the GETQUICK Composer registry's login (the
+  # COMPOSER_AUTH secret, an http-basic entry for proxy.composer.getquick.io).
+  # Without it cms-resolution is skipped, not passed, and this job warns.
+  cms-registry:
+    runs-on: ubuntu-latest
+    outputs:
+      readable: ${{ steps.probe.outputs.readable }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+      - id: probe
+        env:
+          COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+        run: |
+          if scripts/smoke/cms-resolve.sh --probe; then
+            echo "readable=true" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            [ "$status" -eq 3 ] || exit "$status"
+            echo "readable=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=cms-resolution skipped::This workflow has no COMPOSER_AUTH secret with a login for proxy.composer.getquick.io, so neither generated CMS skeleton was resolved against the registry. Only the package suite's offline check of the recorded requirements (blueprint/package-requirements.json) ran. Add the secret to run it."
+          fi
+
+  # Both generated CMS skeletons (content and commerce) resolved by Composer
+  # against the real GETQUICK registry, each GETQUICK package locked at the
+  # blueprint's pin: the pins install together. Runs only with the login.
+  cms-resolution:
+    needs: cms-registry
+    if: needs.cms-registry.outputs.readable == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          tools: composer:v2
+          coverage: none
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: scripts/smoke/cms-resolve.sh
+        env:
+          COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+
   # A generated site's consent UI, routes and records (CONSENT-1, LEGAL-1):
   # its Frontend served in workerd with a local D1 publication store and
   # Consent database passes gq-content's shared acceptance suite in Chromium, records

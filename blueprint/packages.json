@@ -1,14 +1,16 @@
 {
-  "$comment": "GETQUICK packages the blueprint knows, for gq packages check|propose. It holds no version constraints: the blueprint's pins are the require keys of composerFile and the dependencies of npmFile (the commerce Frontend's managed keys). See docs/reference/packages.md.",
+  "$comment": "GETQUICK packages the blueprint knows, for gq packages check|propose. It holds no version constraints: the blueprint's pins are the require keys of composerFile and each variantComposerFiles file (one pin per package) and the dependencies of npmFile (the commerce Frontend's managed keys); requirementsFile records what each pinned version requires, from the registry. See docs/reference/packages.md.",
   "schemaVersion": 1,
   "composerFile": "templates/apps/cms/composer.json",
+  "variantComposerFiles": { "commerce": "templates/commerce/apps/cms/composer.json" },
   "npmFile": "templates/fragments/commerce-frontend-package.keys.json",
+  "requirementsFile": "package-requirements.json",
   "packages": [
     {
       "name": "getquick/gq-config",
       "upstream": { "repository": "Quick-Release/gq-config", "discovery": "tags" },
       "install": { "registry": "getquick" },
-      "variants": ["content"],
+      "variants": ["content", "commerce"],
       "requirement": "blueprint",
       "policy": "manual",
       "formerNames": ["getquick/getquick-config"]
@@ -17,7 +19,7 @@
       "name": "getquick/getquick-theme",
       "upstream": { "repository": "Quick-Release/getquick-theme", "discovery": "tags" },
       "install": { "registry": "getquick" },
-      "variants": ["content"],
+      "variants": ["content", "commerce"],
       "requirement": "blueprint",
       "policy": "manual"
     },
@@ -30,7 +32,7 @@
       "policy": "exact",
       "lockstep": "gq-design",
       "formerNames": ["getquick/getquick-design"],
-      "note": "Released with @quick-release/design-contract and @quick-release/design-renderer from one gq-design tag at one version (ADR 0018). The commerce CMS skeleton's pin follows this one."
+      "note": "Released with @quick-release/design-contract and @quick-release/design-renderer from one gq-design tag at one version (ADR 0018). Both CMS skeletons pin it, and every pinned GETQUICK package's requirement on it must accept the pin (package-requirements.json)."
     },
     {
       "name": "@quick-release/design-contract",
@@ -53,10 +55,19 @@
       "lockstep": "gq-design"
     },
     {
+      "name": "getquick/getquick-ecommerce",
+      "upstream": { "repository": "Quick-Release/gq-ecommerce", "discovery": "tags" },
+      "install": { "registry": "getquick" },
+      "variants": ["commerce"],
+      "requirement": "blueprint",
+      "policy": "manual",
+      "note": "The commerce CMS's WooCommerce authority: its auth routes are the storefront Runtime's upstream (@quick-release/auth-contract)."
+    },
+    {
       "name": "getquick/gq-support",
       "upstream": { "repository": "Quick-Release/gq-support", "discovery": "tags" },
       "install": { "registry": "getquick" },
-      "variants": ["content"],
+      "variants": ["content", "commerce"],
       "requirement": "blueprint",
       "policy": "manual"
     },
