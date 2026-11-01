@@ -1,9 +1,10 @@
 import { runEvents } from "./events.mjs";
+import { runFonts } from "./fonts.mjs";
 import { runMedia } from "./media.mjs";
 import { runProvision } from "./provision.mjs";
 import { runRelease } from "./release.mjs";
 
-// The Ploi workflows (provision, release, media and events), beside gq-ops' read-only `gq ploi` commands.
+// The Ploi workflows (provision, release, media, fonts and events), beside gq-ops' read-only `gq ploi` commands.
 // Command → [usage, the options it accepts, runner].
 const PLOI_WORKFLOWS = new Map([
   ["ploi provision", ["gq ploi provision [--dry-run | --yes]", ["dryRun", "yes"], runProvision]],
@@ -12,6 +13,7 @@ const PLOI_WORKFLOWS = new Map([
     ["gq ploi release [--ref <ref>] [--git-dir <dir>]", ["ref", "gitDir"], runRelease],
   ],
   ["ploi media", ["gq ploi media [--dry-run]", ["dryRun"], runMedia]],
+  ["ploi fonts", ["gq ploi fonts [--dry-run]", ["dryRun"], runFonts]],
   ["ploi events", ["gq ploi events [--dry-run]", ["dryRun"], runEvents]],
 ]);
 

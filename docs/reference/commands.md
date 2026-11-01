@@ -41,6 +41,7 @@ gq ploi api <operation-id> [--path name=value] [--query name=value]
 gq ploi provision [--dry-run | --yes]
 gq ploi release [--ref <ref>] [--git-dir <dir>]
 gq ploi media [--dry-run]
+gq ploi fonts [--dry-run]
 gq ploi events [--dry-run]
 
 gq db sync [--yes]

@@ -120,3 +120,23 @@ gq sigillo secrets local delete COMPOSER_AUTH
 ```
 
 Never copy either into a Site's Sigillo, `.env` or `~/.config/gq/ops.env`.
+
+## GETQUICK Registry `prod`: the Google Fonts key
+
+GQ Design imports and updates Google font families on the server with one
+GETQUICK Google Fonts Developer API key, restricted to the Web Fonts
+Developer API
+([gq-design ADR 0006](https://github.com/Quick-Release/gq-design/blob/main/docs/adr/0006-self-hosted-google-fonts.md)).
+It is the fleet's, kept once in the GETQUICK Registry Sigillo project
+(`01M3AZV1P6VE2QV0Q8QPS3YPHN`), environment `prod`, as
+`GETQUICK_GOOGLE_FONTS_API_KEY`, never in a Site's Sigillo project.
+
+Every Site's CMS reads it from its `.env`. `pnpm ploi:fonts` (`gq ploi
+fonts`) reads it at use, through the Site's Sigillo CLI and your own login,
+and sets that one line of the Ploi site's `.env`; the next CMS release copies
+the `.env` into the CMS. It never prints the value or puts it in argv. A
+value already in the command's environment wins, so a rotation can be pushed
+by someone without access to GETQUICK Registry. Rotating it is one change in
+GETQUICK Registry `prod`, then `pnpm ploi:fonts` and a CMS release per Site.
+Without the key, GQ Design's import and update are off and nothing else
+breaks; `gq site check` warns (`google-fonts-key`).

@@ -29,7 +29,7 @@ digits and hyphens starting with a letter, since it names the site's
 packages, Workers and DDEV project. A target directory that isn't empty is
 refused. `--variant commerce` generates a [commerce site](commerce-sites.md). It then prints the
 provisioning sequence (fill in `gq.ops.json`, `gq sync`, `ploi provision`,
-`cloudflare deploy-token`/`releases`/`media`/`ci`, `ploi media`,
+`cloudflare deploy-token`/`releases`/`media`/`ci`, `ploi media`, `ploi fonts`,
 `github setup`, `frontend secrets`, `ci deploy`, `ploi events`, the releases,
 `frontend refresh` to prepare the Site, prove media with an upload, and
 `site check`, the readiness gate) and runs none of it; see
@@ -133,6 +133,16 @@ in lexical (byte) order of file name, with `SITE_PATH` and `APP_PATH` set. One t
 fails the deploy with its exit code (maintenance mode is still turned off).
 Extensions run only once WordPress is installed, and not on a Composer-only
 deploy. `deploy/ploi/admin.d` is the site's, created once with a README.
+
+Every deploy then updates GQ Design's Google font families
+([gq-design ADR 0006](https://github.com/Quick-Release/gq-design/blob/main/docs/adr/0006-self-hosted-google-fonts.md))
+with `wp getquick-design fonts update`, once the site is out of maintenance
+mode. It is skipped, with a line saying why, without GQ Design (`gq-design`)
+0.10 or later, active; it says nothing when no Google font family is
+installed; and a failure is logged and never fails the deploy. Like the
+extensions, it runs only once WordPress is installed, and not on a
+Composer-only deploy. It needs `GETQUICK_GOOGLE_FONTS_API_KEY` in the CMS's
+`.env` (`pnpm ploi:fonts`); without it GQ Design's import and update are off.
 
 ### The CMS GraphQL endpoint
 

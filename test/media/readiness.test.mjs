@@ -36,13 +36,20 @@ const MEDIA_LINES = [
   "S3_UPLOADS_ENDPOINT='https://account-1.r2.cloudflarestorage.com'",
   "S3_UPLOADS_BUCKET_URL='https://media.example.test'",
 ];
+// What gq ploi fonts writes: the fleet's Google Fonts key.
+const FONTS_LINE = "GETQUICK_GOOGLE_FONTS_API_KEY='google-fonts-key-value'";
 const BASE_ENV = ["DB_NAME='fixture'", "WP_HOME='https://admin.example.test'"];
 
 // An editor's image, as a published page references it.
 const PHOTO = new TextEncoder().encode("a published photo");
 
-function world({ cmsEnv = [...BASE_ENV, ...MEDIA_LINES], frontendHtml } = {}) {
+function world({
+  cmsEnv = [...BASE_ENV, ...MEDIA_LINES, FONTS_LINE],
+  frontendHtml,
+  cors = true,
+} = {}) {
   const state = {
+    cors,
     cmsEnv: `${cmsEnv.join("\n")}\n`,
     cmsDown: false,
     bucket: new Map(),
@@ -90,6 +97,13 @@ function world({ cmsEnv = [...BASE_ENV, ...MEDIA_LINES], frontendHtml } = {}) {
       const stored = state.bucket.get(key);
       if (method === "HEAD") return new Response(null, { status: stored ? 200 : 404 });
       if (method === "GET") return new Response(stored ?? null, { status: stored ? 200 : 404 });
+    }
+    if (hostname === "media.example.test" && method === "OPTIONS") {
+      // R2 answers a preflight from its bucket's CORS rules.
+      return new Response(null, {
+        status: state.cors ? 204 : 403,
+        headers: state.cors ? { "access-control-allow-origin": "*" } : {},
+      });
     }
     if (hostname === "media.example.test") {
       const stored = state.bucket.get(decodeURIComponent(pathname.slice(1)));
@@ -151,7 +165,9 @@ function statuses(report) {
 
 function assertNoSecrets(...outputs) {
   for (const output of outputs) {
-    for (const value of Object.values(SECRETS)) assert.ok(!output.includes(value), value);
+    for (const value of [...Object.values(SECRETS), "google-fonts-key-value"]) {
+      assert.ok(!output.includes(value), value);
+    }
   }
 }
 
@@ -169,8 +185,10 @@ test("an upload through the CMS proves independent media, and the asset outlives
     "independent-host": "ok",
     "s3-uploads-plugin": "ok",
     "cms-env": "ok",
+    "google-fonts-key": "ok",
     "bucket-credentials": "ok",
     "public-domain": "ok",
+    "media-cors": "ok",
     upload: "ok",
     "upload-cleanup": "ok",
     frontend: "ok",
@@ -394,4 +412,33 @@ test("gq media check takes --upload or --local, not both", async () => {
   const unknown = await fixture.run(["media", "check", "--dry-run"]);
   assert.equal(unknown.code, 1);
   assert.match(unknown.stderr, /--dry-run is not valid for media check/u);
+});
+
+test("a media host without a public-read CORS rule is not ready: browsers refuse its fonts", async () => {
+  const { fetch } = world({ cors: false });
+
+  const result = await check([], { fetch });
+
+  assert.equal(result.code, 1);
+  const cors = result.report.checks.find(({ name }) => name === "media-cors");
+  assert.equal(cors.status, "not-ready");
+  assert.match(cors.detail, /doesn't allow cross-origin GET from https:\/\/www\.example\.test/u);
+  assert.match(cors.action, /pnpm cf:media/u);
+  const preflight = fetch.requests.find(({ method }) => method === "OPTIONS");
+  assert.equal(preflight.url, "https://media.example.test/");
+  assert.equal(preflight.headers.Origin, "https://www.example.test");
+});
+
+test("a CMS without the Google Fonts key only warns, never showing a value", async () => {
+  const { fetch } = world({ cmsEnv: [...BASE_ENV, ...MEDIA_LINES] });
+
+  const without = await check([], { fetch });
+  assert.equal(without.code, 0, without.stderr);
+  const key = without.report.checks.find(({ name }) => name === "google-fonts-key");
+  assert.equal(key.status, "warn");
+  assert.match(key.action, /pnpm ploi:fonts/u);
+
+  const withKey = await check([], { fetch: world().fetch });
+  assert.equal(statuses(withKey.report)["google-fonts-key"], "ok");
+  assertNoSecrets(withKey.stdout, withKey.stderr);
 });

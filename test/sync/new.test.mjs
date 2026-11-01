@@ -209,6 +209,7 @@ test("gq new prints the provisioning sequence and runs none of it", async () => 
       "  pnpm cf:releases          # gq cloudflare releases",
       "  pnpm cf:media             # gq cloudflare media",
       "  pnpm ploi:media           # gq ploi media",
+      "  pnpm ploi:fonts           # gq ploi fonts",
       "  pnpm cf:ci                # gq cloudflare ci",
       "  pnpm github:setup         # gq github setup",
       "  pnpm git:artifacts setup  # or, without github: origin is Artifacts",

@@ -71,6 +71,7 @@ const PLUGINS = {
 // The root scripts that provision a new content site, in order. Each runs its gq
 // command through gq sigillo run, which injects the command's secrets.
 // cf:media and ploi:media host the CMS's uploads on R2, independently of it;
+// ploi:fonts gives the CMS the fleet's Google Fonts key (GQ Design's fonts);
 // frontend:secrets generates the Frontend's refresh token and event key
 // before ci:deploy gives them to CI releases and ploi:events gives the event
 // key and the retry/reconciliation crontab to the CMS.
@@ -80,6 +81,7 @@ const PROVISIONING = [
   "cf:releases",
   "cf:media",
   "ploi:media",
+  "ploi:fonts",
   "cf:ci",
   "github:setup",
   "frontend:secrets",

@@ -22,7 +22,10 @@ const STUBS = {
   // one doesn't (no bucket). Polylang's languages (polylang.sh's
   // `wp eval-file - languages`) are WP_POLYLANG_LANGUAGES, and the
   // permalink structure (`wp option get permalink_structure`) is
-  // WP_PERMALINK_STRUCTURE. A call starting with a line of WP_FAILING fails.
+  // WP_PERMALINK_STRUCTURE. GQ Design's version (`wp plugin get gq-design
+  // --field=version`) is WP_GQ_DESIGN_VERSION, not installed when empty, and
+  // `wp help <command>` finds every command. A call starting with a line of
+  // WP_FAILING fails.
   wp: `record wp "$@"
 while IFS= read -r failing; do
   if [ -n "$failing" ] && [[ "$*" == "$failing"* ]]; then exit 1; fi
@@ -33,6 +36,11 @@ if [ "$1 \${2:-} \${3:-}" = "language core is-installed" ]; then
 fi
 if [ "$1 \${2:-} \${3:-}" = "eval-file - languages" ]; then
   [ -z "\${WP_POLYLANG_LANGUAGES:-}" ] || printf '%s\\n' "$WP_POLYLANG_LANGUAGES"
+  exit
+fi
+if [ "$1 \${2:-} \${3:-}" = "plugin get gq-design" ]; then
+  [ -n "\${WP_GQ_DESIGN_VERSION:-}" ] || exit 1
+  printf '%s\\n' "$WP_GQ_DESIGN_VERSION"
   exit
 fi
 if [ "$1 \${2:-} \${3:-}" = "option get permalink_structure" ]; then
@@ -72,7 +80,7 @@ printf '8.3'`,
 // Polylang holding `polylangLanguages` (lines of slug, locale and order;
 // none by default), `permalinkStructure` as its permalink structure (plain,
 // "", by default) and each wp call that starts with one of `failing`
-// exiting 1.
+// exiting 1, with GQ Design `gqDesignVersion` installed (none by default).
 // Resolves to the exit `code`, `stdout`, `stderr`, both as `output`, the
 // `site` directory, the recorded `calls` (each an array: tool, then
 // arguments) and the COMPOSER_AUTH composer saw.
@@ -89,6 +97,7 @@ export async function deploy(
     composerAuth = '{"http-basic":{}}',
     patchExit = 0,
     composerOnly = false,
+    gqDesignVersion = "",
   } = {},
 ) {
   const directory = await temporaryDirectory();
@@ -130,6 +139,7 @@ export async function deploy(
       WP_FAILING: failing.join("\n"),
       DEPENDENCY_PATCH_EXIT: String(patchExit),
       COMPOSER_ONLY: composerOnly ? "true" : "false",
+      WP_GQ_DESIGN_VERSION: gqDesignVersion,
     },
   });
   const recorded = await readFile(calls, "utf8");

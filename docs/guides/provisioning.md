@@ -29,6 +29,7 @@ pnpm cf:deploy-token      # the Frontend's deploy token, D1 included (the store)
 pnpm cf:releases          # the CMS release bucket
 pnpm cf:media             # the media bucket on its own public domain
 pnpm ploi:media           # the CMS's .env points S3 Uploads at it
+pnpm ploi:fonts           # the CMS's .env gets the fleet's Google Fonts key
 pnpm cf:ci                # Artifacts (in the EU), CI backups, the CI deploy token
 pnpm github:setup         # the push webhook (an Artifacts-only Site: nothing to do)
 pnpm git:artifacts setup  # an Artifacts-only Site: origin is Artifacts
@@ -151,6 +152,14 @@ After [generating or adopting a site](sites.md) and
 - `ploi media` sets the `S3_UPLOADS_*` lines of the Ploi site's `.env` for
   the `media` bucket from `S3_UPLOADS_KEY`/`S3_UPLOADS_SECRET`, leaving every
   other line as it is.
+- `ploi fonts` sets the `GETQUICK_GOOGLE_FONTS_API_KEY` line of the Ploi
+  site's `.env`, leaving every other line as it is. GQ Design imports and
+  updates Google font families with it
+  ([gq-design ADR 0006](https://github.com/Quick-Release/gq-design/blob/main/docs/adr/0006-self-hosted-google-fonts.md));
+  without it they are off. The key is the fleet's, one GETQUICK key in Sigillo
+  GETQUICK Registry `prod` ([secrets](secrets.md#getquick-registry-prod-the-google-fonts-key)),
+  read at use; a value already in the command's environment wins. The next
+  CMS release copies the `.env` into the CMS.
 
 The site's deploy script is the other half of the contract: it reads
 `$ARCHIVE_URL` and `$COMPOSER_AUTH`, deploys the paths in
@@ -220,8 +229,16 @@ read:
 - `cloudflare releases`: the `releases` bucket and "Releases R2", object
   read/write on it only → `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` (the S3
   keys R2 derives from the token), for `ploi release`.
-- `cloudflare media`: the `media` bucket with its public custom domain, and
-  "Media R2" → `S3_UPLOADS_KEY` / `S3_UPLOADS_SECRET`, for `ploi media`.
+- `cloudflare media`: the `media` bucket with its public custom domain, its
+  public-read CORS rule, and "Media R2" → `S3_UPLOADS_KEY` /
+  `S3_UPLOADS_SECRET`, for `ploi media`. The rule lets any origin `GET` and
+  `HEAD` the bucket, since browsers refuse GQ Design's fonts from the media
+  host without `Access-Control-Allow-Origin`; the bucket's other rules stay.
+  When the rule is added, cached responses under `<media.domain>/uploads/fonts/`
+  are purged (the temporary token may purge the zone's cache), since they
+  were cached without the header. GQ Design itself stores font files with
+  `Cache-Control: public, max-age=31536000, immutable`; other media keep
+  theirs.
 - `cloudflare ci`: "Artifacts" → `ARTIFACTS_API_TOKEN`, the `ci.backupBucket`
   bucket and "CI Backups R2" → `CI_BACKUP_R2_*`, "CI Deploy" →
   `CI_DEPLOY_API_TOKEN`, and the `artifacts` namespace and repository. The
@@ -598,8 +615,11 @@ pnpm media:check:local    # gq media check --local
   site's `.env` (`PLOI_API_TOKEN`; values are compared, never shown), the
   bucket through `S3_UPLOADS_KEY`/`S3_UPLOADS_SECRET`, the media domain, and
   the Frontend's rendered homepage. The media domain must be neither the CMS's
-  host nor the Frontend's, and the homepage must not reference uploads on a
-  CMS (`/app/uploads/`, `/wp-content/uploads/`). Passing these makes the site
+  host nor the Frontend's, must allow a cross-origin `GET` from the Frontend
+  (`media-cors`: a CORS preflight; `pnpm cf:media` adds the rule), and the
+  homepage must not reference uploads on a CMS (`/app/uploads/`,
+  `/wp-content/uploads/`). A CMS `.env` without `GETQUICK_GOOGLE_FONTS_API_KEY`
+  only warns (`google-fonts-key`; `pnpm ploi:fonts`). Passing these makes the site
   **configured**, not yet **ready**.
 - `--upload` proves the upload path: signed in as `CMS_CHECK_USER` with the
   application password `CMS_CHECK_APP_PASSWORD` (a dedicated Author user; both

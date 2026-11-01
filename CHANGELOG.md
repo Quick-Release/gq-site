@@ -3,6 +3,46 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **GQ Design's self-hosted Google fonts work on every Site**
+  ([gq-design ADR 0006](https://github.com/Quick-Release/gq-design/blob/main/docs/adr/0006-self-hosted-google-fonts.md)).
+  - **Media CORS.** `gq cloudflare media` gives the media bucket a CORS rule
+    letting any origin `GET` and `HEAD` it, since browsers refuse fonts from
+    the media host without `Access-Control-Allow-Origin`. It keeps the
+    bucket's other rules, and when it adds the rule it purges cached
+    responses under `<media.domain>/uploads/fonts/` (its temporary token may
+    now purge the zone's cache). Idempotent: a bucket that already allows
+    public `GET`/`HEAD` is left alone.
+  - **Deploy step.** The generated CMS deploy script
+    (`deploy/ploi/admin.sh`) runs `wp getquick-design fonts update` on every
+    deploy, after the plugins are active and the site is out of maintenance
+    mode. It is skipped, with a line saying why, without GQ Design
+    (`gq-design`) 0.10 or later, active; a failure is logged and never fails
+    the deploy. Not before WordPress is installed, nor on a Composer-only
+    deploy.
+  - **API key.** `gq ploi fonts` (`pnpm ploi:fonts`) sets
+    `GETQUICK_GOOGLE_FONTS_API_KEY` in the Ploi site's `.env`, read at use
+    from Sigillo GETQUICK Registry `prod` with the operator's login (a value
+    already in the command's environment wins). It never prints the value.
+    Both CMS `.env.production.example` templates list the line, and `gq new`'s
+    provisioning sequence runs `ploi:fonts` after `ploi:media`.
+  - **Readiness.** `gq media check` and `gq site check` report `media-cors`
+    (not ready when a CORS preflight for a `GET` from the Frontend isn't
+    allowed) and `google-fonts-key` (a warning when the CMS's `.env` lacks
+    the key).
+- Font caching needs nothing here: GQ Design 0.10 stores font objects with
+  `Cache-Control: public, max-age=31536000, immutable` through S3 Uploads;
+  other media keep their policy.
+
+Existing Sites: upgrade the exact pin and run `gq sync` (it regenerates
+`deploy/ploi/admin.sh` and adds the `ploi:fonts` script), then
+`pnpm ploi:fonts` and a CMS release. The deploy step does nothing until the
+Site runs GQ Design 0.10 or later. The fleet's media buckets already have the
+CORS rule.
+
 ## 0.32.0 — 2026-10-31
 
 ### Changed

@@ -661,6 +661,108 @@ test("ploi media --dry-run changes nothing, and needs the bucket's credentials",
   assert.match(missing.stderr, /S3_UPLOADS_KEY \/ S3_UPLOADS_SECRET are missing/u);
 });
 
+// --- gq ploi fonts ---------------------------------------------------------
+
+const FONTS_OPS = Object.freeze({
+  ...OPS,
+  sigillo: {
+    apiUrl: "https://secrets.example.test",
+    projectId: "SITE123",
+    environments: { staging: "stage" },
+  },
+});
+const SIGILLO_BIN = "node_modules/.bin/sigillo";
+const FONTS_KEY_VALUE = "AIza-fleet-google-fonts-key";
+
+function fontsSite() {
+  return site({
+    ops: FONTS_OPS,
+    files: {
+      "package.json": `${JSON.stringify({ devDependencies: { sigillo: "0.13.0" } })}\n`,
+      [SIGILLO_BIN]: "#!/bin/sh\n",
+    },
+  });
+}
+
+// Sigillo GETQUICK Registry prod, holding the fleet's key unless `stored` is
+// false; any other project or environment is refused.
+function fakeRegistry({ stored = true } = {}) {
+  return recordingExec(({ command, args, input }) => {
+    assert.ok(command.endsWith(SIGILLO_BIN), `unexpected child: ${command}`);
+    assert.equal(input, undefined);
+    const flag = (name) => args[args.indexOf(name) + 1];
+    assert.equal(flag("--api-url"), "https://secrets.example.test");
+    if (flag("--project") !== "01M3AZV1P6VE2QV0Q8QPS3YPHN" || flag("--env") !== "prod") {
+      return { code: 1, stderr: "forbidden" };
+    }
+    if (args[0] === "secrets" && args[1] === "get" && args[2] === "GETQUICK_GOOGLE_FONTS_API_KEY") {
+      return stored ? { stdout: `${FONTS_KEY_VALUE}\n` } : { code: 1, stderr: "not found" };
+    }
+    return { code: 1, stderr: `unexpected sigillo ${args.join(" ")}` };
+  });
+}
+
+test("ploi fonts sets only the Google Fonts key line, read from GETQUICK Registry, never showing it", async () => {
+  const fixture = await fontsSite();
+  const { fetch, state } = fakeProviders();
+  const exec = fakeRegistry();
+
+  const result = await fixture.run(["ploi", "fonts"], {
+    env: { PLOI_API_TOKEN: "ploi-secret" },
+    fetch,
+    exec,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(state.env, `${READY_ENV}GETQUICK_GOOGLE_FONTS_API_KEY='${FONTS_KEY_VALUE}'\n`);
+  assert.match(result.stdout, /~ GETQUICK_GOOGLE_FONTS_API_KEY/u);
+  // Never in argv, output or errors.
+  for (const { args } of exec.calls) assert.ok(!args.includes(FONTS_KEY_VALUE));
+  assert.ok(!result.stdout.includes(FONTS_KEY_VALUE) && !result.stderr.includes(FONTS_KEY_VALUE));
+
+  const again = await fixture.run(["ploi", "fonts"], {
+    env: { PLOI_API_TOKEN: "ploi-secret" },
+    fetch,
+    exec,
+  });
+  assert.match(again.stdout, /already has GETQUICK_GOOGLE_FONTS_API_KEY/u);
+  assert.equal(fetch.requests.filter(({ method }) => method === "PATCH").length, 1);
+});
+
+test("ploi fonts --dry-run changes nothing; a key in the environment wins; a missing one is named", async () => {
+  const fixture = await fontsSite();
+  const { fetch, state } = fakeProviders();
+
+  const dryRun = await fixture.run(["ploi", "fonts", "--dry-run"], {
+    env: { PLOI_API_TOKEN: "ploi-secret" },
+    fetch,
+    exec: fakeRegistry(),
+  });
+  assert.equal(dryRun.code, 0, dryRun.stderr);
+  assert.match(dryRun.stdout, /Dry run: nothing changed\./u);
+  assert.equal(state.env, READY_ENV);
+
+  const given = await fixture.run(["ploi", "fonts"], {
+    env: { PLOI_API_TOKEN: "ploi-secret", GETQUICK_GOOGLE_FONTS_API_KEY: "rotated-key" },
+    fetch,
+    exec: fakeRegistry({ stored: false }),
+  });
+  assert.equal(given.code, 0, given.stderr);
+  assert.match(state.env, /^GETQUICK_GOOGLE_FONTS_API_KEY='rotated-key'$/mu);
+
+  const missing = await fixture.run(["ploi", "fonts"], {
+    env: { PLOI_API_TOKEN: "ploi-secret" },
+    fetch,
+    exec: fakeRegistry({ stored: false }),
+  });
+  assert.equal(missing.code, 1);
+  assert.match(
+    missing.stderr,
+    /GETQUICK_GOOGLE_FONTS_API_KEY couldn't be read from Sigillo GETQUICK Registry prod \(project 01M3AZV1P6VE2QV0Q8QPS3YPHN\)/u,
+  );
+  assert.doesNotMatch(missing.stderr, /not found/u, "Sigillo's own stderr isn't repeated");
+});
+
 // --- gq ploi events --------------------------------------------------------
 
 const EVENT_KEY = "fixture-event-signing-key-0123456789abcdef";
