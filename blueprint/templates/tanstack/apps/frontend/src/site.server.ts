@@ -7,6 +7,7 @@ import { consentPage } from "@getquick/content/consent/astro";
 import {
   responseStatus,
   stripHtml,
+  designFontsHead,
   designThemeStyleSheet,
   presentationStyleSheet,
 } from "@getquick/content";
@@ -65,6 +66,7 @@ export async function page(path: string) {
       language: language.locale.replaceAll("_", "-") || "en",
       title: result.kind === "missing" ? "Page not found" : "Content unavailable",
       styles: "",
+      fonts: "",
       body: "",
       header: "",
       footer: "",
@@ -78,6 +80,9 @@ export async function page(path: string) {
     language: language.locale.replaceAll("_", "-") || "en",
     title: stripHtml(body.title),
     styles: designThemeStyleSheet(publication.theme) + presentationStyleSheet(publication.theme),
+    // GQ Design's font preloads, @font-face rules, slot stacks and text styles
+    // (GQ Design 0.10+), from the stored presets; empty on a CMS on 0.9.x.
+    fonts: designFontsHead(await runtime.designPresets()),
     body: body.designBlocks
       ? runtime.renderDesignPattern(body.designBlocks, { siteOrigin: origin })
       : body.content,

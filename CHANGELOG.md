@@ -3,6 +3,35 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **The content Frontend renders GQ Design's self-hosted fonts and text
+  styles** (#164). The blueprint's `Layout.astro` reads the design presets
+  once (they also feed the theme fallback) and renders `@getquick/content`'s
+  `designFontsHead(presets)` right after the theme's stylesheet: at most two
+  font preloads (`crossorigin`), the `@font-face` rules, the slot stacks and
+  the text styles, which override the theme's Preflight. A CMS on GQ Design
+  0.9.x has no fonts, and the head gets nothing for them. The TanStack Start
+  content skeleton renders the same after its theme styles. The layout's
+  route tests cover both.
+
+### Changed
+
+- **Pins.** `@getquick/content` and `getquick/gq-content` 0.5.0; GQ Design
+  (`getquick/gq-design`, `@quick-release/design-contract`,
+  `@quick-release/design-renderer`) 0.10.1; `getquick/getquick-theme` 0.6.2
+  and `getquick/getquick-ecommerce` 0.4.4, which accept GQ Design 0.10, with
+  their recorded requirements.
+- A new TanStack Start Site's `pnpm-workspace.yaml` exempts GQ Design's npm
+  packages from the minimum release age, as it does the storefront.
+
+Existing Sites: `Layout.astro` is created once, so `gq sync` doesn't add the
+fonts to an existing Site's layout; see
+[0.4.2 to 0.5.0](docs/guides/content-pair-migration.md#042-to-050-getquicksite-0340)
+for the layout change, the CMS pins and the design refresh.
+
 ## 0.33.0 — 2026-11-01
 
 ### Added

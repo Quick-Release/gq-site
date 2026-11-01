@@ -1,6 +1,6 @@
 ---
 import type { Alternate, DesignBlock, DesignPostContext, DesignTheme, SiteChrome, SiteLanguage, WordPressSettings } from "@getquick/content";
-import { designCarouselStyle, designThemeStyleSheet, navigationStyleSheet, presentationStyleSheet, resolveDesignTheme, videoHeroStyleSheet } from "@getquick/content";
+import { designCarouselStyle, designFontsHead, designThemeStyleSheet, navigationStyleSheet, presentationStyleSheet, resolveDesignTheme, videoHeroStyleSheet } from "@getquick/content";
 import { consentPage } from "@getquick/content/consent/astro";
 import { content } from "../lib/content";
 import { copyFor } from "../lib/copy";
@@ -36,7 +36,11 @@ const chrome =
   Astro.props.chrome !== undefined
     ? Astro.props.chrome
     : await runtime.pageChrome(Astro.site?.origin);
-const theme = resolveDesignTheme(Astro.props.theme ?? (await runtime.designPresets())?.theme);
+// GQ Design's stored presets: the theme fallback, and the fonts and text
+// styles (GQ Design 0.10+; a CMS on 0.9.x stores none, and the head gets
+// nothing for them).
+const designPresets = await runtime.designPresets();
+const theme = resolveDesignTheme(Astro.props.theme ?? designPresets?.theme);
 const siteHome = Astro.props.siteSettings === undefined && (chrome?.header || chrome?.footer)
   ? await runtime.publishedHome(Astro.site?.origin, language)
   : null;
@@ -119,6 +123,8 @@ const consent = configuration
     {xDefault && <link rel="alternate" hreflang="x-default" href={xDefault.href} />}
     <title>{title === "{{Project}}" ? title : `${title} — {{Project}}`}</title>
     <style is:inline set:html={designThemeStyleSheet(theme)} />
+    {/* After the theme's Preflight: the font preloads, @font-face rules, slot stacks and text styles. */}
+    <Fragment set:html={designFontsHead(designPresets)} />
     <style is:inline set:html={videoHeroStyleSheet()} />
     <style is:inline set:html={designCarouselStyle()} />
     <style is:inline set:html={navigationStyleSheet(theme)} />

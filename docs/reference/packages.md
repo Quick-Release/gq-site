@@ -88,13 +88,16 @@ token.
   packages, naming both. It warns when there is no `composer.lock` yet, or the
   plugin is locked to a branch. A Site that locks no design package passes.
 
-The pin is `0.9.4`: the newest version the Composer registry serves (built
-from tag `v0.9.4`, commit `812919e`) that GitHub Packages also serves for both
-packages.
+The pin is `0.10.1`: the newest version the Composer registry serves (built
+from tag `v0.10.1`, commit `2eaa4ed`) that GitHub Packages also serves for both
+packages. It adds self-hosted fonts and text styles (contract 2.1.0), which
+`@getquick/content` 0.5.0 renders.
 
-`getquick/getquick-theme` 0.6.1 and `getquick/getquick-ecommerce` 0.4.3 both
-require `getquick/gq-design` `^0.9.0`, so they install beside it (see
-[Recorded requirements](#recorded-requirements)). 0.29.0 and 0.29.1 pinned
+`getquick/getquick-theme` 0.6.2 requires `getquick/gq-design`
+`^0.9.0 || ^0.10.0` and `getquick/getquick-ecommerce` 0.4.4 requires
+`^0.9.4 || ^0.10.0`, so they install beside it (see
+[Recorded requirements](#recorded-requirements)); 0.6.1 and 0.4.3 required
+`^0.9.0`, which held the pin at 0.9.4 until they were released. 0.29.0 and 0.29.1 pinned
 GQ Design 0.9.4 beside getquick-theme 0.5.1 and getquick-ecommerce 0.3.5,
 which require `^0.3.1`, so neither skeleton's `composer install` resolved.
 
@@ -115,10 +118,10 @@ registry serves, as the registry's metadata declares it:
 
 ```json
 "getquick/getquick-theme": {
-  "version": "0.6.1",
+  "version": "0.6.2",
   "require": {
     "getquick/gq-config": ">=0.4.0 <1.0",
-    "getquick/gq-design": "^0.9.0",
+    "getquick/gq-design": "^0.9.0 || ^0.10.0",
     "getquick/gq-support": ">=0.1.0 <1.0"
   }
 }

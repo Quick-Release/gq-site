@@ -56,7 +56,7 @@ test("gq new --variant commerce writes a WooCommerce CMS without WPGraphQL", asy
     assert.ok(installed, plugin);
   }
   assert.equal(composer.require["wp-plugin/woocommerce"], "11.2.1");
-  assert.equal(composer.require["getquick/getquick-ecommerce"], "0.4.3");
+  assert.equal(composer.require["getquick/getquick-ecommerce"], "0.4.4");
   assert.ok(!Object.keys(composer.require).some((name) => name.includes("graphql")));
 
   const deploy = await readSite(site.root, "deploy/ploi/admin.sh");
@@ -165,7 +165,7 @@ test("a commerce site gets the storefront skeleton and none of the content Front
   const plugin = JSON.parse(await readSite(site.root, "apps/cms/composer.json")).require[
     "getquick/gq-design"
   ];
-  assert.equal(plugin, "0.9.4");
+  assert.equal(plugin, "0.10.1");
   assert.equal(frontend.dependencies["@quick-release/design-contract"], plugin);
   assert.equal(frontend.dependencies["@quick-release/design-renderer"], plugin);
   assert.equal(frontend.scripts.build, "vp build");
@@ -273,7 +273,7 @@ test("gq sync adds GQ Design's packages where they sort in a sorted dependency m
   assert.deepEqual(Object.keys(JSON.parse(text).dependencies), generated);
   assert.match(
     text,
-    /\n {4}"@quick-release\/auth-contract": "0\.1\.9",\n {4}"@quick-release\/design-contract": "0\.9\.4",\n {4}"@quick-release\/design-renderer": "0\.9\.4",\n {4}"@quick-release\/storefront"/u,
+    /\n {4}"@quick-release\/auth-contract": "0\.1\.9",\n {4}"@quick-release\/design-contract": "0\.10\.1",\n {4}"@quick-release\/design-renderer": "0\.10\.1",\n {4}"@quick-release\/storefront"/u,
   );
 
   // A map the site keeps in its own order gets them after its siblings.

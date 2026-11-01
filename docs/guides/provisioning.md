@@ -559,7 +559,7 @@ and `gq site check`. What changes:
   `X-Forwarded-For` (else `X-Real-IP`) only when the request comes from one of
   those addresses. Rate limits then stay per visitor. List only proxies we
   run: a listed address can claim to be any visitor. `trustedProxies` is in
-  the pinned pair from `@getquick/content` 0.4.2.
+  the pinned pair from `@getquick/content` 0.4.2 on.
 - **`gq cloudflare custom-hostname`** refuses: there is no custom hostname.
 
 What the proxy must do:

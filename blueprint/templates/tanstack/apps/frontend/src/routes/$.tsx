@@ -26,6 +26,8 @@ function Page() {
     <>
       <title>{page.title}</title>
       <style dangerouslySetInnerHTML={{ __html: page.styles }} />
+      {/* After the theme's Preflight, which the text styles override. */}
+      <div hidden dangerouslySetInnerHTML={{ __html: page.fonts }} />
       <div dangerouslySetInnerHTML={{ __html: page.consent.head + page.consent.body }} />
       <header dangerouslySetInnerHTML={{ __html: page.header }} />
       <main>
