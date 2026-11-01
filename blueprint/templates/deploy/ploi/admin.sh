@@ -281,7 +281,45 @@ apply_permalinks() {
   wp rewrite structure '/%postname%/' --quiet
 }
 
+# Whether version $1's major.minor is at least $2.$3 (a pre-release suffix is
+# ignored).
+version_at_least() {
+  local major minor
+  IFS=. read -r major minor _ <<<"$1"
+  minor="${minor%%[!0-9]*}"
+  [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] || return 1
+  ((major > $2 || (major == $2 && minor >= $3)))
+}
+
+# Updates GQ Design's Google font families (gq-design ADR 0006): every code
+# deploy runs it, once the plugins are active and the site is out of
+# maintenance mode. GQ Design 0.10 added the command; it says nothing when no
+# Google font family is installed, and warns and exits 0 on every failure
+# (without GETQUICK_GOOGLE_FONTS_API_KEY in the .env, updates are off). A
+# failure still never fails the deploy. Without GQ Design 0.10 or later,
+# active, it is skipped.
+update_google_fonts() {
+  local version fonts_status=0
+  version="$(wp plugin get gq-design --field=version 2>/dev/null)" || version=""
+  if [ -z "$version" ]; then
+    echo "Skipping the Google font update: GQ Design (gq-design) isn't installed."
+    return 0
+  fi
+  if ! version_at_least "$version" 0 10 \
+    || ! wp help getquick-design fonts update >/dev/null 2>&1; then
+    echo "Skipping the Google font update: GQ Design $version predates it (0.10) or isn't active."
+    return 0
+  fi
+  wp getquick-design fonts update || fonts_status=$?
+  if [ "$fonts_status" -ne 0 ]; then
+    echo "The Google font update failed (exit $fonts_status); the deploy continues." >&2
+  fi
+  return 0
+}
+
+wordpress_installed=false
 if wp core is-installed; then
+  wordpress_installed=true
   # The GETQUICK theme (or the site's child of it) must stay installed.
   require_installed theme getquick-theme
   # gq.ops.json's wordpress.plugins: Composer installing a plugin doesn't
@@ -321,3 +359,7 @@ fi
 
 wp maintenance-mode deactivate || true
 maintenance_enabled=false
+
+if [ "$wordpress_installed" = true ]; then
+  update_google_fonts
+fi

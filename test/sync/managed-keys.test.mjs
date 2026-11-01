@@ -49,6 +49,7 @@ const GQ_SCRIPTS = {
   "cf:releases": "gq sigillo run operations -- gq cloudflare releases",
   "cf:media": "gq sigillo run operations -- gq cloudflare media",
   "ploi:media": "gq sigillo run staging -- gq ploi media",
+  "ploi:fonts": "gq sigillo run staging -- gq ploi fonts",
   "ploi:events": "gq sigillo run staging -- gq ploi events",
   "media:check": "gq sigillo run staging -- gq media check",
   "media:check:upload": "gq sigillo run staging -- gq media check --upload",

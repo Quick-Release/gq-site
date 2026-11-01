@@ -54,7 +54,7 @@ const PREPARED = Object.freeze({
   failedEvents: 0,
 });
 
-// What `gq ploi provision`, `gq ploi media` and `gq ploi events` leave in the
+// What `gq ploi provision`, `gq ploi media`, `gq ploi fonts` and `gq ploi events` leave in the
 // Ploi site's .env.
 const CMS_ENV = [
   "WP_HOME='https://admin.example.test'",
@@ -65,6 +65,7 @@ const CMS_ENV = [
   "S3_UPLOADS_SECRET='media-secret-value'",
   "S3_UPLOADS_ENDPOINT='https://account-1.r2.cloudflarestorage.com'",
   "S3_UPLOADS_BUCKET_URL='https://media.example.test'",
+  "GETQUICK_GOOGLE_FONTS_API_KEY='google-fonts-key-value'",
 ];
 
 // GQ Config's public Legal Contract for one language (LEGAL-1): its
@@ -259,6 +260,10 @@ function world(overrides = {}) {
       );
       if (method === "HEAD") return new Response(null, { status: stored ? 200 : 404 });
       if (method === "GET") return new Response(stored ?? null, { status: stored ? 200 : 404 });
+    }
+    if (hostname === "media.example.test" && method === "OPTIONS") {
+      // The bucket's public-read CORS rule (gq cloudflare media).
+      return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*" } });
     }
     if (hostname === "media.example.test") {
       const stored = state.bucket.get(decodeURIComponent(pathname.slice(1)));

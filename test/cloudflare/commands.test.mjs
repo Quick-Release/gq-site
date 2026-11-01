@@ -63,6 +63,7 @@ const PERMISSION_GROUPS = [
   "Workers R2 Storage Write",
   "Workers R2 Storage Bucket Item Read",
   "Workers R2 Storage Bucket Item Write",
+  "Cache Purge",
 ].map((name, index) => ({ id: `group-${index}`, name }));
 
 // An in-memory Cloudflare account: API tokens (by name), R2 buckets with
@@ -74,10 +75,14 @@ function fakeCloudflare({
   tokens = [],
   buckets = [],
   domains = {},
+  cors = {},
   namespaces = [],
   repos = [],
+  purgeFails = false,
 } = {}) {
   const state = {
+    cors: structuredClone(cors),
+    purged: [],
     tokens: tokens.map((token) => ({ status: "active", ...token })),
     buckets: [...buckets],
     domains: structuredClone(domains),
@@ -90,6 +95,15 @@ function fakeCloudflare({
   let next = 1;
   const fetch = recordingFetch(({ method, url, body }) => {
     const { pathname, search } = new URL(url);
+    if (pathname === "/client/v4/zones/zone-1/purge_cache" && method === "POST") {
+      if (purgeFails)
+        return new Response(
+          JSON.stringify({ success: false, errors: [{ message: "purge refused" }] }),
+          { status: 400 },
+        );
+      state.purged.push(...JSON.parse(body).prefixes);
+      return { success: true, result: { id: "purge-1" } };
+    }
     const prefix = "/client/v4/accounts/account-1";
     assert.ok(pathname.startsWith(prefix), `outside the account: ${url}`);
     const path = `${pathname.slice(prefix.length)}${search}`;
@@ -142,6 +156,18 @@ function fakeCloudflare({
     if (method === "POST" && path === "/r2/buckets") {
       state.buckets.push(data.name);
       return ok({});
+    }
+    const corsPath = /^\/r2\/buckets\/([^/]+)\/cors$/u.exec(path);
+    if (corsPath) {
+      // Cloudflare answers 404 for a bucket without a CORS policy.
+      if (method === "GET") {
+        const rules = state.cors[corsPath[1]];
+        return rules ? ok({ rules }) : new Response("{}", { status: 404 });
+      }
+      if (method === "PUT") {
+        state.cors[corsPath[1]] = data.rules;
+        return ok({});
+      }
     }
     const custom = /^\/r2\/buckets\/([^/]+)\/domains\/custom(?:\/(.+))?$/u.exec(path);
     if (custom) {
@@ -525,6 +551,93 @@ test("cloudflare media re-enables a disabled custom domain", async () => {
     result.stdout,
     /Bucket fixture-media exists; https:\/\/media\.example\.test enabled/u,
   );
+});
+
+test("cloudflare media gives the bucket a public GET/HEAD CORS rule for fonts and purges cached fonts", async () => {
+  const fixture = await site();
+  const { fetch, state } = fakeCloudflare({
+    buckets: ["fixture-media"],
+    domains: { "fixture-media": [{ domain: "media.example.test", enabled: true }] },
+    tokens: [{ id: "t1", name: "GETQUICK FIXTURE Media R2" }],
+  });
+  const { exec } = fakeSigillo({ S3_UPLOADS_KEY: "k", S3_UPLOADS_SECRET: "s" });
+
+  const result = await fixture.run(["cloudflare", "media"], { env: ENV, fetch, exec });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(state.cors["fixture-media"], [
+    {
+      id: "getquick-public-read",
+      allowed: { origins: ["*"], methods: ["GET", "HEAD"] },
+      maxAgeSeconds: 86400,
+    },
+  ]);
+  assert.deepEqual(state.purged, ["media.example.test/uploads/fonts/"]);
+  // The temporary token may purge the zone's cache; the purge used it.
+  const [temporary] = state.created;
+  assert.equal(temporary.name, "GETQUICK FIXTURE media bucket setup (temporary)");
+  const purge = fetch.requests.find(({ url }) => url.endsWith("/purge_cache"));
+  assert.equal(bearer(purge), `Bearer ${temporary.value}`);
+  assert.match(
+    result.stdout,
+    /public-read CORS added, cached media\.example\.test\/uploads\/fonts\/ purged/u,
+  );
+
+  // Run again: the rule is there, so nothing is written or purged.
+  const again = await fixture.run(["cloudflare", "media"], { env: ENV, fetch, exec });
+  assert.equal(again.code, 0, again.stderr);
+  assert.match(again.stdout, /public-read CORS exists/u);
+  assert.equal(
+    fetch.requests.filter(({ url, method }) => url.endsWith("/cors") && method === "PUT").length,
+    1,
+  );
+  assert.equal(state.purged.length, 1);
+});
+
+test("cloudflare media keeps a bucket's other CORS rules, and a failed purge doesn't fail it", async () => {
+  const fixture = await site();
+  const own = {
+    id: "uploads",
+    allowed: { origins: ["https://admin.example.test"], methods: ["PUT"] },
+  };
+  const { fetch, state } = fakeCloudflare({
+    buckets: ["fixture-media"],
+    domains: { "fixture-media": [{ domain: "media.example.test", enabled: true }] },
+    cors: { "fixture-media": [own] },
+    tokens: [{ id: "t1", name: "GETQUICK FIXTURE Media R2" }],
+    purgeFails: true,
+  });
+  const { exec } = fakeSigillo({ S3_UPLOADS_KEY: "k", S3_UPLOADS_SECRET: "s" });
+
+  const result = await fixture.run(["cloudflare", "media"], { env: ENV, fetch, exec });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(
+    state.cors["fixture-media"].map(({ id }) => id),
+    ["uploads", "getquick-public-read"],
+  );
+  assert.match(
+    result.stdout,
+    /purging cached media\.example\.test\/uploads\/fonts\/ failed .*purge refused/u,
+  );
+});
+
+test("cloudflare media leaves a bucket that already allows public GET/HEAD alone", async () => {
+  const fixture = await site();
+  const existing = { allowed: { origins: ["*"], methods: ["GET", "HEAD", "OPTIONS"] } };
+  const { fetch, state } = fakeCloudflare({
+    buckets: ["fixture-media"],
+    domains: { "fixture-media": [{ domain: "media.example.test", enabled: true }] },
+    cors: { "fixture-media": [existing] },
+    tokens: [{ id: "t1", name: "GETQUICK FIXTURE Media R2" }],
+  });
+  const { exec } = fakeSigillo({ S3_UPLOADS_KEY: "k", S3_UPLOADS_SECRET: "s" });
+
+  const result = await fixture.run(["cloudflare", "media"], { env: ENV, fetch, exec });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(state.cors["fixture-media"], [existing]);
+  assert.deepEqual(state.purged, []);
 });
 
 // --- gq cloudflare ci --------------------------------------------------------

@@ -16,6 +16,7 @@
 
 import { cmsFetch } from "../cms/access.mjs";
 import { parseDotenv } from "../dotenv-text.mjs";
+import { GOOGLE_FONTS_KEY } from "../ploi/fonts.mjs";
 import { mediaEnv } from "../ploi/media.mjs";
 import { createPloiServerClient } from "../ploi/server-client.mjs";
 import { createR2Client } from "../r2.mjs";
@@ -104,10 +105,13 @@ export async function productionMediaReadiness({
         ),
   );
 
-  add(await checkCmsEnv({ ops, env, fetch }));
+  const cmsEnv = await checkCmsEnv({ ops, env, fetch });
+  add(cmsEnv.check);
+  if (cmsEnv.values) add(checkFontsKey(cmsEnv.values));
   const bucket = bucketClient({ accountId, bucket: media.bucket, env, fetch });
   add(await checkBucketCredentials(bucket));
   add(await checkPublicDomain({ domain: media.domain, fetch }));
+  add(await checkCors({ domain: media.domain, origin: frontend ?? admin, fetch }));
   if (upload) {
     for (const check of await probeUpload({ admin, media, bucket, env, fetch, now })) add(check);
   } else {
@@ -160,11 +164,13 @@ export function localMediaReadiness({ ops, cmsEnv }) {
 async function checkCmsEnv({ ops, env, fetch }) {
   const name = "cms-env";
   if (!env.PLOI_API_TOKEN || !ops.ploi?.serverId || !ops.ploi?.siteId) {
-    return notReady(
-      name,
-      "the CMS's .env can't be read without PLOI_API_TOKEN and gq.ops.json ploi.serverId/siteId",
-      "run this through gq sigillo run staging (pnpm media:check) once pnpm ploi:provision has run",
-    );
+    return {
+      check: notReady(
+        name,
+        "the CMS's .env can't be read without PLOI_API_TOKEN and gq.ops.json ploi.serverId/siteId",
+        "run this through gq sigillo run staging (pnpm media:check) once pnpm ploi:provision has run",
+      ),
+    };
   }
   let current;
   try {
@@ -176,7 +182,9 @@ async function checkCmsEnv({ ops, env, fetch }) {
     const response = await client.request("GET", `/sites/${ops.ploi.siteId}/env`);
     current = parseDotenv(String(response?.data ?? response?.env ?? ""));
   } catch (error) {
-    return notReady(name, `couldn't read the CMS's .env from Ploi: ${messageOf(error)}`, "retry");
+    return {
+      check: notReady(name, `couldn't read the CMS's .env from Ploi: ${messageOf(error)}`, "retry"),
+    };
   }
   const expected = mediaEnv(
     { accountId: ops.cloudflare.accountId, bucket: ops.media.bucket, domain: ops.media.domain },
@@ -187,13 +195,34 @@ async function checkCmsEnv({ ops, env, fetch }) {
     .filter(([key, value]) => (value ? current[key] !== value : !current[key]?.trim()))
     .map(([key]) => key);
   if (wrong.length > 0) {
-    return notReady(
-      name,
-      `the CMS's .env has missing or different ${wrong.join(", ")} (values not shown)`,
-      "run pnpm ploi:media, then release the CMS",
-    );
+    return {
+      values: current,
+      check: notReady(
+        name,
+        `the CMS's .env has missing or different ${wrong.join(", ")} (values not shown)`,
+        "run pnpm ploi:media, then release the CMS",
+      ),
+    };
   }
-  return ok(name, `the CMS's .env points S3 Uploads at ${ops.media.bucket}`);
+  return {
+    values: current,
+    check: ok(name, `the CMS's .env points S3 Uploads at ${ops.media.bucket}`),
+  };
+}
+
+// GQ Design imports and updates Google font families onto the media host
+// with the fleet's key (gq-design ADR 0006). Without it they are off, which
+// doesn't keep media from being independent, so it only warns.
+function checkFontsKey(values) {
+  const name = "google-fonts-key";
+  if (values[GOOGLE_FONTS_KEY]?.trim()) {
+    return ok(name, `the CMS's .env has ${GOOGLE_FONTS_KEY} (value not shown)`);
+  }
+  return warn(
+    name,
+    `the CMS's .env has no ${GOOGLE_FONTS_KEY}, so GQ Design's Google font import and update are off`,
+    "run pnpm ploi:fonts, then release the CMS",
+  );
 }
 
 function bucketClient({ accountId, bucket, env, fetch }) {
@@ -250,6 +279,37 @@ async function checkPublicDomain({ domain, fetch }) {
       name,
       `https://${domain} doesn't answer: ${messageOf(error)}`,
       "run pnpm cf:media, which attaches the bucket's custom domain, and check its DNS",
+    );
+  }
+}
+
+// Browsers load fonts (and fetch any media) from the media host for the CMS
+// and the Frontend, other origins, only with Access-Control-Allow-Origin
+// (gq-design ADR 0006): a CORS preflight for a GET from the Frontend must be
+// allowed.
+async function checkCors({ domain, origin, fetch }) {
+  const name = "media-cors";
+  const action = "run pnpm cf:media, which gives the bucket its public-read CORS rule";
+  try {
+    const response = await fetch(`https://${domain}/`, {
+      method: "OPTIONS",
+      headers: { Origin: `https://${origin}`, "Access-Control-Request-Method": "GET" },
+      signal: AbortSignal.timeout(TIMEOUT),
+    });
+    const allowed = response.headers.get("access-control-allow-origin");
+    if (allowed === "*" || allowed === `https://${origin}`) {
+      return ok(name, `https://${domain} allows cross-origin GET from https://${origin}`);
+    }
+    return notReady(
+      name,
+      `https://${domain} doesn't allow cross-origin GET from https://${origin} (no Access-Control-Allow-Origin), so browsers refuse its fonts`,
+      action,
+    );
+  } catch (error) {
+    return notReady(
+      name,
+      `https://${domain} didn't answer a CORS preflight: ${messageOf(error)}`,
+      action,
     );
   }
 }

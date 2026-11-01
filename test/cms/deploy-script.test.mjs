@@ -442,3 +442,58 @@ test("a locale that isn't a WordPress locale is refused before gq sync writes an
     await assert.rejects(access(fixture.path("deploy/ploi/admin.sh")), { code: "ENOENT" });
   }
 });
+
+// --- GQ Design's Google font families (gq-design ADR 0006) -------------------
+
+test("every deploy updates GQ Design's Google font families once the site is out of maintenance mode", async () => {
+  const result = await deploy(await generatedScript(), { gqDesignVersion: "0.10.1" });
+
+  assert.equal(result.code, 0, result.output);
+  const at = (call) => result.calls.indexOf(call);
+  const [update] = wpCalls(result.calls, "getquick-design fonts update");
+  assert.ok(update, "the deploy runs wp getquick-design fonts update");
+  assert.ok(at(wpCalls(result.calls, "plugin activate").at(-1)) < at(update));
+  assert.ok(at(wpCalls(result.calls, "maintenance-mode deactivate")[0]) < at(update));
+  assert.doesNotMatch(result.output, /Google font/u);
+});
+
+test("a failing Google font update is logged and never fails the deploy", async () => {
+  const result = await deploy(await generatedScript(), {
+    gqDesignVersion: "0.11.0-nightly.3",
+    failing: ["getquick-design fonts update"],
+  });
+
+  assert.equal(result.code, 0, result.output);
+  assert.match(
+    result.stderr,
+    /^The Google font update failed \(exit 1\); the deploy continues\.$/mu,
+  );
+  assert.match(result.stdout, /^ACME_SHOP_DEPLOY_STATUS=success SHA=0123abcd$/mu);
+});
+
+test("the Google font update is skipped without GQ Design 0.10 or later, active", async () => {
+  const script = await generatedScript();
+  for (const [options, reason] of [
+    [{}, /GQ Design \(gq-design\) isn't installed/u],
+    [{ gqDesignVersion: "0.9.4" }, /GQ Design 0\.9\.4 predates it/u],
+    [
+      { gqDesignVersion: "0.10.1", failing: ["help getquick-design fonts update"] },
+      /GQ Design 0\.10\.1 predates it \(0\.10\) or isn't active/u,
+    ],
+  ]) {
+    const result = await deploy(script, options);
+    assert.equal(result.code, 0, result.output);
+    assert.match(result.stdout, reason);
+    assert.deepEqual(wpCalls(result.calls, "getquick-design fonts update"), []);
+  }
+});
+
+test("a Composer-only deploy and a deploy before WordPress is installed don't update fonts", async () => {
+  const script = await generatedScript();
+  for (const options of [{ composerOnly: true }, { installed: false }]) {
+    const result = await deploy(script, { gqDesignVersion: "0.10.1", ...options });
+    assert.equal(result.code, 0, result.output);
+    assert.deepEqual(wpCalls(result.calls, "plugin get"), []);
+    assert.deepEqual(wpCalls(result.calls, "getquick-design fonts update"), []);
+  }
+});
