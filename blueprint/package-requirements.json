@@ -21,11 +21,11 @@
       "require": {}
     },
     "getquick/gq-content": {
-      "version": "0.5.0",
+      "version": "0.5.1",
       "require": {}
     },
     "getquick/gq-design": {
-      "version": "0.10.1",
+      "version": "0.10.2",
       "require": {}
     },
     "getquick/gq-support": {

@@ -9,7 +9,9 @@
 # proves the storefront Runtime is mounted and declared (#89 slice 6): the
 # lockfile has no Ekis path, the built Frontend answers /api/store/* and
 # /api/auth/* from the Runtime, and the deploy declares the bindings the
-# installed package's infra.json lists and refuses to run without them.
+# installed package's infra.json lists and refuses to run without them, and
+# that the built storefront renders GQ Design's fonts from the CMS's tokens
+# (commerce-fonts.mjs).
 #
 # A commerce Site has no readiness yet (#26): this proves generation and the
 # skeleton's checks, nothing about a working shop.
@@ -101,3 +103,10 @@ pnpm exec gq sync --check
 # The storefront Runtime: mounted in the built Frontend, declared by the
 # deploy plan, and required by the deploy (commerce-runtime.mjs).
 node "$repo/scripts/smoke/commerce-runtime.mjs" "$PWD"
+
+# GQ Design's fonts and text styles in the built storefront's head, from the
+# CMS's tokens; none against a GQ Design 0.9.x CMS or without the CMS
+# (commerce-fonts.mjs). One process per case: the tokens are kept per isolate.
+for scenario in fonts 0.9 down; do
+  node "$repo/scripts/smoke/commerce-fonts.mjs" "$PWD" "$scenario"
+done

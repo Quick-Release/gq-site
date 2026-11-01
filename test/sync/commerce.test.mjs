@@ -165,7 +165,7 @@ test("a commerce site gets the storefront skeleton and none of the content Front
   const plugin = JSON.parse(await readSite(site.root, "apps/cms/composer.json")).require[
     "getquick/gq-design"
   ];
-  assert.equal(plugin, "0.10.1");
+  assert.equal(plugin, "0.10.2");
   assert.equal(frontend.dependencies["@quick-release/design-contract"], plugin);
   assert.equal(frontend.dependencies["@quick-release/design-renderer"], plugin);
   assert.equal(frontend.scripts.build, "vp build");
@@ -189,6 +189,16 @@ test("a commerce site gets the storefront skeleton and none of the content Front
     await readSite(site.root, "infra/frontend.run.ts"),
     /Cloudflare\.Website\.Vite\(\n {2}"ShopFrontend",/u,
   );
+  // GQ Design's theme, fonts and text styles, from the CMS's tokens, in the
+  // root route's head, on a .gqd-content body (commerce-check.sh renders them).
+  assert.match(
+    await readSite(site.root, "apps/frontend/src/design.server.ts"),
+    /baseUrl: `\$\{cmsOrigin\}\/wp-json\/getquick-design\/v1`/u,
+  );
+  const root = await readSite(site.root, "apps/frontend/src/routes/__root.tsx");
+  assert.match(root, /loader: \(\) => loadDesignHead\(\),/u);
+  assert.match(root, /<body className="gqd-content">/u);
+  assert.ok(await exists(site.root, "apps/frontend/src/design.test.ts"));
 
   // The registry is named; its token never is.
   const npmrc = await readSite(site.root, ".npmrc");
@@ -273,7 +283,7 @@ test("gq sync adds GQ Design's packages where they sort in a sorted dependency m
   assert.deepEqual(Object.keys(JSON.parse(text).dependencies), generated);
   assert.match(
     text,
-    /\n {4}"@quick-release\/auth-contract": "0\.1\.9",\n {4}"@quick-release\/design-contract": "0\.10\.1",\n {4}"@quick-release\/design-renderer": "0\.10\.1",\n {4}"@quick-release\/storefront"/u,
+    /\n {4}"@quick-release\/auth-contract": "0\.1\.9",\n {4}"@quick-release\/design-contract": "0\.10\.2",\n {4}"@quick-release\/design-renderer": "0\.10\.2",\n {4}"@quick-release\/storefront"/u,
   );
 
   // A map the site keeps in its own order gets them after its siblings.

@@ -341,6 +341,23 @@ two font route tests (fonts rendered after the theme's Preflight; a GQ Design
 `commerce-check.sh`, `tanstack-check.mjs` and `cms-resolve.sh` (both
 skeletons lock every GETQUICK package at its pin) pass.
 
+The `0.35.0` release adopts the published `0.5.1` pair (GQ Design 0.10.2's
+renderer bundled) from source/tag `61be6b2eb81d630774287d3bcfe11724d150fbdb`,
+beside GQ Design `0.10.2` (registry and GitHub Packages, commit `83618ed`).
+Its npm archive SHA-256 is
+`124dbc16883e3328bf3ce06ace3a054b84a7fbf2f3f461f35ebccf8e573d4498` (SRI
+`sha512-DBUdGc37…Gf8/zg==`, as in the npm lock), and its CMS ZIP SHA-256 is
+`70c17699df3686282e9d837672b0821c721964f56472ff24bcd24e9ad8f2bd90` (SHA-1
+`4cb32225…`, the registry's dist checksum). Both match the release's
+`release-manifest.json`; the registry again reports a `reference-mismatch`
+for the tag name. The root suite passes. The commerce storefront's head is
+proved by its skeleton's `src/design.test.ts` and by `commerce-check.sh`,
+which renders the built storefront against a GQ Design 0.10.2 CMS (one
+cross-origin preload, then the theme, fonts and text styles), a 0.9.x CMS (no
+font markup) and an unreachable one (no design head). `frontend-check.sh`,
+`content-pair.sh`, `presentation.sh`, `tanstack-check.mjs` and
+`cms-resolve.sh` pass.
+
 ## Releasing
 
 1. Bump `version` in `package.json`, add its section to `CHANGELOG.md`, and

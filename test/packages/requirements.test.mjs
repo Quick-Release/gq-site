@@ -117,9 +117,9 @@ test("0.29.1's pins are refused: GQ Design 0.9.4 beside packages that require ^0
       commerce: withPins(ownCommerce, { ...old, "getquick/getquick-ecommerce": "0.3.5" }),
     }),
     [
-      `getquick/getquick-ecommerce 0.3.5 requires getquick/gq-design ^0.3.1, but ${COMMERCE_FILE} pins getquick/gq-design 0.10.1: Composer can't install them together.`,
-      `getquick/getquick-theme 0.5.1 requires getquick/gq-design ^0.3.1, but ${CONTENT_FILE} pins getquick/gq-design 0.10.1: Composer can't install them together.`,
-      `getquick/getquick-theme 0.5.1 requires getquick/gq-design ^0.3.1, but ${COMMERCE_FILE} pins getquick/gq-design 0.10.1: Composer can't install them together.`,
+      `getquick/getquick-ecommerce 0.3.5 requires getquick/gq-design ^0.3.1, but ${COMMERCE_FILE} pins getquick/gq-design 0.10.2: Composer can't install them together.`,
+      `getquick/getquick-theme 0.5.1 requires getquick/gq-design ^0.3.1, but ${CONTENT_FILE} pins getquick/gq-design 0.10.2: Composer can't install them together.`,
+      `getquick/getquick-theme 0.5.1 requires getquick/gq-design ^0.3.1, but ${COMMERCE_FILE} pins getquick/gq-design 0.10.2: Composer can't install them together.`,
     ],
   );
 });
@@ -135,15 +135,15 @@ test("a pin moved without its record, a stale or missing record, and an unpinned
   stale.packages["getquick/gq-polylang-graphql"] = { version: "0.1.0", require: {} };
   delete stale.packages["getquick/gq-content"];
   assert.deepEqual(problems({ requirements: stale }), [
-    "package-requirements.json doesn't record what getquick/gq-content 0.5.0 requires.",
+    "package-requirements.json doesn't record what getquick/gq-content 0.5.1 requires.",
     "package-requirements.json records getquick/gq-polylang-graphql, which the blueprint doesn't pin.",
   ]);
 
   const unpinned = structuredClone(ownRequirements);
   unpinned.packages["getquick/gq-design"].require = { "getquick/gq-assets": "^1.0.0" };
   assert.deepEqual(problems({ requirements: unpinned }), [
-    `getquick/gq-design 0.10.1 requires getquick/gq-assets ^1.0.0, which ${CONTENT_FILE} doesn't pin.`,
-    `getquick/gq-design 0.10.1 requires getquick/gq-assets ^1.0.0, which ${COMMERCE_FILE} doesn't pin.`,
+    `getquick/gq-design 0.10.2 requires getquick/gq-assets ^1.0.0, which ${CONTENT_FILE} doesn't pin.`,
+    `getquick/gq-design 0.10.2 requires getquick/gq-assets ^1.0.0, which ${COMMERCE_FILE} doesn't pin.`,
   ]);
 
   const { requirementsFile, ...noRecords } = ownCatalogue;

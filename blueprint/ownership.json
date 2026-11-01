@@ -747,6 +747,12 @@
       "variants": ["commerce"]
     },
     {
+      "path": "apps/frontend/src/design.server.ts",
+      "template": "templates/commerce/apps/frontend/src/design.server.ts",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
+    },
+    {
       "path": "apps/frontend/src/routes/api.auth.$.ts",
       "template": "templates/commerce/apps/frontend/src/routes/api.auth.$.ts",
       "app": "apps/frontend",
@@ -761,6 +767,12 @@
     {
       "path": "apps/frontend/src/home.test.tsx",
       "template": "templates/commerce/apps/frontend/src/home.test.tsx",
+      "app": "apps/frontend",
+      "variants": ["commerce"]
+    },
+    {
+      "path": "apps/frontend/src/design.test.ts",
+      "template": "templates/commerce/apps/frontend/src/design.test.ts",
       "app": "apps/frontend",
       "variants": ["commerce"]
     }

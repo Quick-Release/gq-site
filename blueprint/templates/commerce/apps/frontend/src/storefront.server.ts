@@ -24,7 +24,8 @@ const ddevProject = "{{project}}-admin";
 // a build serves gq.ops.json's domains.
 const local = import.meta.env.DEV || !domains;
 const storefrontUrl = local ? "http://localhost:3000" : `https://${domains.frontend}`;
-const cms = local ? `https://${ddevProject}.ddev.site` : `https://${domains.admin}`;
+/** The CMS's origin: WooCommerce's Store API and GQ Design's tokens (design.server.ts). */
+export const cms = local ? `https://${ddevProject}.ddev.site` : `https://${domains.admin}`;
 
 /**
  * The deployed Worker's bindings. `vp dev` and tests run outside workerd,

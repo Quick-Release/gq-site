@@ -406,6 +406,51 @@ of the Site with a font assigned: one `<link rel="preload" as="font" … crossor
 and the `@font-face` rules in the head, the WOFF2 requested from the media
 host, and no request to Google.
 
+### 0.5.0 to 0.5.1 (`@getquick/site` 0.35.0)
+
+0.5.1 bundles GQ Design 0.10.2's renderer (wire contract 2.1.0 is unchanged)
+([release notes](https://github.com/Quick-Release/gq-content/blob/v0.5.1/docs/releases/0.5.1.md)):
+
+- **Headings take the text styles.** The presentation stylesheet no longer
+  resets an unauthored heading's font family, size, weight, line height and
+  letter spacing with `inherit !important` (gq-design#121), so the Heading
+  text style and its sizes (`h1{font-size:var(--gqd-text-5xl)}` and the rest)
+  apply. A heading's own authored typography still wins.
+- **The slot stacks reach Design content.** `designFontsHead` writes
+  `--gqd-font-sans` and the rest on `:root,.gqd-content.gqd-content` straight
+  from GQ Design (gq-design#118); 0.5.0's workaround is gone. Its output and
+  order are otherwise unchanged.
+- **A bad stored text style value** is dropped instead of throwing during a
+  page render (gq-design#119).
+
+The CMS side brings GQ Design 0.10.2's own fixes: `wp getquick-design fonts
+import` matches a family's name in any case (#120), and the editor's font
+notices read origin-keyed families (#123). There is no D1 migration, no new
+route or binding, no layout change and no design refresh.
+
+1. **Upgrade the pins.** Set the root `@getquick/site` pin to `0.35.0`, run
+   `pnpm install`, then `pnpm exec gq sync`: it sets both managed content
+   keys to exactly `0.5.1`. In `apps/cms/composer.json`, raise
+   `getquick/gq-design` to `0.10.2` (the blueprint's pin);
+   `getquick/getquick-theme` stays at `0.6.2`. A Site that pinned a GQ Design
+   branch, candidate or nightly build (an alias, or an artifact repository)
+   returns to the released `0.10.2` from the GETQUICK registry: remove that
+   repository entry and alias. Then run `pnpm install` again and, in
+   `apps/cms`,
+   `composer update getquick/gq-content getquick/gq-design --with-all-dependencies`.
+   Review and commit `gq.lock.json`, `pnpm-lock.yaml` and
+   `apps/cms/composer.lock`, then check `pnpm exec gq sync --check` and
+   `pnpm exec gq doctor`.
+2. **Keep the layout.** A Site that made 0.34.0's layout change (the fonts
+   after the theme's stylesheet) needs nothing more. A Site that skipped it
+   makes it now: see [0.4.2 to 0.5.0](#042-to-050-getquicksite-0340), steps
+   2, 3 and 5.
+3. **Release the CMS, then the Frontend**, as one Site release.
+
+Then, on a page with an unauthored heading: the heading's size follows the
+Heading text style, and the `<style>` from `presentationStyleSheet` has no
+`inherit !important` for it.
+
 ## Rolling back
 
 Revert the branch and release it. The CMS rolls back its code (its options

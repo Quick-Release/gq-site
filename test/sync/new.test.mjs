@@ -35,7 +35,7 @@ test("gq new writes a v1 manifest whose plugins are the ones the CMS skeleton in
     assert.ok(installed, plugin);
   }
   // Pinned exactly, in lockstep with its npm packages (ADR 0018, #93).
-  assert.equal(composer.require["getquick/gq-design"], "0.10.1");
+  assert.equal(composer.require["getquick/gq-design"], "0.10.2");
   assert.equal(composer.require["getquick/getquick-design"], undefined);
   assert.equal(composer.require["getquick/gq-config"], "0.4.3");
   assert.equal(composer.require["getquick/getquick-config"], undefined);
