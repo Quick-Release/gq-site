@@ -88,10 +88,13 @@ token.
   packages, naming both. It warns when there is no `composer.lock` yet, or the
   plugin is locked to a branch. A Site that locks no design package passes.
 
-The pin is `0.10.1`: the newest version the Composer registry serves (built
-from tag `v0.10.1`, commit `2eaa4ed`) that GitHub Packages also serves for both
-packages. It adds self-hosted fonts and text styles (contract 2.1.0), which
-`@getquick/content` 0.5.0 renders.
+The pin is `0.10.2`: the newest version the Composer registry serves (built
+from tag `v0.10.2`, commit `83618ed`) that GitHub Packages also serves for both
+packages. 0.10.1 added self-hosted fonts and text styles (contract 2.1.0);
+0.10.2 lets the text styles size unauthored headings and keeps the slot
+stacks on the content root. `@getquick/content` 0.5.1 renders them on a
+content Site, and the commerce storefront renders them with
+`@quick-release/design-renderer` from the CMS's tokens.
 
 `getquick/getquick-theme` 0.6.2 requires `getquick/gq-design`
 `^0.9.0 || ^0.10.0` and `getquick/getquick-ecommerce` 0.4.4 requires

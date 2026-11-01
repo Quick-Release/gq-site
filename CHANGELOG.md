@@ -3,6 +3,48 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **The commerce storefront renders GQ Design's theme, self-hosted fonts and
+  text styles.** 0.34.0 rendered them only on content Sites. The commerce
+  Frontend skeleton's root route now reads GQ Design's public tokens from the
+  CMS (`/wp-json/getquick-design/v1/tokens`) through a server function
+  (`src/design.server.ts`). Each Worker isolate reads them at most once a
+  minute. The route renders them in the head with
+  `@quick-release/design-renderer`: the theme's scoped Preflight and
+  variables, then at most two font preloads (`crossorigin`), the
+  `@font-face` rules and the slot stacks on `:root` and the content root,
+  then the text styles. The `<body>` is the `.gqd-content` root. A CMS on
+  GQ Design 0.9.x has no fonts or text styles, and none render; without the
+  CMS's tokens the page renders with no design head. Font files from
+  Google's hosts are dropped. The skeleton's `src/design.test.ts` covers the
+  head, and `commerce-check.sh` renders the built storefront against a 0.10.2
+  CMS, a 0.9.x CMS and an unreachable one (`commerce-fonts.mjs`).
+
+### Changed
+
+- **Pins.** GQ Design (`getquick/gq-design`, `@quick-release/design-contract`,
+  `@quick-release/design-renderer`) 0.10.2. Unauthored headings now take the
+  text styles, the slot stacks reach the content root, and a bad text style
+  value is dropped instead of throwing. `@getquick/content` and
+  `getquick/gq-content` 0.5.1, which bundle that renderer.
+  `getquick/getquick-theme` 0.6.2 and `getquick/getquick-ecommerce` 0.4.4
+  are unchanged.
+
+Existing Sites: content Sites follow
+[0.5.0 to 0.5.1](docs/guides/content-pair-migration.md#050-to-051-getquicksite-0350):
+pins only, with no layout change after 0.34.0's. A commerce Site's Frontend
+files are created once, so `gq sync` sets only GQ Design's npm pins. Add
+`apps/frontend/src/design.server.ts` from the blueprint, export `cms` from
+`src/storefront.server.ts`, and make the root route's loader, `head` and
+`<body className="gqd-content">` change as in the blueprint's
+`src/routes/__root.tsx`. Then raise `getquick/gq-design` to 0.10.2 in
+`apps/cms/composer.json`, run `pnpm cf:media` for the media CORS rule and
+`pnpm ploi:fonts` (0.33.0) if the Site has neither yet, and release the CMS
+before the Frontend.
+
 ## 0.34.0 — 2026-11-01
 
 ### Added

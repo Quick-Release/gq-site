@@ -42,3 +42,20 @@ secrets and variables. Under `vp dev` and in tests there are none, so
 fleet's `read:packages` token, which `gq setup` and `gq sigillo run local --
 pnpm install` read from GQ Platform `ops` (or one in your user-level
 `~/.npmrc`, `//npm.pkg.github.com/:_authToken=…`), never in this repository.
+
+## GQ Design's theme, fonts and text styles
+
+The root route (`src/routes/__root.tsx`) reads GQ Design's public tokens from
+the CMS (`/wp-json/getquick-design/v1/tokens`) on the server, through
+`src/design.server.ts`, and renders them in the head with
+`@quick-release/design-renderer`: the theme's scoped Preflight and variables,
+then at most two font preloads (`crossorigin`), the `@font-face` rules and the
+slot stacks (`--gqd-font-sans` and the rest), then the Heading and Paragraph
+text styles. They apply under `.gqd-content`, which the `<body>` carries.
+Font files come only from the tokens, from the CMS's media host, never from
+Google; the media bucket's CORS rule (`pnpm cf:media`) lets the browser load
+them. A CMS on GQ Design 0.9.x has no fonts or text styles, and none render.
+If the CMS can't be reached the page renders without the design head.
+
+Each Worker isolate reads the tokens at most once a minute, so a font
+assigned on the CMS shows within about a minute.
