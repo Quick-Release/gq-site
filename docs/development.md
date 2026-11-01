@@ -324,6 +324,23 @@ and `frontend-check.sh` passes, forms leg included. A generated TanStack Site
 with `forms` and `domains.frontendProxy` passes `tsc` against 0.4.2, and a
 misspelt `trustedProxies` fails it.
 
+The `0.34.0` release adopts the published `0.5.0` pair (GQ Design's fonts
+and text styles through `designFontsHead`) from source/tag
+`651e4fbb6396efdd5c4d02784eb45f47f669ddfa`, beside GQ Design `0.10.1`
+(registry and GitHub Packages, commit `2eaa4ed`), getquick-theme `0.6.2` and
+getquick-ecommerce `0.4.4`. Its npm archive SHA-256 is
+`30e3da777484348c7482c4ed21e77185230f0cc3a89fb366368ea5f33f86f6e5` (SRI
+`sha512-JZaN/NMa…I1g7w==`, as in the npm lock), and its CMS ZIP SHA-256 is
+`6e3ed7af45e7e2d5687a341de981394e3c43631cf0d56d1342076cbd94b0da8d`. Both
+match the release's `release-manifest.json`. The registry builds 0.5.0 from
+the tag name (`reference` `v0.5.0`), so `gq packages propose` reports a
+`reference-mismatch` for it; the tag's commit and the ZIP's hash were checked
+instead. The root suite passes, `frontend-check.sh` passes with the layout's
+two font route tests (fonts rendered after the theme's Preflight; a GQ Design
+0.9.x CMS renders none), and `content-pair.sh`, `presentation.sh`,
+`commerce-check.sh`, `tanstack-check.mjs` and `cms-resolve.sh` (both
+skeletons lock every GETQUICK package at its pin) pass.
+
 ## Releasing
 
 1. Bump `version` in `package.json`, add its section to `CHANGELOG.md`, and

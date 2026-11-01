@@ -9,11 +9,14 @@ allowBuilds:
   workerd: true
 # GETQUICK's own packages may be installed the day they are released:
 # @getquick/site, and the consent Runtime it and the Frontend use
-# (@getquick/content; the storefront's adapter on commerce).
+# (@getquick/content; the storefront's adapter and GQ Design's npm packages
+# on commerce).
 minimumReleaseAgeExclude:
   - "@getquick/site"
   - "@getquick/content"
   - "@quick-release/storefront"
+  - "@quick-release/design-contract"
+  - "@quick-release/design-renderer"
 overrides:
   "@effect/platform-node-shared": 4.0.0-rc.115
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0

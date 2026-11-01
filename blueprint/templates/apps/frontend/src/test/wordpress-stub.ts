@@ -3,7 +3,10 @@
 import { vi } from "vite-plus/test";
 
 export type Answer = { ok: false; status: number } | { ok: true; json: () => Promise<unknown> };
-export type Handler = (variables: Record<string, unknown>) => Answer | Promise<Answer>;
+export type Handler = (
+  variables: Record<string, unknown>,
+  query: string,
+) => Answer | Promise<Answer>;
 
 export const tokens = { colors: [], spacingSizes: [] };
 
@@ -84,6 +87,11 @@ export function data(value: unknown): Answer {
   return { ok: true, json: async () => ({ data: value }) };
 }
 
+/** A GraphQL error, as WPGraphQL answers a query it rejects. */
+export function graphqlError(message: string): Answer {
+  return { ok: true, json: async () => ({ errors: [{ message }] }) };
+}
+
 export function httpError(status: number): Answer {
   return { ok: false, status };
 }
@@ -125,7 +133,7 @@ export function stubWordPress(handlers: {
       PublishedRoutes: answer.routes,
     }[name ?? ""];
     if (!handler) throw new Error(`Unexpected query ${name}`);
-    return handler(request.variables ?? {});
+    return handler(request.variables ?? {}, request.query);
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;

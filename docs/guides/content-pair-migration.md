@@ -339,6 +339,73 @@ Their rate limits now key an IPv6 visitor by its /64, with or without a
 proxy. Nothing else changes: no migration, no new route, and no new binding
 for a Site without `frontendProxy`. Release the CMS and the Frontend together.
 
+### 0.4.2 to 0.5.0 (`@getquick/site` 0.34.0)
+
+0.5.0 reads GQ Design 0.10.1's fonts and text styles (contract 2.1.0) into
+the stored design presets and renders them with `designFontsHead(presets)`:
+at most two font preloads, the `@font-face` rules, the slot stacks
+(`--gqd-font-sans` and the rest) and the text styles
+([release notes](https://github.com/Quick-Release/gq-content/blob/v0.5.0/docs/releases/0.5.0.md),
+[gq-design ADR 0006](https://github.com/Quick-Release/gq-design/blob/main/docs/adr/0006-self-hosted-google-fonts.md)).
+Font files come only from the presets, so a visitor's browser never contacts
+Google. With GQ Design 0.9.x the CMS rejects the new fields; the runtime
+reads the presets again without them, logs a warning, and the helper renders
+nothing, so pages keep the system fonts. There is no D1 migration and no new
+route or binding.
+
+1. **Upgrade the pins.** Set the root `@getquick/site` pin to `0.34.0`, run
+   `pnpm install`, then `pnpm exec gq sync`: it sets both managed content
+   keys to exactly `0.5.0`. `apps/cms/composer.json` is otherwise the Site's,
+   so raise its own requirements: `getquick/gq-design` to `0.10.1` (the
+   blueprint's pin) and `getquick/getquick-theme` to `0.6.2` (0.6.1 and older
+   don't accept GQ Design 0.10). A Site on a GQ Design branch keeps its
+   alias, which must be at least `0.10.1`. Then run `pnpm install` again and,
+   in `apps/cms`,
+   `composer update getquick/gq-content getquick/gq-design getquick/getquick-theme --with-all-dependencies`.
+   Review and commit `gq.lock.json`, `pnpm-lock.yaml` and
+   `apps/cms/composer.lock`, then check `pnpm exec gq sync --check`.
+2. **Render the fonts in the layout.** `layouts/Layout.astro` is created
+   once, so `gq sync` doesn't change an existing Site's. Import
+   `designFontsHead` from `@getquick/content`, read the presets once and
+   reuse them for the theme fallback:
+
+   ```ts
+   const designPresets = await runtime.designPresets();
+   const theme = resolveDesignTheme(Astro.props.theme ?? designPresets?.theme);
+   ```
+
+   and render them right after the theme's stylesheet, since the text styles
+   override its Preflight:
+
+   ```astro
+   <style is:inline set:html={designThemeStyleSheet(theme)} />
+   <Fragment set:html={designFontsHead(designPresets)} />
+   ```
+
+   A Site that never edited its layout can take the blueprint's instead:
+   `pnpm exec gq sync --recreate apps/frontend/src/layouts/Layout.astro`. A
+   TanStack Start Site returns `fonts: designFontsHead(await runtime.designPresets())`
+   from `page()` in `src/site.server.ts` and renders it after the theme's
+   `<style>` in `src/routes/$.tsx`, as the blueprint's now do.
+
+3. **Give the CMS the Google Fonts key and the media CORS rule** (from
+   `@getquick/site` 0.33.0), if the Site doesn't have them yet:
+   `pnpm ploi:fonts`, and `pnpm cf:media` for the media bucket's CORS rule.
+   The preloads are cross-origin, so font files fail to load without it.
+4. **Release the CMS, then the Frontend**, as one Site release. The CMS
+   deploy runs `wp getquick-design fonts update` once GQ Design 0.10.1 is
+   active.
+5. **Refresh the design presets.** Presets stored before the upgrade have no
+   fonts until the next `design` settings refresh. Run `pnpm frontend:refresh`
+   with no `--uri` after the Frontend deploy, or wait for reconciliation.
+   Saving font slots or text styles on the upgraded CMS sends the refresh by
+   itself.
+
+Then check `pnpm site:check` (`media-cors`, `google-fonts-key`), and on a page
+of the Site with a font assigned: one `<link rel="preload" as="font" … crossorigin>`
+and the `@font-face` rules in the head, the WOFF2 requested from the media
+host, and no request to Google.
+
 ## Rolling back
 
 Revert the branch and release it. The CMS rolls back its code (its options

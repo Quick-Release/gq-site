@@ -13,6 +13,7 @@ import {
   chrome,
   consentSettings,
   data,
+  graphqlError,
   httpError,
   queries,
   stubWordPress,
@@ -372,5 +373,101 @@ describe("the consent UI", () => {
     expect(html).toContain('"services":["consent","ga4"]');
     // The tag itself loads only after a grant, from the Runtime's client.
     expect(html).not.toContain("googletagmanager.com");
+  });
+});
+
+// GQ Design's self-hosted fonts and text styles (GQ Design 0.10.1, contract
+// 2.1.0): the layout renders @getquick/content's designFontsHead from the
+// stored presets right after the theme's stylesheet. How each part is written
+// is gq-content's, tested there; these test that the layout composes it.
+describe("GQ Design fonts", () => {
+  // As GQ Design 0.10.1 delivers them: Inter, imported to the media host, on
+  // the sans slot, which both text styles use.
+  const fonts = {
+    families: [
+      {
+        slug: "inter",
+        name: "Inter",
+        fallback: null,
+        faces: [
+          {
+            src: ["https://media.example/app/uploads/fonts/inter/inter-latin.woff2"],
+            format: "woff2",
+            weight: "100 900",
+            style: "normal",
+            unicodeRange: "U+0000-00FF",
+            display: "swap",
+            preload: true,
+          },
+        ],
+      },
+    ],
+    slots: { sans: "inter", serif: null, mono: null },
+  };
+  const textStyle = { slot: "sans", weight: "400", lineHeight: "1.5", letterSpacing: "0em" };
+  const textStyles = {
+    heading: {
+      ...textStyle,
+      weight: "700",
+      lineHeight: "1.2",
+      sizes: { h1: "5xl", h2: "4xl", h3: "3xl", h4: "2xl", h5: "xl", h6: "lg" },
+    },
+    paragraph: textStyle,
+  };
+
+  beforeEach(() => {
+    vi.stubEnv("DEV", true);
+  });
+
+  /** The page's head. */
+  function head(html: string) {
+    return /<head>([\s\S]*?)<\/head>/.exec(html)?.[1] ?? "";
+  }
+
+  test("an assigned font is preloaded from the media host, after the theme's stylesheet", async () => {
+    stubWordPress({
+      entry: () => data({ postBy: null, pageBy: about, designTokens: tokens }),
+      design: () => data({ designTokens: { ...tokens, fonts, textStyles } }),
+    });
+
+    const { status, html } = await render("/about/");
+
+    expect(status).toBe(200);
+    const page = head(html);
+    expect(page).toMatch(
+      /<link rel="preload" as="font" type="font\/woff2" href="https:\/\/media\.example\/app\/uploads\/fonts\/inter\/inter-latin\.woff2" crossorigin>/,
+    );
+    expect(page).toMatch(/@font-face\s*\{[^}]*font-family:\s*"Inter"/);
+    expect(page).toMatch(/--gqd-font-sans:\s*"Inter"/);
+    expect(page).toContain("data-gqd-text-styles");
+    // The fonts and text styles follow the theme's Preflight, which they override.
+    const preflight = page.indexOf(".gqd-content.gqd-content *");
+    expect(preflight).toBeGreaterThan(-1);
+    expect(page.indexOf("data-gqd-fonts")).toBeGreaterThan(preflight);
+    expect(page.indexOf("data-gqd-text-styles")).toBeGreaterThan(page.indexOf("data-gqd-fonts"));
+    expect(page).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
+  });
+
+  test("a CMS on GQ Design 0.9.x has no fonts, and the page keeps the system fonts", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stubWordPress({
+      entry: () => data({ postBy: null, pageBy: about, designTokens: tokens }),
+      // GQ Design before 0.10.1 rejects the fonts and text styles fields.
+      design: (_variables, query) =>
+        query.includes("fonts")
+          ? graphqlError('Cannot query field "fonts" on type "DesignTokens".')
+          : data({ designTokens: tokens }),
+    });
+
+    const { status, html } = await render("/about/");
+
+    expect(status).toBe(200);
+    expect(html).toContain("<p>We make things.</p>");
+    const page = head(html);
+    expect(page).not.toContain('rel="preload" as="font"');
+    expect(page).not.toContain("@font-face");
+    expect(page).not.toContain("data-gqd-fonts");
+    expect(page).not.toContain("data-gqd-text-styles");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("GQ Design delivers no fonts"));
   });
 });

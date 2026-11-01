@@ -56,9 +56,14 @@ import {
 } from "./frontend-runtime-lib.mjs";
 
 // Immutable published pairs: v0.3.1 (source cbf2925), v0.3.2 (source
-// 698b989), v0.4.0 (source 61f51f4) and v0.4.2 (source 043afbe). A new pin
-// brings its release receipt's own npm/ZIP hashes.
+// 698b989), v0.4.0 (source 61f51f4), v0.4.2 (source 043afbe) and v0.5.0
+// (source 651e4fb). A new pin brings its release receipt's own npm/ZIP hashes.
 const PUBLISHED = {
+  "0.5.0": {
+    integrity:
+      "sha512-JZaN/NMalEhPU9gE2VQsndVDKaRM7KLVsOTmQ9d0MUF7v3oUBbosMs/hG8RxB6+N8xDW7vI3mVPTZpO7SI1g7w==",
+    zipSha256: "6e3ed7af45e7e2d5687a341de981394e3c43631cf0d56d1342076cbd94b0da8d",
+  },
   "0.4.2": {
     integrity:
       "sha512-Phkk8tZ/LinT9HoOT7sreysvLbvYAAU7693Aof7ycgftVymd0wW482TqZHRNBkR15u4JOBWRI237gmO2vzSivQ==",
