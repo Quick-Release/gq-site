@@ -653,7 +653,7 @@ test("a gated commerce foundation adopts the commerce variant through gq sync", 
 
 // A requirement both CMS skeletons install has the same constraint in both.
 // gq packages --write moves a catalogued shared pin in both files (#91); this
-// also holds the shared pins it doesn't catalogue (roots/wordpress, wp-plugin/*).
+// also covers the shared pins it doesn't catalogue (roots/wordpress, wp-plugin/*).
 test("the commerce CMS skeleton pins every shared requirement as the content one does", async () => {
   const templates = new URL("../../blueprint/templates/", import.meta.url);
   const read = async (path) => JSON.parse(await readFile(new URL(path, templates), "utf8"));

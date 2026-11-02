@@ -574,7 +574,7 @@ test("the shipped catalogue agrees with the blueprint's composer.json files and 
   assert.ok(Object.hasOwn(ownComposer.require, "getquick/getquick-theme"));
 });
 
-// --- both CMS variants (#91) --------------------------------------------------
+// --- both variants' CMS skeletons (#91) --------------------------------------
 
 // The commerce skeleton pins the shared alpha and beta and a package of its
 // own, shop; the content one never requires shop.
@@ -600,6 +600,7 @@ const VARIANTS_CATALOGUE = {
   ],
 };
 
+// shop 0.4.5 is out, as well as alpha 0.3.3.
 function variantsWorld() {
   const world = defaultWorld();
   world.github["Quick-Release/shop"] = { tags: ["v0.4.5", "v0.4.4"], name: "getquick/shop" };
