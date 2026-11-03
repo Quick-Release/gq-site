@@ -574,6 +574,84 @@ test("the shipped catalogue agrees with the blueprint's composer.json files and 
   assert.ok(Object.hasOwn(ownComposer.require, "getquick/getquick-theme"));
 });
 
+// --- both variants' CMS skeletons (#91) --------------------------------------
+
+// The commerce skeleton pins the shared alpha and beta and a package of its
+// own, shop; the content one never requires shop.
+const COMMERCE_COMPOSER_TEXT = COMPOSER_TEXT.replace(
+  '"getquick/beta": "^1.2.0",',
+  '"getquick/beta": "^1.2.0",\n    "getquick/shop": "^0.4.4",',
+);
+const VARIANTS_CATALOGUE = {
+  ...CATALOGUE,
+  variantComposerFiles: { commerce: "templates/commerce/apps/cms/composer.json" },
+  packages: [
+    ...CATALOGUE.packages.map((pkg) =>
+      pkg.requirement === "blueprint" ? { ...pkg, variants: ["content", "commerce"] } : pkg,
+    ),
+    {
+      name: "getquick/shop",
+      upstream: { repository: "Quick-Release/shop", discovery: "tags" },
+      install: { registry: "getquick" },
+      variants: ["commerce"],
+      requirement: "blueprint",
+      policy: "caret",
+    },
+  ],
+};
+
+// shop 0.4.5 is out, as well as alpha 0.3.3.
+function variantsWorld() {
+  const world = defaultWorld();
+  world.github["Quick-Release/shop"] = { tags: ["v0.4.5", "v0.4.4"], name: "getquick/shop" };
+  world.registry["getquick/shop"] = ["0.4.4", "0.4.5"];
+  return world;
+}
+
+test("check covers both CMS composer.json files, and --write moves a shared pin in each", async () => {
+  const commerceFile = "blueprint/templates/commerce/apps/cms/composer.json";
+  const site = await checkout({
+    catalogue: VARIANTS_CATALOGUE,
+    files: { [commerceFile]: COMMERCE_COMPOSER_TEXT },
+  });
+  const world = variantsWorld();
+  const check = await checkJson(site, { world });
+  assert.equal(check.code, 0, check.stderr);
+  assert.deepEqual(check.report.files, [
+    "blueprint/templates/apps/cms/composer.json",
+    commerceFile,
+  ]);
+  assert.deepEqual(row(check.report, "getquick/shop").variants, ["commerce"]);
+  assert.deepEqual(row(check.report, "getquick/alpha").variants, ["content", "commerce"]);
+
+  const result = await site.run(["packages", "propose", "--latest", "--write", "--json"], {
+    world,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const proposal = JSON.parse(result.stdout);
+  assert.deepEqual(
+    proposal.changes.map(({ name, from, to }) => [name, from, to]),
+    [
+      ["getquick/alpha", "^0.3.1", "^0.3.3"],
+      ["getquick/shop", "^0.4.4", "^0.4.5"],
+    ],
+  );
+  assert.equal(proposal.written, true);
+  const moved = (text) =>
+    text.replace('"getquick/alpha":   "^0.3.1"', '"getquick/alpha":   "^0.3.3"');
+  // The shared pin moves in both files; shop's only where it's required.
+  assert.equal(await site.composer(), moved(COMPOSER_TEXT));
+  assert.equal(
+    await site.read(commerceFile),
+    moved(COMMERCE_COMPOSER_TEXT).replace('"getquick/shop": "^0.4.4"', '"getquick/shop": "^0.4.5"'),
+  );
+
+  const again = await checkJson(site, { world });
+  assert.equal(again.code, 0, again.stderr);
+  assert.equal(row(again.report, "getquick/alpha").action, "none");
+  assert.equal(row(again.report, "getquick/shop").action, "none");
+});
+
 // --- npm packages and lockstep groups (ADR 0018, #93) -------------------------
 
 const PACKAGES_TOKEN = "ghp_fixture-packages-token";
