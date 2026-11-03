@@ -8,8 +8,10 @@
 //                   which exists only then (validated, not resolved).
 //   form-fields     every form published content references is one the
 //                   handler supports (@getquick/content/forms'
-//                   formsReadiness): no CAPTCHA, upload, payment, page break,
-//                   conditional logic or other unsupported field.
+//                   formsReadiness): no CAPTCHA, payment, page break,
+//                   conditional logic or other unsupported field, and upload
+//                   fields only of formats it can verify. A form whose files
+//                   together can exceed the form route's upload cap warns.
 //   spam-controls   a Site that chose Turnstile has both of its keys.
 //   cms-access      the optional Access service token for the submissions
 //                   path is a whole pair.
@@ -21,12 +23,19 @@
 // secret's value.
 
 import { formsReadiness, parseFormDescriptors } from "@getquick/content/forms";
+import { MAX_UPLOAD_BYTES } from "@getquick/content/forms/server";
 
 import { cmsFetch } from "../cms/access.mjs";
 import { formSpamControls, wordpressGraphqlUrl } from "../manifest/schema.mjs";
 
 /** The managed route adapter gq sync writes while gq.ops.json declares `forms`. */
 export const FORMS_ROUTE = "apps/frontend/src/pages/gq/forms/[...rest].ts";
+
+/**
+ * The managed form route's cap on a multipart post, files included: it passes
+ * no `maxUploadBytes`, so createFormsServer's default (10 MiB) applies.
+ */
+export const FORMS_ROUTE_MAX_UPLOAD_BYTES = MAX_UPLOAD_BYTES;
 
 /** Turnstile's keys, from Sigillo: the secret verifies server-side, the site key renders the widget. */
 export const TURNSTILE_SECRET_KEY = "TURNSTILE_SECRET_KEY";
@@ -154,7 +163,11 @@ async function fieldsCheck(fetch, graphqlUrl, ops) {
     );
   }
   const statusCommand = "wp gq-forms status on the CMS lists them";
-  const readiness = formsReadiness(descriptors, { spam: formSpamControls(ops) });
+  const spam = formSpamControls(ops);
+  const readiness = formsReadiness(descriptors, {
+    spam,
+    maxUploadBytes: FORMS_ROUTE_MAX_UPLOAD_BYTES,
+  });
   const pagesOf = (id) => [...(referencedBy.get(id) ?? [])].join(", ");
   const failing = readiness.forms.filter((form) => !form.ok);
   if (failing.length > 0) {
@@ -174,10 +187,21 @@ async function fieldsCheck(fetch, graphqlUrl, ops) {
   }
   const listed = readiness.forms.map((form) => `form ${form.id} (${form.title})`).join(", ");
   if (readiness.warnings.length > 0) {
+    const actions = [];
+    if (spam.includes("honeypot") && readiness.forms.some((form) => !form.honeypot)) {
+      actions.push(
+        "enable the anti-spam honeypot in each form's settings, or drop honeypot from gq.ops.json forms.spam",
+      );
+    }
+    if (readiness.warnings.some((warning) => /MB the Site accepts per post/u.test(warning))) {
+      actions.push(
+        `keep each form's largest post within the form route's ${FORMS_ROUTE_MAX_UPLOAD_BYTES / 1_048_576} MiB: lower its upload fields' maximum file size or number of files (gq-content docs/forms-file-uploads.md)`,
+      );
+    }
     return warn(
       name,
       `${listed} can be sent${coverage}, but ${readiness.warnings.join(" ")}`,
-      "enable the anti-spam honeypot in each form's settings, or drop honeypot from gq.ops.json forms.spam",
+      actions.join("; "),
     );
   }
   return ok(name, `${listed} can be sent${coverage}`);

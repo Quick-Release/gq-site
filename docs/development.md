@@ -358,6 +358,17 @@ font markup) and an unreachable one (no design head). `frontend-check.sh`,
 `content-pair.sh`, `presentation.sh`, `tanstack-check.mjs` and
 `cms-resolve.sh` pass.
 
+The `0.36.0` release adopts the published `0.6.0` pair (Gravity Forms file
+uploads, gq-content ADR 0010) from source/tag
+`b526e0881c22b1a0cf289418a84cb7f0be7fd4ad`, beside GQ Design `0.10.2`
+(unchanged). Its npm archive SHA-256 is
+`c8744492a30ae3e750299e398a6f3c28935e8c29f2a7d2a75e9eb5f5230de434` (SRI
+`sha512-JQ1i0ez/…f6f/g==`, as in the npm lock), and its CMS ZIP SHA-256 is
+`4a0ecca2b39242354ffb48183e8e47a388de71c2ef8d8cf7625bdaa0e853fb0e`. Both
+match the release's `release-manifest.json`. `gq site check` passes the
+managed form route's upload cap (createFormsServer's default, 10 MiB) to
+`formsReadiness`, so a form whose largest post exceeds it warns.
+
 ## Releasing
 
 1. Bump `version` in `package.json`, add its section to `CHANGELOG.md`, and

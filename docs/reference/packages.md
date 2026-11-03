@@ -92,7 +92,7 @@ The pin is `0.10.2`: the newest version the Composer registry serves (built
 from tag `v0.10.2`, commit `83618ed`) that GitHub Packages also serves for both
 packages. 0.10.1 added self-hosted fonts and text styles (contract 2.1.0);
 0.10.2 lets the text styles size unauthored headings and keeps the slot
-stacks on the content root. `@getquick/content` 0.5.1 renders them on a
+stacks on the content root. `@getquick/content` 0.5.1 and later render them on a
 content Site, and the commerce storefront renders them with
 `@quick-release/design-renderer` from the CMS's tokens.
 

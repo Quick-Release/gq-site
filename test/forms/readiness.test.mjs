@@ -6,10 +6,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CONTACT_FORM, UNSUPPORTED_FORM } from "@getquick/content/forms/testing";
+import { CONTACT_FORM, SUBMISSION_FORM, UNSUPPORTED_FORM } from "@getquick/content/forms/testing";
 
 import {
   FORMS_QUERY,
+  FORMS_ROUTE_MAX_UPLOAD_BYTES,
   FORMS_SCHEMA_QUERY,
   localFormsStatus,
   siteFormsReadiness,
@@ -180,6 +181,39 @@ test("a form without Gravity Forms' honeypot on a Site relying on it warns", asy
   assert.equal(ready, true);
   assert.equal(byName["form-fields"].status, "warn");
   assert.match(byName["form-fields"].detail, /honeypot/u);
+});
+
+test("an upload form whose files fit the form route's cap is ready", async () => {
+  const upload = SUBMISSION_FORM.fields.find(({ type }) => type === "fileupload");
+  const fitting = {
+    ...SUBMISSION_FORM,
+    fields: SUBMISSION_FORM.fields.map((field) =>
+      field === upload ? { ...field, upload: { ...field.upload, maxFiles: 2 } } : field,
+    ),
+  };
+  const { ready, byName } = await check({
+    fetch: cms({ pages: [[{ uri: "/partilhe/", forms: [fitting] }]] }),
+  });
+  assert.equal(ready, true);
+  assert.equal(byName["form-fields"].status, "ok");
+  assert.match(byName["form-fields"].detail, /^form 6 \(Partilhe\) can be sent$/u);
+});
+
+test("an upload form whose files can exceed the form route's 10 MiB cap warns", async () => {
+  assert.equal(FORMS_ROUTE_MAX_UPLOAD_BYTES, 10 * 1_048_576);
+  // Five files of 5 MiB: 25 MiB together.
+  const { ready, byName } = await check({
+    fetch: cms({ pages: [[{ uri: "/partilhe/", forms: [SUBMISSION_FORM] }]] }),
+  });
+  assert.equal(ready, true);
+  const fields = byName["form-fields"];
+  assert.equal(fields.status, "warn");
+  assert.match(
+    fields.detail,
+    /Form 6's files can reach 25\.0 MB together, more than the 10\.0 MB/u,
+  );
+  assert.match(fields.action, /form route's 10 MiB/u);
+  assert.doesNotMatch(fields.action, /honeypot/u);
 });
 
 test("no published form yet is ready", async () => {

@@ -33,20 +33,55 @@ entry access and declares no credential for it.
 
 The handler supports text, paragraph, email, phone, number, website, drop
 down, radio buttons, checkboxes, consent, name, hidden, HTML and section
-fields. Gravity Forms' own CAPTCHA, file uploads, payment and pricing fields,
-page breaks, conditional logic, login-only forms and radio buttons with an
-"Other" choice are not supported. A form that references one fails readiness
-instead of rendering a form that can't be sent: replace the field, or take the
-form off the page. Use Turnstile, not the CAPTCHA field, for a challenge.
+fields, and, from gq-content 0.6.0, file uploads. Gravity Forms' own CAPTCHA,
+Post Image and Signature fields, payment and pricing fields, page breaks,
+conditional logic, login-only forms and radio buttons with an "Other" choice
+are not supported. A form that references one fails readiness instead of
+rendering a form that can't be sent: replace the field, or take the form off
+the page. Use Turnstile, not the CAPTCHA field, for a challenge.
+
+### File uploads
+
+From gq-content 0.6.0 (`@getquick/site` 0.36.0), a Gravity Forms **File
+Upload** field renders on the Frontend and its files reach Gravity Forms, with
+the entry and its notifications, without JavaScript
+([gq-content ADR 0010](https://github.com/Quick-Release/gq-content/blob/v0.6.0/docs/adr/0010-accept-gravity-forms-file-uploads-through-the-site-worker.md)).
+gq-content's
+[File uploads in headless Gravity Forms](https://github.com/Quick-Release/gq-content/blob/v0.6.0/docs/forms-file-uploads.md)
+covers configuring the field. In short:
+
+- **Formats.** Allowed extensions must be set, and only `jpg`, `jpeg`, `png`,
+  `webp`, `gif` and `pdf`: the Frontend checks each file's first bytes against
+  its extension. Any other extension, an empty list, or several files without
+  a maximum number fails readiness with `unsupported-file-upload`.
+- **Size.** The managed form route keeps `createFormsServer`'s default cap:
+  **10 MiB per post, all files together**. A larger post is refused and the
+  visitor is sent back to the form. A form's largest post is each upload
+  field's maximum file size times its maximum number of files, added up; keep
+  it within 10 MiB (for example 3 MB per file, at most 3 files), and within
+  the CMS's PHP `post_max_size`, `upload_max_filesize` and `max_file_uploads`
+  and any proxy or WAF in front of the Site or the CMS. `pnpm site:check`
+  warns about a form whose largest post exceeds the route's 10 MiB, and the
+  CMS reports one that exceeds PHP's limits as `unsupported-file-upload`.
+- **Deploy the CMS and the Frontend together.** A Frontend on
+  `@getquick/content` older than 0.6.0 silently drops an upload field it
+  doesn't know: the form renders and posts without it, and the visitor's files
+  never reach Gravity Forms. Never release a CMS with upload fields ahead of
+  its Frontend; `gq sync --check` keeps both pins at one version.
+
+Gravity Forms validates the files again and stores them with the entry, on the
+CMS, as it does for its own forms.
 
 ## Adopting forms on a Site
 
 The Site must be on the content package pair (`"contentRuntime": "package"`,
 [The content runtime](sites.md#the-content-runtime)).
 
-1. **Upgrade.** Set `@getquick/site` to `0.24.0` or later in the root
-   `package.json`, run `pnpm install`, then `pnpm exec gq sync`. Sync pins
-   `getquick/gq-content` and `@getquick/content` to exactly `0.4.0`. Then
+1. **Upgrade.** Set `@getquick/site` to `0.24.0` or later (`0.36.0` or later
+   for file uploads) in the root `package.json`, run `pnpm install`, then
+   `pnpm exec gq sync`. Sync pins `getquick/gq-content` and
+   `@getquick/content` to the blueprint's exact version (`0.6.0` from
+   `@getquick/site` 0.36.0). Then
    `pnpm install` again, and in `apps/cms` run
    `composer update getquick/gq-content`. A Site whose CMS was created before
    `@getquick/site` 0.24.1 also opens its REST gate to submissions
@@ -210,17 +245,18 @@ needs neither.
 
 ## Readiness
 
-| Command                                         | What it checks                                                                                                                                                                                                                                                          |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm doctor`                                   | The form route exists (else run `gq sync`). `src/lib/content.ts` passes `forms` (warns if not). The CMS's `content-api.php` lets submissions through. With Turnstile, Sigillo staging has both keys.                                                                    |
-| `pnpm site:check:local`                         | With DDEV running, `ddev wp gq-forms status --format=json` must report Gravity Forms active, and every form that published content references free of diagnostics. A CMS without `wp gq-forms` has gq-content older than 0.4.0.                                         |
-| `pnpm site:check`                               | The production CMS's WPGraphQL has `getquickForms` (Gravity Forms active, with gq-content 0.4.0). Every form that published content references can be sent (`formsReadiness`). With Turnstile, both keys are present. An Access pair for the submissions path is whole. |
-| `wp gq-forms status [--format=json]` on the CMS | Gravity Forms' state, and each referenced form with its diagnostics and the pages that reference it, in every language. Exits 1 while any form has a diagnostic.                                                                                                        |
+| Command                                         | What it checks                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm doctor`                                   | The form route exists (else run `gq sync`). `src/lib/content.ts` passes `forms` (warns if not). The CMS's `content-api.php` lets submissions through. With Turnstile, Sigillo staging has both keys.                                                                                                                                         |
+| `pnpm site:check:local`                         | With DDEV running, `ddev wp gq-forms status --format=json` must report Gravity Forms active, and every form that published content references free of diagnostics. A CMS without `wp gq-forms` has gq-content older than 0.4.0.                                                                                                              |
+| `pnpm site:check`                               | The production CMS's WPGraphQL has `getquickForms` (Gravity Forms active, with gq-content 0.4.0). Every form that published content references can be sent (`formsReadiness`); one whose files can exceed the form route's 10 MiB upload cap warns. With Turnstile, both keys are present. An Access pair for the submissions path is whole. |
+| `wp gq-forms status [--format=json]` on the CMS | Gravity Forms' state, and each referenced form with its diagnostics and the pages that reference it, in every language. Exits 1 while any form has a diagnostic.                                                                                                                                                                             |
 
 `pnpm site:check` reads the forms of the content WPGraphQL lists (on a
 bilingual Site, the view one GraphQL request returns). `wp gq-forms status` on
 the CMS is the complete list. A form that enables no honeypot, on a Site that
-lists `"honeypot"`, is a warning, not a failure.
+lists `"honeypot"`, is a warning, not a failure, as is a form whose largest
+upload exceeds the form route's cap.
 
 ## What the Frontend binds
 

@@ -135,7 +135,7 @@ test("a pin moved without its record, a stale or missing record, and an unpinned
   stale.packages["getquick/gq-polylang-graphql"] = { version: "0.1.0", require: {} };
   delete stale.packages["getquick/gq-content"];
   assert.deepEqual(problems({ requirements: stale }), [
-    "package-requirements.json doesn't record what getquick/gq-content 0.5.1 requires.",
+    "package-requirements.json doesn't record what getquick/gq-content 0.6.0 requires.",
     "package-requirements.json records getquick/gq-polylang-graphql, which the blueprint doesn't pin.",
   ]);
 

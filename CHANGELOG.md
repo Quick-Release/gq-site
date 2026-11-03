@@ -3,6 +3,33 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Added
+
+- **Gravity Forms file uploads on content Sites**, through `@getquick/content`
+  and `getquick/gq-content` 0.6.0
+  ([gq-content ADR 0010](https://github.com/Quick-Release/gq-content/blob/v0.6.0/docs/adr/0010-accept-gravity-forms-file-uploads-through-the-site-worker.md)).
+  A File Upload field limited to `jpg`, `jpeg`, `png`, `webp`, `gif` or `pdf`
+  now renders and posts its files to Gravity Forms without JavaScript; other
+  formats still fail readiness. The managed `/gq/forms/` route keeps the
+  handler's default cap of 10 MiB per post, files included, and
+  `gq site check` warns (`form-fields`) about a published form whose largest
+  post can exceed it. See [File uploads](docs/guides/forms.md#file-uploads).
+
+### Changed
+
+- **Pins.** `@getquick/content` and `getquick/gq-content` 0.6.0. GQ Design
+  stays 0.10.2 (wire contract 2.1.0); no D1 or consent migration, and the
+  form descriptor's schema stays 1.
+
+Existing Sites: follow
+[0.5.1 to 0.6.0](docs/guides/content-pair-migration.md#051-to-060-getquicksite-0360):
+upgrade the pin, `gq sync` (it changes only the two managed content keys and
+`gq.lock.json`), `pnpm install`, `composer update getquick/gq-content` in
+`apps/cms`, and release the CMS and the Frontend together: a Frontend older
+than 0.6.0 silently drops upload fields.
+
 ## 0.35.0 — 2026-11-01
 
 ### Added

@@ -451,6 +451,29 @@ Then, on a page with an unauthored heading: the heading's size follows the
 Heading text style, and the `<style>` from `presentationStyleSheet` has no
 `inherit !important` for it.
 
+### 0.5.1 to 0.6.0 (`@getquick/site` 0.36.0)
+
+0.6.0 adds Gravity Forms file uploads to headless forms
+([release notes](https://github.com/Quick-Release/gq-content/blob/v0.6.0/docs/releases/0.6.0.md)).
+GQ Design stays 0.10.2 and wire contract 2.1.0; there is no D1 or consent
+migration, no new route or binding, and the form descriptor's schema stays 1.
+A Site without `forms` takes it as a pin change only.
+
+1. **Upgrade the pins.** Set the root `@getquick/site` pin to `0.36.0`, run
+   `pnpm install`, then `pnpm exec gq sync`: it sets both managed content
+   keys to exactly `0.6.0`. Then `pnpm install` again and, in `apps/cms`,
+   `composer update getquick/gq-content`. Review and commit `gq.lock.json`,
+   `pnpm-lock.yaml` and `apps/cms/composer.lock`, then check
+   `pnpm exec gq sync --check` and `pnpm exec gq doctor`.
+2. **Release the CMS and the Frontend together.** A Frontend older than 0.6.0
+   drops an upload field it doesn't know, so its form posts without the
+   files. Don't add File Upload fields to a published form until both are
+   deployed.
+3. **Size the uploads.** The managed form route accepts at most 10 MiB per
+   post, files included. Configure each upload field as in
+   [File uploads](forms.md#file-uploads), then run `pnpm site:check`: a form
+   whose largest post exceeds the cap warns.
+
 ## Rolling back
 
 Revert the branch and release it. The CMS rolls back its code (its options
