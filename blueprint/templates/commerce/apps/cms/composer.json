@@ -51,7 +51,7 @@
     "getquick/getquick-ecommerce": "0.4.4",
     "getquick/gq-config": "0.4.3",
     "getquick/getquick-theme": "0.6.2",
-    "getquick/gq-design": "0.10.2",
+    "getquick/gq-design": "0.10.4",
     "getquick/gq-support": "0.1.10",
     "humanmade/s3-uploads": "3.0.13",
     "oscarotero/env": "^2.0",

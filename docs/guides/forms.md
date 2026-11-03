@@ -33,8 +33,15 @@ entry access and declares no credential for it.
 
 The handler supports text, paragraph, email, phone, number, website, drop
 down, radio buttons, checkboxes, consent, name, hidden, HTML and section
-fields. Gravity Forms' own CAPTCHA, file uploads, payment and pricing fields,
-page breaks, conditional logic, login-only forms and radio buttons with an
+fields, and, from `@getquick/content` 0.6.0 (`@getquick/site` 0.36.0), file
+upload fields whose allowed extensions the Frontend can verify (`jpg`,
+`jpeg`, `png`, `gif`, `webp`, `pdf`), with a maximum number of files when
+they take several. The managed route accepts up to 10 MiB per post, and the
+CMS's PHP limits (`upload_max_filesize`, `post_max_size`, `max_file_uploads`)
+must allow each form's largest upload
+([configuring uploads](https://github.com/Quick-Release/gq-content/blob/v0.6.1/docs/forms-file-uploads.md)).
+Gravity Forms' own CAPTCHA, post image, signature, payment and pricing
+fields, page breaks, conditional logic, login-only forms and radio buttons with an
 "Other" choice are not supported. A form that references one fails readiness
 instead of rendering a form that can't be sent: replace the field, or take the
 form off the page. Use Turnstile, not the CAPTCHA field, for a challenge.

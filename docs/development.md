@@ -358,6 +358,17 @@ font markup) and an unreachable one (no design head). `frontend-check.sh`,
 `content-pair.sh`, `presentation.sh`, `tanstack-check.mjs` and
 `cms-resolve.sh` pass.
 
+The `0.36.0` release adopts the published `0.6.1` pair (0.6.0's Gravity
+Forms file uploads; GQ Design 0.10.4's renderer bundled) from source/tag
+`7cf32bcb376e019c682a8fe3d83aee5c797fae89`, beside GQ Design `0.10.4`
+(registry and GitHub Packages, commit `4d6fea8`). Its npm archive SHA-256 is
+`1092618d1c545bdcc83b8c8a7a705a2726d3a5dd95dc4d33c243162a05efd340` (SRI
+`sha512-3sYj8Y6K…oWZLuA==`, as in the npm lock), and its CMS ZIP SHA-256 is
+`69a0477008d28e86e6105ddeb46078d0175eeb0c23aaf4c64b2925dfbe2ab109` (SHA-1
+`3f327e70…`, the registry's dist checksum). Both match the release's
+`release-manifest.json`; the registry again reports a `reference-mismatch`
+for the tag name. The blueprint skips 0.6.0.
+
 ## Releasing
 
 1. Bump `version` in `package.json`, add its section to `CHANGELOG.md`, and
