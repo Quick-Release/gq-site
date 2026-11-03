@@ -57,9 +57,14 @@ import {
 
 // Immutable published pairs: v0.3.1 (source cbf2925), v0.3.2 (source
 // 698b989), v0.4.0 (source 61f51f4), v0.4.2 (source 043afbe), v0.5.0
-// (source 651e4fb) and v0.5.1 (source 61be6b2). A new pin brings its release
-// receipt's own npm/ZIP hashes.
+// (source 651e4fb), v0.5.1 (source 61be6b2) and v0.6.1 (source 7cf32bc). A
+// new pin brings its release receipt's own npm/ZIP hashes.
 const PUBLISHED = {
+  "0.6.1": {
+    integrity:
+      "sha512-3sYj8Y6KiMLkEcM8YT9GwUZtdEvexdXnSnMezneH4AplQbzlhXxCMppRXwl0g38zkN/BMZfVpD/aKADeoWZLuA==",
+    zipSha256: "69a0477008d28e86e6105ddeb46078d0175eeb0c23aaf4c64b2925dfbe2ab109",
+  },
   "0.5.1": {
     integrity:
       "sha512-DBUdGc37olNtz/+8/U32ysUNwxTKUrHOqMbgXMfqzDu/5XcfePbFsBFdZdvQQ6dmij56AZEG0RBqh8i+Gf8/zg==",

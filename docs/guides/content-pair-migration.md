@@ -451,6 +451,57 @@ Then, on a page with an unauthored heading: the heading's size follows the
 Heading text style, and the `<style>` from `presentationStyleSheet` has no
 `inherit !important` for it.
 
+### 0.5.1 to 0.6.1 (`@getquick/site` 0.36.0)
+
+The blueprint skips 0.6.0; 0.6.1 carries its changes. Wire contract 2.1.0 is
+unchanged, and there is no D1 or consent migration
+([0.6.0](https://github.com/Quick-Release/gq-content/blob/v0.6.0/docs/releases/0.6.0.md)
+and [0.6.1](https://github.com/Quick-Release/gq-content/blob/v0.6.1/docs/releases/0.6.1.md)
+release notes):
+
+- **Gravity Forms file uploads** (0.6.0). A File Upload field no longer fails
+  readiness with `unsupported-file-upload` when its allowed extensions are
+  ones the Frontend can verify (`jpg`, `jpeg`, `png`, `gif`, `webp`, `pdf`)
+  and a multi-file field has a maximum. The form renders a file input and
+  posts `multipart/form-data`. The managed form route accepts uploads up to
+  10 MiB per post, the package's default.
+- **Lists keep their markers** (0.6.1, GQ Design 0.10.4). The presentation
+  stylesheet no longer sets `list-style-type:none` on `core/list`. A list
+  without an authored marker now shows `disc` (`ul`) or `decimal` (`ol`)
+  markers, inside the box. The defaults are in `:where()`, so a list style
+  the author chose, `none` included, still wins.
+
+The CMS side is GQ Design 0.10.4, whose editor shows the same markers and
+fixes the line break after a list marker. Pair the 0.6.1 CMS with GQ Design
+0.10.4 or later, so the editor shows lists as the Frontend renders them.
+
+1. **Upgrade the pins.** Set the root `@getquick/site` pin to `0.36.0`, run
+   `pnpm install`, then `pnpm exec gq sync`: it sets both managed content
+   keys to exactly `0.6.1`. In `apps/cms/composer.json`, raise
+   `getquick/gq-design` to `0.10.4` (the blueprint's pin; any
+   `getquick/gq-design` requirement the Site keeps must allow 0.10.4 or
+   later). `getquick/getquick-theme` stays at `0.6.2`, which accepts
+   `^0.10`. A Site on a GQ Design alias or artifact build returns to the
+   released `0.10.4` from the GETQUICK registry. Then run `pnpm install`
+   again and, in `apps/cms`,
+   `composer update getquick/gq-content getquick/gq-design --with-all-dependencies`.
+   Review and commit `gq.lock.json`, `pnpm-lock.yaml` and
+   `apps/cms/composer.lock`, then check `pnpm exec gq sync --check` and
+   `pnpm exec gq doctor`.
+2. **Unmark the lists meant to stay bare.** Find the lists that relied on
+   the old `none` default: menus, link lists and icon lists built from
+   `core/list`. In the editor, set their list style type to `none`, or give
+   them a class the Site's own CSS styles. An authored `none` already
+   applies on 0.5.1, so it can be set before the release; set after it,
+   those lists show markers until it is.
+3. **Release the CMS and the Frontend together**, as one Site release. A
+   Frontend older than 0.6.0 drops an upload field it doesn't know, so never
+   deploy the 0.6.x CMS alone.
+
+Then check, on a page with a list: an unauthored `ul` shows discs, an `ol`
+numbers, and a list set to `none` stays bare. To take file uploads, see
+[Headless Gravity Forms](forms.md#what-a-form-can-hold).
+
 ## Rolling back
 
 Revert the branch and release it. The CMS rolls back its code (its options

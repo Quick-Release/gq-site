@@ -3,6 +3,30 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+### Changed
+
+- **Pins.** `@getquick/content` and `getquick/gq-content` 0.6.1, beside GQ
+  Design (`getquick/gq-design`, `@quick-release/design-contract`,
+  `@quick-release/design-renderer`) 0.10.4. The pair brings 0.6.0's Gravity
+  Forms file uploads (a File Upload field with verifiable extensions renders
+  and posts `multipart/form-data` through the managed form route, up to
+  10 MiB per post) and bundles GQ Design 0.10.4's renderer: a `core/list`
+  without an authored marker now shows `disc` (`ul`) or `decimal` (`ol`)
+  markers, inside, instead of none. GQ Design 0.10.4 shows the same markers
+  in the editor and fixes the line break after a marker.
+  `getquick/getquick-theme` 0.6.2 (which accepts `^0.10`) and
+  `getquick/getquick-ecommerce` 0.4.4 are unchanged.
+
+Existing Sites: content Sites follow
+[0.5.1 to 0.6.1](docs/guides/content-pair-migration.md#051-to-061-getquicksite-0360).
+`gq sync` sets the pair's pins; raise `getquick/gq-design` to 0.10.4 in
+`apps/cms/composer.json`, set the list style type to `none` on lists that
+should stay bare, and release the CMS and the Frontend together. On a
+commerce Site `gq sync` sets GQ Design's npm pins; raise
+`getquick/gq-design` to 0.10.4 in `apps/cms/composer.json` with them.
+
 ## 0.35.0 — 2026-11-01
 
 ### Added
