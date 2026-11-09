@@ -101,13 +101,43 @@ function validHeaders(headers, label) {
  * resolves to the parsed JSON body of a 2xx answer and throws, naming only
  * the status and WordPress's error code, on anything else.
  */
-export function agentClient({ origin, authorization, edge, fetch, login }) {
+export function agentClient({ origin, authorization, edge, fetch, login, routes = new Set() }) {
   const base = new URL(origin);
-  if (base.protocol !== "https:" || base.username || base.password || base.pathname !== "/") {
+  if (
+    base.protocol !== "https:" ||
+    base.username ||
+    base.password ||
+    base.pathname !== "/" ||
+    base.search ||
+    base.hash
+  ) {
     throw new Error("The agent's CMS credentials require an HTTPS CMS origin without userinfo.");
   }
-  return async function request(method, path, { query = {}, body } = {}) {
-    if (!isAgentPath(path)) throw new Error(`Refusing to send the agent's credentials to ${path}.`);
+  return async function request(method, path, { query = {}, body, binary, filename } = {}) {
+    if (!["GET", "POST"].includes(method))
+      throw new Error("Only GET and POST editorial requests are supported.");
+    if (binary !== undefined || filename !== undefined) {
+      if (
+        !(binary instanceof Uint8Array) ||
+        typeof filename !== "string" ||
+        !/^[a-zA-Z0-9_.-]+\.pdf$/u.test(filename) ||
+        method !== "POST" ||
+        path !== "/wp-json/wp/v2/media" ||
+        body !== undefined
+      ) {
+        throw new Error(
+          "PDF upload requires binary bytes paired with a safe .pdf basename, POST to media, and no JSON body.",
+        );
+      }
+    }
+    const discovery = ["/wp-json/wp/v2/types", "/wp-json/wp/v2/taxonomies"].includes(path);
+    const dynamic = [...routes].some(
+      (route) =>
+        path === route ||
+        new RegExp(`^${route}/[1-9][0-9]*(?:/revisions(?:/[1-9][0-9]*)?)?$`, "u").test(path),
+    );
+    if (!(isAgentPath(path) || (discovery && method === "GET") || dynamic))
+      throw new Error(`Refusing to send the agent's credentials to ${path}.`);
     const url = new URL(path, base);
     for (const [name, value] of Object.entries(query)) url.searchParams.set(name, String(value));
     let response;
@@ -118,11 +148,18 @@ export function agentClient({ origin, authorization, edge, fetch, login }) {
         signal: AbortSignal.timeout(60_000),
         headers: {
           Accept: "application/json",
-          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(binary
+            ? {
+                "Content-Type": "application/pdf",
+                "Content-Disposition": `attachment; filename="${filename}"`,
+              }
+            : body === undefined
+              ? {}
+              : { "Content-Type": "application/json" }),
           ...edge.headers,
           Authorization: authorization,
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: binary ?? (body === undefined ? undefined : JSON.stringify(body)),
       });
     } catch {
       throw new Error("The CMS request failed (network or timeout; credentials not shown).");

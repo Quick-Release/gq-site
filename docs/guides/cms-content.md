@@ -216,3 +216,72 @@ through a short-lived presigned R2 URL (a Ploi script holds at most 7,500
 characters), then checks that WordPress stored the bytes as given and
 recorded a new revision. It skips the block editor: validate the file with
 `gq content validate` first.
+
+## Editorial custom types, drafts, terms and PDFs
+
+Run these commands through `gq sigillo run production -- …`, with the same
+per-Site agent credentials as get/put. `gq content types` discovers editable
+REST post types and their related taxonomies. Only simple route bases in the
+WordPress `wp/v2` namespace are accepted; administrative and internal types
+are excluded. Custom controllers outside that namespace need a separately
+reviewed integration. WordPress must register types, taxonomies and metadata
+for REST, and grant the agent Editor the corresponding capabilities.
+
+```sh
+gq content types
+gq content list --type biblioteca --search 'Publication title' --page 1
+gq content terms --taxonomy categoria_biblioteca --search 'Publicações'
+gq content media --search report --page 1
+gq content upload --file ./report.pdf --yes
+gq content create --type biblioteca --file ./draft.json
+# Review the printed payload, then explicitly create one draft:
+gq content create --type biblioteca --file ./draft.json --yes
+```
+
+Discovery/list/media/terms print JSON. Lists return up to 100 results per page;
+request subsequent pages as needed. Search is approximate: compare full titles,
+slugs and media URLs before writes. Upload takes a local PDF only, checks header
+and EOF markers, and sends binary bytes. This is a truncation check, not a PDF
+parser; verify recovered documents independently. No remote URL is fetched.
+Never blindly retry a timed-out creation/upload: search for the resulting item
+first, since the CMS may have committed it.
+
+`draft.json` is one object, for example:
+
+```json
+{
+  "title": "Publication title",
+  "meta": { "gq_bioeconomia_library_year": 2024 },
+  "categoria_biblioteca": [123]
+}
+```
+
+Creation accepts title, slug, excerpt, registered REST metadata and assigned
+term IDs under the taxonomy's REST base. It always creates a draft, prints the
+result and ID, and rejects status, content and unrelated fields. Existing term
+IDs are discovered first; this interface does not create terms. Metadata
+availability and authorization remain enforced by WordPress.
+
+Author block content separately as a parsed block tree. Use actual uploaded
+attachment IDs and URLs in file blocks. Once the draft ID exists:
+
+```sh
+gq content get 456 --type biblioteca --out draft-base.json
+gq db sync
+gq content validate 456 --type biblioteca --file publication.json
+gq content diff 456 --type biblioteca --file publication.json
+gq content put 456 --type biblioteca --file publication.json --yes
+```
+
+The existing byte validation, composer lock receipt, stale-content check and
+revision confirmation apply unchanged. Custom types must support revisions
+for a successful confirmed put. Publish the completed draft through the Site's
+editorial process, then `gq frontend refresh`; draft creation does not publish.
+
+Adoption requires a gq-site package release and a Site dependency update. Under
+platform ADR 0011 the Site owns its agent capabilities and Access/WAF rules:
+admit GET discovery (`/wp-json/wp/v2/types`, `/wp-json/wp/v2/taxonomies`), GET
+collections/items/revisions on approved editorial bases, POST content collections
+and items, and GET/POST media as needed. Keep GET/POST restrictions and exact
+service token policies. Never broaden to users, settings, plugins, arbitrary
+admin routes or WP-CLI. Validate in a playground before production adoption.
