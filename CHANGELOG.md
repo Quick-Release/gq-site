@@ -3,6 +3,16 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## 0.37.2 — 2026-11-09
+
+### Fixed
+
+- **Editorial permalink correction.** `gq content slug <id> --type <type>
+--slug <ascii-slug> --yes` changes only a slug through the protected REST
+  route. Requires a fresh matching base receipt, refuses known collisions,
+  and verifies exact slug, content, status and REST-visible metadata in both
+  the write response and a fresh read. Slugs must be lowercase ASCII segments.
+
 ## 0.37.1 — 2026-11-09
 
 ### Fixed

@@ -296,3 +296,27 @@ collections/items/revisions on approved editorial bases, POST content collection
 and items, and GET/POST media as needed. Keep GET/POST restrictions and exact
 service token policies. Never broaden to users, settings, plugins, arbitrary
 admin routes or WP-CLI. Validate in a playground before production adoption.
+
+## Correct an editorial permalink
+
+For a Unicode or otherwise unsuitable permalink, first read the current item
+and review its proposed lowercase ASCII slug:
+
+```sh
+gq content get 456 --type biblioteca --out before-slug.json
+gq content slug 456 --type biblioteca --slug investig-europes-secondary-raw-material-markets --yes
+gq frontend refresh --uri /biblioteca/investig-europes-secondary-raw-material-markets/
+```
+
+`slug` accepts lowercase ASCII letters/digits separated by single hyphens,
+without paths, escapes, spaces or Unicode. It requires explicit `--yes` and a
+base receipt matching the current raw content hash and modification time.
+It checks the target slug against editorial items including drafts, sends only
+`{slug: "..."}`, and confirms exact ID/type/slug plus preserved content,
+status and REST-visible metadata in both the response and a fresh read.
+Unexpected suffixed slugs (including collision races) fail verification.
+This does not provide an atomic server-side compare-and-swap: inspect the CMS
+before retrying any failed write. A slug already matching the requested value
+is a no-op after the base check. Refresh the Site's actual new path and verify
+it; changing a CMS slug does not itself deliver a Frontend page or guarantee
+an old-path redirect. No general metadata update or WP-CLI bypass is involved.
