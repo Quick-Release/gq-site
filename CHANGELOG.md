@@ -3,6 +3,17 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## 0.37.1 — 2026-11-09
+
+### Fixed
+
+- **Draft discovery.** `gq content list` explicitly requests `status=any`,
+  including drafts when checking for duplicates or recovering a timed-out write.
+- **Validated publication.** `gq content publish <id> --type <type> --yes`
+  publishes one nonempty draft only when its current raw bytes match the base
+  and validation receipts and the Composer lock is unchanged. It sends only
+  the status transition, then verifies the response and persisted content.
+
 ## 0.37.0 — 2026-11-09
 
 ### Added

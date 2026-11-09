@@ -97,7 +97,8 @@ export async function runEditorial({ command, file, request, catalog, io }) {
     page: command.page ?? 1,
     ...(command.search ? { search: command.search } : {}),
   };
-  if (action === "list") result = await request("GET", ROOT + type.rest_base, { query });
+  if (action === "list")
+    result = await request("GET", ROOT + type.rest_base, { query: { ...query, status: "any" } });
   if (action === "terms") {
     const taxonomy = catalog.taxonomies[command.taxonomy];
     if (!taxonomy) throw new Error("Unknown editorial taxonomy.");

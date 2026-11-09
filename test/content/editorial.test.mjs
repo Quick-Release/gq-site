@@ -129,3 +129,21 @@ test("reusable blocks remain editorial while templates stay excluded", async () 
   assert.ok(routes.has("/wp-json/wp/v2/blocks"));
   assert.ok(!routes.has("/wp-json/wp/v2/templates"));
 });
+
+test("content list explicitly includes drafts for duplicate and timeout recovery", async () => {
+  const { data } = await catalog();
+  const calls = [];
+  const output = [];
+  await runEditorial({
+    command: { action: "list", type: "biblioteca", search: "Title" },
+    catalog: data,
+    io: { out: (value) => output.push(value) },
+    request: async (...args) => {
+      calls.push(args);
+      return [{ id: 42, status: "draft" }];
+    },
+  });
+  assert.equal(calls[0][2].query.status, "any");
+  assert.equal(calls[0][2].query.context, "edit");
+  assert.equal(JSON.parse(output[0])[0].status, "draft");
+});
