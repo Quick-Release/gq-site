@@ -458,3 +458,84 @@ test("custom editorial get discovers REST base and records a usable base receipt
     "GET /wp-json/wp/v2/library/12",
   ]);
 });
+
+test("publish requires matching current base, validation, lock and a nonempty draft", async () => {
+  const { createReceipts, sha256 } = await import("../../src/content/receipts.mjs");
+  for (const scenario of [
+    "no-base",
+    "changed",
+    "modified",
+    "no-validation",
+    "stale-validation",
+    "lock",
+    "empty",
+    "published",
+    "no-yes",
+    "response",
+    "persisted",
+    "valid",
+  ]) {
+    const { site, env } = await fixture();
+    const receipts = createReceipts({ env, admin: OPS.domains.admin });
+    const modifiedGmt = "2026-11-09T12:00:00";
+    const raw = scenario === "empty" ? "  " : PAGE;
+    if (scenario !== "no-base")
+      await receipts.recordBase("biblioteca", 12, {
+        sha256: sha256(scenario === "changed" ? EDIT : raw),
+        modifiedGmt: scenario === "modified" ? "older" : modifiedGmt,
+      });
+    if (scenario !== "no-validation")
+      await receipts.recordValidation(
+        "biblioteca",
+        12,
+        sha256(scenario === "stale-validation" ? EDIT : raw),
+        { composerLock: scenario === "lock" ? "old" : sha256("{}\n") },
+      );
+    let status = scenario === "published" ? "publish" : "draft";
+    let posts = 0;
+    let reads = 0;
+    const fetch = recordingFetch(({ method, url, body }) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith("/types"))
+        return {
+          biblioteca: {
+            rest_namespace: "wp/v2",
+            rest_base: "biblioteca",
+            supports: { editor: true },
+          },
+        };
+      if (path.endsWith("/taxonomies")) return {};
+      assert.equal(path, "/wp-json/wp/v2/biblioteca/12");
+      if (method === "POST") {
+        posts++;
+        assert.deepEqual(JSON.parse(body), { status: "publish" });
+        status = "publish";
+        return {
+          id: 12,
+          type: "biblioteca",
+          status,
+          content: { raw: scenario === "response" ? EDIT : raw },
+        };
+      }
+      reads++;
+      return {
+        id: 12,
+        type: "biblioteca",
+        status,
+        modified_gmt: modifiedGmt,
+        content: { raw: scenario === "persisted" && reads > 1 ? EDIT : raw },
+      };
+    });
+    const args = [
+      "content",
+      "publish",
+      "12",
+      "--type",
+      "biblioteca",
+      ...(scenario === "no-yes" ? [] : ["--yes"]),
+    ];
+    const result = await site.run(args, { env, fetch, exec: noSession() });
+    assert.equal(result.code, scenario === "valid" ? 0 : 1, `${scenario}: ${result.stderr}`);
+    assert.equal(posts, ["valid", "response", "persisted"].includes(scenario) ? 1 : 0, scenario);
+  }
+});

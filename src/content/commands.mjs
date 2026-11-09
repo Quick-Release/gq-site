@@ -47,6 +47,7 @@ import { discoverEditorial, runEditorial, parseEditorial } from "./editorial.mjs
 import { validateLocally } from "./validate.mjs";
 
 const ACTIONS = new Map([
+  ["publish", ["gq content publish <id> [--type <type>] --yes", ["type", "yes"]]],
   [
     "get",
     [
@@ -119,7 +120,7 @@ export function parseContentArguments(argv) {
     throw new Error("--revision is a revision ID.");
   }
   const file = action === "get" ? values.out : values.file;
-  if (!file)
+  if (!file && action !== "publish")
     throw new Error(`${action === "get" ? "--out" : "--file"} <file> is required.\n${entry[0]}`);
   return {
     action,
@@ -161,7 +162,7 @@ export async function runContentCommand(argv, dependencies) {
     return runEditorial({ ...shared, request, catalog });
   }
   if (command.action === "validate") return validate(shared);
-  return { get, diff, put }[command.action](shared);
+  return { get, diff, put, publish }[command.action](shared);
 }
 
 async function remote({ context, exec, fetch, origin, command }) {
@@ -411,5 +412,69 @@ async function put(shared) {
   io.out(
     `Publish to the Frontend: gq frontend refresh${path ? ` --uri ${path}` : ""}, then check the live page.`,
   );
+  return 0;
+}
+
+async function publish(shared) {
+  const { command, context, receipts, io } = shared;
+  if (!command.yes) throw new Error("Pass --yes to publish one validated draft.");
+  const { request } = await remote(shared);
+  const current = await readPost(request, command.base, command.id);
+  if (current.id !== command.id || current.type !== command.type || current.status !== "draft") {
+    throw new Error("Publish requires the expected editorial draft; inspect its current status.");
+  }
+  if (!current.raw.trim()) throw new Error("Refusing to publish an empty draft.");
+  const digest = sha256(current.raw);
+  const base = await receipts.readBase(command.type, command.id);
+  if (!base || base.sha256 !== digest || base.modifiedGmt !== current.modifiedGmt) {
+    throw new Error(
+      "Draft changed or has no base receipt; get it again, validate and review before publishing.",
+    );
+  }
+  const receipt = await receipts.readValidation(command.type, command.id, digest);
+  if (
+    !receipt ||
+    receipt.admin !== shared.ops.domains.admin ||
+    receipt.type !== command.type ||
+    receipt.id !== command.id ||
+    receipt.sha256 !== digest
+  ) {
+    throw new Error(
+      "Current draft bytes have no matching validation receipt; validate before publishing.",
+    );
+  }
+  if (receipt.composerLock !== (await composerLockDigest(context))) {
+    throw new Error("apps/cms/composer.lock changed since validation; validate again.");
+  }
+  const written = await request("POST", `/wp-json/wp/v2/${command.base}/${command.id}`, {
+    query: { context: "edit" },
+    body: { status: "publish" },
+  });
+  const matches = (post) =>
+    post.id === command.id &&
+    post.type === command.type &&
+    post.status === "publish" &&
+    post.content?.raw === current.raw;
+  if (!matches(written))
+    throw new Error(
+      "Publish response differs from the validated draft; inspect CMS before retrying.",
+    );
+  const persisted = await readPost(request, command.base, command.id);
+  if (
+    persisted.id !== command.id ||
+    persisted.type !== command.type ||
+    persisted.status !== "publish" ||
+    persisted.raw !== current.raw
+  ) {
+    throw new Error(
+      "CMS did not persist the expected published content; inspect CMS before retrying.",
+    );
+  }
+  await receipts.recordBase(command.type, command.id, {
+    sha256: digest,
+    modifiedGmt: persisted.modifiedGmt,
+    readAt: new Date().toISOString(),
+  });
+  io.out(`Published ${label(command)}. Run gq frontend refresh to deliver it to the Frontend.`);
   return 0;
 }

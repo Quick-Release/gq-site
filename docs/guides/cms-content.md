@@ -238,7 +238,8 @@ gq content create --type biblioteca --file ./draft.json
 gq content create --type biblioteca --file ./draft.json --yes
 ```
 
-Discovery/list/media/terms print JSON. Lists return up to 100 results per page;
+Discovery/list/media/terms print JSON. Content lists request `status=any` to include drafts for duplicate detection and
+timeout recovery. Lists return up to 100 results per page;
 request subsequent pages as needed. Search is approximate: compare full titles,
 slugs and media URLs before writes. Upload takes a local PDF only, checks header
 and EOF markers, and sends binary bytes. This is a truncation check, not a PDF
@@ -275,8 +276,18 @@ gq content put 456 --type biblioteca --file publication.json --yes
 
 The existing byte validation, composer lock receipt, stale-content check and
 revision confirmation apply unchanged. Custom types must support revisions
-for a successful confirmed put. Publish the completed draft through the Site's
-editorial process, then `gq frontend refresh`; draft creation does not publish.
+for a successful confirmed put. Publish the completed draft with the same validation safeguards:
+
+```sh
+gq content publish 456 --type biblioteca --yes
+gq frontend refresh
+```
+
+Publication requires a nonempty draft, a matching current base receipt, an
+exact validation receipt for its raw content and an unchanged Composer lock.
+It refuses changed or already published content and sends only the status
+transition, then verifies both the response and a fresh CMS read. Inspect the
+CMS before retrying after a timeout. Draft creation itself does not publish.
 
 Adoption requires a gq-site package release and a Site dependency update. Under
 platform ADR 0011 the Site owns its agent capabilities and Access/WAF rules:
