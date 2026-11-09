@@ -167,7 +167,10 @@ test("arguments are checked before anything runs", async () => {
       ["content", "put", "12", "--file", "x.html", "--out", "y"],
       /--out is not valid for gq content put/u,
     ],
-    [["content", "diff", "12", "--file", "x", "--type", "product"], /--type is page or post/u],
+    [
+      ["content", "diff", "12", "--file", "x", "--type", "../users"],
+      /Invalid editorial post type/u,
+    ],
   ]) {
     const result = await site.run(args, { env, fetch: recordingFetch(), exec: recordingExec() });
     assert.equal(result.code, 1, args.join(" "));
@@ -418,4 +421,40 @@ test("the local apply script writes as the Editor check user and reports after i
     stored: true,
   });
   assert.equal(parseApplyReport("PHP Fatal error"), null);
+});
+
+test("custom editorial get discovers REST base and records a usable base receipt", async () => {
+  const { site, env } = await fixture();
+  const fetch = recordingFetch(({ url, method }) => {
+    const path = new URL(url).pathname;
+    assert.equal(method, "GET");
+    if (path.endsWith("/types"))
+      return {
+        biblioteca: { rest_namespace: "wp/v2", rest_base: "library", supports: { editor: true } },
+      };
+    if (path.endsWith("/taxonomies")) return {};
+    if (path.endsWith("/library/12"))
+      return {
+        id: 12,
+        type: "biblioteca",
+        status: "draft",
+        modified_gmt: "2026-11-09T12:00:00",
+        content: { raw: PAGE },
+      };
+    throw new Error(`Unexpected ${path}`);
+  });
+  const result = await site.run(
+    ["content", "get", "12", "--type", "biblioteca", "--out", "library.json"],
+    { env, fetch, exec: noSession() },
+  );
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(
+    JSON.parse(await readFile(site.path("library.json"), "utf8")),
+    parseBlocks(PAGE),
+  );
+  assert.deepEqual(lines(fetch), [
+    "GET /wp-json/wp/v2/types",
+    "GET /wp-json/wp/v2/taxonomies",
+    "GET /wp-json/wp/v2/library/12",
+  ]);
 });

@@ -43,6 +43,7 @@ import {
   CONTENT_TYPES,
   edgeCredential,
 } from "./transport.mjs";
+import { discoverEditorial, runEditorial, parseEditorial } from "./editorial.mjs";
 import { validateLocally } from "./validate.mjs";
 
 const ACTIONS = new Map([
@@ -64,7 +65,16 @@ const ACTIONS = new Map([
   ],
 ]);
 
-export const CONTENT_USAGE = [...ACTIONS.values()].map(([usage]) => usage);
+export const CONTENT_USAGE = [...ACTIONS.values()]
+  .map(([usage]) => usage)
+  .concat([
+    "gq content types",
+    "gq content list --type <type> [--search <text>] [--page <n>]",
+    "gq content terms --taxonomy <name> [--search <text>] [--page <n>]",
+    "gq content media [--search <text>] [--page <n>]",
+    "gq content upload --file <local.pdf> --yes",
+    "gq content create --type <type> --file <draft.json> [--yes]",
+  ]);
 
 const OPTIONS = {
   out: { type: "string" },
@@ -85,6 +95,8 @@ function usage() {
 
 export function parseContentArguments(argv) {
   const [action, ...rest] = argv;
+  if (["types", "list", "create", "terms", "media", "upload"].includes(action))
+    return parseEditorial(argv);
   const entry = ACTIONS.get(action);
   if (!entry) throw usage();
   let parsed;
@@ -102,7 +114,7 @@ export function parseContentArguments(argv) {
     throw new Error(`Name one post ID.\n${entry[0]}`);
   }
   const type = values.type ?? "page";
-  if (!CONTENT_TYPES.has(type)) throw new Error(`--type is page or post, not ${type}.`);
+  if (!/^[a-z][a-z0-9_-]*$/u.test(type)) throw new Error("Invalid editorial post type.");
   if (values.revision !== undefined && !/^[1-9][0-9]*$/u.test(values.revision)) {
     throw new Error("--revision is a revision ID.");
   }
@@ -141,17 +153,36 @@ export async function runContentCommand(argv, dependencies) {
   const context = await loadProjectContext({ cwd: dependencies.cwd, env: dependencies.env });
   const ops = context.config;
   const origin = cmsOrigin(ops);
-  const file = resolve(context.invocationDirectory, command.file);
+  const file = command.file ? resolve(context.invocationDirectory, command.file) : undefined;
   const receipts = createReceipts({ env: context.env, admin: ops.domains.admin });
   const shared = { ...dependencies, context, ops, origin, file, receipts, command };
+  if (["types", "list", "create", "terms", "media", "upload"].includes(command.action)) {
+    const { request, catalog } = await remote(shared);
+    return runEditorial({ ...shared, request, catalog });
+  }
   if (command.action === "validate") return validate(shared);
   return { get, diff, put }[command.action](shared);
 }
 
-async function remote({ context, exec, fetch, origin }) {
+async function remote({ context, exec, fetch, origin, command }) {
   const authorization = agentAuthorization(context.env);
   const edge = await edgeCredential({ env: context.env, exec, origin });
-  return { request: agentClient({ origin, authorization, edge, fetch }), edge };
+  const routes = new Set();
+  const request = agentClient({ origin, authorization, edge, fetch, routes });
+  let catalog;
+  if (
+    command &&
+    (!CONTENT_TYPES.has(command.type) ||
+      ["types", "list", "create", "terms", "media", "upload"].includes(command.action))
+  ) {
+    catalog = await discoverEditorial(request, routes);
+    if (command.type) {
+      const entry = catalog.types[command.type];
+      if (!entry) throw new Error("This type has no supported editorial REST route.");
+      command.base = entry.rest_base;
+    }
+  }
+  return { request, edge, catalog };
 }
 
 const label = ({ type, id }) => `${type} ${id}`;
