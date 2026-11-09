@@ -15,6 +15,8 @@ minimumReleaseAgeExclude:
   - "@getquick/content"
   - "@quick-release/storefront"
 overrides:
+  # astro2tsx uses emnapi core 1.x; wasm-runtime must use the matching ABI.
+  "@napi-rs/wasm-runtime>@emnapi/runtime": 1.11.3
   "@effect/platform-node-shared": 4.0.0-rc.115
   vite: npm:@voidzero-dev/vite-plus-core@0.3.0
   vitest: 4.1.11

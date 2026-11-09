@@ -43,6 +43,8 @@ pnpm exec vp fmt --check
 
 cd apps/frontend
 pnpm test
+# Surface checker import exceptions that Astro otherwise reports as missing packages.
+node --input-type=module -e 'await import("@astrojs/check"); await import("typescript");'
 pnpm check
 pnpm lint
 pnpm exec vp fmt --check .
