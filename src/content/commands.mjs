@@ -24,7 +24,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { parseArgs } from "node:util";
+import { isDeepStrictEqual, parseArgs } from "node:util";
 
 import { CMS_PATH, ddevStatus } from "../cms/local.mjs";
 import { readEnvFile } from "../cli/env-files.mjs";
@@ -47,6 +47,10 @@ import { discoverEditorial, runEditorial, parseEditorial } from "./editorial.mjs
 import { validateLocally } from "./validate.mjs";
 
 const ACTIONS = new Map([
+  [
+    "slug",
+    ["gq content slug <id> [--type <type>] --slug <ascii-slug> --yes", ["type", "slug", "yes"]],
+  ],
   ["publish", ["gq content publish <id> [--type <type>] --yes", ["type", "yes"]]],
   [
     "get",
@@ -78,6 +82,7 @@ export const CONTENT_USAGE = [...ACTIONS.values()]
   ]);
 
 const OPTIONS = {
+  slug: { type: "string" },
   out: { type: "string" },
   file: { type: "string" },
   type: { type: "string" },
@@ -120,9 +125,16 @@ export function parseContentArguments(argv) {
     throw new Error("--revision is a revision ID.");
   }
   const file = action === "get" ? values.out : values.file;
-  if (!file && action !== "publish")
+  if (!file && !["publish", "slug"].includes(action))
     throw new Error(`${action === "get" ? "--out" : "--file"} <file> is required.\n${entry[0]}`);
+  if (
+    action === "slug" &&
+    (typeof values.slug !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(values.slug))
+  ) {
+    throw new Error("--slug requires lowercase ASCII letters/digits separated by single hyphens.");
+  }
   return {
+    ...(action === "slug" ? { slug: values.slug } : {}),
     action,
     id: Number(positionals[0]),
     type,
@@ -162,7 +174,7 @@ export async function runContentCommand(argv, dependencies) {
     return runEditorial({ ...shared, request, catalog });
   }
   if (command.action === "validate") return validate(shared);
-  return { get, diff, put, publish }[command.action](shared);
+  return { get, diff, put, publish, slug: changeSlug }[command.action](shared);
 }
 
 async function remote({ context, exec, fetch, origin, command }) {
@@ -174,7 +186,7 @@ async function remote({ context, exec, fetch, origin, command }) {
   if (
     command &&
     (!CONTENT_TYPES.has(command.type) ||
-      ["types", "list", "create", "terms", "media", "upload"].includes(command.action))
+      ["types", "list", "create", "terms", "media", "upload", "slug"].includes(command.action))
   ) {
     catalog = await discoverEditorial(request, routes);
     if (command.type) {
@@ -476,5 +488,73 @@ async function publish(shared) {
     readAt: new Date().toISOString(),
   });
   io.out(`Published ${label(command)}. Run gq frontend refresh to deliver it to the Frontend.`);
+  return 0;
+}
+
+async function changeSlug(shared) {
+  const { command, receipts, io } = shared;
+  if (!command.yes) throw new Error("Pass --yes to change one editorial slug.");
+  const { request } = await remote(shared);
+  const path = `/wp-json/wp/v2/${command.base}/${command.id}`;
+  const query = { context: "edit", _fields: "id,type,status,slug,modified_gmt,content,meta" };
+  const current = await request("GET", path, { query });
+  if (
+    current.id !== command.id ||
+    current.type !== command.type ||
+    typeof current.content?.raw !== "string" ||
+    typeof current.slug !== "string" ||
+    typeof current.status !== "string" ||
+    typeof current.modified_gmt !== "string"
+  ) {
+    throw new Error("CMS did not return the expected editable content item.");
+  }
+  const digest = sha256(current.content.raw);
+  const base = await receipts.readBase(command.type, command.id);
+  if (!base || base.sha256 !== digest || base.modifiedGmt !== current.modified_gmt) {
+    throw new Error(
+      "Content changed or has no fresh base receipt; run content get before changing its slug.",
+    );
+  }
+  if (current.slug === command.slug) {
+    io.out(`${label(command)} already has slug ${command.slug}.`);
+    return 0;
+  }
+  const matches = await request("GET", `/wp-json/wp/v2/${command.base}`, {
+    query: {
+      context: "edit",
+      slug: command.slug,
+      status: "any",
+      _fields: "id,slug",
+      per_page: 100,
+    },
+  });
+  if (!Array.isArray(matches) || matches.some((post) => post.id !== command.id)) {
+    throw new Error("Slug is already assigned or collision lookup failed; choose another slug.");
+  }
+  const unchanged = (post) =>
+    post.id === command.id &&
+    post.type === command.type &&
+    post.slug === command.slug &&
+    post.status === current.status &&
+    post.content?.raw === current.content.raw &&
+    isDeepStrictEqual(post.meta, current.meta);
+  const written = await request("POST", path, { query, body: { slug: command.slug } });
+  if (!unchanged(written))
+    throw new Error(
+      "Slug response differs from the requested slug or preserved content/status/metadata; inspect CMS before retrying (possible slug collision).",
+    );
+  const persisted = await request("GET", path, { query });
+  if (!unchanged(persisted) || typeof persisted.modified_gmt !== "string")
+    throw new Error(
+      "CMS did not persist the expected slug and preserved content/status/metadata; inspect CMS before retrying.",
+    );
+  await receipts.recordBase(command.type, command.id, {
+    sha256: digest,
+    modifiedGmt: persisted.modified_gmt,
+    readAt: new Date().toISOString(),
+  });
+  io.out(
+    `Changed ${label(command)} slug to ${command.slug}. Run gq frontend refresh for the new path.`,
+  );
   return 0;
 }

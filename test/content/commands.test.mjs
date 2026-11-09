@@ -539,3 +539,140 @@ test("publish requires matching current base, validation, lock and a nonempty dr
     assert.equal(posts, ["valid", "response", "persisted"].includes(scenario) ? 1 : 0, scenario);
   }
 });
+
+test("slug accepts lowercase ASCII segments only and requires explicit confirmation", async () => {
+  const { parseContentArguments } = await import("../../src/content/commands.mjs");
+  for (const slug of [
+    "",
+    "Investig",
+    "europe′s",
+    "a/b",
+    "../a",
+    "https://a",
+    "a--b",
+    "-a",
+    "a-",
+    "a_b",
+    "a%20b",
+    "a\nb",
+  ]) {
+    assert.throws(
+      () => parseContentArguments(["slug", "12", `--slug=${slug}`, "--yes"]),
+      /lowercase ASCII/,
+    );
+  }
+  const { site, env } = await fixture();
+  const fetch = recordingFetch();
+  const result = await site.run(
+    ["content", "slug", "12", "--type", "biblioteca", "--slug", "investig-europes"],
+    { env, fetch, exec: noSession() },
+  );
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /--yes/);
+  assert.equal(fetch.requests.length, 0);
+});
+
+test("slug checks a fresh base, refuses collisions and verifies only the slug changed", async () => {
+  const { createReceipts, sha256 } = await import("../../src/content/receipts.mjs");
+  const requested = "investig-europes-secondary-raw-material-markets";
+  const variations = [
+    "valid",
+    "same",
+    "no-base",
+    "hash",
+    "modified",
+    "collision",
+    "invalid-lookup",
+    "missing-content",
+    ...["response", "persisted"].flatMap((stage) =>
+      ["id", "type", "slug", "status", "content", "meta"].map((field) => `${stage}-${field}`),
+    ),
+  ];
+  for (const scenario of variations) {
+    const { site, env } = await fixture();
+    const receipts = createReceipts({ env, admin: OPS.domains.admin });
+    const modified = "2026-11-09T12:00:00";
+    if (scenario !== "no-base")
+      await receipts.recordBase("biblioteca", 12, {
+        sha256: sha256(scenario === "hash" ? EDIT : PAGE),
+        modifiedGmt: scenario === "modified" ? "older" : modified,
+      });
+    let slug = scenario === "same" ? requested : "investig-europe′s-secondary-raw-material-markets";
+    let posts = 0;
+    let reads = 0;
+    const originalMeta = { year: 2024, nested: { preserved: true } };
+    const post = () => ({
+      id: 12,
+      type: "biblioteca",
+      slug,
+      status: "publish",
+      content: { raw: PAGE },
+      meta: originalMeta,
+      modified_gmt: modified,
+    });
+    const corrupt = (value, stage) => {
+      const field = scenario.startsWith(`${stage}-`) ? scenario.slice(stage.length + 1) : undefined;
+      if (!field) return value;
+      return {
+        ...value,
+        [field]: {
+          id: 99,
+          type: "post",
+          slug: `${requested}-2`,
+          status: "draft",
+          content: { raw: EDIT },
+          meta: { year: 2025 },
+        }[field],
+      };
+    };
+    const fetch = recordingFetch(({ method, url, body }) => {
+      const parsed = new URL(url);
+      const path = parsed.pathname;
+      if (path.endsWith("/types"))
+        return {
+          biblioteca: {
+            rest_namespace: "wp/v2",
+            rest_base: "biblioteca",
+            supports: { editor: true },
+          },
+        };
+      if (path.endsWith("/taxonomies")) return {};
+      if (path.endsWith("/biblioteca")) {
+        assert.equal(method, "GET");
+        assert.equal(parsed.searchParams.get("slug"), requested);
+        assert.equal(parsed.searchParams.get("status"), "any");
+        return scenario === "invalid-lookup"
+          ? {}
+          : scenario === "collision"
+            ? [{ id: 99, slug: requested }]
+            : [];
+      }
+      assert.equal(path, "/wp-json/wp/v2/biblioteca/12");
+      if (method === "POST") {
+        posts++;
+        assert.deepEqual(JSON.parse(body), { slug: requested });
+        slug = requested;
+        return corrupt(post(), "response");
+      }
+      reads++;
+      if (scenario === "missing-content") return { ...post(), content: {} };
+      return reads > 1 ? corrupt(post(), "persisted") : post();
+    });
+    const result = await site.run(
+      ["content", "slug", "12", "--type", "biblioteca", "--slug", requested, "--yes"],
+      { env, fetch, exec: noSession() },
+    );
+    assert.equal(
+      result.code,
+      ["valid", "same"].includes(scenario) ? 0 : 1,
+      `${scenario}: ${result.stderr}`,
+    );
+    assert.equal(
+      posts,
+      scenario === "valid" || /^(response|persisted)-/u.test(scenario) ? 1 : 0,
+      scenario,
+    );
+    if (scenario === "valid")
+      assert.equal((await receipts.readBase("biblioteca", 12)).sha256, sha256(PAGE));
+  }
+});
