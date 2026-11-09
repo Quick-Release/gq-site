@@ -3,6 +3,31 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## 0.37.0 — 2026-11-09
+
+### Added
+
+- **Editorial REST workflows.** `gq content types`, `list` and `terms`
+  discover REST-enabled editorial types and related taxonomies, including
+  reusable blocks. Existing get/diff/validate/put commands accept discovered
+  custom types while retaining validation receipts and revision checks.
+- **Drafts and PDF media.** `gq content create` creates one draft with REST
+  metadata and term IDs; block content then uses the validated edit workflow.
+  `media` searches attachments and `upload` sends one local PDF. Transport
+  validates binary/filename pairs and retains exact-origin credentials,
+  manual redirects and GET/POST-only requests.
+
+### Fixed
+
+- **Generated Frontend checks.** Keep the checker's wasm runtime on the
+  emnapi core 1.x ABI and surface checker import failures in the smoke test.
+
+Existing Sites: update `@getquick/site` and follow
+[editorial workflows](docs/guides/cms-content.md#editorial-custom-types-drafts-terms-and-pdfs).
+Site owners grant the dedicated Editor REST capabilities and adopt the
+bounded Access/WAF routes. Creation makes drafts; publication remains a
+Site editorial action. WP-CLI break-glass restrictions are unchanged.
+
 ## 0.36.0 — 2026-11-03
 
 ### Changed
