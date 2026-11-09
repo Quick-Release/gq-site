@@ -116,6 +116,20 @@ export function agentClient({ origin, authorization, edge, fetch, login, routes 
   return async function request(method, path, { query = {}, body, binary, filename } = {}) {
     if (!["GET", "POST"].includes(method))
       throw new Error("Only GET and POST editorial requests are supported.");
+    if (binary !== undefined || filename !== undefined) {
+      if (
+        !(binary instanceof Uint8Array) ||
+        typeof filename !== "string" ||
+        !/^[a-zA-Z0-9_.-]+\.pdf$/u.test(filename) ||
+        method !== "POST" ||
+        path !== "/wp-json/wp/v2/media" ||
+        body !== undefined
+      ) {
+        throw new Error(
+          "PDF upload requires binary bytes paired with a safe .pdf basename, POST to media, and no JSON body.",
+        );
+      }
+    }
     const discovery = ["/wp-json/wp/v2/types", "/wp-json/wp/v2/taxonomies"].includes(path);
     const dynamic = [...routes].some(
       (route) =>

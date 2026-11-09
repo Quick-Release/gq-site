@@ -182,3 +182,57 @@ test("reports WordPress's error code, and hides transport errors", async () => {
     (error) => !error.message.includes("c2VjcmV0"),
   );
 });
+
+test("PDF transport rejects missing or malformed upload pairs before fetch", async () => {
+  const calls = [];
+  const request = agentClient({
+    origin: ORIGIN,
+    authorization: "Basic secret",
+    edge: { headers: {} },
+    routes: new Set(["/wp-json/wp/v2/media"]),
+    fetch: async (...args) => {
+      calls.push(args);
+      return new Response('{"id":7}');
+    },
+  });
+  const binary = Buffer.from("%PDF-1.7\n%%EOF");
+  for (const options of [
+    { binary },
+    { filename: "report.pdf" },
+    ...[
+      undefined,
+      null,
+      "",
+      "../report.pdf",
+      "/report.pdf",
+      "report.PDF",
+      "report.txt",
+      'report".pdf',
+      "report\r\nInjected.pdf",
+      "report\\name.pdf",
+      "report name.pdf",
+    ].map((filename) => ({ binary, filename })),
+    { binary: "bytes", filename: "report.pdf" },
+    { binary: null, filename: "report.pdf" },
+    { binary, filename: "report.pdf", body: {} },
+  ]) {
+    await assert.rejects(request("POST", "/wp-json/wp/v2/media", options), /PDF upload/u);
+  }
+  await assert.rejects(
+    request("GET", "/wp-json/wp/v2/media", { binary, filename: "report.pdf" }),
+    /PDF upload/u,
+  );
+  await assert.rejects(
+    request("POST", "/wp-json/wp/v2/pages/12", { binary, filename: "report.pdf" }),
+    /PDF upload/u,
+  );
+  assert.equal(calls.length, 0);
+  await request("POST", "/wp-json/wp/v2/media", { binary, filename: "report-2024.pdf" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][1].headers["Content-Type"], "application/pdf");
+  assert.equal(
+    calls[0][1].headers["Content-Disposition"],
+    'attachment; filename="report-2024.pdf"',
+  );
+  assert.equal(calls[0][1].body, binary);
+});
