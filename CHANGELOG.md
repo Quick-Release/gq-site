@@ -3,6 +3,14 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## 0.38.0 — 2026-11-10
+
+- Adopt `getquick/gq-content` and `@getquick/content` 0.6.2, adding the
+  store-backed `listPosts` API for standard published posts. Design stays
+  0.10.4; all other package pins stay unchanged.
+- See the [adoption guide](docs/guides/content-pair-migration.md#061-to-062-getquicksite-0380)
+  for the refresh required before enabling a conditional empty message.
+
 ## 0.37.2 — 2026-11-09
 
 ### Fixed

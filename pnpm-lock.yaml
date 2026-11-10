@@ -216,8 +216,8 @@ importers:
         specifier: ^1.8.1
         version: 1.8.1
       '@getquick/content':
-        specifier: 0.6.1
-        version: 0.6.1
+        specifier: 0.6.2
+        version: 0.6.2
       aws4fetch:
         specifier: 1.0.20
         version: 1.0.20
@@ -260,8 +260,8 @@ packages:
     resolution: {integrity: sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==}
     engines: {node: '>= 20.12.0'}
 
-  '@getquick/content@0.6.1':
-    resolution: {integrity: sha512-3sYj8Y6KiMLkEcM8YT9GwUZtdEvexdXnSnMezneH4AplQbzlhXxCMppRXwl0g38zkN/BMZfVpD/aKADeoWZLuA==}
+  '@getquick/content@0.6.2':
+    resolution: {integrity: sha512-heaImDT6lcM4DihQGDeHKyVcRVDXsXl6/FDT4QIWAWUaqkKuIJieEaVF7ifmmmTo+eY0ff3JT+WZ1JlL6T0x/g==}
     engines: {node: '>=22'}
 
   '@jridgewell/resolve-uri@3.1.2':
@@ -1268,7 +1268,7 @@ snapshots:
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
 
-  '@getquick/content@0.6.1':
+  '@getquick/content@0.6.2':
     dependencies:
       zod: 3.25.76
 

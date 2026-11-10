@@ -369,6 +369,18 @@ Forms file uploads; GQ Design 0.10.4's renderer bundled) from source/tag
 `release-manifest.json`; the registry again reports a `reference-mismatch`
 for the tag name. The blueprint skips 0.6.0.
 
+The `0.38.0` release adopts the published `0.6.2` pair from source/tag
+`bcf6ce3ab64b696ed8ab6e133bb25748a6ad3d61`, after exact-revision paired
+CI [42779190404](https://github.com/Quick-Release/gq-content/actions/runs/42779190404)
+and the completed paired publication handoff. Design remains `0.10.4` and
+all other package pins are preserved. The live release manifest SHA-256 is
+`8be80cddc39793674e7522a1da162dad08841488fd050a58e2e5dbc5452ff3ef`;
+the independently downloaded npm archive SHA-256 is
+`d18a1f6d09b2bb97c0fe17d6837e96dd288c7219f6439cd9809b60b7e14d37e7`.
+The CMS ZIP SHA-256 recorded by the manifest and verified live by the Content
+publication handoff is
+`d143f890d03183fba87bb7c0a6ee73cd83d09bb70318298f985e41c7331684e8`.
+
 ## Releasing
 
 1. Bump `version` in `package.json`, add its section to `CHANGELOG.md`, and

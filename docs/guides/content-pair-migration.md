@@ -509,3 +509,25 @@ and post meta are the ones the copy used), and the Frontend's restored
 `migrations/` have the names already applied. The copy doesn't read the
 package's `extension` key either, so refresh the whole Site again after the
 rollback deploy.
+
+### 0.6.1 to 0.6.2 (`@getquick/site` 0.38.0)
+
+Both managed Content pins move to exactly `0.6.2`. Design remains `0.10.4`.
+The new `listPosts` API lists standard published posts from the publication
+store and distinguishes confirmed empty results from unavailable results.
+
+1. Update `@getquick/site` to `0.38.0`, run `gq sync`, update the CMS
+   Content lock with `gq cms composer update getquick/gq-content`, and run
+   `pnpm install` to refresh the Frontend lock.
+2. Deploy the package pair with the Site feature disabled. Refresh existing
+   published entries through the supported Content reconciliation process so
+   stored entries have `postType`, then verify publication-store readiness.
+   No SQL migration or CMS code change is required.
+3. Enable the Site listing only after readiness passes. Show an empty message
+   only for an available result with zero posts; an unavailable result must
+   not imply there are no published posts. Verify published and withdrawn
+   post behaviour after activation.
+
+See the [Content release notes](https://github.com/Quick-Release/gq-content/blob/v0.6.2/docs/releases/0.6.2.md)
+for the public API and refresh procedure. Site rendering and deployment are
+consumer work; `gq sync` only adopts the managed pins.
