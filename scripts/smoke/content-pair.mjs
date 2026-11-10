@@ -60,6 +60,11 @@ import {
 // (source 651e4fb), v0.5.1 (source 61be6b2) and v0.6.1 (source 7cf32bc). A
 // new pin brings its release receipt's own npm/ZIP hashes.
 const PUBLISHED = {
+  "0.6.2": {
+    integrity:
+      "sha512-heaImDT6lcM4DihQGDeHKyVcRVDXsXl6/FDT4QIWAWUaqkKuIJieEaVF7ifmmmTo+eY0ff3JT+WZ1JlL6T0x/g==",
+    zipSha256: "d143f890d03183fba87bb7c0a6ee73cd83d09bb70318298f985e41c7331684e8",
+  },
   "0.6.1": {
     integrity:
       "sha512-3sYj8Y6KiMLkEcM8YT9GwUZtdEvexdXnSnMezneH4AplQbzlhXxCMppRXwl0g38zkN/BMZfVpD/aKADeoWZLuA==",
