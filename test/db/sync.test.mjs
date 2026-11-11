@@ -72,10 +72,10 @@ test("reads the export marker", () => {
   const sha = "a".repeat(64);
   assert.deepEqual(
     parseExportMarker(
-      `noise\nLARKSPUR_DB_EXPORT=success PREFIX=wp_ WORDPRESS=7.1.2 BYTES=1234 SHA256=${sha}\n`,
+      `noise\nLARKSPUR_DB_EXPORT=success PREFIX=wp_ WORDPRESS=7.1.4 BYTES=1234 SHA256=${sha}\n`,
       "LARKSPUR_DB_EXPORT",
     ),
-    { prefix: "wp_", wordpress: "7.1.2", bytes: 1234, sha256: sha },
+    { prefix: "wp_", wordpress: "7.1.4", bytes: 1234, sha256: sha },
   );
   assert.equal(parseExportMarker("curl: (22) 403", "LARKSPUR_DB_EXPORT"), null);
   assert.equal(

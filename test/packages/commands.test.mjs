@@ -32,7 +32,7 @@ const COMPOSER_TEXT = `{
     "php": ">=8.3",
     "getquick/alpha":   "^0.3.1",
     "getquick/beta": "^1.2.0",
-    "roots/wordpress": "7.1.2",
+    "roots/wordpress": "7.1.4",
     "wp-plugin/site-specific": "^4.0"
   },
   "require-dev": { "getquick/alpha": "^0.3.1" },
@@ -276,7 +276,7 @@ test("versions order semantically, prereleases before their release", () => {
   assert.equal(parseVersion("v0.1.4").text, "0.1.4");
   assert.equal(parseCaret("^0.3.1").ceiling.text, "0.4.0");
   assert.equal(parseCaret("^1.2").ceiling.text, "2.0.0");
-  assert.equal(parseCaret("7.1.2"), null);
+  assert.equal(parseCaret("7.1.4"), null);
 });
 
 test("gq packages check reports constraint, upstream, registry and target, sorted semantically", async () => {

@@ -815,7 +815,7 @@ export function fakeAccount(overrides = {}) {
         data: {
           status: "finished",
           exit_code: 0,
-          output: `FIXTURE_DB_EXPORT=success PREFIX=wp_ WORDPRESS=7.1.2 BYTES=${DUMP.length} SHA256=${DUMP_SHA}\n`,
+          output: `FIXTURE_DB_EXPORT=success PREFIX=wp_ WORDPRESS=7.1.4 BYTES=${DUMP.length} SHA256=${DUMP_SHA}\n`,
         },
       };
     }

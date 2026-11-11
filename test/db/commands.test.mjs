@@ -92,7 +92,7 @@ function fakeProviders({ marker = "FIXTURE_DB_EXPORT", prefix = "wp_", dump = DU
         data: {
           status: "finished",
           exit_code: 0,
-          output: `${marker}=success PREFIX=${prefix} WORDPRESS=7.1.2 BYTES=${DUMP.length} SHA256=${DUMP_SHA}\n`,
+          output: `${marker}=success PREFIX=${prefix} WORDPRESS=7.1.4 BYTES=${DUMP.length} SHA256=${DUMP_SHA}\n`,
         },
       };
     }
@@ -121,7 +121,7 @@ function fakeLocal({ status = "running", userExists = false, overrides = () => u
       };
     }
     if (line.startsWith("wp user get")) return userExists ? { stdout: "1\n" } : { code: 1 };
-    if (line === "wp core version") return { stdout: "7.1.2\n" };
+    if (line === "wp core version") return { stdout: "7.1.4\n" };
     if (line.startsWith("mysql -N -B -e ")) {
       return { stdout: "wp_users\nwp_usermeta\nwp_wc_orders\nwp_woocommerce_sessions\n" };
     }
