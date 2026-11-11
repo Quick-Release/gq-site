@@ -137,6 +137,9 @@ a decision through `POST /gq/consent` and reads it back with the bearer, and
 is ready by `gq site check`'s consent part with GA4 on, monolingual and
 bilingual. It needs Playwright's Chromium (`pnpm exec playwright install
 chromium`) or `CHROMIUM` naming one.
+Each smoke that runs a real WordPress uses the core version the content CMS
+skeleton pins (`roots/wordpress`), the latest WordPress release and the only
+one GETQUICK supports ([WordPress core](reference/packages.md#wordpress-core)).
 `scripts/smoke/cms-polylang.sh` proves a bilingual site's Polylang
 configuration (the generated `deploy/ploi/polylang.sh`) on a real WordPress
 with Polylang and GQ Polylang for WPGraphQL, read over GraphQL.

@@ -3,6 +3,15 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **Latest WordPress only.** New Sites start on WordPress 7.1.4 (both CMS
+  skeletons pin `roots/wordpress` 7.1.4, up from 7.1.3), and the real-WordPress
+  smokes test that release only. GETQUICK supports only the latest WordPress
+  release; an existing Site adopts it by pinning `roots/wordpress` 7.1.4 and
+  running `gq release package roots/wordpress`
+  ([WordPress core](docs/reference/packages.md#wordpress-core)).
+
 ## 0.38.0 — 2026-11-10
 
 - Adopt `getquick/gq-content` and `@getquick/content` 0.6.2, adding the

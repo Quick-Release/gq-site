@@ -337,7 +337,7 @@ function designLocks({ npm = "0.9.4", plugin = "0.9.4" } = {}) {
     "apps/cms/composer.lock": JSON.stringify({
       packages: [
         { name: "getquick/gq-design", version: plugin },
-        { name: "roots/wordpress", version: "7.1.3" },
+        { name: "roots/wordpress", version: "7.1.4" },
       ],
     }),
   };

@@ -136,7 +136,7 @@ function fakeProviders({ wpOutput, exitCode = 0 } = {}) {
           data: {
             status: "finished",
             exit_code: 0,
-            output: `FIXTURE_DB_EXPORT=success PREFIX=wp_ WORDPRESS=7.1.3 BYTES=2048 SHA256=${"b".repeat(64)}\n`,
+            output: `FIXTURE_DB_EXPORT=success PREFIX=wp_ WORDPRESS=7.1.4 BYTES=2048 SHA256=${"b".repeat(64)}\n`,
           },
         };
       }
@@ -173,7 +173,7 @@ test("a read runs as the site's system user, with no backup and no prompt", asyn
 
 test("finds the system user from Ploi when gq.ops.json doesn't record it", async () => {
   const site = await createFixtureSite({ ops: { ...OPS, ploi: { serverId: "12" } } });
-  const providers = fakeProviders({ wpOutput: () => "7.1.3\nFIXTURE_WP_CLI=done EXIT=0\n" });
+  const providers = fakeProviders({ wpOutput: () => "7.1.4\nFIXTURE_WP_CLI=done EXIT=0\n" });
   const fetch = recordingFetch((request) =>
     new URL(request.url).pathname === "/api/servers/12/sites"
       ? {

@@ -271,6 +271,24 @@ registry login only, so the registry must serve the branch's archive; a dist
 URL on `api.github.com` needs a GitHub token the deploy doesn't have. Return
 to a release by setting the caret constraint again and updating the package.
 
+## WordPress core
+
+GETQUICK supports only the latest WordPress release. There is no supported
+minimum, previous minor or floor. Both CMS skeletons pin `roots/wordpress`
+exactly, to the same version (7.1.4 today), and that pin is the only core
+version this repository tests: the `cms-rest-gate` CI job and the
+`cms-content` and `cms-polylang` smoke scripts download the version the
+content skeleton pins, and nothing tests an older core. Bump the pin in both skeletons whenever WordPress
+ships a release.
+
+`gq packages` doesn't catalogue WordPress, and `gq sync` doesn't write it:
+a Site's `apps/cms/composer.json` is its own. A Site adopts a new core by
+setting `"roots/wordpress"` in `apps/cms/composer.json` to the blueprint's
+pin, committing it, and then running `gq release package roots/wordpress`
+(`pnpm release:package roots/wordpress` under `staging`). That updates
+`composer.lock`, commits it and deploys the CMS, whose activation runs
+`wp core update-db`.
+
 ## Deferred: fleet rollout
 
 These are later phases of the
