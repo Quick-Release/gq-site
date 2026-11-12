@@ -273,6 +273,15 @@ baseline alongside its source: GNU `patch` for the CMS dependency patch, and
 container's root user. `scripts/smoke/ci-composer.sh` builds and exercises
 the rendered image.
 
+The CI image's Node fix updates the same baseline alongside its source: the
+image installs the Sites' pinned Node (24.21.0, `.nvmrc`) from nodejs.org's
+official linux-x64 build, verified against its SHA-256, over the base image's
+Node 22.22.3, which Astro 7.4.2+ refuses (`>=22.23.4`).
+`test/ci/image-node.test.mjs` checks the template's Node against `.nvmrc`,
+`.mise.toml` and the skeletons' engines; `scripts/smoke/ci-node.sh` builds and
+runs the rendered image. Written by hand and reviewed against the template,
+not regenerated.
+
 The content package pair (ADR 0020) updates the content site's
 `infra/frontend.run.ts` and `infra/scripts/deploy-frontend.mjs` baselines
 alongside their sources: the publication migrations, which switch the store

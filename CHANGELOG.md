@@ -28,6 +28,19 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   not support 7 yet), and Alchemy stays before beta.84, which moves the
   Cloudflare provider to its own package; see
   [Frontend frameworks](docs/reference/frontend-frameworks.md#versions).
+- **CI runs the Sites' pinned Node.** The managed CI image
+  (`infra/ci/Dockerfile`) ran the Node 22.22.3 its `cloudflare/sandbox`
+  0.12.1 base bundles, while Sites pin 24.21.0 locally (`.nvmrc`,
+  `.mise.toml`), so a Site's checks could pass locally and fail in CI:
+  Astro 7.4.2 and later refuse a Node older than 22.23.4, and an Astro
+  Site's release failed `astro check` in `gq verify --ci`. The image now
+  installs Node 24.21.0 from nodejs.org's official linux-x64 build, checked
+  against its published SHA-256, over the base's Node in `/usr/local`, so the
+  sandbox server's JavaScript executors, `pnpm` and every CI step run it. The
+  sandbox base and the `@cloudflare/sandbox` pin are unchanged
+  (`@cloudflare/ci` 0.2.0 requires 0.12.1). A Site adopts it by upgrading
+  `@getquick/site`, running `gq sync` and `pnpm ci:deploy`, which rebuilds
+  the image.
 
 ## 0.40.0 — 2026-11-12
 

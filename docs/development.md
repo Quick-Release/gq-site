@@ -160,7 +160,16 @@ validate`'s DDEV wiring is covered by the package suite with stand-ins.
 `scripts/smoke/ci-composer.sh` builds a generated
 site's Cloudflare CI image with Docker and runs its install step's Composer
 command as the image's root user on a clean CMS (see
-[CMS dependency patches](guides/dependency-patches.md#verification-boundary)). The
+[CMS dependency patches](guides/dependency-patches.md#verification-boundary)).
+`scripts/smoke/ci-node.sh` builds the same image from a generated Astro and a
+generated TanStack site and checks, inside it, that `node` is the Sites'
+`.nvmrc` Node and the only one on `PATH` and `pnpm` is the `packageManager`,
+that the image's own entrypoint (the sandbox server) starts, runs a command
+and runs its JavaScript executors on that Node, and that each Frontend's
+dependencies install and its `check` (`astro check` included) passes, as the
+release's verify step runs it. `test/ci/image-node.test.mjs` checks offline
+that the Dockerfile's Node is `.nvmrc`'s and `.mise.toml`'s and satisfies every
+package template's and Frontend framework's `engines.node`. The
 wiring proof also installs the CI Worker's dependencies for Wrangler's local
 workerd runtime. `scripts/smoke/cms-resolve.sh` generates a content and a
 commerce Site and runs `composer update --dry-run` in each one's `apps/cms`
@@ -177,7 +186,7 @@ stops after that check. In CI the `cms-registry` job probes the
 not passed, with a warning, and only the package suite's offline check of the
 recorded requirements runs. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
 three generated-site proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
-`frontend-check.sh`, `commerce-check.sh`, `content-pair.sh`, `consent.sh`, `cms-rest-gate.sh`, `ci-composer.sh` and, with its secret, `cms-resolve.sh` on every push; the
+`frontend-check.sh`, `commerce-check.sh`, `content-pair.sh`, `consent.sh`, `cms-rest-gate.sh`, `ci-composer.sh`, `ci-node.sh` and, with its secret, `cms-resolve.sh` on every push; the
 real-WordPress Polylang proof, which also needs PHP and downloads, runs locally, and the live gate is the
 gq-smoke wizard ([A new content Site, end to end](guides/provisioning.md#a-new-content-site-end-to-end)).
 

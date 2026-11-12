@@ -68,6 +68,14 @@ site's languages). On a Site on the content package pair, the Frontend's
 `/gq/events`, `/gq/refresh` and `/gq/consent` routes are fully generated too,
 and so is `/gq/forms/` while `gq.ops.json` declares `forms`.
 
+The sandbox image (`infra/ci/Dockerfile`) runs the Node that `.nvmrc` and
+`.mise.toml` pin (24.21.0), installed from nodejs.org's official build and
+checked against its published SHA-256, in place of the Node its
+`cloudflare/sandbox` base bundles. CI's checks run on the Node they pass on
+locally, and on one new enough for the Frontend framework (Astro 7.4.2 and
+later need `>=22.23.4`). When the blueprint moves the Node pin, the image
+moves with it.
+
 ## The content runtime
 
 The content runtime (the Frontend's publication store and delivery, the
