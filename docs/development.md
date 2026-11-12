@@ -192,7 +192,7 @@ before the package split), installs it, updates `@getquick/site` to this
 checkout and runs `gq sync`, which must move both the managed `infra/*.ts`
 onto `@alchemy.run/cloudflare` and `pnpm-workspace.yaml`'s managed catalog
 keys onto this checkout's pins, changing no other line of that file. Then
-`gq sync --check`, `pnpm install`, `pnpm install --frozen-lockfile`,
+`pnpm install`, `pnpm install --frozen-lockfile`, `gq sync --check`,
 `pnpm infra:check`, `pnpm ci:check` and `gq doctor` must pass.
 `scripts/smoke/acceptance.sh` runs `pnpm check` and the
 three generated-site proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,

@@ -14,8 +14,8 @@
 #    pnpm-workspace.yaml's managed catalog keys onto this checkout's pins
 #    (blueprint/templates/fragments/pnpm-workspace.keys.yaml), with every
 #    other byte of that file kept;
-# 3. `gq sync --check` passes; `pnpm install` regenerates the lock, then
-#    `pnpm install --frozen-lockfile` passes against it;
+# 3. `pnpm install` regenerates the lock, `pnpm install --frozen-lockfile`
+#    passes against it, and `gq sync --check` passes;
 # 4. `pnpm infra:check` and `pnpm ci:check` type-check the managed infra
 #    against the installed packages, and `gq doctor` passes, its Alchemy
 #    check included.
@@ -105,11 +105,12 @@ for framework in astro tanstack; do
     grep -v '"@getquick/site": "file:'; then
     fail "gq sync changed a pnpm-workspace.yaml line it doesn't manage"
   fi
-  pnpm exec gq sync --check >/dev/null
 
-  # The lock follows the catalog, then holds.
+  # The lock follows the catalog, then holds. (pnpm exec, in CI, first checks
+  # the install against the lock, so nothing runs through it until then.)
   CI=1 pnpm install --no-frozen-lockfile >/dev/null
   CI=1 pnpm install --frozen-lockfile >/dev/null
+  pnpm exec gq sync --check >/dev/null
   pnpm infra:check
   pnpm ci:check
   pnpm exec gq doctor
