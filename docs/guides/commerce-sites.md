@@ -57,6 +57,10 @@ block.
 | `third-party-hosts` | the homepage loads from a host outside the site before consent                                                                                                                         |
 | media checks        | `gq media check --upload` isn't ready                                                                                                                                                  |
 
+A storefront behind Cloudflare Access takes the Frontend's optional service
+token for its homepage reads
+([A Frontend behind Cloudflare Access](provisioning.md#a-frontend-behind-cloudflare-access)).
+
 The proxy secret is proven twice: `proxy-secret` asks the CMS with Sigillo
 staging's, and `customer-auth` has the Worker ask with its own. With customer
 sign-in off (GQ Config's customer accounts setting), the CMS answers the

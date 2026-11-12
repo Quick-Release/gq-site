@@ -15,6 +15,7 @@
 // "not-ready"; only "ready" sets `ready`.
 
 import { cmsFetch } from "../cms/access.mjs";
+import { frontendAccessHint, frontendFetch } from "../frontend/access.mjs";
 import { parseDotenv } from "../dotenv-text.mjs";
 import { GOOGLE_FONTS_KEY } from "../ploi/fonts.mjs";
 import { mediaEnv } from "../ploi/media.mjs";
@@ -123,7 +124,7 @@ export async function productionMediaReadiness({
       ),
     );
   }
-  add(await checkFrontend({ frontend, mediaHost, fetch }));
+  add(await checkFrontend({ frontend, mediaHost, env, fetch }));
   return result("production", checks);
 }
 
@@ -469,15 +470,24 @@ async function deleteProbe({ api, id, authorization, url }, { bucket, media, fet
 }
 
 // The Frontend's rendered homepage references uploads on the media host, not
-// on the CMS. Its HTML is read as any visitor gets it.
-async function checkFrontend({ frontend, mediaHost, fetch }) {
+// on the CMS. Its HTML is read as any visitor gets it, through the Frontend's
+// Access service token when `env` has one.
+async function checkFrontend({ frontend, mediaHost, env, fetch }) {
   const name = "frontend";
   if (!frontend) {
     return skipped(name, "gq.ops.json has no domains.frontend to read");
   }
   let html;
+  const url = `https://${frontend}/`;
   try {
-    const response = await fetch(`https://${frontend}/`, { signal: AbortSignal.timeout(TIMEOUT) });
+    const response = await frontendFetch({ env, origin: url, fetch })(url, {
+      signal: AbortSignal.timeout(TIMEOUT),
+    });
+    const access = frontendAccessHint({ env, url, response });
+    if (access) {
+      await response.body?.cancel();
+      return notReady(name, `${url} answered ${response.status}: ${access.detail}`, access.action);
+    }
     if (!response.ok) {
       return notReady(
         name,

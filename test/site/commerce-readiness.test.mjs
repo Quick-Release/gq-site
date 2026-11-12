@@ -478,6 +478,26 @@ test("a storefront homepage Cloudflare's edge could cache is not ready", async (
   assert.equal(private_.byName.homepage.status, "ok");
 });
 
+test("the storefront's Access token goes to its pages only, never its API, the CMS or media", async () => {
+  const access = {
+    GQ_FRONTEND_ACCESS_CLIENT_ID: "frontend-access-id",
+    GQ_FRONTEND_ACCESS_CLIENT_SECRET: "frontend-access-secret",
+  };
+  const { code, fetch, stdout } = await check({}, { env: { ...SECRETS, ...access } });
+
+  assert.equal(code, 0, stdout);
+  const credentialed = fetch.requests
+    .filter(({ headers }) => headers["CF-Access-Client-Id"] === access.GQ_FRONTEND_ACCESS_CLIENT_ID)
+    .map(({ url }) => url);
+  assert.deepEqual(credentialed, Array(3).fill("https://shop.example.test/"));
+  for (const request of fetch.requests) {
+    if (request.url !== "https://shop.example.test/") {
+      assert.equal(request.headers["CF-Access-Client-Secret"], undefined, request.url);
+    }
+  }
+  for (const value of Object.values(access)) assert.ok(!stdout.includes(value));
+});
+
 test("legal pages GQ Config doesn't assign, commerce roles included, are not ready", async () => {
   const { code, byName } = await check({
     legal: {

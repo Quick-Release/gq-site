@@ -45,6 +45,7 @@ import { RECONCILIATION_STALE_MS, sendCheckEvent } from "../frontend/commands.mj
 import { frontendFramework, siteLanguages, wordpressGraphqlUrl } from "../manifest/schema.mjs";
 import { productionMediaReadiness } from "../media/readiness.mjs";
 import { cmsFetch } from "../cms/access.mjs";
+import { frontendAccessHint, frontendFetch } from "../frontend/access.mjs";
 import { CMS_CONSENT_READ_TOKEN, CONSENT_READ_TOKEN } from "../frontend/consent.mjs";
 import { siteFormsReadiness } from "../forms/readiness.mjs";
 import { crontabProblems, findCrontab, wpCronCrontab } from "../ploi/crontabs.mjs";
@@ -408,9 +409,12 @@ export async function frontendReadiness({
     add("delivery", skipped("reconciliation", unknown));
   }
   const others = languages.filter(({ isDefault }) => !isDefault);
-  add("frontend", await homepageCheck({ origin, fetch, required: others.length > 0 }));
+  // Pages only: /gq/* (above) authenticates itself and is never sent the token.
+  const pages = frontendFetch({ env, origin, fetch });
+  const page = { origin, env, fetch: pages };
+  add("frontend", await homepageCheck({ ...page, required: others.length > 0 }));
   for (const language of others) {
-    add("frontend", await homepageCheck({ origin, fetch, language, required: true }));
+    add("frontend", await homepageCheck({ ...page, language, required: true }));
   }
   return checks;
 }
@@ -693,7 +697,7 @@ function delaysCheck(store) {
  * homepage of a bilingual Site), one WordPress confirms has no front page
  * only warns.
  */
-async function homepageCheck({ origin, fetch, language, required = false }) {
+async function homepageCheck({ origin, env, fetch, language, required = false }) {
   const name = language ? `homepage-${language.slug}` : "homepage";
   const url = new URL(language?.home ?? "/", origin);
   const front = language ? `${language.slug} front page` : "front page";
@@ -722,6 +726,14 @@ async function homepageCheck({ origin, fetch, language, required = false }) {
       name,
       detail,
       language ? `translate the front page into ${language.slug} and publish it` : `set a ${front}`,
+    );
+  }
+  const access = frontendAccessHint({ env, url, response });
+  if (access) {
+    return notReady(
+      name,
+      `${url.href} answers HTTP ${response.status}: ${access.detail}`,
+      access.action,
     );
   }
   return notReady(
@@ -961,7 +973,7 @@ export function consentQuery(languages = []) {
 export async function consentReadiness({ ops, env, fetch, origin, languages = [] }) {
   const add = (check) => ({ area: "consent", ...check });
   const settings = await consentSettings({ ops, env, fetch, languages });
-  const pages = await publicPages({ origin, fetch, languages });
+  const pages = await publicPages({ origin, env, fetch, languages });
   return [
     add(legalCheck(settings, languages)),
     add(runtimeCheck(settings, pages)),
@@ -988,18 +1000,29 @@ async function consentSettings({ ops, env, fetch, languages }) {
   }
 }
 
-/** Each language's homepage HTML, as fetched without JavaScript; null when it can't be read. */
-export async function publicPages({ origin, fetch, languages }) {
+/**
+ * Each language's homepage HTML, as fetched without JavaScript; null when it
+ * can't be read (with `access`, when Cloudflare Access turned it away). `env`
+ * may hold the Frontend's Access service token.
+ */
+export async function publicPages({ origin, env = {}, fetch, languages }) {
   const homes = languages.length > 0 ? languages.map(({ home }) => home) : ["/"];
+  const read = frontendFetch({ env, origin, fetch });
   const pages = [];
   for (const home of homes) {
     const url = new URL(home, origin);
     try {
-      const response = await fetch(url.href, {
+      const response = await read(url.href, {
         redirect: "manual",
         signal: AbortSignal.timeout(TIMEOUT),
       });
-      pages.push({ url, html: response.ok ? await response.text() : null });
+      if (response.ok) {
+        pages.push({ url, html: await response.text() });
+        continue;
+      }
+      await response.body?.cancel();
+      const access = frontendAccessHint({ env, url, response });
+      pages.push({ url, html: null, ...(access ? { access } : {}) });
     } catch {
       pages.push({ url, html: null });
     }
@@ -1128,6 +1151,14 @@ export function hostsCheck(pages, ops, origin) {
     firstPartyHosts: [ops.domains?.frontend, ops.domains?.admin, ops.media?.domain].filter(Boolean),
   };
   const read = pages.filter(({ html }) => html !== null);
+  const access = pages.find((page) => page.access)?.access;
+  if (read.length === 0 && access) {
+    return notReady(
+      name,
+      `no public page could be read to look for third-party hosts: ${access.detail}`,
+      access.action,
+    );
+  }
   if (read.length === 0) {
     return notReady(
       name,

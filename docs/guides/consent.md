@@ -109,7 +109,9 @@ retentionDays: env.CONSENT_RETENTION_DAYS ? Number(env.CONSENT_RETENTION_DAYS) :
     embed the Runtime blocked (`data-gq-consent-blocked`: an unknown host, or a catalog service the Site hasn't activated). The
     scan is gq-content's own `scanConsentHtml`, from the `@getquick/content`
     the CLI pins. Other routes are each Site's acceptance (CONSENT-1
-    acceptance evidence, item 5).
+    acceptance evidence, item 5). A Frontend behind Cloudflare Access is
+    read with `GQ_FRONTEND_ACCESS_CLIENT_ID` / `GQ_FRONTEND_ACCESS_CLIENT_SECRET`
+    ([A Frontend behind Cloudflare Access](provisioning.md#a-frontend-behind-cloudflare-access)).
   - `cms-events` also requires the CMS's `GETQUICK_CONSENT_READ_TOKEN` to
     match Sigillo's, when Sigillo has one.
 

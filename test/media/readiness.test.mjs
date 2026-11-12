@@ -272,6 +272,67 @@ test("a rendered Frontend page that references CMS-hosted uploads is not ready",
   );
 });
 
+const FRONTEND_ACCESS = Object.freeze({
+  GQ_FRONTEND_ACCESS_CLIENT_ID: "frontend-access-id",
+  GQ_FRONTEND_ACCESS_CLIENT_SECRET: "frontend-access-secret",
+});
+
+// The world's Frontend behind Cloudflare Access: its pages redirect to the
+// Access login unless a request carries the admitted service token.
+function behindAccess(inner) {
+  return recordingFetch(async ({ url, headers, ...init }) => {
+    const admitted =
+      headers["CF-Access-Client-Id"] === FRONTEND_ACCESS.GQ_FRONTEND_ACCESS_CLIENT_ID &&
+      headers["CF-Access-Client-Secret"] === FRONTEND_ACCESS.GQ_FRONTEND_ACCESS_CLIENT_SECRET;
+    if (new URL(url).hostname === "www.example.test" && !admitted) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: "https://team.cloudflareaccess.com/cdn-cgi/access/login/www.example.test",
+        },
+      });
+    }
+    return inner(url, { ...init, headers });
+  });
+}
+
+test("the Frontend homepage probe reads a Frontend behind Access with its token, and only there", async () => {
+  const { fetch: inner, publishPhoto } = world();
+  publishPhoto();
+  const fetch = behindAccess(inner);
+
+  const result = await check([], { fetch, env: { ...SECRETS, ...FRONTEND_ACCESS } });
+
+  assert.equal(statuses(result.report).frontend, "ok", result.stdout);
+  for (const request of fetch.requests) {
+    const frontend = new URL(request.url).hostname === "www.example.test";
+    assert.equal(
+      request.headers["CF-Access-Client-Secret"],
+      frontend ? FRONTEND_ACCESS.GQ_FRONTEND_ACCESS_CLIENT_SECRET : undefined,
+      request.url,
+    );
+  }
+  for (const value of Object.values(FRONTEND_ACCESS)) {
+    assert.ok(!`${result.stdout}${result.stderr}`.includes(value));
+  }
+});
+
+test("without the token, the Frontend homepage probe says Access turned it away", async () => {
+  const { fetch: inner } = world();
+
+  const result = await check([], { fetch: behindAccess(inner) });
+
+  assert.equal(result.code, 1);
+  const frontend = result.report.checks.find(({ name }) => name === "frontend");
+  assert.equal(frontend.status, "not-ready");
+  assert.match(frontend.detail, /Cloudflare Access \(team\.cloudflareaccess\.com\)/u);
+  assert.match(
+    frontend.action,
+    /GQ_FRONTEND_ACCESS_CLIENT_ID and GQ_FRONTEND_ACCESS_CLIENT_SECRET/u,
+  );
+  assert.match(frontend.action, /Service Auth policy/u);
+});
+
 test("missing media configuration is an actionable not-ready result, before any request", async () => {
   const ops = { ...OPS, media: undefined };
   const fetch = recordingFetch();
