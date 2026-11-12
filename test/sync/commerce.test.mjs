@@ -594,8 +594,27 @@ test("a gated commerce foundation adopts the commerce variant through gq sync", 
     assert.ok(await exists(root, path), path);
   }
   assert.equal(await readSite(root, "README.md"), "# FPA Shop\n");
-  // Sync keeps both files it doesn't own, and names what each lacks.
-  assert.equal(await readSite(root, "pnpm-workspace.yaml"), stub);
+  // Sync keeps what both files it doesn't own have, and names what each
+  // lacks. Of pnpm-workspace.yaml it sets only its managed keys, the Alchemy
+  // and Effect pins.
+  assert.equal(
+    await readSite(root, "pnpm-workspace.yaml"),
+    [
+      stub.trimEnd(),
+      "catalog:",
+      '  "@alchemy.run/cloudflare": 2.0.0-beta.84',
+      '  "@alchemy.run/frontend-frameworks": 2.0.0-beta.84',
+      '  "@effect/platform-node": 4.1.4',
+      "  alchemy: 2.0.0-beta.84",
+      "  effect: 4.1.4",
+      "overrides:",
+      '  "@effect/platform-node-shared": 4.1.4',
+      "peerDependencyRules:",
+      "  allowedVersions:",
+      "    effect: 4.1.4",
+      "",
+    ].join("\n"),
+  );
   const missing = [
     "scripts.dev",
     "scripts.frontend:dev",

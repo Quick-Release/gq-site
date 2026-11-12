@@ -21,6 +21,18 @@ if (ops.offboarded) {
   process.exit(1);
 }
 
+// The managed infra imports Alchemy's Cloudflare provider from its own
+// package, and Alchemy's CLI finds the Cloudflare state store and credentials
+// only through it: a deploy without it installed in infra can't run.
+try {
+  import.meta.resolve("@alchemy.run/cloudflare");
+} catch {
+  console.error(
+    "@alchemy.run/cloudflare isn't installed in infra, and the managed infra deploys with it. Run gq sync, then pnpm install.",
+  );
+  process.exit(1);
+}
+
 // Validate before invoking Alchemy; secret values are never logged.
 if (
   ops.preview !== undefined ||

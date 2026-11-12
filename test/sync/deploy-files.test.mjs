@@ -4,7 +4,7 @@
 // renders the content site's own files (test/fixtures/content-site).
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -346,7 +346,20 @@ test("preview config uses site.bind after Website initialization", async () => {
 // dry-run mode, so a plan reads the Cloudflare account from gq.ops.json as
 // the deploy does. An executable named alchemy records its arguments and
 // account; it never deploys.
-async function plan(root) {
+// Alchemy's Cloudflare provider as pnpm installs it in infra: the deploy
+// wrapper only resolves it.
+async function installCloudflareProvider(root) {
+  const directory = join(root, "infra/node_modules/@alchemy.run/cloudflare");
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, "package.json"),
+    JSON.stringify({ name: "@alchemy.run/cloudflare", type: "module", exports: "./index.js" }),
+  );
+  await writeFile(join(directory, "index.js"), "export {};\n");
+}
+
+async function plan(root, { provider = true } = {}) {
+  if (provider) await installCloudflareProvider(root);
   const scripts = JSON.parse(await readSite(root, "package.json")).scripts;
   assert.equal(
     scripts["plan:frontend"],
@@ -371,6 +384,7 @@ async function plan(root) {
     encoding: "utf8",
     env: { ...environment, PATH: root },
   });
+  if (!provider) return result;
   assert.equal(result.status, 0, result.stdout + result.stderr);
   return JSON.parse(result.stdout.trim().split("\n").at(-1));
 }
@@ -411,4 +425,24 @@ test("a commerce Site's plan:frontend plans through the deploy wrapper, with gq.
   });
 
   assert.deepEqual(await plan(root), { args: PLAN_ARGS, account: ACME.cloudflare.accountId });
+});
+
+test("the Frontend deploy refuses to run without @alchemy.run/cloudflare installed in infra", async () => {
+  const content = await createFixtureSite({ ops: ACME });
+  assert.equal((await content.run(["sync"])).code, 0);
+  const parent = await temporaryDirectory();
+  const created = await runGq(["new", "shop", "--project", "shop", "--variant", "commerce"], {
+    cwd: parent,
+  });
+  assert.equal(created.code, 0, created.stderr);
+
+  for (const root of [content.root, join(parent, "shop")]) {
+    const result = await plan(root, { provider: false });
+    assert.equal(result.status, 1, root);
+    assert.equal(
+      result.stderr,
+      "@alchemy.run/cloudflare isn't installed in infra, and the managed infra deploys with it. Run gq sync, then pnpm install.\n",
+    );
+    assert.equal(result.stdout, "", "alchemy never runs");
+  }
 });

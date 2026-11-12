@@ -325,6 +325,26 @@ baselines alongside their source: the infra `plan:frontend` script runs
 `sync/deploy-files.test.mjs` runs the plan for both variants. Written by hand
 and reviewed against the templates, not regenerated.
 
+Alchemy's package split, hop 1 of the
+[Alchemy migration](../../docs/research/alchemy-cloudflare-package-migration.md)
+([#185](https://github.com/Quick-Release/gq-site/issues/185)), updates the
+content site's `infra/frontend.run.ts`, `infra/consent.ts`,
+`infra/package.json` and `infra/scripts/deploy-frontend.mjs` baselines
+alongside their sources: the Cloudflare provider is imported from
+`@alchemy.run/cloudflare` instead of `alchemy/Cloudflare`, infra depends on
+it from the catalog, and the deploy wrapper refuses to run when it can't
+resolve it. No binding, secret or resource changes.
+`sync/deploy-files.test.mjs` runs the refusal; `sync/graphql-path.test.mjs`
+evaluates the rendered infra against a stand-in of the package. Written by
+hand and reviewed against the templates, not regenerated.
+
+`workspace/pnpm-workspace.0.40.0.yaml` is the content Astro Site's
+`pnpm-workspace.yaml` exactly as `@getquick/site` 0.40.0 created it
+(`git show v0.40.0:blueprint/templates/pnpm-workspace.yaml`): Alchemy
+2.0.0-beta.79 and Effect 4.0.0-rc.115, the fleet's catalog before hop 1.
+`sync/workspace-keys.test.mjs` syncs its managed keys and checks that every
+other byte is kept.
+
 ## Preservation
 
 - Preserve fixture paths, contents and version identifiers during organization,

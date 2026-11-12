@@ -370,6 +370,78 @@ test("gq doctor fails a Site whose GQ Design plugin and npm packages are locked 
   assert.doesNotMatch(plain.stdout, /gq-design/u);
 });
 
+// infra as a Site's gq sync writes it and pnpm installs it: each Alchemy
+// package at `installed` (by name; null leaves it out), and the catalog at
+// `catalog`.
+function alchemyInfra({ installed = {}, catalog = "2.0.0-beta.84", spec = "catalog:" } = {}) {
+  const versions = {
+    alchemy: "2.0.0-beta.84",
+    "@alchemy.run/cloudflare": "2.0.0-beta.84",
+    "@alchemy.run/frontend-frameworks": "2.0.0-beta.84",
+    ...installed,
+  };
+  const files = {
+    "infra/package.json": JSON.stringify({
+      name: "@fixture/infrastructure",
+      dependencies: Object.fromEntries(Object.keys(versions).map((name) => [name, spec])),
+    }),
+    "pnpm-workspace.yaml": [
+      "packages:",
+      '  - "apps/*"',
+      "catalog:",
+      "  # Alchemy, managed by gq sync.",
+      `  "@alchemy.run/cloudflare": ${catalog}`,
+      `  "@alchemy.run/frontend-frameworks": ${catalog}`,
+      `  alchemy: ${catalog}`,
+      "",
+    ].join("\n"),
+  };
+  for (const [name, version] of Object.entries(versions)) {
+    if (version === null) continue;
+    files[`infra/node_modules/${name}/package.json`] = JSON.stringify({ name, version });
+  }
+  return files;
+}
+
+test("gq doctor fails unless infra installs Alchemy's three packages at the pinned version", async () => {
+  const whole = await healthySite(alchemyInfra());
+  const passed = await whole.run(["doctor"], { exec: machine() });
+  assert.equal(passed.code, 0, passed.stdout);
+  assert.match(passed.stdout, /✓ infra installs Alchemy 2\.0\.0-beta\.84, as pinned/u);
+
+  for (const [files, message] of [
+    [
+      alchemyInfra({ installed: { "@alchemy.run/cloudflare": null } }),
+      /✗ infra doesn't have @alchemy\.run\/cloudflare installed — run: pnpm install$/mu,
+    ],
+    [
+      alchemyInfra({ installed: { alchemy: "2.0.0-beta.79" } }),
+      /✗ infra installs alchemy 2\.0\.0-beta\.79, @alchemy\.run\/cloudflare 2\.0\.0-beta\.84, @alchemy\.run\/frontend-frameworks 2\.0\.0-beta\.84: Alchemy's packages must be one version — run: pnpm install$/mu,
+    ],
+    // A gq sync committed without pnpm install: the catalog moved, infra didn't.
+    [
+      alchemyInfra({ catalog: "2.0.0-beta.86" }),
+      /✗ infra installs Alchemy 2\.0\.0-beta\.84, but pnpm-workspace\.yaml's catalog pins alchemy 2\.0\.0-beta\.86, @alchemy\.run\/cloudflare 2\.0\.0-beta\.86, @alchemy\.run\/frontend-frameworks 2\.0\.0-beta\.86 — run: pnpm install$/mu,
+    ],
+    [
+      alchemyInfra({ spec: "2.0.0-beta.85" }),
+      /✗ infra installs Alchemy 2\.0\.0-beta\.84, but infra\/package\.json pins alchemy 2\.0\.0-beta\.85, .* — run: pnpm install$/mu,
+    ],
+    [
+      {
+        ...alchemyInfra(),
+        "infra/package.json": JSON.stringify({ dependencies: { alchemy: "catalog:" } }),
+      },
+      /✗ infra\/package\.json doesn't depend on @alchemy\.run\/cloudflare, @alchemy\.run\/frontend-frameworks, which the managed infra imports — run: gq sync, then pnpm install$/mu,
+    ],
+  ]) {
+    const fixture = await healthySite(files);
+    const result = await fixture.run(["doctor"], { exec: machine() });
+    assert.equal(result.code, 1, result.stdout);
+    assert.match(result.stdout, message);
+  }
+});
+
 test("gq doctor fails when Node is below the site's engines minimum", async () => {
   const fixture = await healthySite();
   const result = await fixture.run(["doctor"], { exec: machine({ node: "v20.11.0" }) });

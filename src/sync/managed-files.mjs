@@ -7,7 +7,8 @@
 // an old template. Fully generated files are regular files, executable or
 // not, and symlinks (whose target is what gets hashed); a generated section
 // is the part of a site's text file between gq's begin and end lines; managed
-// keys are the keys of a site's JSON file that gq sets, each hashed apart.
+// keys are the keys of a site's JSON or YAML file that gq sets, each hashed
+// apart.
 // A create-once file is written only when absent and never written again
 // (the lock records it as created once it exists, whoever wrote it), unless
 // gq sync --recreate asks for it. A file gq manages keys of that starts from
@@ -22,6 +23,7 @@
 import { createHash } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { parse as parseYaml } from "yaml";
 
 import ownership from "../../blueprint/ownership.json" with { type: "json" };
 import packageTemplate from "../../blueprint/templates/fragments/package.keys.json" with { type: "json" };
@@ -29,6 +31,7 @@ import packageJson from "../../package.json" with { type: "json" };
 import { deployStatusMarker } from "../ploi/provision.mjs";
 import { frontendFramework } from "../manifest/schema.mjs";
 import { VERSION } from "../version.mjs";
+import { editYamlKeys, keyPath, keySegments, parseYamlMapping, readYamlKey } from "./yaml-keys.mjs";
 
 export const LOCK_FILENAME = "gq.lock.json";
 
@@ -340,11 +343,13 @@ async function planKeys(
   root,
   lock,
   manifest,
-  { path, template, initial },
+  { path, template, initial, earlier },
   creating,
   { addInitial = false } = {},
 ) {
+  if (isYamlPath(path)) return planYamlKeys(root, lock, { path, template, earlier }, creating);
   const managed = leafKeys(JSON.parse(await readTemplate(template)));
+  const earlierValues = await readEarlierValues(earlier);
   const record = {
     keys: { [path]: Object.fromEntries(managed.map(({ key, value }) => [key, hashValue(value)])) },
   };
@@ -397,8 +402,9 @@ async function planKeys(
     const { node } = found.member;
     const currentValue = JSON.parse(text.slice(node.start, node.end));
     if (JSON.stringify(currentValue) === JSON.stringify(value)) continue;
-    if (creating || hashValue(currentValue) === written[key]) changed.push(key);
-    else edited.push(key);
+    if (creating || isOldTemplateValue(currentValue, written[key], earlierValues[key])) {
+      changed.push(key);
+    } else edited.push(key);
     edits.push({ start: node.start, end: node.end, text: JSON.stringify(value) });
   }
   const initialAdded = [];
@@ -415,7 +421,7 @@ async function planKeys(
   for (const key of retired) {
     let found;
     try {
-      found = locateKey(path, document, key.split("."));
+      found = locateKey(path, document, keySegments(key));
     } catch {
       continue;
     }
@@ -508,14 +514,101 @@ function missingInitialLeaves(parsed, leaves, managed) {
 }
 
 // Each leaf of `object` (a value that isn't a non-empty object) with its
-// key path, as `segments` and joined with dots as `key`.
+// key path, as `segments` and as `key` (keyPath: joined with dots, a segment
+// with a dot in it bracketed).
 function leafKeys(object, prefix = []) {
   return Object.entries(object).flatMap(([name, value]) => {
     const segments = [...prefix, name];
     return isPlainObject(value) && Object.keys(value).length > 0
       ? leafKeys(value, segments)
-      : [{ key: segments.join("."), segments, value }];
+      : [{ key: keyPath(segments), segments, value }];
   });
+}
+
+// Whether a managed key's current value is one gq wrote: the value the lock
+// hashed, or, for a key the lock has no hash for yet, one of the `earlier`
+// values the blueprint wrote there before it managed the key (an entry's
+// `earlier` file, by key). Anything else is the Site's edit.
+function isOldTemplateValue(value, written, earlier = []) {
+  if (written !== undefined) return hashValue(value) === written;
+  return earlier.some((old) => JSON.stringify(old) === JSON.stringify(value));
+}
+
+async function readEarlierValues(earlier) {
+  return earlier === undefined ? {} : JSON.parse(await readTemplate(earlier));
+}
+
+function isYamlPath(path) {
+  return path.endsWith(".yaml") || path.endsWith(".yml");
+}
+
+// Managed keys in a Site's YAML file (pnpm-workspace.yaml's catalog pins):
+// every leaf of the template, a YAML mapping, set at the same key path, as
+// planKeys does for JSON, and edited as text by yaml-keys.mjs, so the rest of
+// the file, its comments and key order, keeps its bytes. A key the lock has
+// no hash for yet is taken over when its value is one an earlier blueprint
+// wrote there (`earlier`); any other value is the Site's edit, and stops gq
+// sync. gq creates the file only once (a create-once template): a missing
+// one is refused, not created from the keys.
+async function planYamlKeys(root, lock, { path, template, earlier }, creating) {
+  const managed = leafKeys(parseYaml(await readTemplate(template)));
+  const earlierValues = await readEarlierValues(earlier);
+  const record = {
+    keys: { [path]: Object.fromEntries(managed.map(({ key, value }) => [key, hashValue(value)])) },
+  };
+  const current = creating ? { bytes: creating.content } : await readEntry(join(root, path));
+  if (current === undefined) {
+    throw new Error(
+      `${path} is missing, and gq sync manages keys of it: restore it, or recreate it ` +
+        `with gq sync --recreate ${path}.`,
+    );
+  }
+  if (current.bytes === undefined) {
+    throw new Error(`${path} must be a regular file: gq sync manages keys of it.`);
+  }
+  const text = current.bytes.toString("utf8");
+  const document = parseYamlMapping(path, text);
+  const written = lock?.keys[path] ?? {};
+  const changed = [];
+  const edited = [];
+  const set = [];
+  for (const { key, segments, value } of managed) {
+    const currentValue = readYamlKey(document, segments);
+    if (currentValue !== undefined && JSON.stringify(currentValue) === JSON.stringify(value)) {
+      continue;
+    }
+    if (
+      creating ||
+      currentValue === undefined ||
+      isOldTemplateValue(currentValue, written[key], earlierValues[key])
+    ) {
+      changed.push(key);
+    } else edited.push(key);
+    set.push({ segments, value });
+  }
+  const remove = [];
+  for (const key of Object.keys(written).filter((name) => !(name in record.keys[path]))) {
+    const segments = keySegments(key);
+    const currentValue = readYamlKey(document, segments);
+    if (currentValue === undefined || hashValue(currentValue) !== written[key]) continue;
+    changed.push(key);
+    remove.push(segments);
+  }
+
+  let status = "unchanged";
+  if (edited.length > 0) status = "edited";
+  else if (changed.length > 0) status = "update";
+  const content =
+    status === "unchanged" ? current.bytes : Buffer.from(editYamlKeys(path, text, { set, remove }));
+  return {
+    path,
+    status,
+    scope: `managed keys ${(edited.length > 0 ? edited : changed).join(", ")}`,
+    current: current.bytes,
+    content,
+    write: { bytes: content },
+    record,
+  };
 }
 
 function setNested(object, segments, value) {
