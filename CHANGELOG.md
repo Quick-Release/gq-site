@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.41.0 — 2026-11-12
 
 - **Astro or TanStack for new content Sites**
   ([gq-platform ADR 0015](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0015-astro-or-tanstack-for-new-content-site-frontends.md)).
