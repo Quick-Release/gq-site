@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.43.1 — 2026-11-12
 
 - **Fix: Sites can plan and deploy their Frontend again.** 0.41.0 to 0.43.0
   pinned Effect 4.1.4, but Alchemy up to 2.0.0-beta.84 imports
