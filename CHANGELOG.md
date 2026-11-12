@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.42.0 — 2026-11-12
 
 - **Readiness reads a Frontend kept behind Cloudflare Access.** A Frontend
   behind an Access people policy before launch answered readiness's anonymous
