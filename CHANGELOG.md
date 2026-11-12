@@ -77,7 +77,6 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   variables and the remedy: a service token admitted by a Service Auth
   policy on the Frontend's Access application. Unset, nothing changes. See
   [A Frontend behind Cloudflare Access](docs/guides/provisioning.md#a-frontend-behind-cloudflare-access).
-||||||| parent of 3aef9ea (feat: guard the Alchemy install in gq doctor and the deploy; sync smoke from 0.40.0; docs)
 
 ## 0.41.1 — 2026-11-12
 

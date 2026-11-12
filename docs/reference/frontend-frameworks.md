@@ -66,23 +66,23 @@ Blueprint's checks, and the two share the toolchain pins (gq-platform ADR 0015
 decision 4). A version that fails a check is recorded here with the version
 pinned instead; no check is weakened for it. Pinned on 2026-11-12:
 
-| Package                                                                  | Astro skeleton | TanStack skeleton |
-| ------------------------------------------------------------------------ | -------------- | ----------------- |
-| `astro`                                                                  | ^7.4.11        | —                 |
-| `@astrojs/check`                                                         | ^0.9.12        | —                 |
-| `tailwindcss`, `@tailwindcss/vite`                                       | 4.3.5          | —                 |
-| `@tanstack/react-start`                                                  | —              | 1.169.5           |
-| `@tanstack/react-router`                                                 | —              | 1.170.46          |
-| `react`, `react-dom`                                                     | —              | 19.3.1            |
-| `@types/react`, `@types/react-dom`                                       | —              | 19.3.0            |
-| `@vitejs/plugin-react`                                                   | —              | 6.3.0             |
-| `@cloudflare/workers-types`                                              | —              | 5.20261110.1      |
-| `typescript` (Frontend)                                                  | ^6.0.3         | 7.0.2             |
-| `typescript` (`infra`, `infra/ci`, managed)                              | ^7.0.2         | ^7.0.2            |
-| `vite-plus` (`vite` is its core)                                         | 1.6.0          | 1.6.0             |
-| `vitest`                                                                 | 5.1.0          | 5.1.0             |
-| `alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/frontend-frameworks` | 2.0.0-beta.84  | 2.0.0-beta.84     |
-| `effect`, `@effect/platform-node`, `@effect/platform-node-shared` (override) | 4.1.4 | 4.1.4 |
+| Package                                                                      | Astro skeleton | TanStack skeleton |
+| ---------------------------------------------------------------------------- | -------------- | ----------------- |
+| `astro`                                                                      | ^7.4.11        | —                 |
+| `@astrojs/check`                                                             | ^0.9.12        | —                 |
+| `tailwindcss`, `@tailwindcss/vite`                                           | 4.3.5          | —                 |
+| `@tanstack/react-start`                                                      | —              | 1.169.5           |
+| `@tanstack/react-router`                                                     | —              | 1.170.46          |
+| `react`, `react-dom`                                                         | —              | 19.3.1            |
+| `@types/react`, `@types/react-dom`                                           | —              | 19.3.0            |
+| `@vitejs/plugin-react`                                                       | —              | 6.3.0             |
+| `@cloudflare/workers-types`                                                  | —              | 5.20261110.1      |
+| `typescript` (Frontend)                                                      | ^6.0.3         | 7.0.2             |
+| `typescript` (`infra`, `infra/ci`, managed)                                  | ^7.0.2         | ^7.0.2            |
+| `vite-plus` (`vite` is its core)                                             | 1.6.0          | 1.6.0             |
+| `vitest`                                                                     | 5.1.0          | 5.1.0             |
+| `alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/frontend-frameworks`     | 2.0.0-beta.84  | 2.0.0-beta.84     |
+| `effect`, `@effect/platform-node`, `@effect/platform-node-shared` (override) | 4.1.4          | 4.1.4             |
 
 Gaps from the latest release:
 

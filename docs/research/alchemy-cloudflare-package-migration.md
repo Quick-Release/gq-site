@@ -1,7 +1,11 @@
 # Alchemy beta.84+ and `@alchemy.run/cloudflare`: fleet migration plan
 
-Planning only, written 2026-11-12 against gq-site `main` 790b1b6 (0.41.1).
-Nothing here is implemented. Tracking issue: [#185](https://github.com/Quick-Release/gq-site/issues/185).
+Written 2026-11-12 against gq-site `main` 790b1b6 (0.41.1). Tracking issue:
+[#185](https://github.com/Quick-Release/gq-site/issues/185).
+
+Status: **hop 1's Blueprint part is implemented** (gq-site 0.43.0, see
+[Hop 1 in the Blueprint](#hop-1-in-the-blueprint)). Every Site's own hop 1,
+and all of hop 2, are still to do.
 
 ## Problem
 
@@ -209,6 +213,38 @@ beta.84 is the target of this hop only because it still speaks the v7 store
 protocol. That lets Sites on beta.79 and beta.84 deploy side by side in the one
 account while the fleet catches up.
 
+### Hop 1 in the Blueprint
+
+Done on 2026-11-12, released in gq-site 0.43.0. What shipped:
+
+- The seven managed keys above, from
+  `blueprint/templates/fragments/pnpm-workspace.keys.yaml`. In the lock and in
+  gq's messages a segment holding a dot is bracketed, so
+  `catalog["@alchemy.run/cloudflare"]`, but `catalog.@effect/platform-node`
+  (JSON managed keys keep their existing names).
+- A key the lock has no hash for yet is taken over only when its value is one
+  an earlier blueprint created (`pnpm-workspace.earlier.json`: Alchemy
+  beta.79 and beta.83, Effect rc.115 and 4.1.4). Any other value is the Site's
+  own pick: `gq sync` stops with a diff, as for a hand edit.
+- The templates import `@alchemy.run/cloudflare`, `infra/package.json`
+  depends on it, and the pins are exactly 2.0.0-beta.84 for the three Alchemy
+  packages and 4.1.4 for Effect.
+- `gq doctor`'s Alchemy install check, and the deploy wrapper's refusal
+  without `@alchemy.run/cloudflare`.
+- `scripts/smoke/sync-upgrade.sh` (CI job `sync-upgrade`): a 0.40.0 Site,
+  Astro and TanStack, synced, installed, frozen-installed, type-checked and
+  doctor-clean.
+
+Open question 4 is settled: the `yaml` package (2.9.1, which Alchemy itself
+depends on) parses the file to find each key and its exact byte range, and gq
+edits only those ranges, as the JSON managed keys do. That is the safer of the
+two. A line-based writer would have to re-implement YAML's quoting, flow
+collections and comments to find a key, and could misread a file it doesn't
+expect. `yaml`'s document API re-serializes the whole file, which can change
+quoting, indentation and blank lines the Site owns. What gq can't edit without
+rewriting (invalid YAML, a top level that isn't a mapping, a flow mapping in
+the way) is refused, and nothing is written.
+
 ### Hop 2: beta.86 (or the latest), the store upgrade
 
 1. **Guard secrets first.** `deploy-frontend.mjs` refuses a full deploy that
@@ -309,10 +345,11 @@ in one sitting. Cooldown Gaming's deploy performs the store upgrade.
    `8f38791a…`, and who moves them?
 3. Can `alchemy deploy --dry-run` emit a structured plan to gate on, or do we
    parse text?
-4. gq-site has no YAML dependency today (`package.json`). Managed keys in
+4. ~~gq-site has no YAML dependency today (`package.json`). Managed keys in
    `pnpm-workspace.yaml` need a comment-preserving YAML editor (for example
    `yaml`'s document API) or a narrow line-based writer for `catalog:` entries.
-   Which?
+   Which?~~ Settled in hop 1: `yaml`'s parser to locate, byte-range edits to
+   write ([Hop 1 in the Blueprint](#hop-1-in-the-blueprint)).
 5. Should hop 1 skip straight to beta.86 if questions 1 and 2 are settled
    before it ships, giving one hop?
 6. Where does CESAM's TanStack rebuild stand, and does it change CESAM's
