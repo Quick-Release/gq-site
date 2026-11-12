@@ -367,6 +367,9 @@ export const manifestSchema = z
           .strictObject({
             backup: z.literal(true).optional(),
             crontab: z.strictObject({ user: name, frequency: name, command: name }).optional(),
+            wpCronCrontab: z
+              .strictObject({ user: name, frequency: name, command: name })
+              .optional(),
             suspended: z.literal(true).optional(),
             workerDomains: z
               .array(z.strictObject({ hostname, service: name, zoneId: name }))
@@ -383,7 +386,7 @@ export const manifestSchema = z
           })
           .optional()
           .describe(
-            "Written by gq offboard as it cuts: what it changed (the final backup, the retry crontab, the suspension, detached Worker domains, the removed route of a custom hostname, each Worker's workers.dev setting before, the media domain, the webhook id and the token ids it disabled); gq offboard --restore brings back only these.",
+            "Written by gq offboard as it cuts: what it changed (the final backup, the retry and WP-Cron crontabs, the suspension, detached Worker domains, the removed route of a custom hostname, each Worker's workers.dev setting before, the media domain, the webhook id and the token ids it disabled); gq offboard --restore brings back only these.",
           ),
         archive: z
           .strictObject({

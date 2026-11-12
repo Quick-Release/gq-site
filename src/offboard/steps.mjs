@@ -19,7 +19,7 @@ import { isArtifactsOnly } from "../ci/git-artifacts.mjs";
 import { webhookUrl } from "../ci/github-setup.mjs";
 import { tokenName } from "../cloudflare/tokens.mjs";
 import { parseDotenv } from "../dotenv-text.mjs";
-import { retryCrontab } from "../ploi/events.mjs";
+import { findCrontab, retryCrontab, wpCronCrontab } from "../ploi/crontabs.mjs";
 import { updateManifest } from "../manifest/manifest.mjs";
 import { frontendCustomHostname, frontendProxy } from "../manifest/schema.mjs";
 import {
@@ -112,13 +112,12 @@ export async function inspectSite(providers) {
   const { ops, cloudflare, ploi, github } = providers;
   const site = await ploi.site();
   assertOwnPloiSite(ops, site);
-  const crontab = retryCrontab({
-    systemUser: ops.ploi.systemUser,
-    domain: ops.domains.admin,
-  });
-  const existingCrontab = (await ploi.crontabs()).find(
-    (entry) => entry.user === crontab.user && entry.command === crontab.command,
-  );
+  const names = { systemUser: ops.ploi.systemUser, domain: ops.domains.admin };
+  const crontab = retryCrontab(names);
+  const wpCron = wpCronCrontab(names);
+  const crontabs = await ploi.crontabs();
+  const existingCrontab = findCrontab(crontabs, crontab);
+  const existingWpCron = findCrontab(crontabs, wpCron);
   const ciUrl = webhookUrl(ops.ci.worker, await cloudflare.accountSubdomain());
   const artifactsOnly = isArtifactsOnly(ops);
   const hooks = artifactsOnly ? [] : await github.hooks();
@@ -150,7 +149,14 @@ export async function inspectSite(providers) {
 
   return {
     ops,
-    cms: { site, suspended: site.status === "suspended", crontab, existingCrontab },
+    cms: {
+      site,
+      suspended: site.status === "suspended",
+      crontab,
+      existingCrontab,
+      wpCron,
+      existingWpCron,
+    },
     frontends,
     customHostname,
     unclearStages: unclear,
@@ -297,6 +303,17 @@ export function cutPlan(site, { configPath, now = () => new Date() }) {
           (p) => p.ploi.deleteCrontab(cms.existingCrontab.id),
         )
       : done("CMS", "no retry crontab"),
+    cms.existingWpCron
+      ? cut(
+          "CMS",
+          `delete the WP-Cron crontab (${cms.wpCron.user}: wp cron event run --due-now)`,
+          (record) => {
+            const { user, frequency, command } = cms.existingWpCron;
+            record.wpCronCrontab = { user, frequency, command };
+          },
+          (p) => p.ploi.deleteCrontab(cms.existingWpCron.id),
+        )
+      : done("CMS", "no WP-Cron crontab"),
     cms.suspended
       ? done("CMS", `the Ploi site ${ops.domains.admin} is suspended`)
       : cut(
@@ -583,6 +600,17 @@ export function restorePlan(site, { configPath }) {
                 "CMS",
                 `re-add the retry crontab (${cut.crontab.user}: wp gq-events retry-due)`,
                 (p) => p.ploi.createCrontab(cut.crontab),
+              ),
+        ]
+      : []),
+    ...(cut.wpCronCrontab
+      ? [
+          cms.existingWpCron
+            ? done("CMS", "the WP-Cron crontab is there")
+            : todo(
+                "CMS",
+                `re-add the WP-Cron crontab (${cut.wpCronCrontab.user}: wp cron event run --due-now)`,
+                (p) => p.ploi.createCrontab(cut.wpCronCrontab),
               ),
         ]
       : []),

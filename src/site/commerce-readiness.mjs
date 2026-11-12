@@ -11,7 +11,9 @@
 //             getquick-theme or a child of it (read as the CMS check user);
 //             the Store API lists products; and GQ eCommerce's customer auth
 //             accepts Sigillo staging's proxy secret, and says whether
-//             customer sign-in is on.
+//             customer sign-in is on; and its server has the crontab that
+//             runs WordPress's due scheduled events, WooCommerce's Action
+//             Scheduler among them (ADR 0022).
 //   frontend  the storefront's homepage is served by its Worker with no
 //             cache that could outlive a price, stock or cart change; a cart
 //             round-trips through the storefront Runtime's BFF (the first
@@ -38,6 +40,7 @@
 import { cmsFetch } from "../cms/access.mjs";
 import { CHECK_PASSWORD, CHECK_USER, productionMediaReadiness } from "../media/readiness.mjs";
 import {
+  cmsCronReadiness,
   hostsCheck,
   legalCheck,
   messageOf,
@@ -685,6 +688,7 @@ export async function commerceSiteReadiness({
   const cms = await commerceCmsReadiness({ origin: cmsOrigin, env, fetch });
   const checks = [
     ...cms.checks,
+    ...(await cmsCronReadiness({ ops, env, fetch })),
     ...(await storefrontReadiness({ origin: storefront, env, fetch, signIn: cms.signIn })),
     ...(await commerceConsentReadiness({ ops, env, fetch, origin: storefront, cmsOrigin })),
   ];

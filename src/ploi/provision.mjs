@@ -1,6 +1,7 @@
 // Provisions a site's admin on Ploi from gq.ops.json, idempotently: system user → site → custom deployments (no
 // git) → database + .env (on a commerce Site, with the storefront's proxy
-// secret from the secret store, ADR 0017) → deploy script → SSL. Every resource is looked up
+// secret from the secret store, ADR 0017) → deploy script → the WP-Cron crontab
+// (ADR 0022) → SSL. Every resource is looked up
 // first and only created when missing; nothing that already exists is
 // recreated or overwritten. Deploys are `gq ploi release` (release archive on
 // R2).
@@ -18,6 +19,7 @@ import { applyEnv } from "../dotenv-text.mjs";
 import { updateManifest } from "../manifest/manifest.mjs";
 import { isCommerce } from "../manifest/variant.mjs";
 import { createReporter } from "../cli/reporter.mjs";
+import { findCrontab, wpCronCrontab } from "./crontabs.mjs";
 import { createPloiServerClient } from "./server-client.mjs";
 
 const placeholderPattern = /replace-me|replace-with/u;
@@ -99,11 +101,13 @@ export function isEnvReady(env, database) {
 
 export async function inspect(client, config, resolveHost) {
   const server = (await client.request("GET", "")).data ?? {};
-  const [users, sites, databases] = await Promise.all([
+  const [users, sites, databases, crontabs] = await Promise.all([
     client.list("/system-users"),
     client.list("/sites"),
     client.list("/databases"),
+    client.list("/crontabs"),
   ]);
+  const wpCron = wpCronCrontab({ systemUser: config.systemUser, domain: config.domain });
 
   const state = {
     serverIp: server.ip_address,
@@ -114,6 +118,8 @@ export async function inspect(client, config, resolveHost) {
     envReady: false,
     env: null,
     deployScript: null,
+    wpCron,
+    wpCronExisting: findCrontab(crontabs, wpCron) ?? null,
     certificate: null,
     dnsAddresses: [],
   };
@@ -252,6 +258,19 @@ export function planActions(config, state) {
   } else {
     add("update", "deploy-script", `deploy script ← ${config.deployScriptPath}`);
   }
+
+  // WordPress's scheduled events run from the server's cron as the site's
+  // user (ADR 0022); production disables WP-Cron's visit-triggered runs.
+  const wpCron = state.wpCron;
+  const wpCronTitle = `WP-Cron crontab (${wpCron.user}, every minute): ${wpCron.command}`;
+  if (!state.wpCronExisting) add("create", "wp-cron", wpCronTitle);
+  else if (state.wpCronExisting.frequency !== wpCron.frequency) {
+    add(
+      "warn",
+      "wp-cron",
+      `the WP-Cron crontab runs at "${state.wpCronExisting.frequency}", not every minute; change it in Ploi`,
+    );
+  } else add("ok", "wp-cron", wpCronTitle);
 
   const dnsReady = Boolean(state.serverIp) && state.dnsAddresses.includes(state.serverIp);
   if (state.certificate) add("ok", "certificate", `SSL certificate (${state.certificate.status})`);
@@ -418,6 +437,13 @@ export async function applyAction(action, context) {
         deploy_script: config.deployScript,
       });
       return;
+    case "wp-cron": {
+      const { user, frequency, command } = state.wpCron;
+      state.wpCronExisting = (
+        await client.request("POST", "/crontabs", { user, frequency, command })
+      )?.data;
+      return;
+    }
     case "certificate":
       await client.request("POST", `/sites/${siteId()}/certificates`, {
         type: "letsencrypt",

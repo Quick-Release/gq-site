@@ -19,6 +19,7 @@ import {
   OPS,
   publicationBinding,
   RETRY_CRONTAB,
+  WP_CRON_CRONTAB,
   STAGING,
 } from "../support/offboarding.mjs";
 import { recordingExec, recordingFetch } from "../support/fixture-site.mjs";
@@ -41,6 +42,7 @@ test("offboard --dry-run plans every cut in order and changes nothing", async ()
     "  - CI: deactivate the GitHub push webhook 99 on Example/fixture",
     "  - CI: switch the CI Worker fixture-ci's workers.dev off",
     "  - CMS: delete the retry crontab (fixture: wp gq-events retry-due)",
+    "  - CMS: delete the WP-Cron crontab (fixture: wp cron event run --due-now)",
     '  - CMS: suspend the Ploi site fixture-cms.example.test (reason "offboarded"); its files, .env and database stay',
     "  ! CMS: Ploi's API can't disable the site's deploy webhook; the suspension is what stops it",
     "  ! CMS: the DNS record for fixture-cms.example.test was added by hand; remove it by hand if it should go",
@@ -75,6 +77,7 @@ test("offboard --yes cuts in order, tokens last, and records offboarded", async 
     "github hook 99 inactive",
     'workers.dev fixture-ci {"enabled":false,"previews_enabled":false}',
     "crontab 7 deleted",
+    "crontab 6 deleted",
     "ploi site suspended (offboarded)",
     "worker domain wd-1 detached",
     'workers.dev fixture-fe {"enabled":false,"previews_enabled":false}',
@@ -96,6 +99,7 @@ test("offboard --yes cuts in order, tokens last, and records offboarded", async 
   assert.deepEqual(offboarded.cut, {
     backup: true,
     crontab: RETRY_CRONTAB,
+    wpCronCrontab: WP_CRON_CRONTAB,
     suspended: true,
     workerDomains: [
       { hostname: "fixture-fe.example.test", service: "fixture-fe", zoneId: "zone-1" },
@@ -404,6 +408,7 @@ test("offboard --restore brings back everything the cut took, in reverse, and re
     'workers.dev fixture-fe {"enabled":false,"previews_enabled":true}',
     "ploi site resumed",
     `crontab added: ${RETRY_CRONTAB.command}`,
+    `crontab added: ${WP_CRON_CRONTAB.command}`,
     'workers.dev fixture-ci {"enabled":true,"previews_enabled":false}',
     "github hook 99 active",
   ]);
@@ -418,7 +423,10 @@ test("offboard --restore brings back everything the cut took, in reverse, and re
       environment: "production",
     },
   );
-  assert.deepEqual(account.state.crontabs.at(-1), { id: 70, ...RETRY_CRONTAB });
+  assert.deepEqual(account.state.crontabs.slice(-2), [
+    { id: 70, ...RETRY_CRONTAB },
+    { id: 70, ...WP_CRON_CRONTAB },
+  ]);
   // Tokens are re-enabled, never created again (planToken would "create" a
   // disabled one): the only token created is the run's temporary one.
   assert.deepEqual(
@@ -581,12 +589,12 @@ test("offboard --restore puts the CI Worker's workers.dev and preview URLs back 
   });
 });
 
-test("offboard --restore adds no retry crontab the Site didn't have", async () => {
+test("offboard --restore adds no retry or WP-Cron crontab the Site didn't have", async () => {
   const { account, restore } = await cutAndRestore({
     crontabs: [{ id: 8, user: "fixture", frequency: "0 3 * * *", command: "other job" }],
   });
 
-  assert.doesNotMatch(restore.stdout, /retry crontab/u);
+  assert.doesNotMatch(restore.stdout, /retry crontab|WP-Cron crontab/u);
   assert.deepEqual(
     account.state.crontabs.map(({ id }) => id),
     [8],
@@ -957,6 +965,7 @@ test("an Artifacts-only Site's cut takes every push credential away right after 
     "artifacts token git-1 revoked",
     'workers.dev fixture-ci {"enabled":false,"previews_enabled":false}',
     "crontab 7 deleted",
+    "crontab 6 deleted",
     "ploi site suspended (offboarded)",
     "worker domain wd-1 detached",
     'workers.dev fixture-fe {"enabled":false,"previews_enabled":false}',
@@ -1041,6 +1050,7 @@ test("an Artifacts-only Site's --restore re-enables its Artifacts token with the
     'workers.dev fixture-fe {"enabled":false,"previews_enabled":true}',
     "ploi site resumed",
     `crontab added: ${RETRY_CRONTAB.command}`,
+    `crontab added: ${WP_CRON_CRONTAB.command}`,
     'workers.dev fixture-ci {"enabled":true,"previews_enabled":false}',
   ]);
   assert.ok(account.exec.calls.every(({ command }) => command !== "gh"));

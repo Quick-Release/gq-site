@@ -58,8 +58,18 @@ const problem = (status, code) =>
   });
 
 /** A commerce Site that is ready unless `overrides` say otherwise. */
+// The crontab that runs WordPress's due scheduled events, WooCommerce's
+// Action Scheduler among them (ADR 0022).
+const WP_CRON_CRONTAB = Object.freeze({
+  user: "shop",
+  frequency: "* * * * *",
+  command:
+    'cd /home/shop/shop-cms.example.test/apps/cms && PATH="/usr/local/bin:$PATH" flock -n /home/shop/.gq-wp-cron-shop-cms.example.test.lock wp cron event run --due-now --quiet',
+});
+
 function world(overrides = {}) {
   const state = {
+    crontabs: [{ id: 1, ...WP_CRON_CRONTAB }],
     cms: "ready", // "down", "not-installed", "plain-permalinks", "ready"
     routes: COMMERCE_ROUTES.map(([route]) => route),
     products: 3,
@@ -226,6 +236,12 @@ function world(overrides = {}) {
       if (method === "GET" && pathname === "/api/servers/12/sites/34/env") {
         return { data: `${CMS_ENV}\n` };
       }
+      if (method === "GET" && pathname === "/api/servers/12/sites/34") {
+        return { data: { system_user: "shop", domain: "shop-cms.example.test" } };
+      }
+      if (method === "GET" && pathname === "/api/servers/12/crontabs") {
+        return { data: state.crontabs };
+      }
     }
     if (hostname === "account-1.r2.cloudflarestorage.com") {
       if (!headers.authorization?.includes(`Credential=${SECRETS.S3_UPLOADS_KEY}/`)) {
@@ -272,6 +288,7 @@ test("a commerce Site whose CMS, storefront, legal pages and media hold is ready
     "store-api",
     "theme",
     "proxy-secret",
+    "cms-cron",
     "homepage",
     "cart",
     "customer-auth",
@@ -357,6 +374,15 @@ test("without Sigillo, the proxy secret and the check user are asked for", async
     assert.equal(byName[name].status, "not-ready", name);
     assert.match(byName[name].action, /gq sigillo run staging \(pnpm site:check\)/u, name);
   }
+});
+
+test("a commerce CMS whose server doesn't run WordPress's scheduled events is not ready", async () => {
+  const { code, byName } = await check({ crontabs: [] });
+
+  assert.equal(code, 1);
+  assert.equal(byName["cms-cron"].area, "cms");
+  assert.match(byName["cms-cron"].detail, /no crontab running .*wp cron event run --due-now/u);
+  assert.match(byName["cms-cron"].action, /pnpm ploi:provision/u);
 });
 
 test("a CMS that isn't installed, or serves /wp-json/ with plain permalinks, is not ready", async () => {

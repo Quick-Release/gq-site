@@ -10,7 +10,8 @@
 //             theme add): GraphQL validates them without running anything.
 //             A bilingual Site's CMS has each of its languages (Polylang's,
 //             listed by GQ Polylang for WPGraphQL), and every language's
-//             front page, title and menu are fields too.
+//             front page, title and menu are fields too. Its server has the
+//             crontab that runs WordPress's due scheduled events (ADR 0022).
 //   frontend  the deployed Worker accepts this Site's signed events and its
 //             refresh token, its store holds a prepared Site, every
 //             language's front page and chrome (the signed check reports
@@ -46,7 +47,9 @@ import { productionMediaReadiness } from "../media/readiness.mjs";
 import { cmsFetch } from "../cms/access.mjs";
 import { CMS_CONSENT_READ_TOKEN, CONSENT_READ_TOKEN } from "../frontend/consent.mjs";
 import { siteFormsReadiness } from "../forms/readiness.mjs";
+import { crontabProblems, findCrontab, wpCronCrontab } from "../ploi/crontabs.mjs";
 import { EVENT_SECRET, inspectCmsEvents } from "../ploi/events.mjs";
+import { createPloiServerClient } from "../ploi/server-client.mjs";
 
 const TIMEOUT = 30_000;
 const REFRESH_TOKEN = "FRONTEND_REFRESH_TOKEN";
@@ -775,11 +778,8 @@ export async function cmsDeliveryReadiness({ ops, env, fetch }) {
     ...changed.map(
       (name) => `the CMS's .env has a missing or different ${name} (values not shown)`,
     ),
-    !existing && `the server has no crontab running ${crontab.command} as ${crontab.user}`,
-    existing &&
-      existing.frequency !== crontab.frequency &&
-      `the retry crontab runs at "${existing.frequency}", not every minute`,
-  ].filter(Boolean);
+    ...crontabProblems("retry crontab", crontab, existing),
+  ];
   return [
     {
       area: "delivery",
@@ -789,6 +789,66 @@ export async function cmsDeliveryReadiness({ ops, env, fetch }) {
             `the CMS's .env has ${consentToken ? `${EVENT_SECRET} and ${CMS_CONSENT_READ_TOKEN}` : EVENT_SECRET}, and its every-minute retry crontab is set`,
           )
         : notReady(name, problems.join("; "), action)),
+    },
+  ];
+}
+
+/**
+ * Whether the CMS's Ploi server runs WordPress's due scheduled events every
+ * minute (ADR 0022): production disables WP-Cron, so without the crontab
+ * `gq ploi provision` adds, scheduled posts never publish and core's and
+ * plugins' events never run. Every variant's CMS needs it.
+ */
+export async function cmsCronReadiness({ ops, env, fetch }) {
+  const name = "cms-cron";
+  const action = "run pnpm ploi:provision (it adds the crontab; nothing else changes)";
+  if (!env.PLOI_API_TOKEN || !ops.ploi?.serverId) {
+    return [
+      {
+        area: "cms",
+        ...notReady(
+          name,
+          "the CMS server's crontabs can't be read without PLOI_API_TOKEN and gq.ops.json ploi.serverId",
+          `${THROUGH_SIGILLO} once pnpm ploi:provision has run`,
+        ),
+      },
+    ];
+  }
+  let crontab;
+  let existing;
+  try {
+    const client = createPloiServerClient({
+      token: env.PLOI_API_TOKEN,
+      serverId: ops.ploi.serverId,
+      fetch,
+    });
+    const site = ops.ploi.siteId
+      ? ((await client.request("GET", `/sites/${ops.ploi.siteId}`))?.data ?? {})
+      : {};
+    crontab = wpCronCrontab({
+      systemUser: site.system_user ?? ops.ploi.systemUser,
+      domain: site.domain ?? ops.domains?.admin,
+    });
+    existing = findCrontab(await client.list("/crontabs"), crontab);
+  } catch (error) {
+    return [
+      {
+        area: "cms",
+        ...notReady(name, `couldn't read the Ploi server's crontabs: ${messageOf(error)}`, "retry"),
+      },
+    ];
+  }
+  const problems = crontabProblems("WP-Cron crontab", crontab, existing);
+  return [
+    {
+      area: "cms",
+      ...(problems.length === 0
+        ? ok(name, "WordPress's due scheduled events run every minute from the server's crontab")
+        : notReady(
+            name,
+            `${problems.join("; ")}: scheduled posts never publish, and WordPress's and plugins' scheduled events never run`,
+            action,
+          )),
     },
   ];
 }
@@ -836,6 +896,7 @@ export async function siteReadiness({ ops, env, fetch, origin, upload = true, no
       now,
       languages,
     })),
+    ...(await cmsCronReadiness({ ops, env, fetch })),
     ...(await cmsDeliveryReadiness({ ops, env, fetch })),
     ...(await consentReadiness({ ops, env, fetch, origin: frontend, languages })),
     ...(await siteFormsReadiness({ ops, env, fetch })),

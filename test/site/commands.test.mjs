@@ -45,6 +45,14 @@ const CRONTAB = Object.freeze({
     'cd /home/fixture/admin.example.test/apps/cms && PATH="/usr/local/bin:$PATH" wp gq-events retry-due --quiet',
 });
 
+// The crontab that runs WordPress's due scheduled events (ADR 0022).
+const WP_CRON_CRONTAB = Object.freeze({
+  user: "fixture",
+  frequency: "* * * * *",
+  command:
+    'cd /home/fixture/admin.example.test/apps/cms && PATH="/usr/local/bin:$PATH" flock -n /home/fixture/.gq-wp-cron-admin.example.test.lock wp cron event run --due-now --quiet',
+});
+
 const PREPARED = Object.freeze({
   home: "published",
   chrome: "published",
@@ -115,7 +123,10 @@ function world(overrides = {}) {
     analytics: { enabled: false, measurementId: null },
     legal: { pt: legalContract(), en: legalContract() },
     cmsEnv: `${CMS_ENV.join("\n")}\n`,
-    crontabs: [{ id: 1, ...CRONTAB }],
+    crontabs: [
+      { id: 1, ...CRONTAB },
+      { id: 2, ...WP_CRON_CRONTAB },
+    ],
     bucket: new Map(),
     attachments: new Map(),
     nextId: 100,
@@ -521,6 +532,27 @@ test("a CMS without the event key or the retry crontab is not ready", async () =
   assert.match(byName["cms-events"].detail, /missing or different PUBLICATION_EVENT_SECRET/u);
   assert.match(byName["cms-events"].detail, /no crontab running .*wp gq-events retry-due/u);
   assert.match(byName["cms-events"].action, /pnpm ploi:events/u);
+});
+
+test("a CMS whose server doesn't run WordPress's scheduled events is not ready", async () => {
+  const { code, byName } = await check({ crontabs: [{ id: 1, ...CRONTAB }] });
+
+  assert.equal(code, 1);
+  assert.equal(byName["cms-cron"].area, "cms");
+  assert.equal(byName["cms-cron"].status, "not-ready");
+  assert.match(byName["cms-cron"].detail, /no crontab running .*wp cron event run --due-now/u);
+  assert.match(byName["cms-cron"].detail, /scheduled posts never publish/u);
+  assert.match(byName["cms-cron"].action, /pnpm ploi:provision/u);
+  assert.equal(byName["cms-events"].status, "ok");
+
+  const slow = await check({
+    crontabs: [
+      { id: 1, ...CRONTAB },
+      { id: 2, ...WP_CRON_CRONTAB, frequency: "*/5 * * * *" },
+    ],
+  });
+  assert.equal(slow.code, 1);
+  assert.match(slow.byName["cms-cron"].detail, /WP-Cron crontab runs at "\*\/5 \* \* \* \*"/u);
 });
 
 // --- consent and legal pages (CONSENT-1, LEGAL-1; ADR 0019) ------------------

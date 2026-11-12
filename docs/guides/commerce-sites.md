@@ -45,6 +45,7 @@ block.
 | `plugins`           | the REST API lacks a route WooCommerce, GQ Config, GQ eCommerce or GQ Design registers (each named)                                                                                    |
 | `theme`             | the active theme isn't `getquick-theme` or a child of it (read as the CMS check user)                                                                                                  |
 | `store-api`         | the Store API doesn't list products (an empty catalogue only warns)                                                                                                                    |
+| `cms-cron`          | the CMS's server lacks the every-minute crontab that runs WordPress's due scheduled events, WooCommerce's Action Scheduler among them (`pnpm ploi:provision` adds it)                  |
 | `proxy-secret`      | GQ eCommerce's customer auth refuses Sigillo staging's `GETQUICK_STOREFRONT_PROXY_SECRET`: the CMS's `.env` lacks it or has another                                                    |
 | `homepage`          | the storefront's homepage isn't a 200, or Cloudflare's edge or a shared cache could hold it                                                                                            |
 | `cart`              | a cart doesn't round-trip through the Worker: the Runtime isn't mounted, `CART_SESSIONS` isn't bound or migrated, a secret is missing, or the second read gets a new cart              |

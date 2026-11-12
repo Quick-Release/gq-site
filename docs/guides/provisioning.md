@@ -24,7 +24,7 @@ gq new acme --project acme --variant content   # offline, no secrets
 cd acme && pnpm install
 # fill in gq.ops.json, then:
 pnpm exec gq sync
-pnpm ploi:provision       # Ploi site, database, .env, deploy script, certificate
+pnpm ploi:provision       # Ploi site, database, .env, deploy script, WP-Cron crontab, certificate
 pnpm cf:deploy-token      # the Frontend's deploy token, D1 included (the store)
 pnpm cf:releases          # the CMS release bucket
 pnpm cf:media             # the media bucket on its own public domain
@@ -57,6 +57,7 @@ for each that fails. What a Site that isn't ready looks like:
 | `publication-store` | the store can't be read, holds no front page or chrome (never prepared) in a language, or a format this Worker doesn't serve | 503 for every page (404 for a language never prepared)   |
 | `homepage`          | the homepage (and each language's, `homepage-en` for `/en/`) isn't a 200, or a cache in front could outlive a withdrawal     | as answered                                              |
 | `reconciliation`    | the Frontend hasn't matched WordPress in ten minutes, or never: the CMS's cron isn't running or its events don't reach it    | the last good content; missed changes wait               |
+| `cms-cron`          | the server lacks the every-minute crontab that runs WordPress's due scheduled events (`pnpm ploi:provision` adds it)         | scheduled posts never publish; plugins' events never run |
 | `cms-events`        | Ploi's `.env` lacks this Site's key (or Sigillo's consent read token), or the server lacks the every-minute crontab          | publications and withdrawals aren't delivered or retried |
 | `legal-pages`       | GQ Config's Legal Contract lacks a required legal page or the data controller, or GQ Config predates it (0.4.3)              | pages render; their legal links are incomplete           |
 | `consent-runtime`   | GQ Config's GA4 toggle is on (with an ID) and a homepage has no consent Runtime                                              | nothing loads GA4 without the Runtime                    |
@@ -135,10 +136,22 @@ After [generating or adopting a site](sites.md) and
 
 - `ploi provision` inspects Ploi and plans, idempotently, the system user,
   the site, custom deployments (no git; releases come from R2), the database
-  and the site `.env` (rendered from `ploi.envTemplate`), the deploy script
-  and the Let's Encrypt certificate. `--dry-run` only reports the plan and
-  the drift; applying asks first in a terminal and needs `--yes` elsewhere.
-  It records a newly found site ID in `gq.ops.json`.
+  and the site `.env` (rendered from `ploi.envTemplate`), the deploy script,
+  the WP-Cron crontab and the Let's Encrypt certificate. `--dry-run` only
+  reports the plan and the drift; applying asks first in a terminal and needs
+  `--yes` elsewhere. It records a newly found site ID in `gq.ops.json`.
+- The WP-Cron crontab runs WordPress's due scheduled events every minute as
+  the site's system user
+  ([ADR 0022](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0022-run-wordpress-scheduled-events-from-a-server-cron.md)):
+  `cd /home/<user>/<domain>/apps/cms && PATH="/usr/local/bin:$PATH" flock -n /home/<user>/.gq-wp-cron-<domain>.lock wp cron event run --due-now --quiet`.
+  Production's `.env` keeps `DISABLE_WP_CRON='true'`, so visits never start
+  WP-Cron (its loopback request would hit Cloudflare Access anyway); without
+  the crontab, scheduled posts never publish and core's, GQ Design's and
+  WooCommerce's scheduled events never run. `flock -n` skips a minute while
+  the previous run is still going. Provisioning keeps a crontab that is
+  already there and warns when it runs less often than every minute. An
+  existing Site gets it from `pnpm ploi:provision` after upgrading
+  `@getquick/site`; `gq site check` reports it as `cms-cron`.
 - `ploi release` packs the release commit (`--ref`, else the `v*` tag at
   `HEAD`, else `HEAD`) with `git archive`: `apps/cms` and `deploy/ploi` plus a
   `RELEASE` manifest. It uploads the archive to the `releases` bucket on R2
@@ -794,7 +807,9 @@ resends each due one: the same event, so the Frontend's ordering still holds.
   Frontend and a refresh that couldn't read WordPress back.
 - The scheduler is the server's cron: `gq ploi events` adds a Ploi crontab
   running `wp gq-events retry-due --quiet` every minute as the site's system
-  user. Production disables WP-Cron, which isn't used.
+  user. Production disables WP-Cron's visit-triggered runs; WordPress's own
+  scheduled events run from the separate WP-Cron crontab
+  (`gq ploi provision`, ADR 0022), never from this one.
 - Editors see a notice in the block or classic editor (being delivered,
   delayed with the reason and the next retry, failed, or recovered), "Public
   update" states in the page and post lists, and a summary on the Dashboard

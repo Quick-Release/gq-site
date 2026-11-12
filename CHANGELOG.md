@@ -5,6 +5,17 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
 
 ## Unreleased
 
+- **WordPress's scheduled events run in production.** Production disables
+  WP-Cron and nothing ran its events, so scheduled posts never published and
+  core's and plugins' events (GQ Design's font updates, WooCommerce's Action
+  Scheduler) never fired. `gq ploi provision` now adds, for every variant, an
+  every-minute Ploi crontab running
+  `flock -n … wp cron event run --due-now --quiet` as the site's system user;
+  `gq site check` reports it as `cms-cron` (content and commerce), and
+  `gq offboard` deletes it and `--restore` re-adds it beside the retry
+  crontab ([ADR 0022](docs/adr/0022-run-wordpress-scheduled-events-from-a-server-cron.md)).
+  An existing Site adopts it by running `pnpm ploi:provision` after upgrading;
+  a Site that already has the retry crontab keeps it unchanged.
 - **Latest WordPress only.** New Sites start on WordPress 7.1.4 (both CMS
   skeletons pin `roots/wordpress` 7.1.4, up from 7.1.3), and the real-WordPress
   smokes test that release only. GETQUICK supports only the latest WordPress
