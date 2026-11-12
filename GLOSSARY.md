@@ -255,6 +255,14 @@ certificate authority Cloudflare can't serve. The Worker has no route for
 the public hostname, and no Custom hostname exists for it.
 _Avoid_: origin proxy, front proxy
 
+**Alchemy state store**:
+The record of what Alchemy deployed. There is one per Cloudflare account, and
+every Site deploying to that account shares it. The Alchemy release that
+first deploys with a newer store protocol upgrades the store for every
+project in the account, and from then on older releases can't deploy there
+([ADR 0023](docs/adr/0023-move-sites-alchemy-pins-with-the-managed-infra.md)).
+_Avoid_: Alchemy state (for one stack's resources in it)
+
 **Artifacts-only Site**:
 A Site whose `gq.ops.json` names no `github.repository`
 ([ADR 0012](docs/adr/0012-keep-a-sites-code-in-artifacts-when-it-has-no-github-repository.md)):
