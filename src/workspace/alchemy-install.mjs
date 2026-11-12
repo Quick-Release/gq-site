@@ -88,8 +88,9 @@ async function readCatalog(root) {
   } catch (error) {
     return `${WORKSPACE} is not valid YAML: ${error.message.split("\n")[0]}`;
   }
-  const catalog = parsed?.catalog;
-  return catalog !== null && typeof catalog === "object" ? catalog : {};
+  // pnpm's default catalog: `catalog`, or `catalogs.default`.
+  const object = (value) => (value !== null && typeof value === "object" ? value : {});
+  return { ...object(parsed?.catalogs?.default), ...object(parsed?.catalog) };
 }
 
 async function readJson(path) {

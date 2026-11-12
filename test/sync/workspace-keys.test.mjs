@@ -254,3 +254,38 @@ test("the earlier values name only managed keys", async () => {
     assert.ok(Array.isArray(values) && values.length > 0, key);
   }
 });
+
+test("edge cases keep the file's meaning: an empty last key, comments, CRLF, block scalars", () => {
+  const pins = [
+    { segments: ["catalog", "alchemy"], value: "2.0.0-beta.84" },
+    { segments: ["peerDependencyRules", "allowedVersions", "effect"], value: "4.1.4" },
+  ];
+  // The empty last key gets its pins before the mapping appended after it.
+  assert.equal(
+    editYamlKeys(WORKSPACE, "overrides:\n  x: 1\ncatalog: # pins go here\n", { set: pins }),
+    "overrides:\n  x: 1\ncatalog: # pins go here\n  alchemy: 2.0.0-beta.84\n" +
+      "peerDependencyRules:\n  allowedVersions:\n    effect: 4.1.4\n",
+  );
+  // A value filled in before a comment leaves the comment a comment.
+  assert.equal(
+    editYamlKeys(WORKSPACE, "catalog:\n  alchemy: # pin\n", { set: pins.slice(0, 1) }),
+    "catalog:\n  alchemy: 2.0.0-beta.84 # pin\n",
+  );
+  // A CRLF file stays CRLF.
+  assert.equal(
+    editYamlKeys(WORKSPACE, "catalog:\r\n  zod: 1.0.0\r\n", { set: pins.slice(0, 1) }),
+    "catalog:\r\n  alchemy: 2.0.0-beta.84\r\n  zod: 1.0.0\r\n",
+  );
+  // A block scalar, or a value other keys alias, is refused, not rewritten.
+  assert.throws(
+    () => editYamlKeys(WORKSPACE, "catalog:\n  alchemy: |\n    1.0.0\n", { set: pins.slice(0, 1) }),
+    /catalog\.alchemy must be a single value/u,
+  );
+  assert.throws(
+    () =>
+      editYamlKeys(WORKSPACE, "catalog:\n  effect: &e 4.1.4\noverrides:\n  x: *e\n", {
+        remove: [["catalog", "effect"]],
+      }),
+    /has an anchor/u,
+  );
+});

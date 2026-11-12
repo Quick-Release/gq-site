@@ -41,6 +41,7 @@ export function readYamlKey(document, segments) {
 export function editYamlKeys(path, text, { set = [], remove = [] }) {
   const document = parseYamlMapping(path, text);
   const step = indentStep(text, document);
+  const newline = text.includes("\r\n") ? "\r\n" : "\n";
   // One stand-in per mapping that has no node yet, so what each gains is
   // added together.
   const standIns = new Map();
@@ -59,11 +60,18 @@ export function editYamlKeys(path, text, { set = [], remove = [] }) {
   for (const segments of remove) {
     const found = locate(path, document, segments, standIns);
     if (found.pair === undefined) continue;
+    if (found.pair.value?.anchor) {
+      throw new Error(
+        `${path} ${keyPath(segments)} has an anchor: gq sync won't remove a value other keys may alias.`,
+      );
+    }
     const start = lineStart(text, found.pair.key.range[0]);
     edits.push({ start, end: lineEnd(text, valueEnd(found.pair)), text: "" });
   }
   for (const [parent, added] of additions) {
-    edits.push(...insertions(path, text, parent, added, step));
+    for (const edit of insertions(path, text, parent, added, step)) {
+      edits.push({ ...edit, text: edit.text.replaceAll("\n", newline) });
+    }
   }
   return applyEdits(text, edits);
 }
@@ -90,7 +98,10 @@ function locate(path, document, segments, standIns) {
     const pair = findPair(parent, name);
     if (pair === undefined) return { parent, rest: segments.slice(index) };
     if (index === segments.length - 1) {
-      if (pair.value !== null && !isScalar(pair.value)) {
+      if (
+        pair.value !== null &&
+        (!isScalar(pair.value) || ["BLOCK_LITERAL", "BLOCK_FOLDED"].includes(pair.value.type))
+      ) {
         throw new Error(`${path} ${keyPath(segments)} must be a single value: gq sync manages it.`);
       }
       return { pair };
@@ -112,8 +123,9 @@ function isEmpty(value) {
 function replaceValue(text, pair, value) {
   const formatted = formatScalar(value);
   if (isEmpty(pair.value)) {
-    const at = pair.value?.range[0] ?? pair.key.range[1] + 1;
-    return { start: at, end: at, text: `${text[at - 1] === ":" ? " " : ""}${formatted}` };
+    // Right after the colon, so a comment that follows stays a comment.
+    const at = text.indexOf(":", pair.key.range[1]) + 1;
+    return { start: at, end: at, text: ` ${formatted}` };
   }
   const [start, end] = pair.value.range;
   return { start, end, text: formatted };
@@ -126,14 +138,16 @@ function replaceValue(text, pair, value) {
 function insertions(path, text, parent, added, step) {
   if (parent.root) {
     const prefix = text === "" || text.endsWith("\n") ? "" : "\n";
-    return [{ start: text.length, end: text.length, text: prefix + block(added, 0, step) }];
+    return [
+      { start: text.length, end: text.length, indent: 0, text: prefix + block(added, 0, step) },
+    ];
   }
   if (parent.under) {
     const indent = column(text, parent.under.key.range[0]) + step;
     const at = lineEnd(text, parent.under.key.range[1]);
     const prefix = text[at - 1] === "\n" || at === 0 ? "" : "\n";
     // An empty scalar after `key:` (a trailing space) is left as it is.
-    return [{ start: at, end: at, text: prefix + block(added, indent, step) }];
+    return [{ start: at, end: at, indent, text: prefix + block(added, indent, step) }];
   }
   const indent = column(text, parent.items[0].key.range[0]);
   const nested = indent > 0;
@@ -154,6 +168,7 @@ function insertions(path, text, parent, added, step) {
     return {
       start: position,
       end: position,
+      indent,
       text: prefix + block(Object.fromEntries(entries), indent, step),
     };
   });
@@ -233,9 +248,14 @@ function setNested(object, segments, value) {
   parent[segments.at(-1)] = value;
 }
 
-// `edits` (non-overlapping ranges of `text`) applied from the last.
+// `edits` (non-overlapping ranges of `text`) applied from the last. Of two
+// insertions at one offset, the deeper one (a key with no value yet getting
+// its first keys) ends up first, so a mapping appended after it doesn't
+// swallow them.
 function applyEdits(text, edits) {
-  const sorted = [...edits].sort((a, b) => b.start - a.start || b.end - a.end);
+  const sorted = [...edits].sort(
+    (a, b) => b.start - a.start || b.end - a.end || (a.indent ?? 0) - (b.indent ?? 0),
+  );
   return sorted.reduce(
     (result, { start, end, text: replacement }) =>
       `${result.slice(0, start)}${replacement}${result.slice(end)}`,
