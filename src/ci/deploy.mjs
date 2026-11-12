@@ -4,7 +4,9 @@
 // Wrangler as JSON over stdin, never a file or argv. The registry credentials,
 // COMPOSER_AUTH and GITHUB_PACKAGES_TOKEN, are the fleet's, which
 // `gq sigillo run` reads from GQ Platform `ops` (gq-platform ADR 0013): after
-// rotating one there, run gq ci deploy again.
+// rotating one there, run gq ci deploy again. COMPOSER_AUTH also carries the
+// Site's own Composer logins (gq.ops.json composer.logins), which
+// `gq sigillo run staging` adds from staging; the deploy refuses without one.
 //
 //   gq ci deploy
 //   gq ci runs      # recent CI Workflow runs (wrangler workflows instances list)
@@ -16,6 +18,7 @@ import { join } from "node:path";
 
 import { cmsAccessHeaders } from "../cms/access.mjs";
 import { isCommerce } from "../manifest/variant.mjs";
+import { composerLoginsProblem } from "../sigillo/composer-logins.mjs";
 import { REGISTRY_PROBLEM_VARIABLE, REGISTRY_SECRETS } from "../sigillo/registry-credentials.mjs";
 
 export const DEFAULT_CI_DIRECTORY = "infra/ci";
@@ -181,6 +184,8 @@ export async function runCiDeploy({ context, env, exec, io }) {
     github: Boolean(context.config.github?.repository),
     commerce: isCommerce(context.config),
   });
+  const logins = composerLoginsProblem(context.config, context.env.COMPOSER_AUTH, "CI's release");
+  if (logins) throw new Error(logins);
   await wrangler(exec, target, ["deploy"], { stdio: "inherit" });
   await wrangler(exec, target, ["secret", "bulk"], {
     input: payload,

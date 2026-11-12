@@ -43,6 +43,9 @@ export const MAX_CONSENT_RETENTION_DAYS = 1826;
 // Turnstile is verified server-side when the Site chooses it.
 export const FORM_PROVIDERS = ["gravityforms"];
 export const FORM_SPAM_CONTROLS = ["honeypot", "turnstile"];
+// The fleet's Composer registry, whose login is the fleet's (gq-platform
+// ADR 0013): a Site's composer.logins adds logins beside it, never for it.
+export const FLEET_COMPOSER_HOST = "proxy.composer.getquick.io";
 
 // Where `$schema` points from a site root, through the site's own install.
 export const SCHEMA_URL = "./node_modules/@getquick/site/schema/gq.ops.schema.json";
@@ -125,6 +128,54 @@ const versionPattern = z.strictObject({
     .optional(),
   replacement: z.string().refine((text) => text.includes("{version}"), "must contain {version}"),
 });
+
+// A Composer registry's hostname, as COMPOSER_AUTH's http-basic keys it; never
+// the fleet's registry, whose login is the fleet's. Checked on the record, so
+// the issue names the host (zod reports a bad record key without its reason).
+const COMPOSER_HOST_PATTERN =
+  /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/u;
+function checkComposerHosts(logins, context) {
+  for (const host of Object.keys(logins)) {
+    const issue = (message) => context.addIssue({ code: "custom", path: [host], message });
+    if (host === FLEET_COMPOSER_HOST) {
+      issue("is the fleet's registry, whose login gq reads from GQ Platform ops");
+    } else if (!COMPOSER_HOST_PATTERN.test(host)) {
+      issue("must be a lowercase registry hostname, like composer.gravity.io");
+    }
+  }
+}
+// A secret's name in the Site's Sigillo, as the command's environment has it;
+// never one of the fleet's registry credentials.
+const secretName = z
+  .string()
+  .regex(/^[A-Z][A-Z0-9_]*$/u, "must be a secret name, like GRAVITY_FORMS_LICENSE_KEY")
+  .refine(
+    (secret) => !["COMPOSER_AUTH", "GITHUB_PACKAGES_TOKEN"].includes(secret),
+    "is one of the fleet's registry credentials",
+  );
+
+// A Composer login: each part either a literal or a secret's name, and at
+// least one a secret, so no credential lives in gq.ops.json.
+function checkComposerLogin(login, context) {
+  for (const side of ["username", "password"]) {
+    const literal = login[side] !== undefined;
+    const secret = login[`${side}Secret`] !== undefined;
+    if (literal === secret) {
+      context.addIssue({
+        code: "custom",
+        path: [side],
+        message: `needs exactly one of ${side} and ${side}Secret`,
+      });
+    }
+  }
+  if (login.usernameSecret === undefined && login.passwordSecret === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: [],
+      message: "needs usernameSecret or passwordSecret: a login's secret part lives in Sigillo",
+    });
+  }
+}
 
 const check = z.strictObject({
   cmd: name,
@@ -258,6 +309,31 @@ export const manifestSchema = z
       })
       .superRefine(checkLanguages)
       .optional(),
+    composer: z
+      .strictObject({
+        logins: z
+          .record(
+            z.string(),
+            z
+              .strictObject({
+                username: z.string().min(1).optional(),
+                usernameSecret: secretName.optional(),
+                password: z.string().min(1).optional(),
+                passwordSecret: secretName.optional(),
+              })
+              .superRefine(checkComposerLogin),
+          )
+          .superRefine(checkComposerHosts)
+          .describe(
+            "The Site's own Composer http-basic logins, by registry host (composer.gravity.io): " +
+              "gq adds each to the fleet's COMPOSER_AUTH wherever it provides it (gq sigillo run, " +
+              "so gq cms composer, gq ploi release and gq ci deploy). Each part is a literal " +
+              "(username, password) or the name of a secret in the Site's Sigillo environment the " +
+              "command runs under (usernameSecret, passwordSecret); at least one is a secret.",
+          ),
+      })
+      .optional()
+      .describe("Composer registries only this Site installs from, beside the fleet's."),
     releases: z.strictObject({ bucket: z.string(), prefix: z.string().optional() }).optional(),
     media: z.strictObject({ bucket: z.string(), domain: hostname }).optional(),
     backups: z.strictObject({ bucket: z.string(), prefix: z.string().optional() }).optional(),

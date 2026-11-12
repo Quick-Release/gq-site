@@ -649,3 +649,48 @@ test("folding refuses a release config gq.ops.json can't express, and writes not
     assert.equal(existsSync(fixture.path(RELEASE_CONFIG)), true);
   }
 });
+
+test("composer.logins: a registry host beside the fleet's, each login's secret in Sigillo", async () => {
+  const site = { schemaVersion: 1, project: "fixture", variant: "content" };
+  const valid = {
+    "composer.gravity.io": {
+      usernameSecret: "GRAVITY_FORMS_LICENSE_KEY",
+      password: "https://cms.example.test",
+    },
+    "repo.example.test": { usernameSecret: "REPO_USER", passwordSecret: "REPO_TOKEN" },
+  };
+  const ok = await createFixtureSite({ ops: { ...site, composer: { logins: valid } } });
+  const okResult = await ok.run(["context", "show"]);
+  assert.equal(okResult.code, 0, okResult.stderr);
+  for (const [logins, problem] of [
+    [
+      { "proxy.composer.getquick.io": { usernameSecret: "A", password: "b" } },
+      `composer.logins["proxy.composer.getquick.io"] is the fleet's registry, whose login gq reads from GQ Platform ops`,
+    ],
+    [
+      { "composer.gravity.io": { username: "a", password: "b" } },
+      `composer.logins["composer.gravity.io"] needs usernameSecret or passwordSecret: a login's secret part lives in Sigillo`,
+    ],
+    [
+      { "composer.gravity.io": { username: "a", usernameSecret: "A", password: "b" } },
+      `composer.logins["composer.gravity.io"].username needs exactly one of username and usernameSecret`,
+    ],
+    [
+      { "composer.gravity.io": { usernameSecret: "COMPOSER_AUTH", password: "b" } },
+      `composer.logins["composer.gravity.io"].usernameSecret is one of the fleet's registry credentials`,
+    ],
+    [
+      { "composer.gravity.io": { usernameSecret: "lower", password: "b" } },
+      `composer.logins["composer.gravity.io"].usernameSecret must be a secret name, like GRAVITY_FORMS_LICENSE_KEY`,
+    ],
+    [
+      { Bad_Host: { usernameSecret: "A", password: "b" } },
+      "composer.logins.Bad_Host must be a lowercase registry hostname, like composer.gravity.io",
+    ],
+  ]) {
+    const fixture = await createFixtureSite({ ops: { ...site, composer: { logins } } });
+    const result = await fixture.run(["context", "show"]);
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr, `gq: gq.ops.json is invalid: ${problem}.\n`);
+  }
+});

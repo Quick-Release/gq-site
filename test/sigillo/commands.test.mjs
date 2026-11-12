@@ -470,3 +470,59 @@ test("the wrapper finds the site from a subdirectory", async () => {
   assert.equal(result.code, 0);
   assert.equal(exec.calls[0].cwd, site.root);
 });
+
+// --- the Site's own Composer logins (gq.ops.json composer.logins) ------------
+
+const GRAVITY_LOGINS = Object.freeze({
+  logins: {
+    "composer.gravity.io": {
+      usernameSecret: "GRAVITY_FORMS_LICENSE_KEY",
+      password: "https://cms.example.test",
+    },
+  },
+});
+
+function composerLoginsSite() {
+  return createFixtureSite({
+    ops: { ...FIXTURE_OPS, sigillo: SIGILLO, composer: GRAVITY_LOGINS },
+    files: { "package.json": SITE_PACKAGE, "node_modules/.bin/sigillo": "#!/bin/sh\n" },
+  });
+}
+
+test("the inner step adds the Site's Composer logins beside the fleet's, from its own secrets", async () => {
+  const site = await composerLoginsSite();
+  const exec = platformExec();
+  const result = await site.run(["sigillo", "run", "--inside", "--", "composer", "install"], {
+    env: { ...INSIDE_ENV, GRAVITY_FORMS_LICENSE_KEY: "gravity-license-secret" },
+    exec,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stderr, "");
+  const { env } = commandCall(exec);
+  assert.deepEqual(JSON.parse(env.COMPOSER_AUTH)["http-basic"], {
+    ...JSON.parse(PLATFORM_VALUES.COMPOSER_AUTH)["http-basic"],
+    "composer.gravity.io": {
+      username: "gravity-license-secret",
+      password: "https://cms.example.test",
+    },
+  });
+  const visible = [...allArguments(exec), result.stdout, result.stderr].join("\n");
+  assert.ok(!visible.includes("gravity-license-secret"));
+});
+
+test("the inner step warns, naming no value, when a login's secret is missing", async () => {
+  const site = await composerLoginsSite();
+  const exec = platformExec();
+  const result = await site.run(["sigillo", "run", "--inside", "--", "composer", "install"], {
+    env: INSIDE_ENV,
+    exec,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(
+    result.stderr,
+    "gq: this Sigillo environment has no GRAVITY_FORMS_LICENSE_KEY, which gq.ops.json " +
+      "composer.logins needs for composer.gravity.io: COMPOSER_AUTH has no login for it, so " +
+      "Composer can't install from it.\n",
+  );
+  assert.equal(commandCall(exec).env.COMPOSER_AUTH, PLATFORM_VALUES.COMPOSER_AUTH);
+});

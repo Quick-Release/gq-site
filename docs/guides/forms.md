@@ -58,9 +58,10 @@ The Site must be on the content package pair (`"contentRuntime": "package"`,
    `composer update getquick/gq-content`. A Site whose CMS was created before
    `@getquick/site` 0.24.1 also opens its REST gate to submissions
    ([The CMS's REST gate](#the-cmss-rest-gate)).
-2. **Install Gravity Forms in the CMS** (`apps/cms/composer.json`, from the
-   registry the Site already uses for it) and add `gravityforms` to
-   `gq.ops.json` `wordpress.plugins`, so the CMS deploy activates it.
+2. **Install Gravity Forms in the CMS** and add `gravityforms` to
+   `gq.ops.json` `wordpress.plugins`, so the CMS deploy activates it. See
+   [Installing Gravity Forms](#installing-gravity-forms): it comes from
+   Gravity Forms' own Composer registry, whose login is the Site's license.
 3. **Declare forms** in `gq.ops.json`:
 
    ```json
@@ -95,6 +96,116 @@ To stop using forms, remove `forms` from `gq.ops.json` and run `gq sync`: it
 removes the form route if the Site hasn't edited it. An edited route is left
 in place for the Site to delete. Then remove `forms: true` and the block's
 renderer.
+
+## Installing Gravity Forms
+
+Gravity Forms installs from its own Composer registry,
+`https://composer.gravity.io` (package `gravity/gravityforms`), with an
+http-basic login: the username is the Site's Gravity Forms license key, and
+the password is the URL of the site the license is registered for. The
+license is the Site's, not the fleet's, so it lives in the Site's own Sigillo
+and `gq.ops.json` declares the login, from `@getquick/site` 0.40.0:
+
+1. **Store the license key** in each Sigillo environment that installs
+   Gravity Forms: `staging` (CI and Ploi releases) and `local` (`pnpm
+cms:composer`). Each command prompts for the value:
+
+   ```sh
+   pnpm exec gq sigillo secrets staging set GRAVITY_FORMS_LICENSE_KEY
+   pnpm exec gq sigillo secrets local set GRAVITY_FORMS_LICENSE_KEY
+   ```
+
+2. **Declare the login** in `gq.ops.json`, with the CMS's URL
+   (`https://<domains.admin>`) as the password:
+
+   ```json
+   {
+     "composer": {
+       "logins": {
+         "composer.gravity.io": {
+           "usernameSecret": "GRAVITY_FORMS_LICENSE_KEY",
+           "password": "https://cms.example.com"
+         }
+       }
+     }
+   }
+   ```
+
+   `gq sigillo run` then adds it to `COMPOSER_AUTH` beside the fleet's
+   GETQUICK registry login, never replacing it, from the environment the
+   command runs under ([A Site's own Composer logins](secrets.md#a-sites-own-composer-logins)).
+   `pnpm doctor` fails while `staging` lacks the key and warns while `local`
+   does.
+
+3. **Add the registry and the package** to `apps/cms/composer.json`, then
+   lock it through the login:
+
+   ```json
+   {
+     "repositories": [
+       {
+         "name": "gravity",
+         "type": "composer",
+         "url": "https://composer.gravity.io",
+         "only": ["gravity/*"]
+       }
+     ],
+     "require": { "gravity/gravityforms": "^3.2" }
+   }
+   ```
+
+   ```sh
+   pnpm cms:composer:update gravity/gravityforms
+   ```
+
+   Keep the GETQUICK registry's entry as it is. Commit `composer.json` and
+   `composer.lock`.
+
+4. **Give CI the login**: `pnpm ci:deploy`. CI's release step and its Ploi
+   release send the merged `COMPOSER_AUTH` to the server's
+   `composer install`. `pnpm ploi:release` and `pnpm ci:deploy` refuse to run
+   while the login's secret is missing, rather than fail on the server.
+
+5. **Register the license on the CMS**, so Gravity Forms gets its updates and
+   add-ons. The deploy has the key already, in `$COMPOSER_AUTH`'s
+   `composer.gravity.io` username, and a deploy extension can save it,
+   without the key ever reaching the repository, argv or the deploy log.
+   `apps/cms/scripts/configure-gravity-forms.php`:
+
+   ```php
+   <?php
+
+   // Run by WP-CLI during the deploy; the license exists only in the deploy's environment.
+   $auth = json_decode(getenv('COMPOSER_AUTH') ?: '{}', true, 512, JSON_THROW_ON_ERROR);
+   $license = $auth['http-basic']['composer.gravity.io']['username'] ?? '';
+
+   if (! is_string($license) || $license === '') {
+       WP_CLI::error('Gravity Forms Composer credentials are missing.');
+   }
+   if (! class_exists('GFFormsModel')) {
+       WP_CLI::error('Gravity Forms must be active before configuring its license.');
+   }
+   if (get_option(GFForms::LICENSE_KEY_OPT) !== md5($license)) {
+       GFFormsModel::save_key($license);
+   }
+   if (get_option(GFForms::LICENSE_KEY_OPT) !== md5($license)) {
+       WP_CLI::error('Gravity Forms could not register the configured license.');
+   }
+
+   WP_CLI::success('Gravity Forms is active and its license is configured.');
+   ```
+
+   and `deploy/ploi/admin.d/20-gravity-forms.sh`, which runs after
+   `wordpress.plugins` are activated, from `apps/cms`:
+
+   ```sh
+   #!/usr/bin/env bash
+   set -euo pipefail
+
+   wp eval-file scripts/configure-gravity-forms.php
+   ```
+
+   Then release the CMS (`pnpm ploi:release`, or a CI release).
 
 ## Rendering
 

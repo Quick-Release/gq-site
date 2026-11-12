@@ -3,6 +3,22 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **A Site's own Composer logins.** `gq.ops.json` `composer.logins` declares
+  http-basic logins for registries only that Site installs from, such as
+  Gravity Forms' `composer.gravity.io`, whose secret parts live in the Site's
+  own Sigillo (`usernameSecret`, `passwordSecret`; or literal `username`,
+  `password`). `gq sigillo run` adds them to the fleet's `COMPOSER_AUTH`,
+  never replacing its `proxy.composer.getquick.io` login, so `pnpm
+cms:composer`, `pnpm ploi:release` and `pnpm ci:deploy` (and so CI
+  releases) can install them. `gq ploi release` and `gq ci deploy` refuse to
+  run without every declared login, and `gq doctor` fails a declared secret
+  that Sigillo staging lacks and warns for other environments. The forms
+  guide now covers [installing Gravity Forms](docs/guides/forms.md#installing-gravity-forms),
+  including a deploy extension that registers its license from
+  `$COMPOSER_AUTH`.
+
 ## 0.39.0 — 2026-11-12
 
 - **WordPress's scheduled events run in production.** Production disables

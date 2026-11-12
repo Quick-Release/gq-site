@@ -31,7 +31,7 @@ required, `domains` has the roles `admin` and `frontend`, an optional
 `docs`, and an optional `frontendTarget` (and `frontendProxy`) for a
 Frontend on the client's own domain (see below), and an unknown or misspelt key fails by its path. The blocks each
 command reads (`ploi`, `cloudflare`, `releases`, `media`, `backups`, `local`,
-`artifacts`, `ci`, `github`, `sigillo`, `consent`, `forms`, `wordpress.plugins`,
+`artifacts`, `ci`, `github`, `sigillo`, `consent`, `forms`, `composer`, `wordpress.plugins`,
 `wordpress.graphqlPath`, `wordpress.locale`, `wordpress.languages`) are optional; a command names
 the keys it needs. `artifacts.jurisdiction` is where `gq cloudflare ci`
 creates the Artifacts namespace: `eu` (the default when it's left out),
@@ -74,6 +74,12 @@ believe its `X-Forwarded-For`. See
 Frontend's `/gq/forms/` route, and `gq doctor` and `gq site check` check the
 Site's forms; without it, `gq sync` writes no form route. See
 [Headless Gravity Forms](../guides/forms.md).
+`composer.logins` declares the Site's own Composer http-basic logins, by
+registry host (`composer.gravity.io`): each part a literal (`username`,
+`password`) or a secret in the Site's Sigillo (`usernameSecret`,
+`passwordSecret`), at least one a secret. `gq sigillo run` adds each to the
+fleet's `COMPOSER_AUTH`, never for the fleet's `proxy.composer.getquick.io`;
+see [A Site's own Composer logins](../guides/secrets.md#a-sites-own-composer-logins).
 `wordpress.graphqlPath` is an optional exact enum: `/graphql` or `/wp/graphql`
 (the default when omitted). It selects production CMS readiness and the
 Frontend deploy's default public URL, not local DDEV's endpoint; see

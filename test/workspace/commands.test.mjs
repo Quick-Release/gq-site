@@ -1345,3 +1345,64 @@ test("gq doctor reports whether CI reaches GitHub through the GETQUICK CI broker
     /✗ the broker at .* isn't answering as configured — run: gq ci broker deploy/u,
   );
 });
+
+// --- the Site's own Composer logins (gq.ops.json composer.logins) ----------
+
+const GRAVITY_OPS = {
+  ...TWO_ENVIRONMENTS,
+  composer: {
+    logins: {
+      "composer.gravity.io": {
+        usernameSecret: "GRAVITY_FORMS_LICENSE_KEY",
+        password: "https://admin.example.test",
+      },
+    },
+  },
+};
+const listing = (environment) =>
+  `sigillo secrets --api-url https://secrets.example.test --project PROJECT1 --env ${environment}`;
+
+test("gq doctor checks a declared Composer login's secret in each Sigillo environment", async () => {
+  const fixture = await healthySite({}, GRAVITY_OPS);
+  const exec = machine({
+    stdout: { [listing("dev")]: "OTHER\n", [listing("stage")]: "GRAVITY_FORMS_LICENSE_KEY\n" },
+  });
+  const result = await fixture.run(["doctor"], { exec });
+  assert.equal(result.code, 0, result.stdout);
+  assert.ok(
+    result.stdout.includes(
+      "Composer logins (gq.ops.json composer.logins):\n  ⚠ composer.gravity.io: Sigillo local has no GRAVITY_FORMS_LICENSE_KEY, so COMPOSER_AUTH has no login for it there — add it: gq sigillo secrets local set GRAVITY_FORMS_LICENSE_KEY",
+    ),
+    result.stdout,
+  );
+  assert.ok(!actions(exec).some((line) => /secrets get GRAVITY/u.test(line)), "names only");
+});
+
+test("gq doctor fails a declared Composer login whose secret staging lacks", async () => {
+  const fixture = await healthySite({}, GRAVITY_OPS);
+  const exec = machine({
+    stdout: { [listing("dev")]: "GRAVITY_FORMS_LICENSE_KEY\n", [listing("stage")]: "OTHER\n" },
+  });
+  const result = await fixture.run(["doctor"], { exec });
+  assert.equal(result.code, 1, result.stdout);
+  assert.ok(
+    result.stdout.includes(
+      "✗ composer.gravity.io: Sigillo staging has no GRAVITY_FORMS_LICENSE_KEY, so COMPOSER_AUTH has no login for it there — add it: gq sigillo secrets staging set GRAVITY_FORMS_LICENSE_KEY (CI and Ploi releases install from it), then pnpm ci:deploy",
+    ),
+    result.stdout,
+  );
+
+  const complete = await healthySite({}, GRAVITY_OPS);
+  const both = machine({
+    stdout: {
+      [listing("dev")]: "GRAVITY_FORMS_LICENSE_KEY\n",
+      [listing("stage")]: "GRAVITY_FORMS_LICENSE_KEY\n",
+    },
+  });
+  const healthy = await complete.run(["doctor"], { exec: both });
+  assert.equal(healthy.code, 0, healthy.stdout);
+  assert.match(
+    healthy.stdout,
+    /✓ composer\.gravity\.io: GRAVITY_FORMS_LICENSE_KEY in every Sigillo environment/u,
+  );
+});
