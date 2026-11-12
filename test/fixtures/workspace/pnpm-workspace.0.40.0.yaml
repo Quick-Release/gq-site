@@ -1,0 +1,36 @@
+packages:
+  - "apps/*"
+  - "infra"
+  - "infra/ci"
+
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true
+  workerd: true
+# GETQUICK's own packages may be installed the day they are released:
+# @getquick/site, and the consent Runtime it and the Frontend use
+# (@getquick/content; the storefront's adapter on commerce).
+minimumReleaseAgeExclude:
+  - "@getquick/site"
+  - "@getquick/content"
+  - "@quick-release/storefront"
+overrides:
+  # astro2tsx uses emnapi core 1.x; wasm-runtime must use the matching ABI.
+  "@napi-rs/wasm-runtime>@emnapi/runtime": 1.11.3
+  "@effect/platform-node-shared": 4.0.0-rc.115
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.0
+  vitest: 4.1.11
+catalog:
+  # Alchemy/Effect: shared by infra (deploy) and apps/frontend (the Astro build
+  # resolves the Alchemy server entrypoint from apps/frontend).
+  "@alchemy.run/frontend-frameworks": 2.0.0-beta.79
+  "@effect/platform-node": 4.0.0-rc.115
+  alchemy: 2.0.0-beta.79
+  effect: 4.0.0-rc.115
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.0
+  vitest: 4.1.11
+  vite-plus: 0.3.0
+peerDependencyRules:
+  allowedVersions:
+    effect: 4.0.0-rc.115
+    vite: 0.3.0

@@ -66,23 +66,23 @@ Blueprint's checks, and the two share the toolchain pins (gq-platform ADR 0015
 decision 4). A version that fails a check is recorded here with the version
 pinned instead; no check is weakened for it. Pinned on 2026-11-12:
 
-| Package                                       | Astro skeleton | TanStack skeleton |
-| --------------------------------------------- | -------------- | ----------------- |
-| `astro`                                       | ^7.4.11        | —                 |
-| `@astrojs/check`                              | ^0.9.12        | —                 |
-| `tailwindcss`, `@tailwindcss/vite`            | 4.3.5          | —                 |
-| `@tanstack/react-start`                       | —              | 1.169.5           |
-| `@tanstack/react-router`                      | —              | 1.170.46          |
-| `react`, `react-dom`                          | —              | 19.3.1            |
-| `@types/react`, `@types/react-dom`            | —              | 19.3.0            |
-| `@vitejs/plugin-react`                        | —              | 6.3.0             |
-| `@cloudflare/workers-types`                   | —              | 5.20261110.1      |
-| `typescript` (Frontend)                       | ^6.0.3         | 7.0.2             |
-| `typescript` (`infra`, `infra/ci`, managed)   | ^7.0.2         | ^7.0.2            |
-| `vite-plus` (`vite` is its core)              | 1.6.0          | 1.6.0             |
-| `vitest`                                      | 5.1.0          | 5.1.0             |
-| `alchemy`, `@alchemy.run/frontend-frameworks` | 2.0.0-beta.83  | 2.0.0-beta.83     |
-| `effect`, `@effect/platform-node`             | 4.1.4          | 4.1.4             |
+| Package                                                                      | Astro skeleton | TanStack skeleton |
+| ---------------------------------------------------------------------------- | -------------- | ----------------- |
+| `astro`                                                                      | ^7.4.11        | —                 |
+| `@astrojs/check`                                                             | ^0.9.12        | —                 |
+| `tailwindcss`, `@tailwindcss/vite`                                           | 4.3.5          | —                 |
+| `@tanstack/react-start`                                                      | —              | 1.169.5           |
+| `@tanstack/react-router`                                                     | —              | 1.170.46          |
+| `react`, `react-dom`                                                         | —              | 19.3.1            |
+| `@types/react`, `@types/react-dom`                                           | —              | 19.3.0            |
+| `@vitejs/plugin-react`                                                       | —              | 6.3.0             |
+| `@cloudflare/workers-types`                                                  | —              | 5.20261110.1      |
+| `typescript` (Frontend)                                                      | ^6.0.3         | 7.0.2             |
+| `typescript` (`infra`, `infra/ci`, managed)                                  | ^7.0.2         | ^7.0.2            |
+| `vite-plus` (`vite` is its core)                                             | 1.6.0          | 1.6.0             |
+| `vitest`                                                                     | 5.1.0          | 5.1.0             |
+| `alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/frontend-frameworks`     | 2.0.0-beta.84  | 2.0.0-beta.84     |
+| `effect`, `@effect/platform-node`, `@effect/platform-node-shared` (override) | 4.1.4          | 4.1.4             |
 
 Gaps from the latest release:
 
@@ -92,23 +92,28 @@ Gaps from the latest release:
   replacement, `@astrojs/ts-content-mapper`, needs TypeScript 7.1, which is
   still a beta. The Astro Frontend stays on TypeScript 6.0.3, the latest 6.x.
   The TanStack Frontend and the managed `infra` packages use TypeScript 7.0.2.
-- **Alchemy beta.84 and later.** From 2.0.0-beta.84 the Cloudflare provider is
-  no longer `alchemy/Cloudflare` but a separate `@alchemy.run/cloudflare`
-  package. The managed `infra/frontend.run.ts` and `infra/consent.ts` are
-  rewritten in every Site by `gq sync`, while the catalog that pins Alchemy is
-  in each Site's create-once `pnpm-workspace.yaml`. Moving the templates to
-  the new package would break every existing Site's `infra:check` and deploy on
-  its next sync. The skeletons pin beta.83, the newest release before the
-  split; adopting beta.84 or later needs its own fleet migration. beta.86 was
-  also younger than pnpm's 24-hour `minimumReleaseAge` on 2026-11-12.
-- **`capnp-es` and TypeScript 7.** `@alchemy.run/cloudflare-runtime` beta.83
+- **Alchemy beta.84, not the latest.** From 2.0.0-beta.84 the Cloudflare
+  provider is its own package, `@alchemy.run/cloudflare`: the managed
+  `infra/*.ts` import it, and `infra/package.json` depends on it from the
+  catalog. The Alchemy and Effect catalog entries, the
+  `@effect/platform-node-shared` override and the `effect` peer rule are
+  managed keys of each Site's `pnpm-workspace.yaml`, so `gq sync` moves them
+  with the templates
+  ([migration plan](../research/alchemy-cloudflare-package-migration.md), hop
+  1). The pins stop at beta.84 because it is the last release that speaks the
+  Cloudflare state store's v7 protocol: beta.85 upgrades the account's shared
+  store to v8 on its first deploy, after which a Site still on beta.84 or older
+  can't deploy. That move is hop 2, made for the whole account at once.
+- **`capnp-es` and TypeScript 7.** `@alchemy.run/cloudflare-runtime` beta.84
   depends on `capnp-es` 0.0.16, whose optional `typescript` peer is `^5 || ^6`.
   pnpm warns; builds, checks and the workerd probe pass.
 - **`@cloudflare/workers-types`.** 5.20261112.1 was published on 2026-11-12,
   inside pnpm's 24-hour `minimumReleaseAge`; the skeletons pin 5.20261110.1.
 
-The managed `infra` packages still type-check against an existing Site's
-catalog pins (Alchemy beta.79, Effect 4.0.0-rc.115) under TypeScript 7. The
+An existing Site's catalog (Alchemy beta.79 or beta.83, Effect
+4.0.0-rc.115 or 4.1.4) moves to these pins on its next `gq sync`:
+`scripts/smoke/sync-upgrade.sh` syncs a 0.40.0 Site, then installs it and
+type-checks its `infra` under TypeScript 7. The
 Astro workspace keeps its `@napi-rs/wasm-runtime>@emnapi/runtime` override at
 1.11.3, the latest 1.x: without it pnpm still resolves an `@emnapi/runtime`
 2.0 beta for `astro2tsx`'s wasm runtime, the ABI mismatch the override

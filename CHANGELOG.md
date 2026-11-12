@@ -3,6 +3,59 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **Alchemy's package split, hop 1 of the Alchemy migration**
+  ([plan](docs/research/alchemy-cloudflare-package-migration.md),
+  [#185](https://github.com/Quick-Release/gq-site/issues/185)). From
+  2.0.0-beta.84, Alchemy's Cloudflare provider is its own package. The
+  managed `infra/frontend.run.ts` (Astro, TanStack and commerce) and
+  `infra/consent.ts` now import `@alchemy.run/cloudflare` instead of
+  `alchemy/Cloudflare`, and the managed `infra/package.json` depends on it
+  (`"catalog:"`). Alchemy, `@alchemy.run/cloudflare` and
+  `@alchemy.run/frontend-frameworks` are pinned at exactly 2.0.0-beta.84, the
+  last release whose Cloudflare state store speaks the v7 protocol, so Sites
+  on beta.79 and beta.84 keep deploying side by side in the one account.
+  beta.85 and later, which upgrade the account's store, are hop 2. Effect,
+  `@effect/platform-node` and `@effect/platform-node-shared` are 4.1.4, which
+  `@alchemy.run/cloudflare` needs (`^4.0.5`).
+- **The catalog's Alchemy and Effect pins are managed keys.** `gq sync` now
+  sets these keys of a Site's `pnpm-workspace.yaml`: `catalog.alchemy`,
+  `catalog["@alchemy.run/cloudflare"]`,
+  `catalog["@alchemy.run/frontend-frameworks"]`, `catalog.effect`,
+  `catalog.@effect/platform-node`, `overrides.@effect/platform-node-shared`
+  and `peerDependencyRules.allowedVersions.effect`. The file otherwise stays
+  the Site's: gq parses it with the `yaml` package (a new dependency) to find
+  each key and rewrites only those values' bytes, so comments, blank lines,
+  quoting and key order are kept. A missing key is added in its mapping. The
+  first sync takes over a value an earlier release created (beta.79 or
+  beta.83, rc.115 or 4.1.4). A value the Site chose itself, like a hand edit
+  after gq wrote it, stops `gq sync` with a diff, and `gq sync --check` fails
+  on any drift. The templates and the versions they need now move in the same
+  sync.
+- **Guards.** `gq doctor` fails when `infra/node_modules` lacks one of the
+  three Alchemy packages, when they aren't one version, or when that version
+  isn't what the catalog (or `infra/package.json`) pins. That catches a sync
+  committed without `pnpm install`. The managed `infra/scripts/deploy-frontend.mjs`
+  refuses to run, before Alchemy does, when it can't resolve
+  `@alchemy.run/cloudflare` from `infra`.
+- **What a Site must do.** Upgrade `@getquick/site` to this release, run `gq sync`
+  and then `pnpm install`, and commit the sync diff with `pnpm-lock.yaml`. Run
+  `gq sync --check`, `gq doctor`, `pnpm infra:check` and `pnpm ci:check`, read
+  `pnpm plan:frontend` against production state (no resource may be replaced
+  or deleted, and no binding removed), and then release. If `gq sync` stops on
+  a catalog pin the Site chose itself, set it back to the value it shows (or
+  delete the key) and sync again. Rollback is code only, because the store
+  stays v7: revert the sync commit or redeploy the previous tag. The per-Site
+  order is in the plan, starting with Cooldown Gaming.
+- **A sync smoke from an earlier release.** `scripts/smoke/sync-upgrade.sh`
+  (CI job `sync-upgrade`) generates a content Site, Astro and TanStack, with
+  0.40.0 from npm (Alchemy beta.79, Effect rc.115). It syncs the Site with
+  this checkout and checks that both the infra and the catalog moved and
+  nothing else in `pnpm-workspace.yaml` did. Then `pnpm install`,
+  `pnpm install --frozen-lockfile`, `infra:check`, `ci:check` and `gq doctor`
+  must all pass.
+
 ## 0.42.0 — 2026-11-12
 
 - **Readiness reads a Frontend kept behind Cloudflare Access.** A Frontend

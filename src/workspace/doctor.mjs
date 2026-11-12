@@ -12,7 +12,9 @@
 // managed form route, a content runtime that reads form descriptors, and,
 // when it chose Turnstile, Turnstile's keys in Sigillo staging. A Site that
 // locks GQ Design's npm packages must lock its plugin at the same version
-// (ADR 0018). A Site that adopted the blueprint over its own root files must
+// (ADR 0018). A Site's infra must install alchemy, @alchemy.run/cloudflare
+// and @alchemy.run/frontend-frameworks at one version, the one it pins
+// (workspace/alchemy-install.mjs). A Site that adopted the blueprint over its own root files must
 // have what gq sync keeps of them complete (sync/adoption.mjs): a
 // pnpm-workspace.yaml with packages, and the initial package.json scripts
 // gq verify runs; the other initial keys it lacks only warn. A commerce
@@ -61,6 +63,7 @@ import { composerLogins } from "../sigillo/composer-logins.mjs";
 import { PLATFORM_ACCESS_REMEDY, REGISTRY_SECRETS } from "../sigillo/registry-credentials.mjs";
 import { adoptionGaps } from "../sync/adoption.mjs";
 import { VERSION } from "../version.mjs";
+import { alchemyInstall } from "./alchemy-install.mjs";
 import { checkLocalEnvFiles } from "./env-files.mjs";
 import { FRONTEND_PATH } from "./layout.mjs";
 
@@ -144,6 +147,9 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
     if (!problem) ok(`${group} is locked at ${npm[0].version} in both lockfiles`);
     else (problem.level === "fail" ? fail : warn)(problem.message);
   }
+  const alchemy = await alchemyInstall(root);
+  if (alchemy?.problem) fail(alchemy.problem);
+  else if (alchemy) ok(`infra installs Alchemy ${alchemy.version}, as pinned`);
 
   if (context.config.artifacts) {
     io.out("\nGit remotes:");

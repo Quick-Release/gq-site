@@ -1,0 +1,14 @@
+# The Alchemy and Effect pins a Site's infra and Frontend install, managed by
+# gq sync: the managed infra/*.ts import what these versions export, so they
+# move together. Every other key of a Site's pnpm-workspace.yaml is its own.
+catalog:
+  "@alchemy.run/cloudflare": 2.0.0-beta.84
+  "@alchemy.run/frontend-frameworks": 2.0.0-beta.84
+  "@effect/platform-node": 4.1.4
+  alchemy: 2.0.0-beta.84
+  effect: 4.1.4
+overrides:
+  "@effect/platform-node-shared": 4.1.4
+peerDependencyRules:
+  allowedVersions:
+    effect: 4.1.4

@@ -184,9 +184,19 @@ needs the registry login in `COMPOSER_AUTH` (http-basic for
 stops after that check. In CI the `cms-registry` job probes the
 `COMPOSER_AUTH` repository secret: without it `cms-resolution` is skipped,
 not passed, with a warning, and only the package suite's offline check of the
-recorded requirements runs. `scripts/smoke/acceptance.sh` runs `pnpm check` and the
+recorded requirements runs. `scripts/smoke/sync-upgrade.sh` proves the old-to-new path of the Alchemy and
+Effect pins rather than only a new Site: it generates a content Site, Astro
+and TanStack, with an earlier release from npm (`GQ_SYNC_FROM`, 0.40.0 by
+default: Alchemy 2.0.0-beta.79 and Effect 4.0.0-rc.115, the fleet's catalog
+before the package split), installs it, updates `@getquick/site` to this
+checkout and runs `gq sync`, which must move both the managed `infra/*.ts`
+onto `@alchemy.run/cloudflare` and `pnpm-workspace.yaml`'s managed catalog
+keys onto this checkout's pins, changing no other line of that file. Then
+`pnpm install`, `pnpm install --frozen-lockfile`, `gq sync --check`,
+`pnpm infra:check`, `pnpm ci:check` and `gq doctor` must pass.
+`scripts/smoke/acceptance.sh` runs `pnpm check` and the
 three generated-site proofs in order: spec #38's local acceptance gate. CI runs `pnpm check`,
-`frontend-check.sh`, `commerce-check.sh`, `content-pair.sh`, `consent.sh`, `cms-rest-gate.sh`, `ci-composer.sh`, `ci-node.sh` and, with its secret, `cms-resolve.sh` on every push; the
+`frontend-check.sh`, `commerce-check.sh`, `content-pair.sh`, `consent.sh`, `cms-rest-gate.sh`, `ci-composer.sh`, `ci-node.sh`, `sync-upgrade.sh` and, with its secret, `cms-resolve.sh` on every push; the
 real-WordPress Polylang proof, which also needs PHP and downloads, runs locally, and the live gate is the
 gq-smoke wizard ([A new content Site, end to end](guides/provisioning.md#a-new-content-site-end-to-end)).
 

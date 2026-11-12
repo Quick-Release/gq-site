@@ -39,6 +39,7 @@
     "@clack/prompts": "^1.8.1",
     "@getquick/content": "0.6.2",
     "aws4fetch": "1.0.20",
+    "yaml": "2.9.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
