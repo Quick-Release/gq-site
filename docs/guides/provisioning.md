@@ -79,6 +79,33 @@ don't block readiness: a legal page without a translation
 WordPress confirms isn't set (on a monolingual Site: a bilingual Site needs
 every language's), or no shared design presets stored yet.
 
+### A Frontend behind Cloudflare Access
+
+A Frontend kept behind Cloudflare Access before launch (a people policy, with
+only `/gq/*` bypassed) answers readiness's anonymous page reads with a
+redirect to `<team>.cloudflareaccess.com`, so `homepage`, `third-party-hosts`
+and the media check's `frontend` fail and say so. Give readiness a service
+token instead: create one, admit it with a **Service Auth** policy on the
+Frontend's Access application, and store it in Sigillo staging as
+`GQ_FRONTEND_ACCESS_CLIENT_ID` and `GQ_FRONTEND_ACCESS_CLIENT_SECRET`
+(optional; set both or neither). `pnpm site:check` and `pnpm media:check`
+then send it as `CF-Access-Client-Id` / `CF-Access-Client-Secret` with:
+
+- the `homepage` check, and each language's (`homepage-en` for `/en/`);
+- the `third-party-hosts` (and `consent-runtime`) homepage reads;
+- the media check's `frontend` homepage probe;
+- on a commerce Site, the storefront's `homepage` check and its homepage
+  read for `third-party-hosts`.
+
+Only the Frontend's exact HTTPS origin, without userinfo, receives it, and
+never `/gq/*`: `frontend-events`, `frontend-refresh` and the consent routes
+authenticate themselves. The CMS, the media domain, third-party hosts,
+provider APIs and a commerce storefront's `/api/*` checks never do, nor a
+`--url` Frontend over plain HTTP. A credentialed read never follows a
+redirect, and its transport errors and invalid values are never shown. With
+the pair unset, every request is as before. A token Access doesn't admit
+fails the same checks, naming the variable, not its value.
+
 `gq site check --local` (`pnpm site:check:local`) asks the same of this
 machine's CMS: DDEV running is only its first check; WordPress must be
 installed, with WPGraphQL and the GETQUICK fields, and uploads must stay on

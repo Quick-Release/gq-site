@@ -3,6 +3,28 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **Readiness reads a Frontend kept behind Cloudflare Access.** A Frontend
+  behind an Access people policy before launch answered readiness's anonymous
+  page reads with a redirect to the Access login, so `gq site check` failed
+  `homepage` ("answers HTTP 302") and `third-party-hosts` ("no public page
+  could be read"), and `gq media check`'s `frontend` probe could not read the
+  homepage. Readiness now sends an optional Access service token,
+  `GQ_FRONTEND_ACCESS_CLIENT_ID` and `GQ_FRONTEND_ACCESS_CLIENT_SECRET` (both
+  or neither, from Sigillo staging through `pnpm site:check` /
+  `pnpm media:check`), as `CF-Access-Client-Id` / `CF-Access-Client-Secret`
+  with the `homepage` and language homepage checks, the `third-party-hosts`
+  page reads, the media check's `frontend` probe and a commerce storefront's
+  homepage reads. Only the Frontend's exact HTTPS origin receives it, never
+  `/gq/*` (its routes authenticate themselves), the CMS, media, third-party
+  hosts or provider APIs; a credentialed read never follows a redirect, and
+  invalid values and transport errors are never shown. Without the pair, a
+  redirect to `*.cloudflareaccess.com` still fails, now naming the two
+  variables and the remedy: a service token admitted by a Service Auth
+  policy on the Frontend's Access application. Unset, nothing changes. See
+  [A Frontend behind Cloudflare Access](docs/guides/provisioning.md#a-frontend-behind-cloudflare-access).
+
 ## 0.41.1 — 2026-11-12
 
 - **CI runs the Sites' pinned Node.** The managed CI image

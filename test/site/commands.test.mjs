@@ -102,6 +102,9 @@ function world(overrides = {}) {
     eventKey: SECRETS.PUBLICATION_EVENT_SECRET, // the Worker's; null when unbound
     refreshToken: SECRETS.FRONTEND_REFRESH_TOKEN, // the Worker's; null when unbound
     frontendDown: false,
+    // A Frontend behind Cloudflare Access: the service token it admits
+    // ({ id, secret }), with /gq/* bypassed; null when Access is off.
+    frontendAccess: null,
     store: PREPARED,
     reconciliation: {
       running: false,
@@ -198,6 +201,19 @@ function world(overrides = {}) {
     }
     if (hostname === "www.example.test") {
       if (state.frontendDown) throw new TypeError("fetch failed");
+      if (
+        state.frontendAccess &&
+        !pathname.startsWith("/gq/") &&
+        (headers["CF-Access-Client-Id"] !== state.frontendAccess.id ||
+          headers["CF-Access-Client-Secret"] !== state.frontendAccess.secret)
+      ) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: `https://team.cloudflareaccess.com/cdn-cgi/access/login/www.example.test?redirect_url=${encodeURIComponent(pathname)}`,
+          },
+        });
+      }
       if (method === "POST" && pathname === "/gq/events") {
         if (!state.eventKey) {
           return new Response(
@@ -396,6 +412,97 @@ for (const graphqlPath of [undefined, "/wp/graphql", "/graphql"]) {
       assert.ok(!`${checked.stdout}${checked.stderr}`.includes(value));
   });
 }
+
+const FRONTEND_ACCESS = Object.freeze({
+  GQ_FRONTEND_ACCESS_CLIENT_ID: "frontend-access-id",
+  GQ_FRONTEND_ACCESS_CLIENT_SECRET: "frontend-access-secret",
+});
+const ADMITTED = Object.freeze({
+  id: FRONTEND_ACCESS.GQ_FRONTEND_ACCESS_CLIENT_ID,
+  secret: FRONTEND_ACCESS.GQ_FRONTEND_ACCESS_CLIENT_SECRET,
+});
+
+test("a Frontend behind Access is read with its service token, sent only to its pages", async () => {
+  const { code, report, fetch, stdout, stderr } = await check(
+    { frontendAccess: ADMITTED },
+    { env: { ...SECRETS, ...FRONTEND_ACCESS } },
+  );
+
+  assert.equal(code, 0, stdout);
+  assert.deepEqual(notReady(report), []);
+  const credentialed = fetch.requests.filter(({ headers }) => headers["CF-Access-Client-Id"]);
+  assert.deepEqual(
+    credentialed.map(({ method, url }) => `${method} ${url}`),
+    Array(3).fill("GET https://www.example.test/"),
+    "the homepage check, the third-party-hosts read and the media check's homepage probe",
+  );
+  for (const request of fetch.requests) {
+    const { hostname, pathname } = new URL(request.url);
+    const page = hostname === "www.example.test" && !pathname.startsWith("/gq/");
+    assert.equal(
+      request.headers["CF-Access-Client-Id"],
+      page ? ADMITTED.id : undefined,
+      request.url,
+    );
+    assert.equal(
+      request.headers["CF-Access-Client-Secret"],
+      page ? ADMITTED.secret : undefined,
+      request.url,
+    );
+  }
+  for (const value of Object.values(FRONTEND_ACCESS)) {
+    assert.ok(!`${stdout}${stderr}`.includes(value));
+  }
+});
+
+test("without the token, a Frontend behind Access fails and says how to admit readiness", async () => {
+  const { code, byName, report, fetch } = await check({ frontendAccess: ADMITTED });
+
+  assert.equal(code, 1);
+  assert.deepEqual(notReady(report), ["homepage", "third-party-hosts", "frontend"]);
+  for (const name of ["homepage", "third-party-hosts", "frontend"]) {
+    const { detail, action } = byName[name];
+    assert.match(detail, /Cloudflare Access \(team\.cloudflareaccess\.com\)/u, name);
+    assert.match(
+      `${detail} ${action}`,
+      /GQ_FRONTEND_ACCESS_CLIENT_ID and GQ_FRONTEND_ACCESS_CLIENT_SECRET/u,
+      name,
+    );
+    assert.match(action, /service token admitted by a Service Auth policy/u, name);
+  }
+  assert.match(byName.homepage.detail, /^https:\/\/www\.example\.test\/ answers HTTP 302/u);
+  assert.ok(fetch.requests.every(({ headers }) => !headers["CF-Access-Client-Id"]));
+});
+
+test("a token Access doesn't admit is named, never shown", async () => {
+  const { code, byName, stdout } = await check(
+    { frontendAccess: { id: "other-id", secret: "other-secret" } },
+    { env: { ...SECRETS, ...FRONTEND_ACCESS } },
+  );
+  assert.equal(code, 1);
+  assert.match(
+    byName.homepage.detail,
+    /refused the service token in GQ_FRONTEND_ACCESS_CLIENT_ID/u,
+  );
+  assert.match(byName.homepage.action, /Service Auth policy/u);
+  for (const value of Object.values(FRONTEND_ACCESS)) assert.ok(!stdout.includes(value));
+});
+
+test("half a Frontend Access pair fails the Frontend's page checks by name only", async () => {
+  const { code, byName, stdout, fetch } = await check(
+    {},
+    { env: { ...SECRETS, GQ_FRONTEND_ACCESS_CLIENT_SECRET: "private-half" } },
+  );
+  assert.equal(code, 1);
+  assert.match(
+    byName.homepage.detail,
+    /GQ_FRONTEND_ACCESS_CLIENT_ID and GQ_FRONTEND_ACCESS_CLIENT_SECRET must be set together/u,
+  );
+  assert.equal(byName["third-party-hosts"].status, "not-ready");
+  assert.equal(byName["frontend-events"].status, "ok", "/gq/* doesn't need the pair");
+  assert.ok(!stdout.includes("private-half"));
+  assert.ok(fetch.requests.every(({ headers }) => !headers["CF-Access-Client-Secret"]));
+});
 
 test("a CMS that is running without WordPress installed is not ready", async () => {
   const { code, byName } = await check({ cms: "not-installed" });
@@ -696,7 +803,7 @@ const LANGUAGES = [
 ];
 
 /** A bilingual Site that is ready unless `overrides` say otherwise. */
-const checkBilingual = (overrides = {}) =>
+const checkBilingual = (overrides = {}, options = {}) =>
   check(
     {
       cmsLanguages: ["pt", "en"],
@@ -705,8 +812,21 @@ const checkBilingual = (overrides = {}) =>
       store: { ...PREPARED, languages: { en: { home: "published", chrome: "published" } } },
       ...overrides,
     },
-    { ops: BILINGUAL },
+    { ops: BILINGUAL, ...options },
   );
+
+test("a bilingual Frontend behind Access sends the token to every language's homepage", async () => {
+  const { code, report, fetch } = await checkBilingual(
+    { frontendAccess: ADMITTED },
+    { env: { ...SECRETS, ...FRONTEND_ACCESS } },
+  );
+  assert.equal(code, 0, JSON.stringify(notReady(report)));
+  const pages = fetch.requests
+    .filter(({ headers }) => headers["CF-Access-Client-Id"] === ADMITTED.id)
+    .map(({ url }) => new URL(url).pathname);
+  assert.deepEqual([...new Set(pages)].sort(), ["/", "/en/"]);
+  assert.equal(report.checks.find(({ name }) => name === "homepage-en").status, "ok");
+});
 
 test("a bilingual Site is ready when every language's front page, chrome and homepage are served", async () => {
   const { code, report, byName, fetch } = await checkBilingual();

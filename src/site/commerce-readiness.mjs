@@ -38,6 +38,7 @@
 // storefront sends, and never shown.
 
 import { cmsFetch } from "../cms/access.mjs";
+import { frontendAccessHint, frontendFetch } from "../frontend/access.mjs";
 import { CHECK_PASSWORD, CHECK_USER, productionMediaReadiness } from "../media/readiness.mjs";
 import {
   cmsCronReadiness,
@@ -342,7 +343,7 @@ async function proxySecretCheck(fetch, origin, env) {
 export async function storefrontReadiness({ origin, env = {}, fetch, signIn = "unknown" }) {
   const checks = [];
   const add = (check) => checks.push({ area: "frontend", ...check });
-  add(await homepageCheck(fetch, origin));
+  add(await homepageCheck(frontendFetch({ env, origin, fetch }), origin, env));
   add(await cartCheck(fetch, origin));
   add(await customerAuthCheck(fetch, origin, signIn));
   add(turnstileCheck(env, signIn));
@@ -354,7 +355,7 @@ export async function storefrontReadiness({ origin, env = {}, fetch, signIn = "u
 const EDGE_CACHED = /^(hit|miss|expired|stale|updating|revalidated)$/iu;
 
 /** The homepage is the Worker's own render, with nothing caching it. */
-async function homepageCheck(fetch, origin) {
+async function homepageCheck(fetch, origin, env) {
   const name = "homepage";
   const url = new URL("/", origin);
   let response;
@@ -365,7 +366,14 @@ async function homepageCheck(fetch, origin) {
     return notReady(name, `${url.href} doesn't answer: ${messageOf(error)}`, DEPLOY_FRONTEND);
   }
   if (response.status !== 200) {
-    return notReady(name, `${url.href} answers HTTP ${response.status}`, DEPLOY_FRONTEND);
+    const access = frontendAccessHint({ env, url, response });
+    return access
+      ? notReady(
+          name,
+          `${url.href} answers HTTP ${response.status}: ${access.detail}`,
+          access.action,
+        )
+      : notReady(name, `${url.href} answers HTTP ${response.status}`, DEPLOY_FRONTEND);
   }
   const cacheControl = response.headers.get("cache-control") ?? "";
   const edge = response.headers.get("cf-cache-status") ?? "";
@@ -616,7 +624,7 @@ export async function commerceConsentReadiness({ ops, env = {}, fetch, origin, c
     cmsFetch({ env, origin: cmsOrigin.href, fetch }),
     cmsOrigin,
   );
-  const pages = await publicPages({ origin, fetch, languages: [] });
+  const pages = await publicPages({ origin, env, fetch, languages: [] });
   return [
     legalCheck(settings, []),
     runtimeCheck(settings, pages),

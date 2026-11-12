@@ -17,6 +17,11 @@ Keep these optional pairs in the Site's Sigillo **production** environment:
 | Form submitter        | `GQ_FORMS_ACCESS_CLIENT_ID`, `GQ_FORMS_ACCESS_CLIENT_SECRET`         | The Frontend's `/gq/forms/` route: `POST /wp-json/gf/v2/forms/<id>/submissions` only |
 | Agent content         | `GQ_CMS_AGENT_ACCESS_CLIENT_ID`, `GQ_CMS_AGENT_ACCESS_CLIENT_SECRET` | `gq content`: a page's or post's REST resource, its revisions and one revision only  |
 
+A Frontend behind Access takes its own optional pair,
+`GQ_FRONTEND_ACCESS_CLIENT_ID` / `GQ_FRONTEND_ACCESS_CLIENT_SECRET` in Sigillo
+staging, which readiness sends to the Frontend's pages only, never to the CMS:
+see [A Frontend behind Cloudflare Access](provisioning.md#a-frontend-behind-cloudflare-access).
+
 They become `CF-Access-Client-Id` and `CF-Access-Client-Secret` HTTP headers,
 never WordPress login credentials. Reads remain anonymous to WordPress: the
 GraphQL service must only permit published-content queries, not mutations,
