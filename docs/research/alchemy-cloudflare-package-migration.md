@@ -51,9 +51,11 @@ state store: points marked _inferred_ come from reading the code.
 - **The three move in lockstep.** `@alchemy.run/cloudflare` peers on
   `alchemy` and (optionally) `@alchemy.run/frontend-frameworks` at its own exact
   version, and frontend-frameworks pins its `cloudflare-runtime` at its own.
-  Its `effect` peer is ^4.0.5 (84), ^4.1.0 (85) and ^4.1.4 (86). The
-  Blueprint's Effect 4.1.4 satisfies all three. The existing Sites' 4.0.0-rc.115
-  satisfies none of them, so Effect moves with Alchemy.
+  Its `effect` peer is ^4.0.5 (84), ^4.1.0 (85) and ^4.1.4 (86). The existing
+  Sites' 4.0.0-rc.115 satisfies none of them, so Effect moves with Alchemy.
+  But Alchemy beta.79 to beta.84 import `effect/Crypto`, which Effect 4.1
+  removed: beta.84 needs Effect 4.0.x (4.0.7), and beta.85 and later need
+  4.1.x. Effect moves again in hop 2.
 - At beta.85 frontend-frameworks' framework peers moved (Astro ^7.4.0 among
   them) and it took `@alchemy.run/redis` as a dependency.
 
@@ -206,8 +208,9 @@ Site by Site.
    - `deploy-frontend.mjs` refuses to run when `@alchemy.run/cloudflare`
      can't be resolved from `infra`, before Alchemy's own "install the
      package" error.
-4. **Effect 4.1.4 goes with it.** `@alchemy.run/cloudflare` beta.84 needs
-   `effect` ^4.0.5, and the Sites are on 4.0.0-rc.115.
+4. **Effect 4.0.7 goes with it.** `@alchemy.run/cloudflare` beta.84 needs
+   `effect` ^4.0.5, the Sites are on 4.0.0-rc.115, and Alchemy up to beta.84
+   can't load on Effect 4.1 (it imports the removed `effect/Crypto`).
 
 beta.84 is the target of this hop only because it still speaks the v7 store
 protocol. That lets Sites on beta.79 and beta.84 deploy side by side in the one
@@ -215,7 +218,8 @@ account while the fleet catches up.
 
 ### Hop 1 in the Blueprint
 
-Done on 2026-11-12, released in gq-site 0.43.0. What shipped:
+Done on 2026-11-12, released in gq-site 0.43.0 with Effect 4.1.4, which
+broke `alchemy deploy`; 0.43.1 pins Effect 4.0.7. What shipped:
 
 - The seven managed keys above, from
   `blueprint/templates/fragments/pnpm-workspace.keys.yaml`. In the lock and in
@@ -228,7 +232,7 @@ Done on 2026-11-12, released in gq-site 0.43.0. What shipped:
   own pick: `gq sync` stops with a diff, as for a hand edit.
 - The templates import `@alchemy.run/cloudflare`, `infra/package.json`
   depends on it, and the pins are exactly 2.0.0-beta.84 for the three Alchemy
-  packages and 4.1.4 for Effect.
+  packages and 4.0.7 for Effect (0.43.1; 0.43.0 had 4.1.4).
 - `gq doctor`'s Alchemy install check, and the deploy wrapper's refusal
   without `@alchemy.run/cloudflare`.
 - `scripts/smoke/sync-upgrade.sh` (CI job `sync-upgrade`): a 0.40.0 Site,

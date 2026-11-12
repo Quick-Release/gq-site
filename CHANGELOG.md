@@ -3,6 +3,22 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **Fix: Sites can plan and deploy their Frontend again.** 0.41.0 to 0.43.0
+  pinned Effect 4.1.4, but Alchemy up to 2.0.0-beta.84 imports
+  `effect/Crypto`, which Effect 4.1 removed. `plan:frontend` and
+  `deploy:frontend` (and CI's deploy) failed with `ERR_MODULE_NOT_FOUND …
+effect/dist/Crypto.js` while loading the stack, though type checks, builds
+  and `gq doctor` passed. The managed `pnpm-workspace.yaml` keys and both
+  skeletons now pin `effect`, `@effect/platform-node`,
+  `@effect/platform-node-shared` and the `effect` peer rule at 4.0.7, the
+  latest 4.0.x. 4.1.4 is an earlier blueprint value, so `gq sync` takes it
+  over without asking. After the sync, run `pnpm install` and commit the
+  lockfile. `scripts/smoke/sync-upgrade.sh` now plans the synced Site's
+  Frontend stack as far as Cloudflare, with a token Cloudflare refuses, so a
+  pair that can't load fails CI.
+
 ## 0.43.0 — 2026-11-12
 
 - **Alchemy's package split, hop 1 of the Alchemy migration**
