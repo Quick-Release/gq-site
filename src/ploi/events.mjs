@@ -8,8 +8,8 @@
 // - the crontab that retries the events the Frontend didn't confirm
 //   (`wp gq-events retry-due`, every minute, as the site's system user;
 //   ADR 0008), then asks the Frontend to reconcile with WordPress (ADR 0009).
-//   Production disables WP-Cron, which would only run on visits anyway, so
-//   this is the CMS's only background scheduler.
+//   WordPress's own scheduled events run on another crontab, which
+//   `gq ploi provision` adds (ADR 0022).
 // - when Sigillo has one, the bearer GQ Config's Consent tab reads the
 //   Frontend's consent records with (CONSENT_READ_TOKEN, written as
 //   GETQUICK_CONSENT_READ_TOKEN; ADR 0019), with the GETQUICK_FRONTEND_URL
@@ -24,35 +24,12 @@ import { createReporter } from "../cli/reporter.mjs";
 import { MINIMUM_SECRET_LENGTH } from "../frontend/commands.mjs";
 import { CMS_CONSENT_READ_TOKEN, CONSENT_READ_TOKEN } from "../frontend/consent.mjs";
 import { refuseOnCommerce } from "../manifest/variant.mjs";
+import { findCrontab, retryCrontab } from "./crontabs.mjs";
 import { createPloiServerClient } from "./server-client.mjs";
 
+export { RETRY_COMMAND, retryCrontab } from "./crontabs.mjs";
+
 export const EVENT_SECRET = "PUBLICATION_EVENT_SECRET";
-
-/**
- * What the cron runs: the CMS's delivery retries (getquick/gq-content's, or a
- * copied delivery-retries.php on a Site generated before it) send what is due.
- */
-export const RETRY_COMMAND = "wp gq-events retry-due --quiet";
-
-/**
- * The retry crontab for a Ploi site: every minute, as its system user, from
- * its Bedrock app (Ploi keeps a site in /home/<user>/<domain>). WP-CLI is in
- * /usr/local/bin on Ploi servers, which cron's PATH leaves out.
- */
-export function retryCrontab({ systemUser, domain }) {
-  for (const [name, value] of Object.entries({ systemUser, domain })) {
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value ?? "")) {
-      throw new Error(
-        `The Ploi site's ${name} ${JSON.stringify(value)} can't be used in a crontab.`,
-      );
-    }
-  }
-  return {
-    user: systemUser,
-    frequency: "* * * * *",
-    command: `cd /home/${systemUser}/${domain}/apps/cms && PATH="/usr/local/bin:$PATH" ${RETRY_COMMAND}`,
-  };
-}
 
 /**
  * What the Ploi site's CMS has for its events: its .env with `secret` (and,
@@ -85,9 +62,7 @@ export async function inspectCmsEvents({ ops, token, secret, consentToken, fetch
     domain: site.domain ?? ops.domains?.admin,
   });
   const crontabs = (await client.request("GET", "/crontabs"))?.data ?? [];
-  const existing = crontabs.find(
-    (entry) => entry.user === crontab.user && entry.command === crontab.command,
-  );
+  const existing = findCrontab(crontabs, crontab);
   return { client, sitePath, output, changed, crontab, existing };
 }
 

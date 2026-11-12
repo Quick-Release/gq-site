@@ -74,6 +74,7 @@ function provisionedFixture() {
       "/sites": [site],
       "/databases": [{ id: 5, name: "larkspur_staging" }],
       "/sites/10/certificates": [{ type: "letsencrypt", status: "active" }],
+      "/crontabs": [{ id: 3, ...WP_CRON_CRONTAB }],
     },
     gets: {
       "": { data: { ip_address: "203.0.113.7" } },
@@ -86,6 +87,13 @@ function provisionedFixture() {
     },
   };
 }
+
+const WP_CRON_CRONTAB = {
+  user: "larkspur",
+  frequency: "* * * * *",
+  command:
+    'cd /home/larkspur/larkspur-admin.bnq.pt/apps/cms && PATH="/usr/local/bin:$PATH" flock -n /home/larkspur/.gq-wp-cron-larkspur-admin.bnq.pt.lock wp cron event run --due-now --quiet',
+};
 
 const resolvesToServer = async () => [{ address: "203.0.113.7" }];
 const doesNotResolve = async () => {
@@ -144,6 +152,7 @@ test("an empty server plans every resource, in dependency order", async () => {
       "create:deployments",
       "create:database",
       "update:deploy-script",
+      "create:wp-cron",
       "warn:certificate",
     ],
   );
@@ -313,4 +322,19 @@ test("replaces a stale Ploi deploy script before deploying", async () => {
       body: { deploy_script: config.deployScript },
     },
   ]);
+});
+
+test("adds the WP-Cron crontab as the site's user, every minute", async () => {
+  const fixture = provisionedFixture();
+  fixture.lists["/crontabs"] = [
+    { id: 4, user: "larkspur", frequency: "* * * * *", command: "other job" },
+  ];
+  const client = fakeClient(fixture);
+  const state = await inspect(client, config, resolvesToServer);
+  const plan = planActions(config, state);
+  const step = plan.find((item) => item.id === "wp-cron");
+
+  assert.equal(step.kind, "create");
+  await applyAction(step, { client, config, state });
+  assert.deepEqual(client.writes, [{ method: "POST", path: "/crontabs", body: WP_CRON_CRONTAB }]);
 });

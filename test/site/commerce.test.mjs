@@ -171,6 +171,8 @@ function provisioned(env) {
     env,
     envReady: true,
     deployScript: config.deployScript,
+    wpCron: { user: "shop", frequency: "* * * * *", command: "wp cron event run --due-now" },
+    wpCronExisting: { id: 2, user: "shop", frequency: "* * * * *" },
     certificate: { type: "letsencrypt", status: "active" },
     dnsAddresses: ["203.0.113.7"],
   };

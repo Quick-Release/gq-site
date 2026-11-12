@@ -53,6 +53,13 @@ export const RETRY_CRONTAB = Object.freeze({
     'cd /home/fixture/fixture-cms.example.test/apps/cms && PATH="/usr/local/bin:$PATH" wp gq-events retry-due --quiet',
 });
 
+export const WP_CRON_CRONTAB = Object.freeze({
+  user: "fixture",
+  frequency: "* * * * *",
+  command:
+    'cd /home/fixture/fixture-cms.example.test/apps/cms && PATH="/usr/local/bin:$PATH" flock -n /home/fixture/.gq-wp-cron-fixture-cms.example.test.lock wp cron event run --due-now --quiet',
+});
+
 // What the live database dumps to, and the D1 store exports.
 export const DUMP = "dump";
 export const PUBLICATIONS_SQL =
@@ -208,6 +215,7 @@ export function exposedState() {
     // The server's other sites, besides `site`.
     otherSites: [{ id: 35, domain: "other-cms.example.test", system_user: "other" }],
     crontabs: [
+      { id: 6, ...WP_CRON_CRONTAB },
       { id: 7, ...RETRY_CRONTAB },
       { id: 8, user: "fixture", frequency: "0 3 * * *", command: "other job" },
     ],

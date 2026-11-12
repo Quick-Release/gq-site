@@ -92,7 +92,11 @@ wp gq-events settings retry <setting>  # menus, logo, identity or design
 It retries the events the Frontend
 didn't confirm, entries' and settings' alike: after 1, 2, 5, 10 and 30
 minutes, then hourly, up to 12 attempts. The server's cron runs it every
-minute (`pnpm ploi:events` adds the Ploi crontab; WP-Cron isn't used).
+minute (`pnpm ploi:events` adds the Ploi crontab; WP-Cron isn't used for it).
+WordPress's own scheduled events (scheduled posts, core's cleanups, plugins'
+events) run from a second every-minute crontab, `wp cron event run --due-now`,
+which `pnpm ploi:provision` adds; production's `DISABLE_WP_CRON` keeps visits
+from starting WP-Cron.
 Editors see delayed public delivery in the editor, the page and post lists
 and on the Dashboard; Site Health has a "Public website delivery" test.
 

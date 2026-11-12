@@ -1,7 +1,9 @@
 # ADR 0008: Retry event delivery from the CMS on a server cron
 
 - Status: Accepted; amended by [ADR 0009](0009-reconcile-missed-changes-on-the-cms-scheduler.md)
-  (each `retry-due` run also asks the Frontend to reconcile)
+  (each `retry-due` run also asks the Frontend to reconcile) and
+  [ADR 0022](0022-run-wordpress-scheduled-events-from-a-server-cron.md)
+  (WordPress's own scheduled events run from a second crontab)
 - Date: 2026-10-02
 - Superseded in part: its runtime decisions by
   [gq-content ADR 0002](https://github.com/Quick-Release/gq-content/blob/v0.1.0/docs/adr/0002-preserve-publication-delivery-and-withdrawal-through-extraction.md)
@@ -93,7 +95,9 @@ What the stack provides:
     `cd /home/<user>/<domain>/apps/cms && PATH="/usr/local/bin:$PATH" wp gq-events retry-due --quiet`.
     It is idempotent, `--dry-run` shows it, and it warns about an existing
     crontab that runs less often.
-  - WP-Cron is not used.
+  - WP-Cron is not used for retries. (WordPress's own scheduled events run
+    from a second crontab since
+    [ADR 0022](0022-run-wordpress-scheduled-events-from-a-server-cron.md).)
 - **Editors see delivery apart from publication.** Without a new screen:
   - **The block editor** shows a notice when an entry opens, and again after
     each save, while the save's event is delivered (a small REST route,

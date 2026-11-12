@@ -131,6 +131,7 @@ function fakeProviders({
         state.logs = [{ id: 4, type: "deploy" }, ...state.logs];
         return {};
       case "GET /crontabs":
+      case "GET /crontabs?per_page=100":
         return { data: state.crontabs };
       case "POST /crontabs":
         state.crontabs = [...state.crontabs, { id: state.crontabs.length + 1, ...data }];
@@ -461,9 +462,18 @@ test("release package refuses a dirty tree, an unrequired package and a malforme
 
 // --- gq ploi provision -----------------------------------------------------
 
+// The crontab that runs WordPress's due scheduled events (ADR 0022).
+const WP_CRON_CRONTAB = {
+  user: "fixture",
+  frequency: "* * * * *",
+  command:
+    'cd /home/fixture/admin.example.test/apps/cms && PATH="/usr/local/bin:$PATH" flock -n /home/fixture/.gq-wp-cron-admin.example.test.lock wp cron event run --due-now --quiet',
+};
+const PROVISIONED_CRONTABS = [{ id: 1, ...WP_CRON_CRONTAB }];
+
 test("ploi provision --dry-run reports a provisioned site and changes nothing", async () => {
   const fixture = await site();
-  const { fetch } = fakeProviders();
+  const { fetch } = fakeProviders({ state: { crontabs: PROVISIONED_CRONTABS } });
 
   const result = await fixture.run(["ploi", "provision", "--dry-run"], {
     env: RELEASE_ENV,
@@ -484,6 +494,7 @@ test("ploi provision --dry-run reports a provisioned site and changes nothing", 
       "  ✓ custom deployments (no git; releases come from R2)",
       "  ✓ database fixture_staging and site .env",
       "  ✓ deploy script matches deploy/ploi/admin.sh",
+      `  ✓ WP-Cron crontab (fixture, every minute): ${WP_CRON_CRONTAB.command}`,
       "  ✓ SSL certificate (active)",
       "Dry run: nothing to change.",
       "",
@@ -496,6 +507,7 @@ test("ploi provision --dry-run reports drift without writing", async () => {
   const fixture = await site();
   const { fetch } = fakeProviders({
     state: {
+      crontabs: PROVISIONED_CRONTABS,
       deployScript: "echo stale\n",
       repository: { provider: "github", user: "Quick-Release", name: "fixture" },
     },
@@ -516,7 +528,9 @@ test("ploi provision --dry-run reports drift without writing", async () => {
 
 test("ploi provision refuses to apply without a terminal or --yes", async () => {
   const fixture = await site();
-  const { fetch } = fakeProviders({ state: { deployScript: "echo stale\n" } });
+  const { fetch } = fakeProviders({
+    state: { deployScript: "echo stale\n", crontabs: PROVISIONED_CRONTABS },
+  });
 
   const result = await fixture.run(["ploi", "provision"], {
     env: RELEASE_ENV,
@@ -531,7 +545,9 @@ test("ploi provision refuses to apply without a terminal or --yes", async () => 
 
 test("ploi provision --yes applies the plan and records the site ID in gq.ops.json", async () => {
   const fixture = await site({ ops: { ...OPS, ploi: { ...OPS.ploi, siteId: "" } } });
-  const { fetch, state } = fakeProviders({ state: { deployScript: "echo stale\n" } });
+  const { fetch, state } = fakeProviders({
+    state: { deployScript: "echo stale\n", crontabs: PROVISIONED_CRONTABS },
+  });
 
   const result = await fixture.run(["ploi", "provision", "--yes"], {
     env: RELEASE_ENV,
@@ -550,7 +566,7 @@ test("ploi provision records the site ID when gq.ops.json has no ploi.siteId yet
   const ploi = { ...OPS.ploi };
   delete ploi.siteId;
   const fixture = await site({ ops: { ...OPS, ploi } });
-  const { fetch } = fakeProviders();
+  const { fetch } = fakeProviders({ state: { crontabs: PROVISIONED_CRONTABS } });
 
   const result = await fixture.run(["ploi", "provision", "--yes"], {
     env: RELEASE_ENV,
@@ -568,7 +584,7 @@ test("ploi provision records the site ID in the gq.ops.json --config selects", a
   const fixture = await site({
     files: { "alternate.ops.json": `${JSON.stringify(unset, null, 2)}\n` },
   });
-  const { fetch } = fakeProviders();
+  const { fetch } = fakeProviders({ state: { crontabs: PROVISIONED_CRONTABS } });
 
   const result = await fixture.run(
     ["ploi", "provision", "--yes", "--config", "alternate.ops.json"],
@@ -588,7 +604,7 @@ test("ploi provision records the site ID in the gq.ops.json --config selects", a
 
 test("ploi provision warns about SSL when the domain doesn't resolve to the server", async () => {
   const fixture = await site();
-  const { fetch } = fakeProviders();
+  const { fetch } = fakeProviders({ state: { crontabs: PROVISIONED_CRONTABS } });
   const fetchWithoutCertificate = recordingFetch(async (request) =>
     request.url.endsWith("/certificates?per_page=100")
       ? { data: [] }
@@ -606,6 +622,63 @@ test("ploi provision warns about SSL when the domain doesn't resolve to the serv
     result.stdout,
     /! no SSL yet: admin\.example\.test does not resolve to 203\.0\.113\.7/u,
   );
+});
+
+test("ploi provision adds the crontab that runs WordPress's due scheduled events, once", async () => {
+  const fixture = await site();
+  const { fetch, state } = fakeProviders();
+
+  const dryRun = await fixture.run(["ploi", "provision", "--dry-run"], {
+    env: RELEASE_ENV,
+    fetch,
+    lookup: resolvesToServer,
+  });
+  assert.equal(dryRun.code, 0, dryRun.stderr);
+  assert.ok(
+    dryRun.stdout.includes(`+ WP-Cron crontab (fixture, every minute): ${WP_CRON_CRONTAB.command}`),
+    dryRun.stdout,
+  );
+  assert.deepEqual(state.crontabs, []);
+
+  const result = await fixture.run(["ploi", "provision", "--yes"], {
+    env: RELEASE_ENV,
+    fetch,
+    lookup: resolvesToServer,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(
+    state.crontabs.map(({ user, frequency, command }) => ({ user, frequency, command })),
+    [WP_CRON_CRONTAB],
+  );
+
+  // A Site that already has it, beside the delivery retry crontab, plans nothing.
+  state.crontabs = [{ id: 7, ...RETRY_CRONTAB }, ...state.crontabs];
+  const again = await fixture.run(["ploi", "provision", "--yes"], {
+    env: RELEASE_ENV,
+    fetch,
+    lookup: resolvesToServer,
+  });
+  assert.equal(again.code, 0, again.stderr);
+  assert.match(again.stdout, /Everything is already provisioned\./u);
+  assert.equal(fetch.requests.filter(({ method }) => method === "POST").length, 1);
+});
+
+test("ploi provision keeps a WP-Cron crontab that runs less often, and warns", async () => {
+  const fixture = await site();
+  const { fetch, state } = fakeProviders({
+    state: { crontabs: [{ id: 4, ...WP_CRON_CRONTAB, frequency: "*/5 * * * *" }] },
+  });
+
+  const result = await fixture.run(["ploi", "provision", "--yes"], {
+    env: RELEASE_ENV,
+    fetch,
+    lookup: resolvesToServer,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stderr, /the WP-Cron crontab runs at "\*\/5 \* \* \* \*", not every minute/u);
+  assert.equal(state.crontabs.length, 1);
+  assert.ok(!fetch.requests.some(({ method }) => method === "POST"));
 });
 
 // --- gq ploi media ---------------------------------------------------------
