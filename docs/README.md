@@ -68,6 +68,7 @@ guides.
 - [ADR 0017: Generate commerce Sites from the variant alone](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0017-generate-commerce-sites-from-the-variant-alone.md): what the commerce variant generates and manages, and what waits on package releases.
 - [ADR 0021: Declare a commerce Site ready through the same gate](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0021-declare-a-commerce-site-ready-through-the-same-gate.md): `gq site check` on a commerce Site, and what it leaves out.
 - [ADR 0022: Run WordPress's scheduled events from a server cron](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0022-run-wordpress-scheduled-events-from-a-server-cron.md): the WP-Cron crontab `gq ploi provision` adds to every Site's CMS.
+- [ADR 0023: Move a Site's Alchemy pins with the managed infra](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0023-move-sites-alchemy-pins-with-the-managed-infra.md): the workspace catalog's Alchemy and Effect pins as managed keys, beta.84 as the first hop, and no pin younger than pnpm's `minimumReleaseAge`.
 - [Rollout plan and evidence](https://github.com/Quick-Release/gq-site/blob/main/docs/plans/getquick-blueprint-rollout.md): accepted gates, passed phases and adoption checklist.
 - [Research](https://github.com/Quick-Release/gq-site/tree/main/docs/research): dated inventories and implementation research.
 - [Agent guidance](https://github.com/Quick-Release/gq-site/tree/main/docs/agents): issue tracking, triage and domain-document use.
