@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.39.0 — 2026-11-12
 
 - **WordPress's scheduled events run in production.** Production disables
   WP-Cron and nothing ran its events, so scheduled posts never published and
