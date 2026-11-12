@@ -4,7 +4,10 @@
 // Frontend skeletons among it) and gq.lock.json, then `git init`. In a
 // terminal it asks for the values its arguments lack; elsewhere it names
 // them. The site's main language (--locale, a WordPress locale) is asked for
-// too, and is en_US when not given outside a terminal. Needs no network and
+// too, and is en_US when not given outside a terminal. A content Site's
+// Frontend framework (--framework, gq-platform ADR 0015) is asked for in a
+// terminal and is TanStack when not given outside one; a commerce Site's is
+// always TanStack Start (ADR 0017), so it is never asked. Needs no network and
 // no secrets: it prints the provisioning steps, which stay in the existing
 // commands, and runs none of them.
 import { cancel, isCancel, select, text } from "@clack/prompts";
@@ -36,6 +39,9 @@ const VALUE_OPTIONS = {
 
 // The main language a new site gets unless it is given another.
 const DEFAULT_LOCALE = "en_US";
+// A new content Site's Frontend framework unless it chooses another (gq-platform
+// ADR 0015); a commerce Site's is always this one (ADR 0017).
+const DEFAULT_FRAMEWORK = "tanstack";
 const LOCALE_HINT = "a WordPress locale, like en_US, pt_PT or pt_PT_ao90";
 
 // What `project` names: npm packages, Workers, buckets and the DDEV project.
@@ -130,9 +136,9 @@ export async function runNewCommand(args, { cwd, env, exec, stdin, io, interacti
     project,
     variant,
     // A commerce Frontend is TanStack Start (ADR 0017); a new content Site's
-    // is TanStack unless --framework astro, and runs the content runtime
-    // from its pinned package pair.
-    framework: options.framework ?? "tanstack",
+    // is Astro or TanStack, its choice (gq-platform ADR 0015), TanStack when
+    // not given, and runs the content runtime from its pinned package pair.
+    framework: options.framework ?? DEFAULT_FRAMEWORK,
     ...(variant === "content" ? { contentRuntime: CONTENT_RUNTIME_PACKAGE } : {}),
     wordpress: { plugins: PLUGINS[variant], locale },
   });
@@ -250,6 +256,19 @@ async function askForMissing(given, { stdin, io }) {
     });
     if (isCancel(variant)) return cancelled(io);
     options.variant = variant;
+  }
+  if (options.variant === "content" && options.framework === undefined) {
+    const framework = await select({
+      message: "Frontend framework",
+      options: [
+        { value: "astro", label: "Astro", hint: "content-heavy pages, little client-side state" },
+        { value: "tanstack", label: "TanStack Start", hint: "React, for app-like Sites" },
+      ],
+      initialValue: DEFAULT_FRAMEWORK,
+      ...streams,
+    });
+    if (isCancel(framework)) return cancelled(io);
+    options.framework = framework;
   }
   if (options.locale === undefined) {
     const locale = await text({

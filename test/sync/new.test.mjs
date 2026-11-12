@@ -64,8 +64,8 @@ test("gq new writes a workspace whose root scripts run the Frontend and the pinn
   const frontend = JSON.parse(await readSite(site.root, "apps/frontend/package.json"));
   assert.equal(frontend.name, "@acme/frontend");
   assert.equal(frontend.version, root.version);
-  assert.equal(frontend.devDependencies.tailwindcss, "4.3.3");
-  assert.equal(frontend.devDependencies["@tailwindcss/vite"], "4.3.3");
+  assert.equal(frontend.devDependencies.tailwindcss, "4.3.5");
+  assert.equal(frontend.devDependencies["@tailwindcss/vite"], "4.3.5");
   const workspace = await readSite(site.root, "pnpm-workspace.yaml");
   for (const line of ['  - "apps/*"', '  - "infra"', '  - "infra/ci"']) {
     assert.ok(workspace.split("\n").includes(line), line);
@@ -330,32 +330,111 @@ test("outside a terminal, gq new names every value it is missing and writes noth
 
 test("in a terminal, gq new asks only for the values it is missing", async () => {
   const parent = await temporaryDirectory();
-  // Enter accepts the project's suggestion (the directory's name), the only
-  // variant gq new can create and the suggested language, en_US.
-  const stdin = answering(["\r", "\r", "\r"]);
+  // Enter accepts the project's suggestion (the directory's name), the first
+  // variant (content), the suggested framework (TanStack) and the suggested
+  // language, en_US.
+  const stdin = answering(["\r", "\r", "\r", "\r"]);
 
   const result = await runGq(["new", "acme"], { cwd: parent, stdin, interactive: true });
 
   assert.equal(result.code, 0, result.stderr);
-  assert.equal(stdin.prompts, 3);
+  assert.equal(stdin.prompts, 4);
   assert.match(result.stdout, /Project name/u);
   assert.match(result.stdout, /Variant/u);
+  assert.match(result.stdout, /Frontend framework/u);
   assert.match(result.stdout, /Main language/u);
   assert.doesNotMatch(result.stdout, /Directory/u);
   const manifest = JSON.parse(await readSite(join(parent, "acme"), "gq.ops.json"));
   assert.equal(manifest.project, "acme");
   assert.equal(manifest.variant, "content");
+  assert.equal(manifest.framework, "tanstack");
+});
+
+test("in a terminal, gq new asks a content Site for Astro or TanStack", async () => {
+  const parent = await temporaryDirectory();
+  // The prompt starts on TanStack; Up moves to Astro, above it.
+  const stdin = answering(["\u001b[A\r"]);
+
+  const result = await runGq(
+    ["new", "acme", "--project", "acme", "--variant", "content", "--locale", "en_US"],
+    { cwd: parent, stdin, interactive: true },
+  );
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(stdin.prompts, 1);
+  assert.match(result.stdout, /Frontend framework/u);
+  assert.match(result.stdout, /Astro/u);
+  assert.match(result.stdout, /TanStack Start/u);
+  const root = join(parent, "acme");
+  assert.equal(JSON.parse(await readSite(root, "gq.ops.json")).framework, "astro");
+  assert.ok(await readSite(root, "apps/frontend/astro.config.mjs"));
+});
+
+test("in a terminal, gq new does not ask for a framework it was given or a commerce Site", async () => {
+  for (const [argv, framework] of [
+    [["--variant", "content", "--framework", "astro"], "astro"],
+    [["--variant", "content", "--framework", "tanstack"], "tanstack"],
+    [["--variant", "commerce"], "tanstack"],
+  ]) {
+    const parent = await temporaryDirectory();
+    const stdin = answering([]);
+    const result = await runGq(["new", "shop", "--project", "shop", "--locale", "en_US", ...argv], {
+      cwd: parent,
+      stdin,
+      interactive: true,
+    });
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(stdin.prompts, 0, argv.join(" "));
+    assert.doesNotMatch(result.stdout, /Frontend framework/u);
+    assert.equal(
+      JSON.parse(await readSite(join(parent, "shop"), "gq.ops.json")).framework,
+      framework,
+    );
+  }
+});
+
+test("in a terminal, choosing commerce never asks for a framework", async () => {
+  const parent = await temporaryDirectory();
+  // Down moves from content to commerce.
+  const stdin = answering(["\u001b[B\r"]);
+  const result = await runGq(["new", "shop", "--project", "shop", "--locale", "en_US"], {
+    cwd: parent,
+    stdin,
+    interactive: true,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(stdin.prompts, 1);
+  assert.doesNotMatch(result.stdout, /Frontend framework/u);
+  const manifest = JSON.parse(await readSite(join(parent, "shop"), "gq.ops.json"));
+  assert.equal(manifest.variant, "commerce");
+  assert.equal(manifest.framework, "tanstack");
+});
+
+test("outside a terminal, gq new without --framework creates a TanStack content Site", async () => {
+  const parent = await temporaryDirectory();
+  const result = await runGq(["new", "acme", "--project", "acme", "--variant", "content"], {
+    cwd: parent,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /Frontend framework/u);
+  assert.equal(
+    JSON.parse(await readSite(join(parent, "acme"), "gq.ops.json")).framework,
+    "tanstack",
+  );
 });
 
 test("in a terminal, gq new asks for the directory and project when neither is given", async () => {
   const parent = await temporaryDirectory();
   const stdin = answering(["shop\r", "\r"]);
 
-  const result = await runGq(["new", "--variant", "content", "--locale", "en_US"], {
-    cwd: parent,
-    stdin,
-    interactive: true,
-  });
+  const result = await runGq(
+    ["new", "--variant", "content", "--framework", "astro", "--locale", "en_US"],
+    {
+      cwd: parent,
+      stdin,
+      interactive: true,
+    },
+  );
 
   assert.equal(result.code, 0, result.stderr);
   assert.equal(stdin.prompts, 2);

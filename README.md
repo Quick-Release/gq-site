@@ -27,7 +27,10 @@ pnpm exec gq sync --check
 ```
 
 The target directory must be empty. `gq new` creates the CMS and Frontend
-app skeletons and prints the provisioning steps without running them.
+app skeletons and prints the provisioning steps without running them. A
+content site's Frontend is Astro or TanStack Start, its choice: in a terminal
+`gq new` asks, and `--framework astro|tanstack` picks one (TanStack Start when
+omitted outside a terminal). See [Frontend frameworks](docs/reference/frontend-frameworks.md).
 See [Generate and sync a site](docs/guides/sites.md) for ownership, adoption,
 and handling sync conflicts, then [Local development](docs/guides/local-development.md)
 or [Provisioning and deployment](docs/guides/provisioning.md).
