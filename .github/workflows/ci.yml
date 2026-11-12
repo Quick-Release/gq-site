@@ -245,6 +245,11 @@ jobs:
   # gq doctor pass. Public packages only; no secrets.
   sync-upgrade:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 0.40.0: the fleet's beta.79 / rc.115 catalog. 0.43.0: beta.84 with
+        # Effect 4.1.4, which can't load the Alchemy CLI.
+        from: ["0.40.0", "0.43.0"]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -254,6 +259,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: scripts/smoke/sync-upgrade.sh
+        env:
+          GQ_SYNC_FROM: ${{ matrix.from }}
 
   generated-start:
     runs-on: ubuntu-latest

@@ -18,7 +18,9 @@
 #    passes against it, and `gq sync --check` passes;
 # 4. `pnpm infra:check` and `pnpm ci:check` type-check the managed infra
 #    against the installed packages, and `gq doctor` passes, its Alchemy
-#    check included.
+#    check included;
+# 5. the Alchemy CLI plans the Frontend stack as far as Cloudflare, with a
+#    token Cloudflare refuses (plan_reaches_cloudflare).
 #
 # GQ_SYNC_FROM picks the earlier release. Generation and gq sync stay
 # offline and secret-free; npx and pnpm install use the network. Nothing is
@@ -61,6 +63,33 @@ workspace_pins() {
     }
     if (expect === "old" && differ.length === 0) throw new Error("the Site already has the new pins");
   ' "$repo" "$1"
+}
+
+# The Alchemy CLI plans the Frontend stack as far as Cloudflare: `alchemy
+# deploy --dry-run` with a token Cloudflare refuses, from a throwaway HOME
+# (Alchemy caches state-store credentials there). It must reach "Computing
+# plan" and fail only on authentication. A module the installed Alchemy
+# can't load (Alchemy up to beta.84 imports effect/Crypto, which Effect 4.1
+# removed) fails earlier, though tsc, builds and doctor all pass.
+plan_reaches_cloudflare() {
+  cp gq.ops.json "$parent/gq.ops.json.saved"
+  node -e '
+    const fs = require("node:fs");
+    const ops = JSON.parse(fs.readFileSync("gq.ops.json", "utf8"));
+    ops.domains = { admin: "cms.example.test", frontend: "example.test" };
+    fs.writeFileSync("gq.ops.json", JSON.stringify(ops, null, 2) + "\n");
+  '
+  local home output
+  home=$(mktemp -d "$parent/home.XXXXXX")
+  output=$(cd infra && HOME="$home" CLOUDFLARE_API_TOKEN=invalid \
+    CLOUDFLARE_ACCOUNT_ID=0123456789abcdef0123456789abcdef \
+    pnpm exec alchemy deploy --stage prod --config frontend.run.ts --dry-run --yes --no-input 2>&1 || true)
+  if grep -qE 'ERR_MODULE_NOT_FOUND|Cannot find module' <<<"$output"; then
+    grep -E 'ERR_MODULE_NOT_FOUND|Cannot find module' <<<"$output" | head -3 >&2
+    fail "the Alchemy CLI can't load the Frontend stack"
+  fi
+  grep -q 'Computing plan' <<<"$output" || { echo "$output" | tail -20 >&2; fail "the plan didn't reach Cloudflare"; }
+  mv "$parent/gq.ops.json.saved" gq.ops.json
 }
 
 for framework in astro tanstack; do
@@ -114,5 +143,6 @@ for framework in astro tanstack; do
   pnpm infra:check
   pnpm ci:check
   pnpm exec gq doctor
-  echo "✓ $project: synced from $from, installed, type-checked and doctor-clean"
+  plan_reaches_cloudflare
+  echo "✓ $project: synced from $from, installed, type-checked, doctor-clean, and its plan loads"
 done

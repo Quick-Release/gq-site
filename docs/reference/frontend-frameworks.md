@@ -82,7 +82,7 @@ pinned instead; no check is weakened for it. Pinned on 2026-11-12:
 | `vite-plus` (`vite` is its core)                                             | 1.6.0          | 1.6.0             |
 | `vitest`                                                                     | 5.1.0          | 5.1.0             |
 | `alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/frontend-frameworks`     | 2.0.0-beta.84  | 2.0.0-beta.84     |
-| `effect`, `@effect/platform-node`, `@effect/platform-node-shared` (override) | 4.1.4          | 4.1.4             |
+| `effect`, `@effect/platform-node`, `@effect/platform-node-shared` (override) | 4.0.7          | 4.0.7             |
 
 Gaps from the latest release:
 
@@ -104,16 +104,25 @@ Gaps from the latest release:
   Cloudflare state store's v7 protocol: beta.85 upgrades the account's shared
   store to v8 on its first deploy, after which a Site still on beta.84 or older
   can't deploy. That move is hop 2, made for the whole account at once.
+- **Effect 4.0, not 4.1.** Alchemy beta.79 to beta.84 import `effect/Crypto`,
+  which Effect 4.1 removed (4.1 has `effect/crypto`). With Effect 4.1 the
+  managed `infra` type-checks, the Frontend builds and `gq doctor` passes, but
+  `alchemy deploy` fails with `ERR_MODULE_NOT_FOUND` while it loads the stack,
+  so a Site can't plan or deploy (gq-site 0.41.0 to 0.43.0 shipped this pair).
+  Effect stays at 4.0.7, the latest 4.0.x, until hop 2 moves Alchemy past
+  beta.84. `scripts/smoke/sync-upgrade.sh` plans the stack as far as
+  Cloudflare to catch it.
 - **`capnp-es` and TypeScript 7.** `@alchemy.run/cloudflare-runtime` beta.84
   depends on `capnp-es` 0.0.16, whose optional `typescript` peer is `^5 || ^6`.
   pnpm warns; builds, checks and the workerd probe pass.
 - **`@cloudflare/workers-types`.** 5.20261112.1 was published on 2026-11-12,
   inside pnpm's 24-hour `minimumReleaseAge`; the skeletons pin 5.20261110.1.
 
-An existing Site's catalog (Alchemy beta.79 or beta.83, Effect
+An existing Site's catalog (Alchemy beta.79, beta.83 or beta.84, Effect
 4.0.0-rc.115 or 4.1.4) moves to these pins on its next `gq sync`:
-`scripts/smoke/sync-upgrade.sh` syncs a 0.40.0 Site, then installs it and
-type-checks its `infra` under TypeScript 7. The
+`scripts/smoke/sync-upgrade.sh` syncs a 0.40.0 Site (`GQ_SYNC_FROM` picks
+another release), installs it, type-checks its `infra` under TypeScript 7
+and plans its Frontend stack as far as Cloudflare. The
 Astro workspace keeps its `@napi-rs/wasm-runtime>@emnapi/runtime` override at
 1.11.3, the latest 1.x: without it pnpm still resolves an `@emnapi/runtime`
 2.0 beta for `astro2tsx`'s wasm runtime, the ABI mismatch the override
