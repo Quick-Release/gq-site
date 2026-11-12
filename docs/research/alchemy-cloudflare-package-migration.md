@@ -1,7 +1,7 @@
 # Alchemy beta.84+ and `@alchemy.run/cloudflare`: fleet migration plan
 
 Planning only, written 2026-11-12 against gq-site `main` 790b1b6 (0.41.1).
-Nothing here is implemented. Tracking issue: ISSUE_PLACEHOLDER.
+Nothing here is implemented. Tracking issue: [#185](https://github.com/Quick-Release/gq-site/issues/185).
 
 ## Problem
 
