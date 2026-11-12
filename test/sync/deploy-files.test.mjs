@@ -4,7 +4,7 @@
 // renders the content site's own files (test/fixtures/content-site).
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -355,6 +355,7 @@ async function plan(root) {
   assert.equal(scripts["plan:frontend:raw"], "pnpm --dir infra run plan:frontend");
   const infra = JSON.parse(await readSite(root, "infra/package.json")).scripts;
   assert.equal(infra["plan:frontend"], "node scripts/deploy-frontend.mjs --dry-run --detailed");
+  await installCloudflareProvider(root);
   const alchemy = join(root, "alchemy");
   await writeFile(
     alchemy,
@@ -373,6 +374,18 @@ async function plan(root) {
   });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   return JSON.parse(result.stdout.trim().split("\n").at(-1));
+}
+
+// Alchemy's Cloudflare provider package as infra installs it: the deploy
+// refuses to run without it.
+async function installCloudflareProvider(root) {
+  const provider = join(root, "infra", "node_modules", "@alchemy.run", "cloudflare");
+  await mkdir(provider, { recursive: true });
+  await writeFile(
+    join(provider, "package.json"),
+    JSON.stringify({ name: "@alchemy.run/cloudflare", type: "module", exports: "./index.js" }),
+  );
+  await writeFile(join(provider, "index.js"), "export {};\n");
 }
 
 const PLAN_ARGS = [
@@ -411,4 +424,21 @@ test("a commerce Site's plan:frontend plans through the deploy wrapper, with gq.
   });
 
   assert.deepEqual(await plan(root), { args: PLAN_ARGS, account: ACME.cloudflare.accountId });
+});
+
+test("the Frontend deploy refuses to run without Alchemy's Cloudflare provider installed", async () => {
+  const fixture = await createFixtureSite({ ops: ACME });
+  assert.equal((await fixture.run(["sync"])).code, 0);
+  const environment = { ...process.env };
+  delete environment.NODE_TEST_CONTEXT;
+  const result = spawnSync(process.execPath, ["scripts/deploy-frontend.mjs", "--dry-run"], {
+    cwd: join(fixture.root, "infra"),
+    encoding: "utf8",
+    env: { ...environment, PATH: fixture.root },
+  });
+  assert.equal(result.status, 1);
+  assert.equal(
+    result.stderr,
+    "@alchemy.run/cloudflare isn't installed in infra: run pnpm install (gq sync added it), then deploy again.\n",
+  );
 });

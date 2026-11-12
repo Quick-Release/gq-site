@@ -24,9 +24,10 @@ overrides:
 catalog:
   # Alchemy/Effect: shared by infra (deploy) and apps/frontend (the Vite build
   # resolves the Alchemy server entrypoint from apps/frontend).
-  "@alchemy.run/frontend-frameworks": 2.0.0-beta.83
+  "@alchemy.run/cloudflare": 2.0.0-beta.84
+  "@alchemy.run/frontend-frameworks": 2.0.0-beta.84
   "@effect/platform-node": 4.1.4
-  alchemy: 2.0.0-beta.83
+  alchemy: 2.0.0-beta.84
   effect: 4.1.4
   vite: npm:@voidzero-dev/vite-plus-core@1.6.0
   vitest: 5.1.0

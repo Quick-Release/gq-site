@@ -179,7 +179,7 @@ The generated deploy script and `infra/frontend.run.ts` derive
 `PUBLIC_WORDPRESS_GRAPHQL_URL` from `domains.admin` and `wordpress.graphqlPath`.
 An explicit process `PUBLIC_WORDPRESS_GRAPHQL_URL` still takes precedence:
 remove or align an old `/wp/graphql` override when adopting `/graphql`.
-On the pinned Alchemy / frontend-frameworks `2.0.0-beta.79`, a string in
+On the pinned Alchemy / frontend-frameworks (`2.0.0-beta.79` to `2.0.0-beta.84`), a string in
 `Website.env` is passed into Astro's build child's `process.env`, overriding
 its local `.env`; the production public URL is declared there, with or without
 a publication store. This is not a secret binding. Direct production Alchemy
@@ -328,7 +328,20 @@ A site shares four more kinds of file with the blueprint:
   `infra:check`, `ci:check`, `test:scripts`, `media:check*` and
   `frontend:refresh`). On a Site on the content package pair, the pins in
   `apps/cms/composer.json` and `apps/frontend/package.json` are managed keys
-  too ([The content runtime](#the-content-runtime)). Every other key, including
+  too ([The content runtime](#the-content-runtime)). In `pnpm-workspace.yaml`,
+  `gq` sets the pins the managed `infra` needs: the `catalog` versions of
+  `alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/frontend-frameworks`,
+  `effect` and `@effect/platform-node`, and Effect's
+  `overrides["@effect/platform-node-shared"]` and
+  `peerDependencyRules.allowedVersions.effect`. The managed infra and these
+  pins therefore move in one `gq sync`. Run `pnpm install` after it and commit
+  the lockfile with it; `gq doctor` fails while the installed Alchemy
+  packages disagree with each other or with the catalog. A workspace key the
+  lock doesn't record yet is taken over without asking (an earlier skeleton
+  wrote it). The YAML file is edited line by line: a value is replaced where
+  it stands, keeping its comment; a missing key goes where it sorts among its
+  siblings; a missing map is appended. A workspace key the blueprint retires
+  stays, the site's. Every other key, including
   the site's own scripts and its dependencies, is the site's: `gq` edits
   the file as text, so those keys stay byte for byte. A managed key the site removed is added
   back after its siblings, in the file's indentation; in a `package.json`

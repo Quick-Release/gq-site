@@ -20,13 +20,17 @@ const OPS = {
 const STUBS = {
   "node_modules/alchemy/package.json": JSON.stringify({
     type: "module",
-    exports: { ".": "./index.js", "./Stack": "./Stack.js", "./Cloudflare": "./Cloudflare.js" },
+    exports: { ".": "./index.js", "./Stack": "./Stack.js" },
   }),
   "node_modules/alchemy/index.js":
     "export const Stack = (_id, _options, program) => program; export const RemovalPolicy = { retain: () => value => value };",
   "node_modules/alchemy/Stack.js":
     "export const Stack = { *[Symbol.iterator]() { return { stage: process.env.TEST_STAGE }; } };",
-  "node_modules/alchemy/Cloudflare.js": `
+  "node_modules/@alchemy.run/cloudflare/package.json": JSON.stringify({
+    type: "module",
+    exports: { ".": "./index.js" },
+  }),
+  "node_modules/@alchemy.run/cloudflare/index.js": `
     export const Website = { Astro: (_id, props) => (function* () {
       const result = yield* props;
       return { ...result, bind: () => function* (bindings) { globalThis.previewBindings = bindings; } };

@@ -29,6 +29,7 @@ import packageJson from "../../package.json" with { type: "json" };
 import { deployStatusMarker } from "../ploi/provision.mjs";
 import { frontendFramework } from "../manifest/schema.mjs";
 import { VERSION } from "../version.mjs";
+import { editYamlKeys } from "./workspace-keys.mjs";
 
 export const LOCK_FILENAME = "gq.lock.json";
 
@@ -340,10 +341,11 @@ async function planKeys(
   root,
   lock,
   manifest,
-  { path, template, initial },
+  { path, template, initial, format },
   creating,
   { addInitial = false } = {},
 ) {
+  if (format === "yaml") return planYamlKeys(root, lock, { path, template }, creating);
   const managed = leafKeys(JSON.parse(await readTemplate(template)));
   const record = {
     keys: { [path]: Object.fromEntries(managed.map(({ key, value }) => [key, hashValue(value)])) },
@@ -450,6 +452,57 @@ async function planKeys(
     path,
     status,
     scope,
+    current: current.bytes,
+    content,
+    write: { bytes: content },
+    record,
+  };
+}
+
+// Managed keys of a YAML file (pnpm-workspace.yaml; workspace-keys.mjs): each
+// leaf of the template, a JSON object, set at its key path. A key the lock
+// doesn't record yet is taken over from the create-once skeleton that wrote
+// it; a recorded one the Site changed since is an edit. The file must exist:
+// it is a create-once file of every variant, written before its keys.
+async function planYamlKeys(root, lock, { path, template }, creating) {
+  const managed = leafKeys(JSON.parse(await readTemplate(template)));
+  const record = {
+    keys: { [path]: Object.fromEntries(managed.map(({ key, value }) => [key, hashValue(value)])) },
+  };
+  const current = creating ? { bytes: creating.content } : await readEntry(join(root, path));
+  if (current === undefined) {
+    throw new Error(
+      `${path} is missing, and gq sync manages keys of it: restore it, or recreate it ` +
+        `with gq sync --recreate ${path}.`,
+    );
+  }
+  if (current.bytes === undefined) {
+    throw new Error(`${path} must be a regular file: gq sync manages keys of it.`);
+  }
+  const text = current.bytes.toString("utf8");
+  const written = lock?.keys[path] ?? {};
+  const { content: next, changes } = editYamlKeys(path, text, managed);
+  const changed = [];
+  const edited = [];
+  for (const { key, current: value } of changes) {
+    const recorded = written[key];
+    if (
+      creating ||
+      value === undefined ||
+      recorded === undefined ||
+      hashValue(value) === recorded
+    ) {
+      changed.push(key);
+    } else edited.push(key);
+  }
+  let status = "unchanged";
+  if (edited.length > 0) status = "edited";
+  else if (changed.length > 0) status = "update";
+  const content = status === "unchanged" ? current.bytes : Buffer.from(next);
+  return {
+    path,
+    status,
+    scope: `managed keys ${(edited.length > 0 ? edited : changed).join(", ")}`,
     current: current.bytes,
     content,
     write: { bytes: content },

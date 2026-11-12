@@ -3,6 +3,31 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **Alchemy's Cloudflare provider from its own package, with the pins it
+  needs managed.** The managed `infra/frontend.run.ts` and `infra/consent.ts`
+  (content Astro and TanStack, and commerce) import Cloudflare from
+  `@alchemy.run/cloudflare` instead of `alchemy/Cloudflare`, and
+  `infra/package.json` depends on it. Alchemy, the Cloudflare provider and
+  `@alchemy.run/frontend-frameworks` move to 2.0.0-beta.84, and an existing
+  Site's Effect moves from 4.0.0-rc.115 to 4.1.4. This is hop 1 of the
+  [fleet migration](docs/research/alchemy-cloudflare-package-migration.md)
+  (#185): beta.84 still uses the Alchemy state store's v7 protocol, as
+  beta.79 does, so Sites move one at a time.
+  - `pnpm-workspace.yaml` has managed keys: the `catalog` versions of
+    `alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/frontend-frameworks`,
+    `effect` and `@effect/platform-node`, and Effect's override and allowed
+    peer version. The `gq sync` that rewrites the infra sets them in the same
+    change, editing only those lines. A key the lock doesn't record yet is
+    taken over from the skeleton that wrote it. Run `pnpm install` after the
+    sync, and commit the lockfile with it.
+  - `gq doctor` fails while the installed Alchemy packages (`infra`, and the
+    Frontend's `@alchemy.run/frontend-frameworks`) disagree with each other
+    or with the catalog.
+  - The Frontend deploy (and `plan:frontend`) refuses to run while
+    `@alchemy.run/cloudflare` isn't installed in `infra`.
+
 ## 0.41.1 — 2026-11-12
 
 - **CI runs the Sites' pinned Node.** The managed CI image

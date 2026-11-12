@@ -131,6 +131,7 @@ test("gq new writes package.json with the managed keys, each hashed in the lock"
     "apps/cms/composer.json",
     "apps/frontend/package.json",
     "package.json",
+    "pnpm-workspace.yaml",
   ]);
   assert.deepEqual(Object.keys(lock.keys["package.json"]), MANAGED_KEYS);
   assert.equal(lock.keys["package.json"]["scripts.verify"], hash('"gq verify"'));

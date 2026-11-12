@@ -9,6 +9,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@alchemy.run/cloudflare": "catalog:",
     "@alchemy.run/frontend-frameworks": "catalog:",
     "@effect/platform-node": "catalog:",
     "alchemy": "catalog:",

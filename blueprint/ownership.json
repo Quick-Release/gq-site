@@ -289,6 +289,11 @@
       "path": "apps/frontend/package.json",
       "template": "templates/fragments/commerce-frontend-package.keys.json",
       "variants": ["commerce"]
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "template": "templates/fragments/workspace.keys.json",
+      "format": "yaml"
     }
   ],
   "createOnce": [

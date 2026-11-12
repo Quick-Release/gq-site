@@ -21,6 +21,19 @@ if (ops.offboarded) {
   process.exit(1);
 }
 
+// frontend.run.ts imports Alchemy's Cloudflare provider from its own package
+// (from 2.0.0-beta.84), which is also how the Alchemy CLI finds Cloudflare's
+// auth and state store: a sync committed without pnpm install would fail
+// mid-deploy.
+try {
+  import.meta.resolve("@alchemy.run/cloudflare");
+} catch {
+  console.error(
+    "@alchemy.run/cloudflare isn't installed in infra: run pnpm install (gq sync added it), then deploy again.",
+  );
+  process.exit(1);
+}
+
 // Validate before invoking Alchemy; secret values are never logged.
 if (
   ops.preview !== undefined ||

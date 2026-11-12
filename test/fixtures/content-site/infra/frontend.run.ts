@@ -1,7 +1,7 @@
 import { previewBindings } from "@getquick/site/preview-bindings";
 import * as Alchemy from "alchemy";
 import { Stack } from "alchemy/Stack";
-import * as Cloudflare from "alchemy/Cloudflare";
+import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { existsSync, readFileSync } from "node:fs";
@@ -50,7 +50,7 @@ if (customHostname && !zoneId) {
 }
 const customHostnameRoutes =
   customHostname && zoneId ? [{ pattern: `${productionHostname}/*`, zoneId }] : undefined;
-// Alchemy beta.79 to beta.83 pass string Website.env values to Astro's build child,
+// Alchemy beta.79 to beta.84 pass string Website.env values to Astro's build child,
 // overriding the app's local .env. This is public configuration, not a secret.
 const graphqlUrl =
   process.env.PUBLIC_WORDPRESS_GRAPHQL_URL ||

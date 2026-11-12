@@ -25,7 +25,9 @@
 // copy a Site's own Sigillo environments still hold warns: names only. Each
 // secret a Site's own Composer login (gq.ops.json composer.logins) reads must
 // be in Sigillo staging (CI and Ploi releases), and warns when another mapped
-// environment, such as local, lacks it.
+// environment, such as local, lacks it. The Alchemy packages the Site deploys
+// with must be installed at the one version the workspace catalog pins
+// (alchemy-install.mjs).
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -59,6 +61,7 @@ import { sigilloSecrets } from "../sigillo/commands.mjs";
 import { PLATFORM_LOCATION, PLATFORM_NAME, platformSecrets } from "../sigillo/platform.mjs";
 import { composerLogins } from "../sigillo/composer-logins.mjs";
 import { PLATFORM_ACCESS_REMEDY, REGISTRY_SECRETS } from "../sigillo/registry-credentials.mjs";
+import { alchemyInstall } from "./alchemy-install.mjs";
 import { adoptionGaps } from "../sync/adoption.mjs";
 import { VERSION } from "../version.mjs";
 import { checkLocalEnvFiles } from "./env-files.mjs";
@@ -140,6 +143,13 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
       `${CMS_PATH} Composer dependencies installed, but Composer is not — pnpm verify and the pre-push hook skip the PHP checks`,
     );
   } else ok(`${CMS_PATH} Composer dependencies installed`);
+  const alchemy = alchemyInstall(root);
+  if (alchemy?.problem) fail(alchemy.problem);
+  else if (alchemy) {
+    ok(
+      `${[...new Set(alchemy.installed.map(({ name }) => name))].join(", ")} ${alchemy.version} installed`,
+    );
+  }
   for (const { group, npm, problem } of await lockstepLocks(root)) {
     if (!problem) ok(`${group} is locked at ${npm[0].version} in both lockfiles`);
     else (problem.level === "fail" ? fail : warn)(problem.message);

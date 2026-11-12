@@ -1,0 +1,17 @@
+{
+  "overrides": {
+    "@effect/platform-node-shared": "4.1.4"
+  },
+  "catalog": {
+    "@alchemy.run/cloudflare": "2.0.0-beta.84",
+    "@alchemy.run/frontend-frameworks": "2.0.0-beta.84",
+    "@effect/platform-node": "4.1.4",
+    "alchemy": "2.0.0-beta.84",
+    "effect": "4.1.4"
+  },
+  "peerDependencyRules": {
+    "allowedVersions": {
+      "effect": "4.1.4"
+    }
+  }
+}
