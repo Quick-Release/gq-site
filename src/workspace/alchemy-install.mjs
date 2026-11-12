@@ -26,8 +26,9 @@ const WORKSPACE_FILE = "pnpm-workspace.yaml";
 // `infra/package.json`, or with no Alchemy in it, has nothing to check.
 export function alchemyInstall(root) {
   const manifest = readJson(join(root, "infra", "package.json"));
-  if (manifest === null || manifest.dependencies?.alchemy === undefined) return undefined;
-  const declared = ALCHEMY_PACKAGES.filter((name) => manifest.dependencies?.[name] !== undefined);
+  const specs = { ...manifest?.devDependencies, ...manifest?.dependencies };
+  if (manifest === null || specs.alchemy === undefined) return undefined;
+  const declared = ALCHEMY_PACKAGES.filter((name) => specs[name] !== undefined);
   const installed = declared.map((name) => ({
     where: "infra",
     name,
@@ -35,7 +36,8 @@ export function alchemyInstall(root) {
   }));
   const frontend = join(root, "apps", "frontend");
   const frontendManifest = readJson(join(frontend, "package.json"));
-  if (frontendManifest?.dependencies?.["@alchemy.run/frontend-frameworks"] !== undefined) {
+  const frontendSpecs = { ...frontendManifest?.devDependencies, ...frontendManifest?.dependencies };
+  if (frontendSpecs["@alchemy.run/frontend-frameworks"] !== undefined) {
     installed.push({
       where: "apps/frontend",
       name: "@alchemy.run/frontend-frameworks",
@@ -62,7 +64,11 @@ export function alchemyInstall(root) {
     };
   }
   const [version] = versions;
-  if (catalog !== undefined && catalog !== version) {
+  // Only an exact catalog pin that infra installs through (`catalog:`) is
+  // compared: a range, or a direct pin in infra/package.json, isn't the
+  // catalog's to answer for.
+  const exact = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/u;
+  if (specs.alchemy === "catalog:" && exact.test(catalog ?? "") && catalog !== version) {
     return {
       installed,
       problem: `Alchemy ${version} is installed but ${WORKSPACE_FILE} pins ${catalog} — run: pnpm install`,

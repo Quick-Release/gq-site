@@ -18,8 +18,12 @@
 // `segments` is the key path (`["catalog", "alchemy"]`); its lock key joins
 // the segments with dots.
 export function editYamlKeys(path, text, managed) {
-  const lines = text.split(/(?<=\n)/u);
   const newline = text.includes("\r\n") ? "\r\n" : "\n";
+  // A last line without its newline gets one, so a key added after it starts
+  // a line of its own.
+  const lines = (text === "" || text.endsWith("\n") ? text : `${text}${newline}`)
+    .split(/(?<=\n)/u)
+    .filter((line) => line !== "");
   const results = [];
   for (const { key, segments, value } of managed) {
     const found = locate(path, lines, segments);
@@ -30,8 +34,10 @@ export function editYamlKeys(path, text, managed) {
       const original = lines[found.line];
       const ending = /\r?\n$/u.exec(original)?.[0] ?? "";
       const body = original.slice(0, original.length - ending.length);
+      // An empty value (`effect:`, YAML's null) gains one after its colon.
+      const written = found.empty ? ` ${formatScalar(value)}` : formatScalar(value);
       lines[found.line] =
-        `${body.slice(0, found.valueStart)}${formatScalar(value)}${body.slice(found.valueEnd)}${ending}`;
+        `${body.slice(0, found.valueStart)}${written}${body.slice(found.valueEnd)}${ending}`;
       continue;
     }
     results.push({ key, current: undefined });
@@ -59,16 +65,24 @@ function locate(path, lines, segments) {
     const entry = entries.find(({ name }) => name === segments[depth]);
     if (entry === undefined) return { depth, block, entries };
     if (depth === segments.length - 1) {
-      if (entry.value === undefined) {
+      if (entry.special) {
+        throw new Error(
+          `${path}: ${segments.join(".")} isn't a plain or quoted value gq sync can edit ` +
+            "(an anchor, alias, tag, block or flow value).",
+        );
+      }
+      const empty = entry.value === undefined;
+      if (empty && entry.blockEnd > entry.line + 1) {
         throw new Error(
           `${path}: ${segments.join(".")} is a map, but gq sync manages it as a single value.`,
         );
       }
       return {
         line: entry.line,
-        value: entry.value,
-        valueStart: entry.valueStart,
-        valueEnd: entry.valueEnd,
+        value: empty ? "" : entry.value,
+        empty,
+        valueStart: empty ? entry.keyEnd : entry.valueStart,
+        valueEnd: empty ? entry.keyEnd : entry.valueEnd,
       };
     }
     if (entry.value !== undefined) {
@@ -92,7 +106,7 @@ function blockEntries(path, lines, { start, end, indent }) {
   let childIndent;
   for (let line = start; line < end; line += 1) {
     const text = lines[line].replace(/\r?\n$/u, "");
-    if (/^\s*(#.*)?$/u.test(text)) continue;
+    if (/^\s*(#.*)?$/u.test(text) || /^(---|\.\.\.)\s*(#.*)?$/u.test(text)) continue;
     const spaces = /^ */u.exec(text)[0].length;
     if (spaces <= indent) break;
     if (childIndent === undefined) childIndent = spaces;
@@ -104,10 +118,20 @@ function blockEntries(path, lines, { start, end, indent }) {
     }
     const [, , rawName, rest] = match;
     const name = unquote(rawName);
-    const { value, offset, length } = scalar(rest);
-    const valueStart = text.length - rest.length + offset;
-    const entry = { name, line, indent: spaces, value, valueStart, valueEnd: valueStart + length };
-    entries.push(entry);
+    const restStart = text.length - rest.length;
+    const keyEnd = text.indexOf(":", spaces + rawName.length) + 1;
+    const parsed = scalar(path, line, rest);
+    const valueStart = restStart + parsed.offset;
+    entries.push({
+      name,
+      line,
+      indent: spaces,
+      keyEnd,
+      value: parsed.value,
+      special: parsed.special ?? false,
+      valueStart,
+      valueEnd: valueStart + parsed.length,
+    });
   }
   // Each entry's block runs to its last nested line, before the next entry
   // at its indentation (and any comment above that entry).
@@ -132,12 +156,23 @@ function blockEnd(lines, line, end, indent) {
   return last + 1;
 }
 
-// A value after `key:`: a plain or quoted scalar, without a trailing comment.
-// An empty value (a nested map follows) is undefined.
-function scalar(rest) {
-  const trimmed = rest.replace(/[ \t]+#.*$/u, "").replace(/[ \t]+$/u, "");
-  if (trimmed === "") return { value: undefined, offset: 0, length: 0 };
-  return { value: unquote(trimmed), offset: 0, length: trimmed.length };
+// A value after `key:` (`rest`): a plain or quoted scalar and where it is in
+// `rest`, without a trailing comment. Nothing, or only a comment, is
+// undefined (a nested map follows, or YAML's null). An anchor, alias, tag,
+// block or flow value is `special`: kept as it is, never edited.
+function scalar(path, line, rest) {
+  if (rest === "" || /^[ \t]*(#.*)?$/u.test(rest))
+    return { value: undefined, offset: 0, length: 0 };
+  if (/^[&*!|>{[]/u.test(rest))
+    return { value: rest, special: true, offset: 0, length: rest.length };
+  let length;
+  if (rest.startsWith('"')) length = /^"(?:[^"\\]|\\.)*"/u.exec(rest)?.[0].length;
+  else if (rest.startsWith("'")) length = /^'(?:[^']|'')*'/u.exec(rest)?.[0].length;
+  else length = rest.replace(/[ \t]+#.*$/u, "").replace(/[ \t]+$/u, "").length;
+  if (length === undefined || !/^([ \t]+#.*|[ \t]*)$/u.test(rest.slice(length))) {
+    throw new Error(`${path}: line ${line + 1} has a value gq sync can't read.`);
+  }
+  return { value: unquote(rest.slice(0, length)), offset: 0, length };
 }
 
 function unquote(text) {
@@ -150,11 +185,14 @@ function unquote(text) {
 // reads it back as the same string, double-quoted otherwise.
 function formatScalar(value) {
   const text = String(value);
-  return /^[A-Za-z0-9_.^~+-][A-Za-z0-9_.^~<>=*+@/:-]*$/u.test(text) &&
+  const plain =
+    /^[A-Za-z0-9_.^~+-][A-Za-z0-9_.^~<>=*+@/:-]*$/u.test(text) &&
+    !text.endsWith(":") &&
     !/^(true|false|null|yes|no|on|off|~)$/iu.test(text) &&
-    !/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/u.test(text)
-    ? text
-    : JSON.stringify(text);
+    !/^[-+]?(\d[\d_]*\.?[\d_]*|\.\d+)([eE][-+]?\d+)?$/u.test(text) &&
+    !/^0[xob]/iu.test(text) &&
+    !/^\d{4}-\d{2}-\d{2}/u.test(text);
+  return plain ? text : JSON.stringify(text);
 }
 
 function formatKey(name) {
@@ -167,7 +205,7 @@ function formatKey(name) {
 // the file.
 function insert(lines, { depth, block, entries }, segments, value, newline) {
   const indentStep = 2;
-  const indent = entries[0]?.indent ?? block.indent + indentStep;
+  const indent = entries[0]?.indent ?? (depth === 0 ? 0 : block.indent + indentStep);
   const nested = segments.slice(depth);
   const rendered = nested.map((name, index) => {
     const pad = " ".repeat(indent + index * indentStep);
@@ -186,8 +224,6 @@ function insert(lines, { depth, block, entries }, segments, value, newline) {
     return;
   }
   if (depth === 0) {
-    const last = lines.at(-1);
-    if (last !== undefined && !/\n$/u.test(last)) lines[lines.length - 1] = `${last}${newline}`;
     lines.push(...rendered);
     return;
   }

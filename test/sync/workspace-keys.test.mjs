@@ -164,3 +164,56 @@ test("a workspace key gq sync can't place is refused, and nothing is written", a
   assert.match(result.stderr, /pnpm-workspace\.yaml: catalog must be a map: gq sync manages/u);
   assert.deepEqual(await snapshot(site.root), before);
 });
+
+test("the workspace editor keeps every other byte, whatever the file's shape", async () => {
+  const { editYamlKeys } = await import("../../src/sync/workspace-keys.mjs");
+  const key = (path, value) => ({ key: path.join("."), segments: path, value });
+  const cases = [
+    // No final newline: the added key gets a line of its own.
+    [
+      "peerDependencyRules:\n  allowedVersions:\n    astro: 1",
+      [key(["peerDependencyRules", "allowedVersions", "effect"], "4.0.7")],
+      "peerDependencyRules:\n  allowedVersions:\n    astro: 1\n    effect: 4.0.7\n",
+    ],
+    // An empty map at the end of the file.
+    [
+      "packages: []\ncatalog:",
+      [key(["catalog", "alchemy"], "1.0.0")],
+      "packages: []\ncatalog:\n  alchemy: 1.0.0\n",
+    ],
+    // A map key's comment, and a null value's.
+    [
+      "overrides: # pins\n  x: 1\n",
+      [key(["overrides", "y"], "2.0.0")],
+      "overrides: # pins\n  x: 1\n  y: 2.0.0\n",
+    ],
+    [
+      "catalog:\n  effect: # soon\n",
+      [key(["catalog", "effect"], "4.0.7")],
+      "catalog:\n  effect: 4.0.7 # soon\n",
+    ],
+    // A quoted value holding a #, and CRLF.
+    [
+      'catalog:\r\n  alchemy: "a #b" # c\r\n',
+      [key(["catalog", "alchemy"], "2.0.0")],
+      "catalog:\r\n  alchemy: 2.0.0 # c\r\n",
+    ],
+    // A value YAML would misread plain is quoted.
+    [
+      "catalog:\n  vite: x\n",
+      [key(["catalog", "vite"], "catalog:")],
+      'catalog:\n  vite: "catalog:"\n',
+    ],
+  ];
+  for (const [text, managed, expected] of cases) {
+    const { content } = editYamlKeys("pnpm-workspace.yaml", text, managed);
+    assert.equal(content, expected, text);
+    assert.deepEqual(editYamlKeys("pnpm-workspace.yaml", content, managed).changes, [], text);
+  }
+  for (const text of ["catalog:\n  alchemy: >-\n    1\n", "catalog:\n  alchemy: &a 1\n"]) {
+    assert.throws(
+      () => editYamlKeys("pnpm-workspace.yaml", text, [key(["catalog", "alchemy"], "2")]),
+      /catalog\.alchemy isn't a plain or quoted value gq sync can edit/u,
+    );
+  }
+});

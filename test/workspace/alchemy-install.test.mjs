@@ -99,3 +99,20 @@ test("a Site without infra Alchemy has nothing to check", async () => {
   const root = await temporaryDirectory();
   assert.equal(alchemyInstall(root), undefined);
 });
+
+test("a catalog range, or a direct pin in infra, isn't compared with the catalog", async () => {
+  const ranged = await site({
+    names: SPLIT,
+    installed: at("2.0.0-beta.84"),
+    catalog: "^2.0.0-beta.84",
+  });
+  assert.equal(alchemyInstall(ranged).problem, undefined);
+  const direct = await site({
+    names: SPLIT,
+    installed: at("2.0.0-beta.84"),
+    catalog: "2.0.0-beta.79",
+  });
+  const path = join(direct, "infra/package.json");
+  await writeFile(path, JSON.stringify({ dependencies: at("2.0.0-beta.84") }));
+  assert.equal(alchemyInstall(direct).problem, undefined);
+});
