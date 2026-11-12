@@ -25,5 +25,24 @@ COPY --from=docker.io/composer:2 /usr/bin/composer /usr/bin/composer
 # may run is still decided by the CMS composer.json's allow-plugins.
 ENV COMPOSER_ALLOW_SUPERUSER=1
 
+# Node: the version every Site pins locally (.nvmrc, .mise.toml), so CI's
+# checks run on the Node they pass on. The base image bundles Node 22.22.3,
+# older than Astro 7.4.2+ accepts (>=22.23.4). The official linux-x64 build
+# (Cloudflare's containers are linux/amd64) replaces it in /usr/local, where
+# the base keeps node, npm and npx: the sandbox server's JavaScript executor
+# and every CI step run this one, the only node on PATH. The checksum is the
+# tarball's line in nodejs.org's SHASUMS256.txt; change it with the version.
+ARG NODE_VERSION=24.21.0
+ARG NODE_SHA256=6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff
+RUN curl -fsSLo /tmp/node.tar.gz "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz" \
+  && echo "${NODE_SHA256}  /tmp/node.tar.gz" | sha256sum -c - \
+  && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+  && tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1 --no-same-owner \
+    --exclude="node-v${NODE_VERSION}-linux-x64/CHANGELOG.md" \
+    --exclude="node-v${NODE_VERSION}-linux-x64/LICENSE" \
+    --exclude="node-v${NODE_VERSION}-linux-x64/README.md" \
+  && rm /tmp/node.tar.gz \
+  && test "$(node --version)" = "v${NODE_VERSION}"
+
 # Matches packageManager in the root package.json.
 RUN npm install -g {{packageManager}}
