@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.43.0 — 2026-11-12
 
 - **Alchemy's package split, hop 1 of the Alchemy migration**
   ([plan](docs/research/alchemy-cloudflare-package-migration.md),
@@ -39,7 +39,7 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   committed without `pnpm install`. The managed `infra/scripts/deploy-frontend.mjs`
   refuses to run, before Alchemy does, when it can't resolve
   `@alchemy.run/cloudflare` from `infra`.
-- **What a Site must do.** Upgrade `@getquick/site` to this release, run `gq sync`
+- **What a Site must do.** Upgrade `@getquick/site` to 0.43.0, run `gq sync`
   and then `pnpm install`, and commit the sync diff with `pnpm-lock.yaml`. Run
   `gq sync --check`, `gq doctor`, `pnpm infra:check` and `pnpm ci:check`, read
   `pnpm plan:frontend` against production state (no resource may be replaced
