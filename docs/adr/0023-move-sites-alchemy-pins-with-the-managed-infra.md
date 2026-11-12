@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-11-12
 
+Implemented by [#190](https://github.com/Quick-Release/gq-site/pull/190) and
+[#195](https://github.com/Quick-Release/gq-site/pull/195), released in 0.43.0
+and 0.43.1.
+
 ## Context
 
 From `alchemy` 2.0.0-beta.84, Alchemy's Cloudflare provider is no longer
@@ -42,7 +46,9 @@ into the Site's `pnpm-workspace.yaml`.
    `peerDependencyRules.allowedVersions.effect`. The rest of the file stays
    the Site's own. The `gq sync` that rewrites the infra to import
    `@alchemy.run/cloudflare` writes the versions it needs in the same change.
-   As for any managed key, a pin the Site edited stops the sync with a diff.
+   The first sync takes over a pin only when its value is one an earlier
+   Blueprint wrote there. Any other value is the Site's edit and stops the
+   sync with a diff, as an edited managed key does.
    The Site's step is `gq sync`, then `pnpm install`, then a commit that
    includes the lockfile. The CHANGELOG names it.
 2. **`gq sync` has no Alchemy version guard.** It never writes the new imports
