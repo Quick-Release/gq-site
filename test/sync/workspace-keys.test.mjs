@@ -8,13 +8,13 @@ import test from "node:test";
 import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs";
 
 const KEYS = {
-  "overrides.@effect/platform-node-shared": "4.1.4",
+  "overrides.@effect/platform-node-shared": "4.0.7",
   "catalog.@alchemy.run/cloudflare": "2.0.0-beta.84",
   "catalog.@alchemy.run/frontend-frameworks": "2.0.0-beta.84",
-  "catalog.@effect/platform-node": "4.1.4",
+  "catalog.@effect/platform-node": "4.0.7",
   "catalog.alchemy": "2.0.0-beta.84",
-  "catalog.effect": "4.1.4",
-  "peerDependencyRules.allowedVersions.effect": "4.1.4",
+  "catalog.effect": "4.0.7",
+  "peerDependencyRules.allowedVersions.effect": "4.0.7",
 };
 
 // pnpm-workspace.yaml as an Astro content Site generated before these keys
@@ -62,16 +62,16 @@ peerDependencyRules:
 // @alchemy.run/cloudflare joins the catalog in order.
 const AFTER = BEFORE.replace(
   '"@effect/platform-node-shared": 4.0.0-rc.115',
-  '"@effect/platform-node-shared": 4.1.4',
+  '"@effect/platform-node-shared": 4.0.7',
 )
   .replace(
     '  "@alchemy.run/frontend-frameworks": 2.0.0-beta.79',
     '  "@alchemy.run/cloudflare": 2.0.0-beta.84\n  "@alchemy.run/frontend-frameworks": 2.0.0-beta.84',
   )
-  .replace('"@effect/platform-node": 4.0.0-rc.115', '"@effect/platform-node": 4.1.4')
+  .replace('"@effect/platform-node": 4.0.0-rc.115', '"@effect/platform-node": 4.0.7')
   .replace("alchemy: 2.0.0-beta.79", "alchemy: 2.0.0-beta.84")
-  .replace("  effect: 4.0.0-rc.115\n  vite:", "  effect: 4.1.4\n  vite:")
-  .replace("    effect: 4.0.0-rc.115", "    effect: 4.1.4");
+  .replace("  effect: 4.0.0-rc.115\n  vite:", "  effect: 4.0.7\n  vite:")
+  .replace("    effect: 4.0.0-rc.115", "    effect: 4.0.7");
 
 async function readLock(root) {
   return JSON.parse(await readSite(root, "gq.lock.json"));

@@ -47,6 +47,10 @@ try {
   run("pnpm", ["install", "--no-frozen-lockfile"]);
   run("pnpm", ["--filter", "@orbit/frontend", "check"]);
   run("pnpm", ["--filter", "@orbit/infrastructure", "check"]);
+  // The Alchemy CLI loads its deploy command on the pinned Effect: Alchemy
+  // beta.79 to beta.84 import effect/Crypto, which Effect 4.1 removed, so a
+  // mismatched pair type-checks and builds but can't plan or deploy.
+  run("pnpm", ["--filter", "@orbit/infrastructure", "exec", "alchemy", "deploy", "--help"]);
   const migrations = join(root, "apps/frontend/node_modules/@getquick/content/migrations");
   const historical = {
     "0001_publications.sql": "0c0fdcef981c58169a092f68f77a36f741e599d6ebc84314ea2d5a6e792fa706",

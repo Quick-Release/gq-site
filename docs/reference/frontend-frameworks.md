@@ -82,7 +82,7 @@ pinned instead; no check is weakened for it. Pinned on 2026-11-12:
 | `vite-plus` (`vite` is its core)                                         | 1.6.0          | 1.6.0             |
 | `vitest`                                                                 | 5.1.0          | 5.1.0             |
 | `alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/frontend-frameworks` | 2.0.0-beta.84  | 2.0.0-beta.84     |
-| `effect`, `@effect/platform-node`                                        | 4.1.4          | 4.1.4             |
+| `effect`, `@effect/platform-node`                                        | 4.0.7          | 4.0.7             |
 
 Gaps from the latest release:
 
@@ -100,6 +100,13 @@ Gaps from the latest release:
   account. It also unbinds a secret a deploy no longer declares. Adopting it
   is the second hop of the
   [fleet migration](../research/alchemy-cloudflare-package-migration.md).
+- **Effect 4.1.** Alchemy beta.79 to beta.84 import `effect/Crypto`, which
+  Effect 4.1 removed (it is `effect/crypto` there). With Effect 4.1 the managed
+  `infra` type-checks and the Frontend builds, but the Alchemy CLI can't load
+  its deploy command, so nothing can be planned or deployed. Effect stays at
+  4.0.7, the latest 4.0.x, until Alchemy moves past beta.84.
+  `scripts/smoke/tanstack-check.mjs` loads the CLI's deploy command to
+  catch this.
 - **`capnp-es` and TypeScript 7.** `@alchemy.run/cloudflare-runtime` beta.84
   depends on `capnp-es` 0.0.16, whose optional `typescript` peer is `^5 || ^6`.
   pnpm warns; builds, checks and the workerd probe pass.
@@ -110,7 +117,7 @@ An existing Site's Alchemy and Effect pins move with the managed `infra` code:
 they are managed keys of its `pnpm-workspace.yaml`
 ([Managed-file ownership](../guides/sites.md#managed-file-ownership)), so the
 `gq sync` that rewrites `infra/*.ts` to import `@alchemy.run/cloudflare` sets
-the catalog to beta.84 and Effect 4.1.4 in the same change. The
+the catalog to beta.84 and Effect 4.0.7 in the same change. The
 Astro workspace keeps its `@napi-rs/wasm-runtime>@emnapi/runtime` override at
 1.11.3, the latest 1.x: without it pnpm still resolves an `@emnapi/runtime`
 2.0 beta for `astro2tsx`'s wasm runtime, the ABI mismatch the override

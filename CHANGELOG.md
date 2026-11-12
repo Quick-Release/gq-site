@@ -10,8 +10,8 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   (content Astro and TanStack, and commerce) import Cloudflare from
   `@alchemy.run/cloudflare` instead of `alchemy/Cloudflare`, and
   `infra/package.json` depends on it. Alchemy, the Cloudflare provider and
-  `@alchemy.run/frontend-frameworks` move to 2.0.0-beta.84, and an existing
-  Site's Effect moves from 4.0.0-rc.115 to 4.1.4. This is hop 1 of the
+  `@alchemy.run/frontend-frameworks` move to 2.0.0-beta.84, and Effect to
+  4.0.7 (an existing Site's from 4.0.0-rc.115). This is hop 1 of the
   [fleet migration](docs/research/alchemy-cloudflare-package-migration.md)
   (#185): beta.84 still uses the Alchemy state store's v7 protocol, as
   beta.79 does, so Sites move one at a time.
@@ -27,6 +27,13 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
     or with the catalog.
   - The Frontend deploy (and `plan:frontend`) refuses to run while
     `@alchemy.run/cloudflare` isn't installed in `infra`.
+- **Fix: a new Site can plan and deploy its Frontend again.** 0.41.0 and
+  0.41.1 generated Sites with Alchemy beta.83 and Effect 4.1.4. Alchemy before
+  beta.85 imports `effect/Crypto`, which Effect 4.1 removed, so their
+  `plan:frontend` and `deploy:frontend` failed with `ERR_MODULE_NOT_FOUND`
+  before reaching Cloudflare. Effect is now pinned at 4.0.7 (a managed key, so
+  `gq sync` fixes such a Site too), and the TanStack smoke loads the Alchemy
+  CLI's deploy command so CI catches such a pair.
 
 ## 0.41.1 — 2026-11-12
 

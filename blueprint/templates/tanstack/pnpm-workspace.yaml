@@ -18,7 +18,7 @@ minimumReleaseAgeExclude:
   - "@quick-release/design-contract"
   - "@quick-release/design-renderer"
 overrides:
-  "@effect/platform-node-shared": 4.1.4
+  "@effect/platform-node-shared": 4.0.7
   vite: npm:@voidzero-dev/vite-plus-core@1.6.0
   vitest: 5.1.0
 catalog:
@@ -26,13 +26,13 @@ catalog:
   # resolves the Alchemy server entrypoint from apps/frontend).
   "@alchemy.run/cloudflare": 2.0.0-beta.84
   "@alchemy.run/frontend-frameworks": 2.0.0-beta.84
-  "@effect/platform-node": 4.1.4
+  "@effect/platform-node": 4.0.7
   alchemy: 2.0.0-beta.84
-  effect: 4.1.4
+  effect: 4.0.7
   vite: npm:@voidzero-dev/vite-plus-core@1.6.0
   vitest: 5.1.0
   vite-plus: 1.6.0
 peerDependencyRules:
   allowedVersions:
-    effect: 4.1.4
+    effect: 4.0.7
     vite: 1.6.0

@@ -527,16 +527,16 @@ test("a commerce site's CI installs @quick-release packages with the packages to
 // their maps.
 const WORKSPACE_KEYS = [
   "overrides:",
-  '  "@effect/platform-node-shared": 4.1.4',
+  '  "@effect/platform-node-shared": 4.0.7',
   "catalog:",
   '  "@alchemy.run/cloudflare": 2.0.0-beta.84',
   '  "@alchemy.run/frontend-frameworks": 2.0.0-beta.84',
-  '  "@effect/platform-node": 4.1.4',
+  '  "@effect/platform-node": 4.0.7',
   "  alchemy: 2.0.0-beta.84",
-  "  effect: 4.1.4",
+  "  effect: 4.0.7",
   "peerDependencyRules:",
   "  allowedVersions:",
-  "    effect: 4.1.4",
+  "    effect: 4.0.7",
   "",
 ].join("\n");
 
