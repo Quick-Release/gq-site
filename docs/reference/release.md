@@ -20,7 +20,9 @@ The `content` defaults:
   `ci:check`, then `composer --working-dir=apps/cms validate`, `run lint` and
   `run test` (each requiring `php`);
 - required files: `apps/cms` `composer.json` and `.ddev/config.yaml`,
-  `apps/frontend` `package.json` and `astro.config.mjs`.
+  `apps/frontend` `package.json` and `astro.config.mjs` (an Astro Frontend),
+  or `package.json`, `vite.config.ts` and `src/router.tsx` (a TanStack
+  Frontend, `framework: "tanstack"`).
 
 `commerce` has content's defaults, with the Frontend's `pnpm run build`
 after `test`, and requires `apps/frontend` `vite.config.ts` instead of

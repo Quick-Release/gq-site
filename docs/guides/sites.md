@@ -7,6 +7,7 @@ the installed `gq` ([ADR 0002](https://github.com/Quick-Release/gq-site/blob/mai
 
 ```sh
 gq new acme --project acme --variant content   # a complete content site, gq.lock.json, git init
+gq new acme --project acme --variant content --framework astro   # …whose Frontend is Astro, not TanStack Start
 gq new acme --project acme --variant content --locale pt_PT_ao90   # …whose main language is Portuguese (AO90)
 gq new shop --project shop --variant commerce  # a commerce site: WooCommerce CMS and TanStack Start storefront
 gq sync           # migrate gq.ops.json, regenerate managed files, update gq.lock.json
@@ -24,7 +25,11 @@ the create-once scaffolding, the CMS and Frontend skeletons among it. In a
 terminal it asks for the directory, project or variant its arguments lack;
 elsewhere it names them and stops. It asks for the site's main language too
 (`--locale`, a WordPress locale), and writes `en_US` without one outside a
-terminal. The project must be lowercase letters,
+terminal. A content site's Frontend framework (`--framework`) is asked for
+too: Astro or TanStack Start, both supported ([Frontend
+frameworks](../reference/frontend-frameworks.md)). Without the flag outside a
+terminal it is TanStack Start. A commerce site is always TanStack Start and is
+never asked. The project must be lowercase letters,
 digits and hyphens starting with a letter, since it names the site's
 packages, Workers and DDEV project. A target directory that isn't empty is
 refused. `--variant commerce` generates a [commerce site](commerce-sites.md). It then prints the

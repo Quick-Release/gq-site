@@ -44,7 +44,7 @@ and nothing comes from Ekis:
 ```sh
 pnpm --dir apps/frontend add --save-exact @quick-release/storefront@0.2.2 @quick-release/auth-contract@0.1.9
 pnpm --dir apps/frontend add @tanstack/react-query@^5.105.0
-pnpm --dir apps/frontend add -D --save-exact @cloudflare/workers-types@5.20261026.1
+pnpm --dir apps/frontend add -D --save-exact @cloudflare/workers-types@5.20261110.1
 ```
 
 Add `"@cloudflare/workers-types"` to `compilerOptions.types` in

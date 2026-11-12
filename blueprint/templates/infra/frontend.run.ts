@@ -50,7 +50,7 @@ if (customHostname && !zoneId) {
 }
 const customHostnameRoutes =
   customHostname && zoneId ? [{ pattern: `${productionHostname}/*`, zoneId }] : undefined;
-// Alchemy beta.79 passes string Website.env values to Astro's build child,
+// Alchemy beta.79 to beta.83 pass string Website.env values to Astro's build child,
 // overriding the app's local .env. This is public configuration, not a secret.
 const graphqlUrl =
   process.env.PUBLIC_WORDPRESS_GRAPHQL_URL ||

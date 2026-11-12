@@ -2,12 +2,29 @@
 
 `gq.ops.json` selects `framework: "astro" | "tanstack"` separately from
 `variant: "content" | "commerce"`. Omission means Astro, including migrated
-manifests and Sites on `contentRuntime: "package"`. `gq new` defaults to
-`tanstack`; `--framework astro` explicitly creates the supported Astro skeleton.
+manifests and Sites on `contentRuntime: "package"`.
+
+A new content Site chooses its Frontend framework: Astro or TanStack Start.
+Both are first-class, supported choices; neither is a compatibility path
+([gq-platform ADR 0015](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0015-astro-or-tanstack-for-new-content-site-frontends.md),
+amending ADR 0010). Astro suits content-heavy Sites that render CMS HTML and
+keep little client-side state; TanStack Start suits application-like Sites. In
+a terminal, `gq new` asks a content Site for the framework unless
+`--framework astro|tanstack` gives it. Outside a terminal `--framework`
+selects it, and without the flag the Site is TanStack, so existing scripts
+keep their behaviour.
+
 A commerce Site's Frontend is TanStack Start whatever `framework` says
 ([ADR 0017](https://github.com/Quick-Release/gq-site/blob/main/docs/adr/0017-generate-commerce-sites-from-the-variant-alone.md)):
 `gq new --variant commerce` records `tanstack` and refuses `--framework astro`. TanStack content Frontends require
 `contentRuntime: "package"`; new Sites already select that paired Runtime.
+
+The Astro skeleton uses Astro with Tailwind CSS. `gq sync` manages its
+`src/pages/gq/*` endpoints and, when forms are configured, its form route. Its
+pages, layouts and runtime configuration are Site-owned. `pnpm check` runs
+`astro check`; doctor requires `astro.config.mjs`. The installed
+`@getquick/content` owns the same delivery, events, refresh, consent, forms and
+migrations as for TanStack.
 
 The TanStack skeleton uses React, Start and Router. `gq sync` manages its
 `src/routes/gq.*` endpoints. The router, pages and `src/lib/content.ts` Runtime
@@ -42,14 +59,71 @@ Frontend replacement belongs in its own repository and worktree. Neither Site
 is modified here. CESAM's manifest project is `cesam`, regardless of its clone's
 `cesam-bnq` directory name; keep that identity.
 
+## Versions
+
+Each skeleton pins the newest stable upstream releases that pass the
+Blueprint's checks, and the two share the toolchain pins (gq-platform ADR 0015
+decision 4). A version that fails a check is recorded here with the version
+pinned instead; no check is weakened for it. Pinned on 2026-11-12:
+
+| Package                                       | Astro skeleton | TanStack skeleton |
+| --------------------------------------------- | -------------- | ----------------- |
+| `astro`                                       | ^7.4.11        | —                 |
+| `@astrojs/check`                              | ^0.9.12        | —                 |
+| `tailwindcss`, `@tailwindcss/vite`            | 4.3.5          | —                 |
+| `@tanstack/react-start`                       | —              | 1.169.5           |
+| `@tanstack/react-router`                      | —              | 1.170.46          |
+| `react`, `react-dom`                          | —              | 19.3.1            |
+| `@types/react`, `@types/react-dom`            | —              | 19.3.0            |
+| `@vitejs/plugin-react`                        | —              | 6.3.0             |
+| `@cloudflare/workers-types`                   | —              | 5.20261110.1      |
+| `typescript` (Frontend)                       | ^6.0.3         | 7.0.2             |
+| `typescript` (`infra`, `infra/ci`, managed)   | ^7.0.2         | ^7.0.2            |
+| `vite-plus` (`vite` is its core)              | 1.6.0          | 1.6.0             |
+| `vitest`                                      | 5.1.0          | 5.1.0             |
+| `alchemy`, `@alchemy.run/frontend-frameworks` | 2.0.0-beta.83  | 2.0.0-beta.83     |
+| `effect`, `@effect/platform-node`             | 4.1.4          | 4.1.4             |
+
+Gaps from the latest release:
+
+- **TypeScript 7 in the Astro Frontend.** `astro check` (`@astrojs/check`
+  0.9.12, whose `typescript` peer is `^5 || ^6`) refuses TypeScript 7: "astro
+  check does not currently support TypeScript 7.0". Astro's experimental
+  replacement, `@astrojs/ts-content-mapper`, needs TypeScript 7.1, which is
+  still a beta. The Astro Frontend stays on TypeScript 6.0.3, the latest 6.x.
+  The TanStack Frontend and the managed `infra` packages use TypeScript 7.0.2.
+- **Alchemy beta.84 and later.** From 2.0.0-beta.84 the Cloudflare provider is
+  no longer `alchemy/Cloudflare` but a separate `@alchemy.run/cloudflare`
+  package. The managed `infra/frontend.run.ts` and `infra/consent.ts` are
+  rewritten in every Site by `gq sync`, while the catalog that pins Alchemy is
+  in each Site's create-once `pnpm-workspace.yaml`. Moving the templates to
+  the new package would break every existing Site's `infra:check` and deploy on
+  its next sync. The skeletons pin beta.83, the newest release before the
+  split; adopting beta.84 or later needs its own fleet migration. beta.86 was
+  also younger than pnpm's 24-hour `minimumReleaseAge` on 2026-11-12.
+- **`capnp-es` and TypeScript 7.** `@alchemy.run/cloudflare-runtime` beta.83
+  depends on `capnp-es` 0.0.16, whose optional `typescript` peer is `^5 || ^6`.
+  pnpm warns; builds, checks and the workerd probe pass.
+- **`@cloudflare/workers-types`.** 5.20261112.1 was published on 2026-11-12,
+  inside pnpm's 24-hour `minimumReleaseAge`; the skeletons pin 5.20261110.1.
+
+The managed `infra` packages still type-check against an existing Site's
+catalog pins (Alchemy beta.79, Effect 4.0.0-rc.115) under TypeScript 7. The
+Astro workspace keeps its `@napi-rs/wasm-runtime>@emnapi/runtime` override at
+1.11.3, the latest 1.x: without it pnpm still resolves an `@emnapi/runtime`
+2.0 beta for `astro2tsx`'s wasm runtime, the ABI mismatch the override
+prevents.
+
 ## Verification
 
 `node scripts/smoke/tanstack-check.mjs` creates a disposable consumer using this
 checkout. It installs dependencies, checks app and infra, verifies the historical
-publication SQL hashes, builds with Alchemy beta.79's actual Cloudflare Vite
+publication SQL hashes, builds with the pinned Alchemy's actual Cloudflare Vite
 plugin, and executes the emitted Worker in workerd. No account, secret, Alchemy
-plan or deploy is used. `KEEP=1` retains the proof. Existing Astro smoke commands
-explicitly select Astro and retain their coverage.
+plan or deploy is used. `KEEP=1` retains the proof. The Astro smokes
+(`scripts/smoke/frontend-check.sh`, `consent.sh`, `presentation.sh` and
+`content-pair.sh`) select `--framework astro` and remain required; neither
+framework's coverage is weakened to make the other pass.
 
 See [the integration note](../research/tanstack-start-alchemy-v2.md) for upstream
 sources, evidence limits and the CESAM/gq-content handoff.

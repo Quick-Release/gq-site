@@ -3,6 +3,32 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **Astro or TanStack for new content Sites**
+  ([gq-platform ADR 0015](https://github.com/Quick-Release/gq-platform/blob/main/docs/adr/0015-astro-or-tanstack-for-new-content-site-frontends.md)).
+  Both are supported choices for a new content Site's Frontend. In a terminal,
+  `gq new` now asks a content Site for Astro or TanStack Start when
+  `--framework` is not given. Outside a terminal, an omitted `--framework`
+  still creates TanStack Start, and a commerce Site is still always TanStack
+  Start and never asked.
+- **Both skeletons on current upstream releases, with shared toolchain pins.**
+  The Astro skeleton moves to `astro` ^7.4.11, `@astrojs/check` ^0.9.12 and
+  Tailwind CSS 4.3.5. The TanStack skeleton moves to `@tanstack/react-start`
+  1.169.5, `@vitejs/plugin-react` 6.3.0, TypeScript 7.0.2 and
+  `@cloudflare/workers-types` 5.20261110.1. Both now share Vite+ 1.6.0, Vitest
+  5.1.0, Alchemy 2.0.0-beta.83 and Effect 4.1.4, up from Vite+ 0.3.0 and
+  Vitest 4.1.11 (Astro), Vite+ 1.0.0 and Vitest 5.0.1 (TanStack), Alchemy
+  beta.79 and Effect 4.0.0-rc.115. The managed `infra` and `infra/ci`
+  packages move to TypeScript ^7.0.2, and `infra/ci` to
+  `@cloudflare/workers-types` ^5.20261110.1. These pins are in the create-once
+  workspace and app `package.json` files, so an existing Site keeps its own
+  until it bumps them; the managed `infra` code still type-checks against the
+  old pins. The Astro Frontend stays on TypeScript 6 (`@astrojs/check` does
+  not support 7 yet), and Alchemy stays before beta.84, which moves the
+  Cloudflare provider to its own package; see
+  [Frontend frameworks](docs/reference/frontend-frameworks.md#versions).
+
 ## 0.40.0 — 2026-11-12
 
 - **A Site's own Composer logins.** `gq.ops.json` `composer.logins` declares
