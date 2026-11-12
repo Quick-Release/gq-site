@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.40.0 — 2026-11-12
 
 - **A Site's own Composer logins.** `gq.ops.json` `composer.logins` declares
   http-basic logins for registries only that Site installs from, such as
