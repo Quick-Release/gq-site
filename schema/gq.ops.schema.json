@@ -199,6 +199,45 @@
       ],
       "additionalProperties": false
     },
+    "composer": {
+      "description": "Composer registries only this Site installs from, beside the fleet's.",
+      "type": "object",
+      "properties": {
+        "logins": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "username": {
+                "type": "string",
+                "minLength": 1
+              },
+              "usernameSecret": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]*$"
+              },
+              "password": {
+                "type": "string",
+                "minLength": 1
+              },
+              "passwordSecret": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]*$"
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "The Site's own Composer http-basic logins, by registry host (composer.gravity.io): gq adds each to the fleet's COMPOSER_AUTH wherever it provides it (gq sigillo run, so gq cms composer, gq ploi release and gq ci deploy). Each part is a literal (username, password) or the name of a secret in the Site's Sigillo environment the command runs under (usernameSecret, passwordSecret); at least one is a secret."
+        }
+      },
+      "required": [
+        "logins"
+      ],
+      "additionalProperties": false
+    },
     "releases": {
       "type": "object",
       "properties": {

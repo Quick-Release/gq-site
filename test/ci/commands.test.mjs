@@ -976,3 +976,41 @@ test("github app create stops when the App already exists, and --dry-run prints 
   assert.match(dry.stdout, /\+ generate the broker key/u);
   assert.deepEqual(fresh.stores.platform, {});
 });
+
+test("ci deploy refuses a COMPOSER_AUTH without the Site's declared Composer login", async () => {
+  const composer = {
+    logins: {
+      "composer.gravity.io": {
+        usernameSecret: "GRAVITY_FORMS_LICENSE_KEY",
+        password: "https://cms.example.test",
+      },
+    },
+  };
+  const fixture = await site({ ops: { ...OPS, composer } });
+  const fleetOnly = JSON.stringify({
+    "http-basic": { "proxy.composer.getquick.io": { username: "u", password: "p" } },
+  });
+  const exec = recordingExec();
+  const refused = await fixture.run(["ci", "deploy"], {
+    env: { ...DEPLOY_ENV, COMPOSER_AUTH: fleetOnly },
+    exec,
+  });
+  assert.equal(refused.code, 1);
+  assert.match(
+    refused.stderr,
+    /COMPOSER_AUTH has no login for composer\.gravity\.io, which gq\.ops\.json composer\.logins declares: CI's release needs GRAVITY_FORMS_LICENSE_KEY/u,
+  );
+  assert.deepEqual(exec.calls, [], "nothing deployed");
+
+  const merged = JSON.stringify({
+    "http-basic": {
+      "proxy.composer.getquick.io": { username: "u", password: "p" },
+      "composer.gravity.io": { username: "license", password: "https://cms.example.test" },
+    },
+  });
+  const deployed = await fixture.run(["ci", "deploy"], {
+    env: { ...DEPLOY_ENV, COMPOSER_AUTH: merged },
+    exec: recordingExec(),
+  });
+  assert.equal(deployed.code, 0, deployed.stderr);
+});

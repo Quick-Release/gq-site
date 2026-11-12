@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { loadProjectContext } from "../ops/project-context.mjs";
 import { environmentFlags, sigilloCommand, validateSigilloConfig } from "./client.mjs";
+import { composerLoginsWarning, withComposerLogins } from "./composer-logins.mjs";
 import {
   fallbackWarning,
   readPlatformRegistryCredentials,
@@ -13,7 +14,9 @@ import {
 // credentials before starting the command, so application code never sees
 // them. Nothing here mounts, downloads, or writes an environment. The inner
 // step also reads the fleet's registry credentials from GQ Platform `ops`
-// (registry-credentials.mjs) into the command's environment.
+// (registry-credentials.mjs) into the command's environment, and adds the
+// Site's own Composer logins (gq.ops.json composer.logins) to COMPOSER_AUTH
+// from the environment's secrets (composer-logins.mjs).
 
 export const SIGILLO_USAGE = [
   "gq sigillo run <environment> -- <command> [arguments...]",
@@ -116,9 +119,12 @@ async function runInside(command, { cwd, env, exec, io }) {
   // Read as the operator (their checkout's login), as gq github setup --app
   // reads the App: Sigillo's bootstrap token is the Site project's.
   const platform = await readPlatformRegistryCredentials({ context, env: scrubbed, exec });
-  const { env: commandEnv, fallbacks } = withRegistryCredentials(scrubbed, platform);
+  const { env: registryEnv, fallbacks } = withRegistryCredentials(scrubbed, platform);
   const warning = fallbackWarning(fallbacks, platform.problem);
   if (warning) io?.err(warning);
+  const { env: commandEnv, missing } = withComposerLogins(registryEnv, context.config);
+  const loginsWarning = composerLoginsWarning(missing, context.config);
+  if (loginsWarning) io?.err(loginsWarning);
   const result = await exec(command[0], command.slice(1), {
     cwd: context.projectRoot,
     env: commandEnv,

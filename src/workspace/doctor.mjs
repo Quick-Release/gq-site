@@ -22,7 +22,10 @@
 // GETQUICK CI token broker or a fine-grained token (gq-platform ADR 0012).
 // The fleet's registry credentials, COMPOSER_AUTH and GITHUB_PACKAGES_TOKEN,
 // must be readable in GQ Platform `ops` (gq-platform ADR 0013), and every
-// copy a Site's own Sigillo environments still hold warns: names only.
+// copy a Site's own Sigillo environments still hold warns: names only. Each
+// secret a Site's own Composer login (gq.ops.json composer.logins) reads must
+// be in Sigillo staging (CI and Ploi releases), and warns when another mapped
+// environment, such as local, lacks it.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -54,6 +57,7 @@ import {
 import { SITE_BROKER_SECRETS } from "../ci/github-app.mjs";
 import { sigilloSecrets } from "../sigillo/commands.mjs";
 import { PLATFORM_LOCATION, PLATFORM_NAME, platformSecrets } from "../sigillo/platform.mjs";
+import { composerLogins } from "../sigillo/composer-logins.mjs";
 import { PLATFORM_ACCESS_REMEDY, REGISTRY_SECRETS } from "../sigillo/registry-credentials.mjs";
 import { adoptionGaps } from "../sync/adoption.mjs";
 import { VERSION } from "../version.mjs";
@@ -174,6 +178,10 @@ export async function runDoctor(_options, { context, env, fetch, exec, io }) {
       const siteNames = await checkLocalSecrets({ context, env, exec, requiredFiles, report });
       io.out(`\nRegistry credentials (${PLATFORM_NAME}):`);
       await checkRegistryCredentials({ context, env, exec, siteNames, report });
+      if (composerLogins(context.config).length > 0) {
+        io.out("\nComposer logins (gq.ops.json composer.logins):");
+        checkComposerLogins({ config: context.config, siteNames, report });
+      }
     }
   }
 
@@ -316,6 +324,33 @@ async function checkRegistryCredentials({ context, env, exec, siteNames, report 
           ? `Sigillo ${alias} still holds its own ${name}, which gq no longer reads (it reads the one in ${PLATFORM_NAME}) — delete it: ${remove}`
           : `Sigillo ${alias} still holds its own ${name}, which gq falls back to while it can't read ${PLATFORM_NAME} — delete it once it can: ${remove}`,
       );
+    }
+  }
+}
+
+// Each declared login's secrets, in every Site environment that listed: staging
+// gives CI and Ploi releases their COMPOSER_AUTH, so a gap there fails; one
+// elsewhere (local Composer) warns. Names only.
+function checkComposerLogins({ config, siteNames, report }) {
+  for (const { host, username, password } of composerLogins(config)) {
+    const secrets = [username.secret, password.secret].filter(Boolean);
+    const gaps = [];
+    for (const [alias, names] of siteNames) {
+      const missing = secrets.filter((name) => !names.has(name));
+      if (missing.length > 0) gaps.push({ alias, missing });
+    }
+    if (gaps.length === 0) {
+      report.ok(`${host}: ${secrets.join(" and ")} in every Sigillo environment`);
+      continue;
+    }
+    for (const { alias, missing } of gaps) {
+      const add = missing.map((name) => `gq sigillo secrets ${alias} set ${name}`).join(", ");
+      const message =
+        `${host}: Sigillo ${alias} has no ${missing.join(" or ")}, so COMPOSER_AUTH has no ` +
+        `login for it there — add it: ${add}`;
+      if (alias === SECRETS_ENVIRONMENT) {
+        report.fail(`${message} (CI and Ploi releases install from it), then pnpm ci:deploy`);
+      } else report.warn(message);
     }
   }
 }

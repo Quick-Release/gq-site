@@ -15,6 +15,7 @@ import { join, resolve } from "node:path";
 
 import { createR2Client } from "../r2.mjs";
 import { createReporter } from "../cli/reporter.mjs";
+import { composerLoginsProblem } from "../sigillo/composer-logins.mjs";
 import { missingRegistryCredential } from "../sigillo/registry-credentials.mjs";
 import { deploy, syncDeployScript } from "./provision.mjs";
 import { createPloiServerClient } from "./server-client.mjs";
@@ -26,7 +27,9 @@ export const shippedPaths = Object.freeze(["apps/cms", "deploy/ploi"]);
 // The server's `composer install` fetches the GETQUICK plugins from the
 // private registry. The login comes from the secret store and reaches the
 // deploy script as the deploy variable composer_auth → $COMPOSER_AUTH, for
-// that one deploy; nothing stores it on the server.
+// that one deploy; nothing stores it on the server. It also carries the
+// Site's own Composer logins (gq.ops.json composer.logins), such as Gravity
+// Forms', which the release refuses to go without.
 export function deployVariables(archiveUrl, composerAuth, env = {}) {
   if (!composerAuth) {
     throw new Error(
@@ -68,6 +71,12 @@ export async function runRelease({ context, parsed, env, fetch, exec, io, intera
   const deployScript = await git(["show", `${sha}:${deployScriptPath}`]);
   // Fail before uploading anything if the registry login is missing.
   deployVariables("", context.env.COMPOSER_AUTH, context.env);
+  const logins = composerLoginsProblem(ops, context.env.COMPOSER_AUTH, "the Ploi release");
+  if (logins) {
+    throw new Error(
+      `${logins} In CI the Worker has COMPOSER_AUTH from gq ci deploy: run it again.`,
+    );
+  }
 
   const ui = createReporter(io, interactive);
   ui.intro(`Ploi release · v${version} (${ref} @ ${sha.slice(0, 7)})`);

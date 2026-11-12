@@ -121,6 +121,49 @@ gq sigillo secrets local delete COMPOSER_AUTH
 
 Never copy either into a Site's Sigillo, `.env` or `~/.config/gq/ops.env`.
 
+## A Site's own Composer logins
+
+A registry only one Site installs from, such as Gravity Forms'
+`composer.gravity.io`, needs that Site's own login, not the fleet's. The Site
+keeps the login's secret parts in its own Sigillo environments and declares
+the login in `gq.ops.json` `composer.logins`, by registry host:
+
+```json
+{
+  "composer": {
+    "logins": {
+      "composer.gravity.io": {
+        "usernameSecret": "GRAVITY_FORMS_LICENSE_KEY",
+        "password": "https://cms.example.com"
+      }
+    }
+  }
+}
+```
+
+Each part is either a literal (`username`, `password`) or the name of a
+secret (`usernameSecret`, `passwordSecret`), and at least one part is a
+secret, so no credential lives in `gq.ops.json`. The fleet's registry,
+`proxy.composer.getquick.io`, and the fleet's credential names can't be
+declared.
+
+`gq sigillo run <environment>` reads the fleet's `COMPOSER_AUTH` as above,
+then adds each declared login to its `http-basic` from the secrets of the
+environment the command runs under, beside the fleet's login. So each
+environment that installs from the registry needs the secret: `local` for
+`pnpm cms:composer`, and `staging` for `pnpm ploi:release` and
+`pnpm ci:deploy`, which gives the CI Worker the merged `COMPOSER_AUTH` for CI
+releases. A command whose environment lacks a declared secret still runs,
+with a warning on stderr naming the secret, not its value; `gq ploi release`
+and `gq ci deploy` refuse to run without every declared login. Values are
+never printed or put in argv.
+
+`gq doctor` checks each declared secret by name in every mapped environment:
+missing from `staging` fails, missing elsewhere warns. After adding or
+rotating one in `staging`, run `pnpm ci:deploy` so CI releases use it. See
+[Installing Gravity Forms](forms.md#installing-gravity-forms) for the whole
+recipe.
+
 ## GETQUICK Registry `prod`: the Google Fonts key
 
 GQ Design imports and updates Google font families on the server with one

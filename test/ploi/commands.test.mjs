@@ -227,6 +227,32 @@ test("ploi release fails without COMPOSER_AUTH before uploading or deploying", a
   assert.deepEqual(fetch.requests, []);
 });
 
+test("ploi release refuses a COMPOSER_AUTH without the Site's declared Composer login", async () => {
+  const composer = {
+    logins: {
+      "composer.gravity.io": {
+        usernameSecret: "GRAVITY_FORMS_LICENSE_KEY",
+        password: "https://admin.example.test",
+      },
+    },
+  };
+  const fixture = await site({ ops: { ...OPS, composer } });
+  const { fetch } = fakeProviders();
+
+  const result = await fixture.run(["ploi", "release"], {
+    env: { ...RELEASE_ENV, COMPOSER_AUTH: '{"http-basic":{}}' },
+    fetch,
+    exec: fakeGit(),
+  });
+
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stderr,
+    /^gq: COMPOSER_AUTH has no login for composer\.gravity\.io, which gq\.ops\.json composer\.logins declares: the Ploi release needs GRAVITY_FORMS_LICENSE_KEY .* In CI the Worker has COMPOSER_AUTH from gq ci deploy: run it again\.\n$/u,
+  );
+  assert.deepEqual(fetch.requests, []);
+});
+
 test("ploi release packs the shipped paths of the release commit with a RELEASE manifest", async () => {
   const fixture = await site();
   const { fetch } = fakeProviders();
