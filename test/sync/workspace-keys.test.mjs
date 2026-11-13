@@ -12,13 +12,13 @@ import { hash, newSite, readSite, snapshot } from "../support/generated-site.mjs
 
 const WORKSPACE = "pnpm-workspace.yaml";
 const PINS = {
-  'catalog["@alchemy.run/cloudflare"]': "2.0.0-beta.84",
-  'catalog["@alchemy.run/frontend-frameworks"]': "2.0.0-beta.84",
-  "catalog.@effect/platform-node": "4.0.7",
-  "catalog.alchemy": "2.0.0-beta.84",
-  "catalog.effect": "4.0.7",
-  "overrides.@effect/platform-node-shared": "4.0.7",
-  "peerDependencyRules.allowedVersions.effect": "4.0.7",
+  'catalog["@alchemy.run/cloudflare"]': "2.0.0-beta.86",
+  'catalog["@alchemy.run/frontend-frameworks"]': "2.0.0-beta.86",
+  "catalog.@effect/platform-node": "4.1.4",
+  "catalog.alchemy": "2.0.0-beta.86",
+  "catalog.effect": "4.1.4",
+  "overrides.@effect/platform-node-shared": "4.1.4",
+  "peerDependencyRules.allowedVersions.effect": "4.1.4",
 };
 
 // The content Astro Site's pnpm-workspace.yaml as gq 0.40.0 created it
@@ -53,9 +53,9 @@ test("gq new writes pnpm-workspace.yaml with the pins, each hashed in the lock",
   for (const framework of ["astro", "tanstack"]) {
     const site = await newSite("acme", framework);
     const workspace = await readSite(site.root, WORKSPACE);
-    assert.match(workspace, /^ {2}"@alchemy\.run\/cloudflare": 2\.0\.0-beta\.84$/mu);
-    assert.match(workspace, /^ {2}"@alchemy\.run\/frontend-frameworks": 2\.0\.0-beta\.84$/mu);
-    assert.match(workspace, /^ {2}alchemy: 2\.0\.0-beta\.84$/mu);
+    assert.match(workspace, /^ {2}"@alchemy\.run\/cloudflare": 2\.0\.0-beta\.86$/mu);
+    assert.match(workspace, /^ {2}"@alchemy\.run\/frontend-frameworks": 2\.0\.0-beta\.86$/mu);
+    assert.match(workspace, /^ {2}alchemy: 2\.0\.0-beta\.86$/mu);
     const lock = await readLock(site.root);
     assert.deepEqual(
       lock.keys[WORKSPACE],
@@ -90,17 +90,17 @@ test("gq sync moves a 0.40.0 Site's pins, keeping every other byte of the file",
     await readSite(site.root, WORKSPACE),
     RELEASED_0_40_0.replace(
       '"@effect/platform-node-shared": 4.0.0-rc.115',
-      '"@effect/platform-node-shared": 4.0.7',
+      '"@effect/platform-node-shared": 4.1.4',
     )
       .replace(
         '  "@alchemy.run/frontend-frameworks": 2.0.0-beta.79\n',
-        '  "@alchemy.run/cloudflare": 2.0.0-beta.84\n' +
-          '  "@alchemy.run/frontend-frameworks": 2.0.0-beta.84\n',
+        '  "@alchemy.run/cloudflare": 2.0.0-beta.86\n' +
+          '  "@alchemy.run/frontend-frameworks": 2.0.0-beta.86\n',
       )
-      .replace('"@effect/platform-node": 4.0.0-rc.115', '"@effect/platform-node": 4.0.7')
-      .replace("alchemy: 2.0.0-beta.79", "alchemy: 2.0.0-beta.84")
-      .replace("  effect: 4.0.0-rc.115", "  effect: 4.0.7")
-      .replace("    effect: 4.0.0-rc.115", "    effect: 4.0.7"),
+      .replace('"@effect/platform-node": 4.0.0-rc.115', '"@effect/platform-node": 4.1.4')
+      .replace("alchemy: 2.0.0-beta.79", "alchemy: 2.0.0-beta.86")
+      .replace("  effect: 4.0.0-rc.115", "  effect: 4.1.4")
+      .replace("    effect: 4.0.0-rc.115", "    effect: 4.1.4"),
   );
   // The Site's own catalog entries (vite, vitest, vite-plus) are left alone.
   assert.match(await readSite(site.root, WORKSPACE), /^ {2}vite-plus: 0\.3\.0$/mu);
@@ -116,7 +116,7 @@ test("a pin the Site chose itself stops gq sync with a diff, and nothing is writ
   // After gq wrote it: changed since.
   const site = await newSite();
   const edited = (await readSite(site.root, WORKSPACE)).replace(
-    "  effect: 4.0.7",
+    "  effect: 4.1.4",
     "  effect: 4.1.5",
   );
   await writeFile(join(site.root, WORKSPACE), edited);
@@ -171,18 +171,18 @@ test("gq sync adds the mappings a workspace file lacks, and removes a key it ret
       "# The Site's own pins.",
       "catalog:",
       "  # Shared by the Frontend.",
-      '  "@alchemy.run/cloudflare": 2.0.0-beta.84',
-      '  "@alchemy.run/frontend-frameworks": 2.0.0-beta.84',
-      '  "@effect/platform-node": 4.0.7',
-      "  alchemy: 2.0.0-beta.84",
+      '  "@alchemy.run/cloudflare": 2.0.0-beta.86',
+      '  "@alchemy.run/frontend-frameworks": 2.0.0-beta.86',
+      '  "@effect/platform-node": 4.1.4',
+      "  alchemy: 2.0.0-beta.86",
       "  astro: ^7.4.11",
-      "  effect: 4.0.7",
+      "  effect: 4.1.4",
       "  zod: 4.6.5",
       "overrides:",
-      '  "@effect/platform-node-shared": 4.0.7',
+      '  "@effect/platform-node-shared": 4.1.4',
       "peerDependencyRules:",
       "  allowedVersions:",
-      "    effect: 4.0.7",
+      "    effect: 4.1.4",
       "",
     ].join("\n"),
   );

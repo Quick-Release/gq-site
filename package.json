@@ -10,7 +10,8 @@
   "exports": {
     ".": "./src/index.mjs",
     "./package.json": "./package.json",
-    "./preview-bindings": "./src/frontend/preview-bindings.mjs"
+    "./preview-bindings": "./src/frontend/preview-bindings.mjs",
+    "./deploy-guards": "./src/frontend/deploy-guards.mjs"
   },
   "files": [
     "bin",

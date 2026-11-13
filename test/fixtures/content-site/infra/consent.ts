@@ -55,8 +55,9 @@ export const CONSENT_PURGE_SCHEDULE = "17 3 * * *";
 // stored): a visitor decides a few times at most.
 const CONSENT_RATE_LIMIT = { limit: 30, period: 60 } as const;
 
-// The Site's consent records, one database per Site and stage, retained in
-// production even if this declaration goes away. Alchemy applies the consent
+// The Site's consent records, one database per Site and stage. Production's
+// is protected: a plan that would replace or delete it fails, its declaration
+// removed included. Alchemy applies the consent
 // Runtime's migrations, in order, before the Workers that bind it change.
 export const ConsentDatabase = Effect.gen(function* () {
   const { stage } = yield* Stack;
@@ -67,7 +68,11 @@ export const ConsentDatabase = Effect.gen(function* () {
     name: production ? database : `${database}-${stage}`,
     jurisdiction: CONSENT_JURISDICTION,
     migrations: consentMigrations ?? undefined,
-  }).pipe(Alchemy.RemovalPolicy.retain(production));
+  }).pipe(
+    // Innermost wins: production's is protected, other stages' destroyed.
+    Alchemy.RemovalPolicy.protect(production),
+    Alchemy.RemovalPolicy.retain(production),
+  );
 });
 
 // A Workers Rate Limiting binding for the record endpoint. Its namespace, a

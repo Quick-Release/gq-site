@@ -387,3 +387,15 @@ actual registered resolver/scalar responses before and after. Do not regenerate
 these fixtures from the patched output. The patch originates in
 [Nomia PR #3](https://github.com/Quick-Release/nomia-bnq/pull/3), commit
 `0d0d65a3058d9da306b70d3535dfb91b8266e413`, and retains those reviewed bytes.
+
+## Alchemy plan output
+
+`alchemy-plan/clean.beta86.txt` and `alchemy-plan/blocking.beta86.txt` are
+`alchemy deploy --dry-run --detailed` output as Alchemy 2.0.0-beta.86's plain
+renderer prints it (`formatPlanLines` from `alchemy/Cli/LoggingCli`, each line
+through `prettyLine` from `alchemy/Util/ConsoleSink`, `FORCE_COLOR=1`), for
+synthetic plans: the clean one has only updates and no-ops, the blocking one a
+replacement, a deletion, an unbound binding, removed env entries and an added
+compatibility flag. They pin the text format `src/frontend/deploy-guards.mjs`
+parses; regenerate them from the Alchemy version the Blueprint pins, never
+from the parser.

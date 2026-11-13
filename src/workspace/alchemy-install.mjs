@@ -75,7 +75,46 @@ export async function alchemyInstall(root) {
       problem: `${INFRA} installs Alchemy ${version}, but ${from} pins ${describe(drifted)} — run: pnpm install`,
     };
   }
+  const peer = await frontendPeer(root);
+  if (peer !== undefined) return { problem: peer };
   return { version };
+}
+
+// The Frontend's framework against @alchemy.run/frontend-frameworks' peer
+// range for it, both as installed in apps/frontend. beta.85 raised its Astro
+// peer to ^7.4.0, and a Site's lock can hold an older Astro its own range
+// still allows: pnpm only warns. A problem sentence, or undefined.
+const FRAMEWORK_PEERS = ["astro"];
+async function frontendPeer(root) {
+  const modules = join(root, "apps", "frontend", "node_modules");
+  const adapter = await readJson(
+    join(modules, "@alchemy.run", "frontend-frameworks", "package.json"),
+  );
+  if (adapter === undefined) return undefined;
+  for (const name of FRAMEWORK_PEERS) {
+    const range = adapter.peerDependencies?.[name];
+    const installed = (await readJson(join(modules, name, "package.json")))?.version;
+    if (typeof range !== "string" || typeof installed !== "string") continue;
+    if (satisfiesCaret(installed, range) === false) {
+      return `apps/frontend installs ${name} ${installed}, but @alchemy.run/frontend-frameworks ${adapter.version} needs ${name} ${range} — run: pnpm --dir apps/frontend update ${name}@${range}`;
+    }
+  }
+  return undefined;
+}
+
+// Whether `version` satisfies a caret range `^X.Y.Z`; undefined for any other
+// range, which this check leaves to pnpm.
+function satisfiesCaret(version, range) {
+  const wanted = /^\^(\d+)\.(\d+)\.(\d+)$/u.exec(range);
+  const have = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/u.exec(version);
+  if (wanted === null || have === null) return undefined;
+  const [w, h] = [wanted.slice(1).map(Number), have.slice(1).map(Number)];
+  if (h[0] !== w[0]) return false;
+  if (w[0] === 0 && h[1] !== w[1]) return false;
+  for (let index = 0; index < 3; index++) {
+    if (h[index] !== w[index]) return h[index] > w[index];
+  }
+  return true;
 }
 
 // The workspace's default catalog, or a problem sentence.

@@ -248,8 +248,9 @@ jobs:
     strategy:
       matrix:
         # 0.40.0: the fleet's beta.79 / rc.115 catalog. 0.43.0: beta.84 with
-        # Effect 4.1.4, which can't load the Alchemy CLI.
-        from: ["0.40.0", "0.43.0"]
+        # Effect 4.1.4, which can't load the Alchemy CLI. 0.43.1: beta.84 with
+        # Effect 4.0.7, the fleet after hop 1.
+        from: ["0.40.0", "0.43.0", "0.43.1"]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
