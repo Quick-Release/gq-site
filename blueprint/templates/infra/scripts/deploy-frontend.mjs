@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
 // Deploys the Frontend; `pnpm plan:frontend` runs it with `--dry-run
 // --detailed`, so a plan has the same checks, account and bindings as the
-// deploy it previews. Arguments pass through to `alchemy deploy`.
+// deploy it previews. Arguments pass through to `alchemy deploy`, apart from
+// the guards' own `--drop-secret <NAME>` and `--upgrade-state-store` (below).
 const alchemy = process.platform === "win32" ? "alchemy.cmd" : "alchemy";
 // Public deploy configuration lives in gq.ops.json; only the API token comes
 // from Sigillo/CI. Without PUBLIC_WORDPRESS_GRAPHQL_URL the frontend would
@@ -132,29 +133,55 @@ if (
   process.exit(1);
 }
 
-const result = spawnSync(
-  alchemy,
-  [
-    "deploy",
-    "--stage",
-    "prod",
-    "--config",
-    "frontend.run.ts",
-    "--yes",
-    "--no-input",
-    ...process.argv.slice(2),
-  ],
-  {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || ops.cloudflare.accountId,
-      PUBLIC_WORDPRESS_GRAPHQL_URL:
-        process.env.PUBLIC_WORDPRESS_GRAPHQL_URL ||
-        `https://${ops.domains.admin}${ops.wordpress?.graphqlPath ?? "/wp/graphql"}`,
-    },
-  },
-);
+// The guards (@getquick/site/deploy-guards): no secret the Worker has bound
+// is unbound unless `--drop-secret <NAME>` names it; the account's Alchemy
+// state store is upgraded only with `--upgrade-state-store`; a plan fails on
+// any replacement, deletion or removed binding and reports compatibility-flag
+// changes; a deploy compares the Worker's bindings and flags before and
+// after. Secret values are never read.
+const { guardedFrontendDeploy } = await import("@getquick/site/deploy-guards");
+// The installed provider's version: its package.json, found from its entry.
+let cloudflarePackage = new URL("package.json", import.meta.resolve("@alchemy.run/cloudflare"));
+while (
+  !existsSync(cloudflarePackage) ||
+  JSON.parse(readFileSync(cloudflarePackage, "utf8")).name !== "@alchemy.run/cloudflare"
+) {
+  const parent = new URL("../package.json", cloudflarePackage);
+  if (parent.href === cloudflarePackage.href) {
+    throw new Error("@alchemy.run/cloudflare's package.json wasn't found.");
+  }
+  cloudflarePackage = parent;
+}
+const cloudflareVersion = JSON.parse(readFileSync(cloudflarePackage, "utf8")).version;
+const env = {
+  ...process.env,
+  CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || ops.cloudflare?.accountId,
+  PUBLIC_WORDPRESS_GRAPHQL_URL:
+    process.env.PUBLIC_WORDPRESS_GRAPHQL_URL ||
+    `https://${ops.domains.admin}${ops.wordpress?.graphqlPath ?? "/wp/graphql"}`,
+};
 
-if (result.error) throw result.error;
-if (result.status !== 0) process.exit(result.status ?? 1);
+const code = await guardedFrontendDeploy({
+  argv: process.argv.slice(2),
+  env,
+  accountId: env.CLOUDFLARE_ACCOUNT_ID,
+  scriptName: `${ops.project}-fe`,
+  cloudflareVersion,
+  // Alchemy's output streams through and is kept for the plan check.
+  runAlchemy: (args) =>
+    new Promise((resolve, reject) => {
+      const child = spawn(alchemy, args, { stdio: ["inherit", "pipe", "pipe"], env });
+      let output = "";
+      child.stdout.on("data", (chunk) => {
+        process.stdout.write(chunk);
+        output += chunk;
+      });
+      child.stderr.on("data", (chunk) => {
+        process.stderr.write(chunk);
+        output += chunk;
+      });
+      child.on("error", reject);
+      child.on("close", (status) => resolve({ status, output }));
+    }),
+});
+process.exit(code);

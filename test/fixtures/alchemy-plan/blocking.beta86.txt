@@ -1,0 +1,33 @@
+[33m[01:00:00.000][39m [33mINFO[39m: [1mPlan:[22m [33m1 to create[39m[2m, [22m[93m1 to update[39m[2m, [22m[37m1 to replace[39m[2m, [22m[31m1 to delete[39m[2m, [22m[33m2 binding changes[39m
+[33m[01:00:00.000][39m [33mINFO[39m: 
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[DemoConsent][39m [2mnoop[22m
+[33m[01:00:00.000][39m [33mINFO[39m: 
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[DemoFrontend][39m [93mupdate[39m
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[DemoFrontend/CONSENT_DB][39m [2munbind[22m
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[DemoFrontend/FORMS][39m [33mcreate[39m
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[DemoFrontend/PUBLICATION_DB][39m [2mnoop[22m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33mproperties:[39m
+[33m[01:00:00.000][39m [33mINFO[39m:     [33mcompatibility:[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [31m-     flags:[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [31m-       - nodejs_compat[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33m+     flags:[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33m+       - nodejs_compat[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33m+       - new_module_registry[39m
+[33m[01:00:00.000][39m [33mINFO[39m:     [33menv:[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [31m-     CONSENT_READ_TOKEN: (redacted)[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33m+     NEW_ONE: "2"[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [31m-     OLD_PLAIN: "1"[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [31m-     PUBLIC_WORDPRESS_GRAPHQL_URL: https://cms/wp/graphql[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33m+     PUBLIC_WORDPRESS_GRAPHQL_URL: https://cms/graphql[39m
+[33m[01:00:00.000][39m [33mINFO[39m:     [33mname:[39m demo-fe
+[33m[01:00:00.000][39m [33mINFO[39m: 
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[DemoOld][39m [31mdelete[39m
+[33m[01:00:00.000][39m [33mINFO[39m: 
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[DemoPublications][39m [37mreplace[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33mproperties:[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [31m-   name: demo-fe-publications[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33m+   name: demo-fe-publications2[39m
+[33m[01:00:00.000][39m [33mINFO[39m: 
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[DemoRateLimit][39m [33mcreate[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33mproperties:[39m
+[33m[01:00:00.000][39m [33mINFO[39m:     [33mnamespaceId:[39m 5

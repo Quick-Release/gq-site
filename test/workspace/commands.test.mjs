@@ -442,6 +442,36 @@ test("gq doctor fails unless infra installs Alchemy's three packages at the pinn
   }
 });
 
+test("gq doctor fails when the Frontend's Astro is older than frontend-frameworks' peer", async () => {
+  const adapter = (astro) => ({
+    ...alchemyInfra(),
+    "apps/frontend/node_modules/@alchemy.run/frontend-frameworks/package.json": JSON.stringify({
+      name: "@alchemy.run/frontend-frameworks",
+      version: "2.0.0-beta.86",
+      peerDependencies: { astro: "^7.4.0", vite: "^7.0.0 || ^8.0.0" },
+    }),
+    "apps/frontend/node_modules/astro/package.json": JSON.stringify({
+      name: "astro",
+      version: astro,
+    }),
+  });
+  const old = await healthySite(adapter("7.3.5"));
+  const failed = await old.run(["doctor"], { exec: machine() });
+  assert.equal(failed.code, 1, failed.stdout);
+  // A prerelease doesn't satisfy a range without one.
+  const prerelease = await healthySite(adapter("7.4.0-rc.1"));
+  assert.equal((await prerelease.run(["doctor"], { exec: machine() })).code, 1);
+  assert.match(
+    failed.stdout,
+    /✗ apps\/frontend installs astro 7\.3\.5, but @alchemy\.run\/frontend-frameworks 2\.0\.0-beta\.86 needs astro \^7\.4\.0 — run: pnpm --dir apps\/frontend update astro@\^7\.4\.0$/mu,
+  );
+  for (const astro of ["7.4.0", "7.4.11"]) {
+    const current = await healthySite(adapter(astro));
+    const passed = await current.run(["doctor"], { exec: machine() });
+    assert.equal(passed.code, 0, passed.stdout);
+  }
+});
+
 test("gq doctor fails when Node is below the site's engines minimum", async () => {
   const fixture = await healthySite();
   const result = await fixture.run(["doctor"], { exec: machine({ node: "v20.11.0" }) });

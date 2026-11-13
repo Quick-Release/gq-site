@@ -4,8 +4,9 @@
 // renders the content site's own files (test/fixtures/content-site).
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { createFixtureSite, runGq, temporaryDirectory } from "../support/fixture-site.mjs";
@@ -136,7 +137,11 @@ test("the Frontend deploy provisions the consent records in the eu jurisdiction 
   assert.match(consent, /^ {4}name: production \? database : `\$\{database\}-\$\{stage\}`,$/mu);
   assert.match(consent, /^ {4}jurisdiction: CONSENT_JURISDICTION,$/mu);
   assert.match(consent, /^export const CONSENT_JURISDICTION = "eu";$/mu);
-  assert.match(consent, /\.pipe\(Alchemy\.RemovalPolicy\.retain\(production\)\)/u);
+  // Production's is protected from replacement and deletion (Alchemy beta.86+).
+  assert.match(
+    consent,
+    /\.pipe\(\n.*\n {4}Alchemy\.RemovalPolicy\.protect\(production\),\n {4}Alchemy\.RemovalPolicy\.retain\(production\),\n {2}\);/u,
+  );
   // Its migrations are the Frontend's installed consent Runtime's.
   assert.match(consent, /"\.\/consent\/migrations"/u);
   // The retention purge: its own Worker on a daily cron, with no public URL.
@@ -346,6 +351,9 @@ test("preview config uses site.bind after Website initialization", async () => {
 // dry-run mode, so a plan reads the Cloudflare account from gq.ops.json as
 // the deploy does. An executable named alchemy records its arguments and
 // account; it never deploys.
+// The Cloudflare API the deploy guards read, answered locally.
+const CLOUDFLARE_API = new URL("../support/cloudflare-api.mjs", import.meta.url).href;
+
 // Alchemy's Cloudflare provider as pnpm installs it in infra: the deploy
 // wrapper only resolves it.
 async function installCloudflareProvider(root) {
@@ -353,13 +361,25 @@ async function installCloudflareProvider(root) {
   await mkdir(directory, { recursive: true });
   await writeFile(
     join(directory, "package.json"),
-    JSON.stringify({ name: "@alchemy.run/cloudflare", type: "module", exports: "./index.js" }),
+    JSON.stringify({
+      name: "@alchemy.run/cloudflare",
+      version: "2.0.0-beta.86",
+      type: "module",
+      exports: "./index.js",
+    }),
   );
   await writeFile(join(directory, "index.js"), "export {};\n");
 }
 
 async function plan(root, { provider = true } = {}) {
   if (provider) await installCloudflareProvider(root);
+  // A Site has @getquick/site installed (the gq CLI); the wrapper imports its
+  // deploy guards.
+  await mkdir(join(root, "node_modules/@getquick"), { recursive: true });
+  await symlink(
+    fileURLToPath(new URL("../..", import.meta.url)),
+    join(root, "node_modules/@getquick/site"),
+  );
   const scripts = JSON.parse(await readSite(root, "package.json")).scripts;
   assert.equal(
     scripts["plan:frontend"],
@@ -371,9 +391,10 @@ async function plan(root, { provider = true } = {}) {
   const alchemy = join(root, "alchemy");
   await writeFile(
     alchemy,
-    `#!${process.execPath}\nconsole.log(JSON.stringify({ args: process.argv.slice(2), account: process.env.CLOUDFLARE_ACCOUNT_ID }));\n`,
+    `#!${process.execPath}\nconsole.log(JSON.stringify({ args: process.argv.slice(2), account: process.env.CLOUDFLARE_ACCOUNT_ID }));\nconsole.log("Plan: 1 to create");\n`,
   );
   await chmod(alchemy, 0o755);
+
   const environment = { ...process.env };
   delete environment.NODE_TEST_CONTEXT;
   delete environment.CLOUDFLARE_ACCOUNT_ID;
@@ -382,11 +403,17 @@ async function plan(root, { provider = true } = {}) {
   const result = spawnSync(process.execPath, args, {
     cwd: join(root, "infra"),
     encoding: "utf8",
-    env: { ...environment, PATH: root },
+    env: {
+      ...environment,
+      PATH: root,
+      CLOUDFLARE_API_TOKEN: "token",
+      NODE_OPTIONS: `--import=${CLOUDFLARE_API}`,
+    },
   });
   if (!provider) return result;
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  return JSON.parse(result.stdout.trim().split("\n").at(-1));
+  assert.match(result.stdout, /✓ no replacement, deletion or removed binding/u);
+  return JSON.parse(result.stdout.split("\n").find((line) => line.startsWith("{")));
 }
 
 const PLAN_ARGS = [
@@ -395,7 +422,7 @@ const PLAN_ARGS = [
   "prod",
   "--config",
   "frontend.run.ts",
-  "--yes",
+  // No --yes: on Alchemy beta.85+ it would let a plan upgrade the state store.
   "--no-input",
   "--dry-run",
   "--detailed",

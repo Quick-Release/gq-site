@@ -158,7 +158,8 @@ function formsRateLimiter(worker: string) {
 // The Site's last-known-good published content. One database per Site and
 // stage, separate from the Worker, so a redeploy or restart keeps it; Alchemy
 // applies the Frontend's migrations, in order, before the Worker is updated.
-// Production's is retained even if this declaration goes away.
+// Production's is protected: a plan that would replace or delete it fails
+// (Alchemy's RemovalPolicy.protect, beta.86+), its declaration removed included.
 const Publications = Effect.gen(function* () {
   const { stage } = yield* Stack;
   const production = stage === "prod";
@@ -167,7 +168,11 @@ const Publications = Effect.gen(function* () {
   return yield* Cloudflare.D1.Database("{{Project}}Publications", {
     name: production ? database : `${database}-${stage}`,
     migrations: publicationMigrations ?? undefined,
-  }).pipe(Alchemy.RemovalPolicy.retain(production));
+  }).pipe(
+    // Innermost wins: production's is protected, other stages' destroyed.
+    Alchemy.RemovalPolicy.protect(production),
+    Alchemy.RemovalPolicy.retain(production),
+  );
 });
 
 export const Website = Cloudflare.Website.Astro(

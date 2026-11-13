@@ -3,9 +3,11 @@
 Written 2026-11-12 against gq-site `main` 790b1b6 (0.41.1). Tracking issue:
 [#185](https://github.com/Quick-Release/gq-site/issues/185).
 
-Status: **hop 1's Blueprint part is implemented** (gq-site 0.43.0, see
-[Hop 1 in the Blueprint](#hop-1-in-the-blueprint)). Every Site's own hop 1,
-and all of hop 2, are still to do.
+Status: **hop 1 is done** (gq-site 0.43.1, see
+[Hop 1 in the Blueprint](#hop-1-in-the-blueprint)): all five Blueprint Sites
+deployed it by 2026-11-13. **Hop 2's Blueprint part is implemented** (gq-site
+0.44.0, see [Hop 2 in the Blueprint](#hop-2-in-the-blueprint)). Every Site's
+own hop 2, and the cutover window ([decided](#cutover-window-owner-decisions-2026-11-13)), are still to do.
 
 ## Problem
 
@@ -249,6 +251,125 @@ quoting, indentation and blank lines the Site owns. What gq can't edit without
 rewriting (invalid YAML, a top level that isn't a mapping, a flow mapping in
 the way) is refused, and nothing is written.
 
+### Hop 2 in the Blueprint
+
+Done on 2026-11-13, in gq-site 0.44.0. Read against the published `src/` of
+alchemy and `@alchemy.run/cloudflare` 76, 78, 81, 83, 84, 85, 86 and 87, and
+the live account read-only (`alchemy state list` with beta.84, and Cloudflare
+API `GET`s of Worker settings).
+
+**Target: 2.0.0-beta.86**, with Effect 4.1.4. Its state store is byte-for-byte
+beta.87's (`StateStore/` unchanged 86→87). It has `RemovalPolicy.protect()`
+(beta.85 doesn't), and its Worker compatibility defaults are beta.84's.
+beta.87 changes, among what the managed infra uses, only Durable Object class
+deletion (no managed Worker has a Durable Object). It was also about 4 hours
+old when hop 2 was cut, against beta.86's 17. Every beta.86 package clears
+pnpm's 24-hour `minimumReleaseAge` at 2026-11-13T09:40Z
+(`@alchemy.run/node-utils`, the last published). Before then pnpm installs it
+but appends `minimumReleaseAgeExclude` entries to the Site's
+`pnpm-workspace.yaml`, which the sync smoke now refuses.
+
+What shipped:
+
+- The pins: the managed keys and both skeletons at beta.86 / Effect 4.1.4;
+  beta.84 and Effect 4.0.7 added to `pnpm-workspace.earlier.json`.
+- `src/frontend/deploy-guards.mjs` (`@getquick/site/deploy-guards`), which
+  both managed `deploy-frontend.mjs` run Alchemy through:
+  - the store guard (`--upgrade-state-store`, and no `--yes` on a plan);
+  - the secret guard (`--drop-secret <NAME>`);
+  - the plan check on the `--detailed` text: replace, delete, orphaned,
+    `unbind`, a removed `env` key, and compatibility flags reported;
+  - the before/after comparison of the Worker's bindings, flags and date.
+- `RemovalPolicy.protect(production)` inside `retain(production)` (the
+  innermost policy wins) on the publication, Consent and storefront Runtime
+  databases.
+- `gq doctor`: the Frontend's Astro against frontend-frameworks' peer range.
+- `sync-upgrade.sh` from 0.43.1 too, with the wrapper run and the
+  `pnpm-workspace.yaml` rewrite check.
+
+**`--yes` upgrades the store, even on a plan.** `alchemy deploy` sets
+`updateStateStore: options.yes` whatever `--dry-run` says
+(`Cli/commands/deploy.ts`, beta.84 to beta.87). Until 0.44.0,
+`deploy-frontend.mjs` passed `--yes` to plans too. So the first `pnpm
+plan:frontend` on beta.85+ would have upgraded the account's store. Without
+`--yes`, a beta.85+ plan against a v7 store fails ("out of date … pass
+--yes"). **So no Site can read a beta.86 plan against production state before
+the store is upgraded.** Hop 2's reviewed plans therefore happen in the window,
+right after Cooldown Gaming's `pnpm plan:frontend --upgrade-state-store`. The
+upgrade only redeploys the store's Worker and changes no Site resource.
+
+**Live baseline, 2026-11-13 02:05Z** (Cloudflare API, names only): the store
+Worker has no `ALCHEMY_STATE_STORE_VERSION` binding, so it is the v7 an older
+Alchemy deployed. Every Frontend Worker already has `new_module_registry`.
+Bruaa's flags are `nodejs_compat` and `new_module_registry`, dated 2026-07-18;
+the others are dated 2026-08-31. beta.86's flag defaults are beta.84's
+(`Workers/Worker.ts`), so hop 2 should change no flag.
+
+| Worker              | Secrets bound                                                                                                                            |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `cooldowngaming-fe` | CONSENT_READ_TOKEN, FRONTEND_REFRESH_TOKEN, GQ_AUTH_GRAPHQL_CLIENT_ID, GQ_AUTH_GRAPHQL_CLIENT_SECRET, PUBLICATION_EVENT_SECRET           |
+| `southside-fe`      | CONSENT_READ_TOKEN, FRONTEND_REFRESH_TOKEN, GQ_AUTH_GRAPHQL_CLIENT_ID/SECRET, GQ_FORMS_ACCESS_CLIENT_ID/SECRET, PUBLICATION_EVENT_SECRET |
+| `nomia-bnq-fe`      | CONSENT_READ_TOKEN, FRONTEND_REFRESH_TOKEN, PUBLICATION_EVENT_SECRET                                                                     |
+| `cesam-fe`          | CONSENT_READ_TOKEN, FRONTEND_REFRESH_TOKEN, PUBLICATION_EVENT_SECRET                                                                     |
+| `bruaa-fe`          | GETQUICK_AUTH_COOKIE_SECRET, GETQUICK_CART_SESSION_SECRET, GETQUICK_STOREFRONT_PROXY_SECRET                                              |
+
+#### Store inventory (account `8f38791a…`)
+
+`alchemy state list -r --backend cloudflare` (beta.84, read-only, 2026-11-13)
+lists 19 stacks. Besides the five Blueprint Sites' Frontend stacks and the
+store's own `CloudflareStateStore`:
+
+| Stack (stages)                                        | Repository (Alchemy, Effect)                             | Resources in state                                                  | Needs before the window                                                                                                                      |
+| ----------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `legaciti-dashboard-infra` (production)               | Quick-Release/legaciti (beta.76 + a local patch, rc.112) | Dashboard Worker, 7 publication D1s, 4 queues, 3 R2, PubCache       | Move to beta.86 (`@alchemy.run/cloudflare`, Effect 4.1.4; re-check its `alchemy@2.0.0-beta.76.patch`), or accept a deploy freeze until moved |
+| `GQSupportWorker` (prod, staging)                     | Quick-Release/gq-support `worker/` (beta.83, 4.0.5)      | Worker, SupportDB, SupportLedger, GitHubAppSecret                   | Move to beta.86, or freeze                                                                                                                   |
+| `gq-games-api` (production)                           | Quick-Release/gq-games-api (beta.81, 4.0.1)              | Api Worker, Database (D1)                                           | Move to beta.86 (with `@effect/sql-d1` 4.1.4), or freeze                                                                                     |
+| `EkisStorefront`, `EkisDocs` (prod)                   | Quick-Release/ekis (beta.78, rc.115)                     | storefront Worker, EkisCartSessions, EkisHeadlessState; docs Worker | Move to beta.86, or freeze                                                                                                                   |
+| `NomiaWeb`, `NomiaDocs`, `NomiaInfrastructure` (prod) | Quick-Release/bioeconomia.pt (beta.77, rc.112)           | web and docs Workers; NomiaMedia and NomiaDatabaseBackups (R2)      | Superseded by nomia-bnq: freeze (its tag release deploys `NomiaWeb`), or retire; check whether nomia-bnq still uses those two buckets        |
+| `CesamAstro` (prod, dev_valerio)                      | Quick-Release/cesam-astro (beta.76, rc.112)              | Website, its Access app                                             | Superseded by CESAM's Blueprint Site: freeze or retire                                                                                       |
+| `LombardiFrontend` (prod, dev_valerio)                | Quick-Release/lombardi (archived; beta.79)               | Frontend Worker, LombardiPublications                               | Nothing: offboarded and archived, it never deploys again                                                                                     |
+| `GqSmokeFrontend` (no stages)                         | this repository's `gq-smoke-up.sh`                       | none                                                                | Nothing; don't run the live smoke during the window                                                                                          |
+
+The upgrade breaks none of them at runtime: Workers, D1, R2 and queues keep
+serving. What stops is every plan and deploy from beta.84 or older. Such a
+run sees v8 where it expects v7 and tries to redeploy the store through its
+`CloudflareStateStore` bootstrap stack (with `--yes`, or after a prompt). The
+v8 Worker answers 409 to every request for that stack, so the run fails while
+reading its state, before it touches a secret. In CI without `--yes`, it
+fails with "out of date". (Read in beta.76's and beta.84's
+`StateStore/State.ts` and beta.85's `Api.ts` `refuseLegacyBootstrap`.) None
+of them deploys on a schedule: legaciti, gq-support and bioeconomia.pt's
+infrastructure workflow are `workflow_dispatch`, and bioeconomia.pt's
+`release.yml` deploys `NomiaWeb` on a tag. Old Alchemy can't move a project
+to a separate store either: before beta.85 `Cloudflare.state()` hardcodes the
+`alchemy-state-store` Worker.
+
+#### Cutover window (owner decisions, 2026-11-13)
+
+- **Timing.** The window opens right after gq-site 0.44.0 is released, the
+  same day, and runs in one sitting. From the store upgrade until the last
+  Site's post-checks, nothing else deploys in the account.
+- **The store gate.** Cooldown Gaming first runs
+  `pnpm plan:frontend --upgrade-state-store`. That upgrades the store to v8
+  and changes no Site resource, and no other run passes the flag. Then all
+  five Sites plan against the v8 store, and each plan is reviewed before any
+  Site deploys. This replaces the earlier condition that every hop-2 PR has a
+  reviewed plan before the window, which a beta.85+ plan can't meet against a
+  v7 store.
+- **Order.** Before the store gate: the state exports (beta.84) and the D1
+  exports of each Site's publication and Consent databases. Then deploy
+  Cooldown Gaming → Southside → Nomia → CESAM → Bruaa, each followed by its
+  post-checks.
+- **Frozen stacks.** Every non-Blueprint stack in the
+  [store inventory](#store-inventory-account-8f38791a) is frozen and left
+  untouched: `legaciti-dashboard-infra`, `GQSupportWorker`, `gq-games-api`,
+  `EkisStorefront`, `EkisDocs`, `NomiaWeb`, `NomiaDocs`,
+  `NomiaInfrastructure`, `CesamAstro` and `LombardiFrontend`. Each moves to
+  beta.85+ in its own repository when it next needs a deploy. nomia-bnq
+  doesn't use bioeconomia.pt's `nomia-media` and `nomia-db-backups` buckets (0
+  references on live pages). The inventory's "Needs before the window" column
+  lists the options considered; freezing was chosen for every row.
+
 ### Hop 2: beta.86 (or the latest), the store upgrade
 
 1. **Guard secrets first.** `deploy-frontend.mjs` refuses a full deploy that
@@ -300,11 +421,15 @@ Order, both hops:
 | 4   | CESAM                             | Astro today. If its TanStack rebuild lands first, it migrates on the TanStack templates instead. It lives on Cloudflare Artifacts, not GitHub.              |
 | 5   | Bruaa                             | Commerce. The private `@quick-release` packages must install with the new pins (`scripts/smoke/commerce-check.sh`).                                         |
 | —   | FPA Shop                          | No `infra/` yet. It gets the pins when it is generated forward.                                                                                             |
-| —   | Ekis, bioeconomia.pt, cesam-astro | Not Blueprint Sites (no `gq sync`). Hop 1 doesn't affect them. Before hop 2 they must be moved by hand, retired, or confirmed to deploy to another account. |
+| —   | Ekis, bioeconomia.pt, cesam-astro | Not Blueprint Sites (no `gq sync`). Hop 1 doesn't affect them. For hop 2 they, and the other non-Blueprint stacks, are frozen (owner decision, 2026-11-13). |
 
-In hop 2, prepare and review every Site's PR, plan included, before any of
-them deploys. Then freeze deploys in the account and deploy in the order above
-in one sitting. Cooldown Gaming's deploy performs the store upgrade.
+In hop 2, prepare every Site's PR before the window, without planning it
+against production. In the window, freeze deploys in the account. Cooldown
+Gaming's `pnpm plan:frontend --upgrade-state-store` performs the store
+upgrade. Then all five Sites plan, each plan is reviewed, and the Sites deploy
+in the order above, in one sitting
+([decisions](#cutover-window-owner-decisions-2026-11-13)). The non-Blueprint
+stacks stay frozen.
 
 ## Verification
 
@@ -342,21 +467,31 @@ in one sitting. Cooldown Gaming's deploy performs the store upgrade.
 
 ## Open questions
 
-1. Is a v8 store really unreadable from beta.84? If beta.84 can also read
-   it, the cutover window is not needed. That should be tested on a
-   disposable account (a scratch store, not the fleet's) before hop 2.
-2. Do Ekis, bioeconomia.pt or cesam-astro deploy with Alchemy to account
-   `8f38791a…`, and who moves them?
-3. Can `alchemy deploy --dry-run` emit a structured plan to gate on, or do we
-   parse text?
-4. ~~gq-site has no YAML dependency today (`package.json`). Managed keys in
-   `pnpm-workspace.yaml` need a comment-preserving YAML editor (for example
-   `yaml`'s document API) or a narrow line-based writer for `catalog:` entries.
-   Which?~~ Settled in hop 1: `yaml`'s parser to locate, byte-range edits to
-   write ([Hop 1 in the Blueprint](#hop-1-in-the-blueprint)).
-5. Should hop 1 skip straight to beta.86 if questions 1 and 2 are settled
-   before it ships, giving one hop?
-6. Where does CESAM's TanStack rebuild stand, and does it change CESAM's
-   position in the order?
-7. Is beta.86 (or a later beta) still the latest, and past
-   `minimumReleaseAge`, when hop 2 is cut?
+1. ~~Is a v8 store really unreadable from beta.84?~~ Settled from source
+   ([Hop 2 in the Blueprint](#hop-2-in-the-blueprint)): yes. beta.84 and
+   older see a version mismatch. They try to redeploy the store through the
+   legacy bootstrap stack, which the v8 Worker refuses with 409, or in CI they
+   fail with "out of date". Not tried on a scratch account (none is
+   available). The cutover window stays.
+2. ~~Do Ekis, bioeconomia.pt or cesam-astro deploy to account `8f38791a…`?~~
+   Yes, and so do legaciti, gq-support and gq-games-api (the
+   [store inventory](#store-inventory-account-8f38791a)). The owner froze them
+   all ([decisions](#cutover-window-owner-decisions-2026-11-13)).
+3. ~~Can `alchemy deploy --dry-run` emit a structured plan?~~ No. Under
+   `--log-format json` the renderer prints no plan (`Cli/Present.ts`), and the
+   plan events carry phases, not changes. The plan check reads the plain text
+   (`formatPlanLines`).
+4. ~~YAML editing.~~ Settled in hop 1.
+5. ~~Should hop 1 skip straight to beta.86?~~ Moot: hop 1 shipped on beta.84.
+6. ~~Where does CESAM's TanStack rebuild stand?~~ Unreleased; CESAM is still
+   Astro and migrates on the Astro templates (#185).
+7. ~~Is beta.86 still the latest?~~ No: beta.87 came out on 2026-11-12, and
+   0.44.0 stays on beta.86 (see above). beta.86 clears `minimumReleaseAge` at
+   2026-11-13T09:40Z.
+8. ~~Plans before the window.~~ A beta.86 plan can't read a v7 store
+   without upgrading it, so the owner moved the reviewed plans into the window,
+   after Cooldown Gaming's store gate
+   ([decisions](#cutover-window-owner-decisions-2026-11-13)). Planning against
+   an exported snapshot (`Alchemy.localState()`) isn't built: whether
+   `alchemy state read` output round-trips into local state, Redacted values
+   included, is untested.

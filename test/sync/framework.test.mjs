@@ -67,6 +67,7 @@ test("new defaults to Start with managed Runtime endpoints, no copied runtime, a
     assert.ok(deploy.includes(identity));
   assert.match(deploy, /CONSENT_DB/u);
   assert.match(deploy, /RemovalPolicy.retain\(production\)/u);
+  assert.match(deploy, /RemovalPolicy.protect\(production\)/u);
   const lock = JSON.parse(files["gq.lock.json"].content);
   for (const name of ["gq.events.ts", "gq.refresh.ts", "gq.consent.ts", "gq.consent.$.ts"]) {
     assert.ok(lock.files[`apps/frontend/src/routes/${name}`]);

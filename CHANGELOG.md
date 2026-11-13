@@ -3,6 +3,118 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **Alchemy hop 2: beta.86 and the account's state store v8**
+  ([plan](docs/research/alchemy-cloudflare-package-migration.md#hop-2-in-the-blueprint),
+  [#185](https://github.com/Quick-Release/gq-site/issues/185)). The managed
+  `pnpm-workspace.yaml` keys and both skeletons pin `alchemy`,
+  `@alchemy.run/cloudflare` and `@alchemy.run/frontend-frameworks` at exactly
+  2.0.0-beta.86, and `effect`, `@effect/platform-node`,
+  `@effect/platform-node-shared` and the `effect` peer rule at 4.1.4, which
+  beta.86 needs (`^4.1.4`) and loads (beta.85 dropped the `effect/Crypto`
+  import that broke 0.43.0). `@effect/sql-d1` 4.1.4 now matches its Effect
+  peer. beta.84 and 4.0.7 are earlier blueprint values, so `gq sync` takes them
+  over without asking.
+- **⚠ Irreversible for the whole Cloudflare account.** beta.85 and later
+  upgrade the account's Alchemy state store (`alchemy-state-store`, one per
+  account) from protocol v7 to v8 on their first run with `--yes`, a plan
+  included. Once any Site deploys this release, the store is v8 for good. No
+  Alchemy project in that account on beta.84 or older (every Site still on
+  0.43.x, Ekis, gq-support, gq-games-api, legaciti, bioeconomia.pt,
+  cesam-astro) can plan or deploy again until it moves to beta.85+. Its Workers
+  keep serving. Rolling back means a newer Alchemy or a Cloudflare Worker
+  version rollback, never an older Alchemy. **Don't deploy, or plan, a Site
+  on this release outside the hop-2 cutover window** (below).
+- **The deploy wrapper's guards.** The managed
+  `infra/scripts/deploy-frontend.mjs` (content and commerce) now runs Alchemy
+  through `@getquick/site/deploy-guards`. Before Alchemy runs, it reads the
+  Frontend Worker and the account's state store through the Cloudflare API
+  (`CLOUDFLARE_API_TOKEN`, names only, never values):
+  - **State store.** A deploy or plan that would upgrade a v7 store is refused
+    unless `--upgrade-state-store` is given. A store newer than the installed
+    Alchemy is refused too. A plan (`--dry-run`) no longer passes `--yes`, which
+    in Alchemy also authorizes the store upgrade.
+  - **Secrets.** From beta.85, a full deploy unbinds every secret it doesn't
+    declare, and `frontend.run.ts` declares one only when its variable is
+    set. A deploy or plan that would unbind a secret the Worker has bound is
+    refused unless `--drop-secret <NAME>` names it.
+  - **The plan check.** After `pnpm plan:frontend`, the `--detailed` plan is
+    parsed: any replaced, deleted or orphaned resource, any `unbind` and any
+    `env` entry removed from a resource fails the plan. Compatibility-flag
+    changes are printed (Alchemy beta.84 added `new_module_registry` on deploy
+    without the plan showing it), as are the Worker's current date, flags and
+    secret count. Alchemy has no structured plan output (`--log-format json`
+    prints no plan), so the check reads beta.86's text format, pinned by
+    fixtures.
+  - **After a deploy.** The Worker's bindings and compatibility settings are
+    read again: a binding that disappeared fails the deploy (exit 1), and a
+    flag or date change is reported.
+- **Protected databases.** In production, the publication D1, the Consent D1
+  and the storefront Runtime's D1 databases are now `RemovalPolicy.protect()`
+  (beta.86): any plan or deploy that would replace or delete one fails before
+  anything is applied, including one that removes its declaration. The policy
+  isn't a prop, so a plan shows these databases as unchanged. Other stages
+  are unchanged.
+- **`gq doctor` checks the Frontend's Astro** against
+  `@alchemy.run/frontend-frameworks`' peer range: from beta.85 it needs
+  `astro ^7.4.0`, while Cooldown Gaming, Nomia and CESAM lock Astro 7.3.x.
+  The fix is `pnpm --dir apps/frontend update astro@^7.4.0`.
+- **Smokes.** `scripts/smoke/sync-upgrade.sh` also runs from 0.43.1 in CI (the
+  fleet after hop 1). It accepts beta.85+'s store lookup as reaching
+  Cloudflare, runs the managed `plan:frontend` wrapper as far as its first
+  Cloudflare API read, and fails when `pnpm install` rewrites
+  `pnpm-workspace.yaml`. pnpm appends a `minimumReleaseAgeExclude` entry for
+  every exact pin younger than 24 hours, an exemption a Site would otherwise
+  commit.
+- **What a Site must do, in its own repository and session.** _Before the
+  window:_ upgrade `@getquick/site` to this release, run `gq sync` and
+  `pnpm install`, and commit the sync diff with `pnpm-lock.yaml`.
+  `pnpm-workspace.yaml` must gain nothing but the pins: no
+  `minimumReleaseAgeExclude` entries. If `gq doctor` names Astro, run
+  `pnpm --dir apps/frontend update astro@^7.4.0` and commit that too. Run
+  `gq sync --check`, `gq doctor`, `pnpm infra:check`, `pnpm ci:check` and
+  `gq verify`. Open the PR, but don't merge, tag or plan it against production
+  yet: while the store is v7, `pnpm plan:frontend` refuses (planning would
+  upgrade the store).
+- **The cutover window** (owner decisions, 2026-11-13, on
+  [#185](https://github.com/Quick-Release/gq-site/issues/185)). It opens right
+  after this release is published, the same day, and runs in one sitting. From
+  the first hop-2 store upgrade until the last Site's post-checks, nothing else
+  deploys in the account.
+  1. Export every stack's state with beta.84 (from a Site still on 0.43.1:
+     `pnpm --dir infra exec alchemy state read -r --backend cloudflare <Stack>/<stage>`)
+     and take D1 exports of each Site's `<project>-fe-publications` and
+     `<project>-fe-consent` (Bruaa: its storefront databases). Keep the files
+     private: the store's own stack holds its bearer token.
+  2. **The store gate.** Cooldown Gaming runs
+     `pnpm plan:frontend --upgrade-state-store`, which upgrades the account's
+     store and changes no Site resource. It is the only run that passes the
+     flag.
+  3. **All five Sites plan** (`pnpm plan:frontend`, now against the v8 store),
+     and each plan is read in full and reviewed before any Site deploys. Every
+     plan check must pass: no replacement, deletion, unbind or removed env
+     entry.
+  4. Deploy in order, Cooldown Gaming → Southside → Nomia → CESAM → Bruaa:
+     merge and release (`pnpm push`). The tag's CI deploys it, and the wrapper
+     compares bindings and flags. After each deploy run `pnpm site:check`,
+     `pnpm frontend:events:check`, a refresh round trip and a consent record
+     write and read (Bruaa: `site:check` and its storefront smoke).
+
+  If a plan check or a deploy fails, stop: the Sites not yet deployed keep
+  serving, and only their deploys wait.
+
+- **Frozen stacks.** Every Alchemy project in the account that isn't a
+  Blueprint Site stays on its Alchemy version and is left untouched:
+  `legaciti-dashboard-infra` (legaciti), `GQSupportWorker` (gq-support),
+  `gq-games-api`, `EkisStorefront` and `EkisDocs` (Ekis), `NomiaWeb`,
+  `NomiaDocs` and `NomiaInfrastructure` (bioeconomia.pt), `CesamAstro`
+  (cesam-astro) and `LombardiFrontend` (Lombardi, archived). After the window
+  none of them can plan or deploy, while their resources keep serving. Each
+  moves to beta.85+ in its own repository when it next needs a deploy.
+  nomia-bnq doesn't use bioeconomia.pt's `nomia-media` and `nomia-db-backups`
+  buckets.
+
 ## 0.43.1 — 2026-11-12
 
 - **Fix: Sites can plan and deploy their Frontend again.** 0.41.0 to 0.43.0

@@ -17,16 +17,24 @@ const OPS = {
   cloudflare: { accountId: "fixture-account" },
 };
 
+// The deploy guards' Cloudflare API, answered locally, and their token.
+const GUARDS = {
+  CLOUDFLARE_API_TOKEN: "token",
+  NODE_OPTIONS: `--import=${new URL("../support/cloudflare-api.mjs", import.meta.url).href}`,
+};
+
 const STUBS = {
   "node_modules/alchemy/package.json": JSON.stringify({
     type: "module",
     exports: { ".": "./index.js", "./Stack": "./Stack.js" },
   }),
   "node_modules/alchemy/index.js":
-    "export const Stack = (_id, _options, program) => program; export const RemovalPolicy = { retain: () => value => value };",
+    "export const Stack = (_id, _options, program) => program; export const RemovalPolicy = { retain: () => value => value, protect: () => value => value };",
   "node_modules/alchemy/Stack.js":
     "export const Stack = { *[Symbol.iterator]() { return { stage: process.env.TEST_STAGE }; } };",
   "node_modules/@alchemy.run/cloudflare/package.json": JSON.stringify({
+    name: "@alchemy.run/cloudflare",
+    version: "2.0.0-beta.86",
     type: "module",
     exports: { ".": "./index.js" },
   }),
@@ -107,7 +115,7 @@ async function generatedDeploy({
     const result = spawnSync(process.execPath, args, {
       cwd: join(fixture.root, "infra"),
       encoding: "utf8",
-      env: { PATH: fixture.root, TEST_STAGE: "prod", ...env },
+      env: { PATH: fixture.root, TEST_STAGE: "prod", ...GUARDS, ...env },
     });
     assert.equal(result.status, 0, result.stdout + result.stderr);
     return JSON.parse(result.stdout);
@@ -119,7 +127,7 @@ async function generatedDeploy({
       spawnSync(process.execPath, ["scripts/deploy-frontend.mjs"], {
         cwd: join(fixture.root, "infra"),
         encoding: "utf8",
-        env: { PATH: fixture.root, ...env },
+        env: { PATH: fixture.root, ...GUARDS, ...env },
       }),
     website: (env = {}) =>
       run(

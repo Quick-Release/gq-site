@@ -20,7 +20,8 @@
 #    against the installed packages, and `gq doctor` passes, its Alchemy
 #    check included;
 # 5. the Alchemy CLI plans the Frontend stack as far as Cloudflare, with a
-#    token Cloudflare refuses (plan_reaches_cloudflare).
+#    token Cloudflare refuses, and the managed plan:frontend wrapper stops at
+#    its deploy guards' first Cloudflare API read (plan_reaches_cloudflare).
 #
 # GQ_SYNC_FROM picks the earlier release. Generation and gq sync stay
 # offline and secret-free; npx and pnpm install use the network. Nothing is
@@ -67,8 +68,8 @@ workspace_pins() {
 
 # The Alchemy CLI plans the Frontend stack as far as Cloudflare: `alchemy
 # deploy --dry-run` with a token Cloudflare refuses, from a throwaway HOME
-# (Alchemy caches state-store credentials there). It must reach "Computing
-# plan" and fail only on authentication. A module the installed Alchemy
+# (Alchemy caches state-store credentials there). It must reach Cloudflare
+# and fail only on authentication. A module the installed Alchemy
 # can't load (Alchemy up to beta.84 imports effect/Crypto, which Effect 4.1
 # removed) fails earlier, though tsc, builds and doctor all pass.
 plan_reaches_cloudflare() {
@@ -88,7 +89,27 @@ plan_reaches_cloudflare() {
     grep -E 'ERR_MODULE_NOT_FOUND|Cannot find module' <<<"$output" | head -3 >&2
     fail "the Alchemy CLI can't load the Frontend stack"
   fi
-  grep -q 'Computing plan' <<<"$output" || { echo "$output" | tail -20 >&2; fail "the plan didn't reach Cloudflare"; }
+  # Alchemy loads the stack module first, then the state: beta.84 reaches
+  # "Computing plan" before its first refused call, beta.85+ looks up the
+  # account's state store while "Loading stack state", and the refused token
+  # stops it there, leaving the store untouched.
+  if ! grep -q 'Computing plan' <<<"$output" &&
+    ! grep -qE "Could not determine whether Cloudflare State Store 'alchemy-state-store' exists, so it was left untouched: Authentication failed" <<<"$output"; then
+    echo "$output" | tail -20 >&2
+    fail "the plan didn't reach Cloudflare"
+  fi
+  # The managed wrapper (pnpm plan:frontend without Sigillo) loads its deploy
+  # guards from the installed @getquick/site and the provider's version, and
+  # stops at its first Cloudflare API read, which refuses the token: nothing
+  # reaches Alchemy, so no state store is read or upgraded.
+  output=$(HOME="$home" CLOUDFLARE_API_TOKEN=invalid \
+    CLOUDFLARE_ACCOUNT_ID=0123456789abcdef0123456789abcdef \
+    pnpm --dir infra run plan:frontend 2>&1 || true)
+  if ! grep -q 'Before deploying, the Cloudflare API refused GET /accounts/…/workers/scripts/alchemy-state-store/settings' <<<"$output"; then
+    echo "$output" | tail -20 >&2
+    fail "the deploy wrapper's guards didn't reach Cloudflare"
+  fi
+  if grep -q 'Computing plan' <<<"$output"; then fail "the wrapper ran Alchemy past its guards"; fi
   mv "$parent/gq.ops.json.saved" gq.ops.json
 }
 
@@ -137,8 +158,14 @@ for framework in astro tanstack; do
 
   # The lock follows the catalog, then holds. (pnpm exec, in CI, first checks
   # the install against the lock, so nothing runs through it until then.)
+  cp pnpm-workspace.yaml "$parent/$project.synced.yaml"
   CI=1 pnpm install --no-frozen-lockfile >/dev/null
   CI=1 pnpm install --frozen-lockfile >/dev/null
+  # pnpm appends a minimumReleaseAgeExclude entry for each exact pin younger
+  # than its 24-hour minimumReleaseAge: a Site would commit that exemption.
+  if ! diff -u "$parent/$project.synced.yaml" pnpm-workspace.yaml >&2; then
+    fail "pnpm install rewrote pnpm-workspace.yaml: a pin is inside pnpm's minimumReleaseAge"
+  fi
   pnpm exec gq sync --check >/dev/null
   pnpm infra:check
   pnpm ci:check

@@ -1,0 +1,20 @@
+[33m[01:00:00.000][39m [33mINFO[39m: [1mPlan:[22m [93m2 to update[39m[2m, [22m[33m1 binding changes[39m
+[33m[01:00:00.000][39m [33mINFO[39m: 
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[ExampleConsent][39m [2mnoop[22m
+[33m[01:00:00.000][39m [33mINFO[39m: 
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[ExampleConsentPurge][39m [93mupdate[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33mproperties:[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [31m-   schedule: 0 3 * * *[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33m+   schedule: 0 4 * * *[39m
+[33m[01:00:00.000][39m [33mINFO[39m: 
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[ExampleFrontend][39m [93mupdate[39m
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[ExampleFrontend/CONSENT_DB][39m [2mnoop[22m
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[ExampleFrontend/PUBLICATION_DB][39m [93mupdate[39m
+[33m[01:00:00.000][39m [33mINFO[39m:   [33mproperties:[39m
+[33m[01:00:00.000][39m [33mINFO[39m:     [33menv:[39m
+[33m[01:00:00.000][39m [33mINFO[39m:       [33mCONSENT_READ_TOKEN:[39m (redacted)
+[33m[01:00:00.000][39m [33mINFO[39m:       [33mFRONTEND_REFRESH_TOKEN:[39m (redacted)
+[33m[01:00:00.000][39m [33mINFO[39m:       [33mPUBLIC_WORDPRESS_GRAPHQL_URL:[39m https://cms.example.test/wp/graphql
+[33m[01:00:00.000][39m [33mINFO[39m:     [33mname:[39m example-fe
+[33m[01:00:00.000][39m [33mINFO[39m: 
+[33m[01:00:00.000][39m [33mINFO[39m: [33m[ExamplePublications][39m [2mnoop[22m

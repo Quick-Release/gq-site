@@ -81,8 +81,8 @@ pinned instead; no check is weakened for it. Pinned on 2026-11-12:
 | `typescript` (`infra`, `infra/ci`, managed)                                  | ^7.0.2         | ^7.0.2            |
 | `vite-plus` (`vite` is its core)                                             | 1.6.0          | 1.6.0             |
 | `vitest`                                                                     | 5.1.0          | 5.1.0             |
-| `alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/frontend-frameworks`     | 2.0.0-beta.84  | 2.0.0-beta.84     |
-| `effect`, `@effect/platform-node`, `@effect/platform-node-shared` (override) | 4.0.7          | 4.0.7             |
+| `alchemy`, `@alchemy.run/cloudflare`, `@alchemy.run/frontend-frameworks`     | 2.0.0-beta.86  | 2.0.0-beta.86     |
+| `effect`, `@effect/platform-node`, `@effect/platform-node-shared` (override) | 4.1.4          | 4.1.4             |
 
 Gaps from the latest release:
 
@@ -92,36 +92,46 @@ Gaps from the latest release:
   replacement, `@astrojs/ts-content-mapper`, needs TypeScript 7.1, which is
   still a beta. The Astro Frontend stays on TypeScript 6.0.3, the latest 6.x.
   The TanStack Frontend and the managed `infra` packages use TypeScript 7.0.2.
-- **Alchemy beta.84, not the latest.** From 2.0.0-beta.84 the Cloudflare
+- **Alchemy beta.86, not the latest.** From 2.0.0-beta.84 the Cloudflare
   provider is its own package, `@alchemy.run/cloudflare`: the managed
   `infra/*.ts` import it, and `infra/package.json` depends on it from the
   catalog. The Alchemy and Effect catalog entries, the
   `@effect/platform-node-shared` override and the `effect` peer rule are
   managed keys of each Site's `pnpm-workspace.yaml`, so `gq sync` moves them
   with the templates
-  ([migration plan](../research/alchemy-cloudflare-package-migration.md), hop
-  1). The pins stop at beta.84 because it is the last release that speaks the
-  Cloudflare state store's v7 protocol: beta.85 upgrades the account's shared
-  store to v8 on its first deploy, after which a Site still on beta.84 or older
-  can't deploy. That move is hop 2, made for the whole account at once.
-- **Effect 4.0, not 4.1.** Alchemy beta.79 to beta.84 import `effect/Crypto`,
-  which Effect 4.1 removed (4.1 has `effect/crypto`). With Effect 4.1 the
-  managed `infra` type-checks, the Frontend builds and `gq doctor` passes, but
-  `alchemy deploy` fails with `ERR_MODULE_NOT_FOUND` while it loads the stack,
-  so a Site can't plan or deploy (gq-site 0.41.0 to 0.43.0 shipped this pair).
-  Effect stays at 4.0.7, the latest 4.0.x, until hop 2 moves Alchemy past
-  beta.84. `scripts/smoke/sync-upgrade.sh` plans the stack as far as
-  Cloudflare to catch it.
-- **`capnp-es` and TypeScript 7.** `@alchemy.run/cloudflare-runtime` beta.84
+  ([migration plan](../research/alchemy-cloudflare-package-migration.md)).
+  beta.85 and later speak the Cloudflare state store's v8 protocol and upgrade
+  the account's shared store on their first `--yes` run. After that, no
+  project in the account on beta.84 or older can plan or deploy. That move is
+  hop 2, made for the whole account at once. beta.86 adds
+  `RemovalPolicy.protect()`, which the production publication and Consent
+  databases (and the storefront Runtime's) now carry. beta.87 (2026-11-12)
+  changes nothing the managed infra uses: its Cloudflare changes are to Durable
+  Object class deletion and containers, and it was still inside pnpm's 24-hour
+  `minimumReleaseAge` when 0.44.0 was cut.
+- **Effect 4.1.** Alchemy beta.79 to beta.84 import `effect/Crypto`, which
+  Effect 4.1 removed, and beta.85 and later need Effect `^4.1.0` (beta.86:
+  `^4.1.4`). So Effect moved with Alchemy twice: 4.0.7 for beta.84 (0.43.1)
+  and 4.1.4 for beta.86. `@effect/sql-d1` 4.1.4, which
+  `@alchemy.run/cloudflare` depends on, matches it again.
+  `scripts/smoke/sync-upgrade.sh` plans the stack as far as Cloudflare to catch
+  a pair that can't load.
+- **Astro 7.4 for frontend-frameworks.** From beta.85,
+  `@alchemy.run/frontend-frameworks` peers on `astro ^7.4.0`. A Site's own
+  `apps/frontend` range (`^7.2.9` on Cooldown Gaming, Nomia and Southside)
+  allows the Astro 7.3 its lock may hold, and pnpm only warns, so `gq doctor`
+  fails when the installed Astro is outside that peer range. The fix is
+  `pnpm --dir apps/frontend update astro@^7.4.0`.
+- **`capnp-es` and TypeScript 7.** `@alchemy.run/cloudflare-runtime` beta.84 to beta.86
   depends on `capnp-es` 0.0.16, whose optional `typescript` peer is `^5 || ^6`.
   pnpm warns; builds, checks and the workerd probe pass.
 - **`@cloudflare/workers-types`.** 5.20261112.1 was published on 2026-11-12,
   inside pnpm's 24-hour `minimumReleaseAge`; the skeletons pin 5.20261110.1.
 
 An existing Site's catalog (Alchemy beta.79, beta.83 or beta.84, Effect
-4.0.0-rc.115 or 4.1.4) moves to these pins on its next `gq sync`:
+4.0.0-rc.115, 4.0.7 or 4.1.4) moves to these pins on its next `gq sync`:
 `scripts/smoke/sync-upgrade.sh` syncs a 0.40.0 Site (`GQ_SYNC_FROM` picks
-another release), installs it, type-checks its `infra` under TypeScript 7
+another release; CI also runs 0.43.0 and 0.43.1), installs it, type-checks its `infra` under TypeScript 7
 and plans its Frontend stack as far as Cloudflare. The
 Astro workspace keeps its `@napi-rs/wasm-runtime>@emnapi/runtime` override at
 1.11.3, the latest 1.x: without it pnpm still resolves an `@emnapi/runtime`

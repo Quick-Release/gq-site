@@ -39,9 +39,11 @@ const RuntimeBindings = Effect.gen(function* () {
   Object.assign(bindings, vars);
   // Each database is separate from the Worker, so a redeploy keeps it;
   // Alchemy applies the Runtime's migrations, in order, before the Worker is
-  // updated. Production's is retained even if this declaration goes away.
+  // updated. Production's is protected: a plan that would replace or delete it
+  // fails, its declaration removed included (Alchemy's RemovalPolicy.protect).
   for (const { binding, name, migrations } of databases) {
     bindings[binding] = yield* Cloudflare.D1.Database(binding, { name, migrations }).pipe(
+      Alchemy.RemovalPolicy.protect(production),
       Alchemy.RemovalPolicy.retain(production),
     );
   }
