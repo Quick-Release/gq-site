@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.44.0 — 2026-11-13
 
 - **Alchemy hop 2: beta.86 and the account's state store v8**
   ([plan](docs/research/alchemy-cloudflare-package-migration.md#hop-2-in-the-blueprint),
