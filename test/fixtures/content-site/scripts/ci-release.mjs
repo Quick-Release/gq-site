@@ -5,9 +5,14 @@
 // its environment first (names, never values) so a failure is diagnosable
 // from the step output alone.
 //
+// Everything goes to stderr except a short summary, printed last on stdout.
+// Cloudflare Workflows keeps only the first ~1 KB of a step's result, which
+// is {exitCode, logs: {stdout, stderr}}: what fits there is stdout's start.
+// A failed step's error keeps the output's last 20,000 characters instead.
+//
 //   node scripts/ci-release.mjs --ref <sha>
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import process from "node:process";
 
@@ -68,7 +73,7 @@ export function fetchSource(ref, environment, directory = "/tmp/release-source")
   ];
   for (const args of steps) {
     const result = spawnSync("git", args, {
-      stdio: ["ignore", "inherit", "inherit"],
+      stdio: ["ignore", 2, 2],
       env: {
         ...environment,
         GIT_CONFIG_COUNT: "1",
@@ -81,15 +86,55 @@ export function fetchSource(ref, environment, directory = "/tmp/release-source")
   return directory;
 }
 
+// Runs a stage with its output on stderr, and returns its exit status and
+// output for the summary.
 function run(label, command, args) {
-  console.log(`\n=== ${label}: ${[command, ...args].join(" ")}`);
-  const result = spawnSync(command, args, { stdio: "inherit" });
-  if (result.error) {
-    console.error(`${label} could not start: ${result.error.message}`);
-    return 1;
+  console.error(`\n=== ${label}: ${[command, ...args].join(" ")}`);
+  return new Promise((resolve) => {
+    let output = "";
+    const child = spawn(command, args, { stdio: ["inherit", "pipe", "pipe"] });
+    for (const stream of [child.stdout, child.stderr]) {
+      stream.on("data", (chunk) => {
+        process.stderr.write(chunk);
+        output += chunk;
+      });
+    }
+    child.on("error", (error) => {
+      console.error(`${label} could not start: ${error.message}`);
+      resolve({ label, status: 1, output });
+    });
+    child.on("close", (status) => {
+      if (status !== 0) console.error(`${label} failed with exit code ${status}`);
+      resolve({ label, status: status ?? 1, output });
+    });
+  });
+}
+
+// What a stage's output says that the summary keeps: the release's header,
+// the Frontend deploy guards' verdicts (✓ / ✗) and compatibility changes.
+const NOTABLE = /^(Ploi release · |✓ |✗ |\S+'s compatibility (flags|date) changed)/u;
+const SUMMARY_CHARACTERS = 700;
+
+// The release's outcome in a few lines, short enough to fit in the start of
+// the step's result: each stage's status, then its notable lines.
+export function releaseSummary(stages, skipped = []) {
+  const failed = stages.some(({ status }) => status !== 0);
+  const lines = [`release: ${failed ? "failed" : "ok"}`];
+  for (const { label, status, output } of stages) {
+    lines.push(`${label}: ${status === 0 ? "ok" : `failed (exit ${status})`}`);
+    const notable = output
+      // eslint-disable-next-line no-control-regex
+      .replace(/\u001b\[[0-9;]*m/gu, "")
+      .split("\n")
+      .map((line) => line.replace(/^[\s│┌└◇◆●▲■]+/u, "").trimEnd())
+      .filter((line) => NOTABLE.test(line));
+    for (const line of [...new Set(notable)]) lines.push(`  ${line}`);
   }
-  if (result.status !== 0) console.error(`${label} failed with exit code ${result.status}`);
-  return result.status ?? 1;
+  for (const label of skipped) lines.push(`${label}: not run`);
+  const text = lines.join("\n");
+  return text.length <= SUMMARY_CHARACTERS
+    ? text
+    : `${text.slice(0, SUMMARY_CHARACTERS - 40)}\n… (cut: the full output is on stderr)`;
 }
 
 // An offboarded Site (gq offboard) is never released: the release would
@@ -103,24 +148,24 @@ function refuseOffboarded() {
   }
 }
 
-function main(arguments_) {
+async function main(arguments_) {
   refuseOffboarded();
   const index = arguments_.indexOf("--ref");
   const ref = index === -1 ? null : arguments_[index + 1];
   if (!ref) throw new Error("Usage: ci-release.mjs --ref <sha>");
 
-  console.log("=== environment");
-  console.log(`node ${process.version}; ${capture("git", ["--version"])}; cwd ${process.cwd()}`);
-  console.log(`ref ${ref} → commit ${capture("git", ["rev-parse", `${ref}^{commit}`])}`);
-  for (const name of required) console.log(`${name}: ${process.env[name] ? "set" : "MISSING"}`);
-  for (const name of optional) console.log(`${name}: ${process.env[name] ? "set" : "not set"}`);
+  console.error("=== environment");
+  console.error(`node ${process.version}; ${capture("git", ["--version"])}; cwd ${process.cwd()}`);
+  console.error(`ref ${ref} → commit ${capture("git", ["rev-parse", `${ref}^{commit}`])}`);
+  for (const name of required) console.error(`${name}: ${process.env[name] ? "set" : "MISSING"}`);
+  for (const name of optional) console.error(`${name}: ${process.env[name] ? "set" : "not set"}`);
   const missing = missingEnvironment(process.env);
   if (missing.length > 0) throw new Error(`Missing environment: ${missing.join(", ")}`);
 
   const gitDir = isGitRepository(process.cwd()) ? process.cwd() : fetchSource(ref, process.env);
-  console.log(`release source: ${gitDir}`);
+  console.error(`release source: ${gitDir}`);
 
-  const admin = run("admin", "pnpm", [
+  const admin = await run("admin", "pnpm", [
     "exec",
     "gq",
     "ploi",
@@ -130,13 +175,18 @@ function main(arguments_) {
     "--git-dir",
     gitDir,
   ]);
-  if (admin !== 0) return admin;
-  return run("frontend", "pnpm", ["run", "deploy:frontend:raw"]);
+  if (admin.status !== 0) {
+    console.log(releaseSummary([admin], ["frontend"]));
+    return admin.status;
+  }
+  const frontend = await run("frontend", "pnpm", ["run", "deploy:frontend:raw"]);
+  console.log(releaseSummary([admin, frontend]));
+  return frontend.status;
 }
 
 if (process.argv[1]?.endsWith("ci-release.mjs")) {
   try {
-    process.exitCode = main(process.argv.slice(2));
+    process.exitCode = await main(process.argv.slice(2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

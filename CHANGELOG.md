@@ -3,6 +3,20 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **The CI release step's result now shows the release's outcome.** Cloudflare
+  Workflows keeps only the first ~1 KB of a step's result
+  (`{exitCode, logs: {stdout, …}}`), and the release step filled it with its
+  environment listing, so the Frontend deploy guards' post-deploy lines were
+  never readable in CI (hop 2's Sites compared their Workers by hand).
+  `scripts/ci-release.mjs` now writes everything to stderr and ends with a
+  short summary on stdout: each stage's status (`admin`, `frontend`), the
+  Ploi release header and the deploy guards' verdicts. A failed step's error
+  still carries the output's last 20,000 characters. The Frontend deploy
+  wrapper prints `✓ <worker> deployed with every binding it had before.` after
+  a deploy that kept every binding. Sites get both with `gq sync`.
+
 ## 0.44.0 — 2026-11-13
 
 - **Alchemy hop 2: beta.86 and the account's state store v8**

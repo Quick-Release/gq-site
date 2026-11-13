@@ -118,7 +118,8 @@ async function generatedDeploy({
       env: { PATH: fixture.root, TEST_STAGE: "prod", ...GUARDS, ...env },
     });
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    return JSON.parse(result.stdout);
+    // The stub's JSON, which the deploy wrapper's verdict may follow.
+    return JSON.parse(result.stdout.split("\n")[0]);
   };
   return {
     root: fixture.root,
@@ -325,7 +326,8 @@ async function generatedPurge() {
       },
     );
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    return JSON.parse(result.stdout);
+    // The stub's JSON, which the deploy wrapper's verdict may follow.
+    return JSON.parse(result.stdout.split("\n")[0]);
   };
 }
 
