@@ -103,11 +103,13 @@ async function frontendPeer(root) {
 }
 
 // Whether `version` satisfies a caret range `^X.Y.Z`; undefined for any other
-// range, which this check leaves to pnpm.
+// range, which this check leaves to pnpm. As in semver, a prerelease
+// (`7.4.0-rc.1`) doesn't satisfy a range without one.
 function satisfiesCaret(version, range) {
   const wanted = /^\^(\d+)\.(\d+)\.(\d+)$/u.exec(range);
-  const have = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/u.exec(version);
+  const have = /^(\d+)\.(\d+)\.(\d+)(-[^+]+)?(?:\+.*)?$/u.exec(version);
   if (wanted === null || have === null) return undefined;
+  if (have[4] !== undefined) return false;
   const [w, h] = [wanted.slice(1).map(Number), have.slice(1).map(Number)];
   if (h[0] !== w[0]) return false;
   if (w[0] === 0 && h[1] !== w[1]) return false;

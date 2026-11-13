@@ -32,6 +32,11 @@ test("the wrapper's flags are taken out; the rest goes to Alchemy", () => {
   assert.equal(parsed.detailed, true);
   assert.throws(() => parseDeployArguments(["--drop-secret"]), /needs the secret's name/u);
   assert.throws(() => parseDeployArguments(["--drop-secret", "--yes"]), /needs the secret's name/u);
+  // --yes would let Alchemy upgrade the store, a plan included: only the
+  // wrapper passes it.
+  for (const yes of ["--yes", "-y", "--yes=true"]) {
+    assert.throws(() => parseDeployArguments(["--dry-run", yes]), /--upgrade-state-store/u);
+  }
 });
 
 test("a bound secret whose variable is unset is dropped unless --drop-secret names it", () => {

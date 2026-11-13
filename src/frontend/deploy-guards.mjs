@@ -40,6 +40,13 @@ export function parseDeployArguments(argv) {
       dropSecrets.add(name);
     } else if (argument === "--upgrade-state-store") {
       upgradeStateStore = true;
+    } else if (argument === "--yes" || argument === "-y" || argument.startsWith("--yes=")) {
+      // Alchemy beta.85+ treats --yes as consent to upgrade the state store,
+      // on a plan too: only the wrapper passes it.
+      throw new Error(
+        "Don't pass --yes: the wrapper passes it to deploys itself, and on a plan it would let " +
+          "Alchemy upgrade the account's state store. To upgrade it, pass --upgrade-state-store.",
+      );
     } else {
       alchemyArgs.push(argument);
     }

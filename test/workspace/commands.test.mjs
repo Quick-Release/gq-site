@@ -458,6 +458,9 @@ test("gq doctor fails when the Frontend's Astro is older than frontend-framework
   const old = await healthySite(adapter("7.3.5"));
   const failed = await old.run(["doctor"], { exec: machine() });
   assert.equal(failed.code, 1, failed.stdout);
+  // A prerelease doesn't satisfy a range without one.
+  const prerelease = await healthySite(adapter("7.4.0-rc.1"));
+  assert.equal((await prerelease.run(["doctor"], { exec: machine() })).code, 1);
   assert.match(
     failed.stdout,
     /✗ apps\/frontend installs astro 7\.3\.5, but @alchemy\.run\/frontend-frameworks 2\.0\.0-beta\.86 needs astro \^7\.4\.0 — run: pnpm --dir apps\/frontend update astro@\^7\.4\.0$/mu,
