@@ -76,25 +76,44 @@ All notable changes to `@getquick/site` are recorded here. Versions follow
   `gq sync --check`, `gq doctor`, `pnpm infra:check`, `pnpm ci:check` and
   `gq verify`. Open the PR, but don't merge, tag or plan it against production
   yet: while the store is v7, `pnpm plan:frontend` refuses (planning would
-  upgrade the store). _In the window_ (all deploys in the account frozen):
+  upgrade the store).
+- **The cutover window** (owner decisions, 2026-11-13, on
+  [#185](https://github.com/Quick-Release/gq-site/issues/185)). It opens right
+  after this release is published, the same day, and runs in one sitting. From
+  the first hop-2 store upgrade until the last Site's post-checks, nothing else
+  deploys in the account.
   1. Export every stack's state with beta.84 (from a Site still on 0.43.1:
      `pnpm --dir infra exec alchemy state read -r --backend cloudflare <Stack>/<stage>`)
      and take D1 exports of each Site's `<project>-fe-publications` and
      `<project>-fe-consent` (Bruaa: its storefront databases). Keep the files
      private: the store's own stack holds its bearer token.
-  2. Cooldown Gaming: `pnpm plan:frontend --upgrade-state-store`. This
-     performs the account's store upgrade, which changes no resource, and
-     prints CG's plan.
-  3. Every other Site: `pnpm plan:frontend` (now against the v8 store), read
-     in full. The plan check must pass: no replacement, deletion, unbind or
-     removed env entry.
+  2. **The store gate.** Cooldown Gaming runs
+     `pnpm plan:frontend --upgrade-state-store`, which upgrades the account's
+     store and changes no Site resource. It is the only run that passes the
+     flag.
+  3. **All five Sites plan** (`pnpm plan:frontend`, now against the v8 store),
+     and each plan is read in full and reviewed before any Site deploys. Every
+     plan check must pass: no replacement, deletion, unbind or removed env
+     entry.
   4. Deploy in order, Cooldown Gaming → Southside → Nomia → CESAM → Bruaa:
      merge and release (`pnpm push`). The tag's CI deploys it, and the wrapper
-     compares bindings and flags. Then run `pnpm site:check`,
+     compares bindings and flags. After each deploy run `pnpm site:check`,
      `pnpm frontend:events:check`, a refresh round trip and a consent record
      write and read (Bruaa: `site:check` and its storefront smoke).
-     If a plan check fails, stop: the Sites not yet deployed keep serving, and
-     only their deploys wait.
+
+  If a plan check or a deploy fails, stop: the Sites not yet deployed keep
+  serving, and only their deploys wait.
+
+- **Frozen stacks.** Every Alchemy project in the account that isn't a
+  Blueprint Site stays on its Alchemy version and is left untouched:
+  `legaciti-dashboard-infra` (legaciti), `GQSupportWorker` (gq-support),
+  `gq-games-api`, `EkisStorefront` and `EkisDocs` (Ekis), `NomiaWeb`,
+  `NomiaDocs` and `NomiaInfrastructure` (bioeconomia.pt), `CesamAstro`
+  (cesam-astro) and `LombardiFrontend` (Lombardi, archived). After the window
+  none of them can plan or deploy, while their resources keep serving. Each
+  moves to beta.85+ in its own repository when it next needs a deploy.
+  nomia-bnq doesn't use bioeconomia.pt's `nomia-media` and `nomia-db-backups`
+  buckets.
 
 ## 0.43.1 — 2026-11-12
 

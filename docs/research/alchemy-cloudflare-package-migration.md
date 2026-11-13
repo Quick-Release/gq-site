@@ -7,7 +7,7 @@ Status: **hop 1 is done** (gq-site 0.43.1, see
 [Hop 1 in the Blueprint](#hop-1-in-the-blueprint)): all five Blueprint Sites
 deployed it by 2026-11-13. **Hop 2's Blueprint part is implemented** (gq-site
 0.44.0, see [Hop 2 in the Blueprint](#hop-2-in-the-blueprint)). Every Site's
-own hop 2, and the cutover window, are still to do.
+own hop 2, and the cutover window ([decided](#cutover-window-owner-decisions-2026-11-13)), are still to do.
 
 ## Problem
 
@@ -344,6 +344,32 @@ infrastructure workflow are `workflow_dispatch`, and bioeconomia.pt's
 to a separate store either: before beta.85 `Cloudflare.state()` hardcodes the
 `alchemy-state-store` Worker.
 
+#### Cutover window (owner decisions, 2026-11-13)
+
+- **Timing.** The window opens right after gq-site 0.44.0 is released, the
+  same day, and runs in one sitting. From the store upgrade until the last
+  Site's post-checks, nothing else deploys in the account.
+- **The store gate.** Cooldown Gaming first runs
+  `pnpm plan:frontend --upgrade-state-store`. That upgrades the store to v8
+  and changes no Site resource, and no other run passes the flag. Then all
+  five Sites plan against the v8 store, and each plan is reviewed before any
+  Site deploys. This replaces the earlier condition that every hop-2 PR has a
+  reviewed plan before the window, which a beta.85+ plan can't meet against a
+  v7 store.
+- **Order.** Before the store gate: the state exports (beta.84) and the D1
+  exports of each Site's publication and Consent databases. Then deploy
+  Cooldown Gaming → Southside → Nomia → CESAM → Bruaa, each followed by its
+  post-checks.
+- **Frozen stacks.** Every non-Blueprint stack in the
+  [store inventory](#store-inventory-account-8f38791a) is frozen and left
+  untouched: `legaciti-dashboard-infra`, `GQSupportWorker`, `gq-games-api`,
+  `EkisStorefront`, `EkisDocs`, `NomiaWeb`, `NomiaDocs`,
+  `NomiaInfrastructure`, `CesamAstro` and `LombardiFrontend`. Each moves to
+  beta.85+ in its own repository when it next needs a deploy. nomia-bnq
+  doesn't use bioeconomia.pt's `nomia-media` and `nomia-db-backups` buckets (0
+  references on live pages). The inventory's "Needs before the window" column
+  lists the options considered; freezing was chosen for every row.
+
 ### Hop 2: beta.86 (or the latest), the store upgrade
 
 1. **Guard secrets first.** `deploy-frontend.mjs` refuses a full deploy that
@@ -395,11 +421,15 @@ Order, both hops:
 | 4   | CESAM                             | Astro today. If its TanStack rebuild lands first, it migrates on the TanStack templates instead. It lives on Cloudflare Artifacts, not GitHub.              |
 | 5   | Bruaa                             | Commerce. The private `@quick-release` packages must install with the new pins (`scripts/smoke/commerce-check.sh`).                                         |
 | —   | FPA Shop                          | No `infra/` yet. It gets the pins when it is generated forward.                                                                                             |
-| —   | Ekis, bioeconomia.pt, cesam-astro | Not Blueprint Sites (no `gq sync`). Hop 1 doesn't affect them. Before hop 2 they must be moved by hand, retired, or confirmed to deploy to another account. |
+| —   | Ekis, bioeconomia.pt, cesam-astro | Not Blueprint Sites (no `gq sync`). Hop 1 doesn't affect them. For hop 2 they, and the other non-Blueprint stacks, are frozen (owner decision, 2026-11-13). |
 
-In hop 2, prepare and review every Site's PR, plan included, before any of
-them deploys. Then freeze deploys in the account and deploy in the order above
-in one sitting. Cooldown Gaming's deploy performs the store upgrade.
+In hop 2, prepare every Site's PR before the window, without planning it
+against production. In the window, freeze deploys in the account. Cooldown
+Gaming's `pnpm plan:frontend --upgrade-state-store` performs the store
+upgrade. Then all five Sites plan, each plan is reviewed, and the Sites deploy
+in the order above, in one sitting
+([decisions](#cutover-window-owner-decisions-2026-11-13)). The non-Blueprint
+stacks stay frozen.
 
 ## Verification
 
@@ -445,8 +475,8 @@ in one sitting. Cooldown Gaming's deploy performs the store upgrade.
    available). The cutover window stays.
 2. ~~Do Ekis, bioeconomia.pt or cesam-astro deploy to account `8f38791a…`?~~
    Yes, and so do legaciti, gq-support and gq-games-api (the
-   [store inventory](#store-inventory-account-8f38791a)). Who moves each, or
-   whether it freezes, is the owner's call, and the window waits for it.
+   [store inventory](#store-inventory-account-8f38791a)). The owner froze them
+   all ([decisions](#cutover-window-owner-decisions-2026-11-13)).
 3. ~~Can `alchemy deploy --dry-run` emit a structured plan?~~ No. Under
    `--log-format json` the renderer prints no plan (`Cli/Present.ts`), and the
    plan events carry phases, not changes. The plan check reads the plain text
@@ -458,8 +488,10 @@ in one sitting. Cooldown Gaming's deploy performs the store upgrade.
 7. ~~Is beta.86 still the latest?~~ No: beta.87 came out on 2026-11-12, and
    0.44.0 stays on beta.86 (see above). beta.86 clears `minimumReleaseAge` at
    2026-11-13T09:40Z.
-8. Plans before the window: a beta.86 plan can't read a v7 store without
-   upgrading it, so reviewed plans move into the window. Planning against an
-   exported snapshot of the state (`Alchemy.localState()`) would avoid that.
-   It isn't built: whether `alchemy state read` output round-trips into local
-   state, Redacted values included, is untested.
+8. ~~Plans before the window.~~ A beta.86 plan can't read a v7 store
+   without upgrading it, so the owner moved the reviewed plans into the window,
+   after Cooldown Gaming's store gate
+   ([decisions](#cutover-window-owner-decisions-2026-11-13)). Planning against
+   an exported snapshot (`Alchemy.localState()`) isn't built: whether
+   `alchemy state read` output round-trips into local state, Redacted values
+   included, is untested.
