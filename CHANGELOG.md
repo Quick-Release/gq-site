@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.44.1 — 2026-11-13
 
 - **The CI release step's result now shows the release's outcome.** Cloudflare
   Workflows keeps only the first ~1 KB of a step's result
