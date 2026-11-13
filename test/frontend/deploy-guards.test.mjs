@@ -299,6 +299,7 @@ test("after a deploy, a removed binding fails and a flag change is reported", as
   assert.equal(result.code, 1);
   assert.match(result.log.join("\n"), /compatibility flags changed: \+new_module_registry/u);
   assert.match(result.error.join("\n"), /removed CONSENT_DB from example-fe/u);
+  assert.doesNotMatch(result.log.join("\n"), /✓/u);
 });
 
 test("a first deploy (no Worker yet) runs, and an unchanged one passes", async () => {
@@ -311,6 +312,7 @@ test("a first deploy (no Worker yet) runs, and an unchanged one passes", async (
     api: cloudflare({ store: V8, worker: WORKER }),
   });
   assert.equal(again.code, 0, again.error.join("\n"));
+  assert.equal(again.log.at(-1), "✓ example-fe deployed with every binding it had before.");
 });
 
 test("without CLOUDFLARE_API_TOKEN nothing runs", async () => {

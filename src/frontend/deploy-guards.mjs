@@ -441,5 +441,6 @@ export async function guardedFrontendDeploy({
     );
     return 1;
   }
+  log(`✓ ${scriptName} deployed with every binding it had before.`);
   return 0;
 }

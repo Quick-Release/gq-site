@@ -19,6 +19,47 @@ test("the release step names any missing deploy credential", async () => {
   ]);
 });
 
+test("the release step's summary keeps each stage's status and the deploy guards' verdicts", async () => {
+  const { releaseSummary } = await import("./ci-release.mjs");
+  const admin = {
+    label: "admin",
+    status: 0,
+    output:
+      "┌  Ploi release · v0.2.0 (abc @ 0123abc)\n│\n◇  Archived\n└  https://cms.example.test\n",
+  };
+  const frontend = {
+    label: "frontend",
+    status: 0,
+    output:
+      "\u001b[32mDeployed\u001b[39m\nexample-fe's compatibility date changed: 2026-08-31 → 2026-11-01.\n" +
+      "✓ example-fe deployed with every binding it had before.\n",
+  };
+  assert.equal(
+    releaseSummary([admin, frontend]),
+    [
+      "release: ok",
+      "admin: ok",
+      "  Ploi release · v0.2.0 (abc @ 0123abc)",
+      "frontend: ok",
+      "  example-fe's compatibility date changed: 2026-08-31 → 2026-11-01.",
+      "  ✓ example-fe deployed with every binding it had before.",
+    ].join("\n"),
+  );
+  assert.equal(
+    releaseSummary([{ ...admin, status: 1 }], ["frontend"]),
+    "release: failed\nadmin: failed (exit 1)\n  Ploi release · v0.2.0 (abc @ 0123abc)\nfrontend: not run",
+  );
+  const noisy = {
+    label: "frontend",
+    status: 1,
+    output: Array.from({ length: 200 }, (_, index) => `✗ finding ${index}`).join("\n"),
+  };
+  const summary = releaseSummary([admin, noisy]);
+  assert.ok(summary.length <= 700, `${summary.length} characters`);
+  assert.match(summary, /^release: failed\n/u);
+  assert.match(summary, /the full output is on stderr\)$/u);
+});
+
 test("the release step can't fetch source without Artifacts credentials", async () => {
   const { fetchSource } = await import("./ci-release.mjs");
   assert.throws(() => fetchSource("abc", {}), /ARTIFACTS_REMOTE\/ARTIFACTS_TOKEN/u);
