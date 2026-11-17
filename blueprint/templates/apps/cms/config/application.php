@@ -209,6 +209,27 @@ Config::define('SCRIPT_DEBUG', false);
 ini_set('display_errors', '0');
 
 /**
+ * PHP's error log goes to a file, not to PHP-FPM's FastCGI stderr. With no
+ * error_log set, PHP-FPM sends every logged warning to nginx on the FastCGI
+ * stream, nginx adds it to the response's header buffer, and enough of them
+ * on one request (a block-rich GraphQL page) fail it with "upstream sent too
+ * big header" (a 502). On Ploi the file is the site's logs/php-error.log
+ * (deploy/ploi/admin.sh creates the directory and rotates the file);
+ * PHP_ERROR_LOG names another file. Requests only: WP-CLI keeps writing its
+ * warnings to the terminal, and development keeps WP_DEBUG_LOG's debug.log.
+ * When the directory doesn't exist, PHP's own default stays.
+ */
+if (PHP_SAPI !== 'cli' && WP_ENV !== 'development') {
+    $php_error_log = trim((string) env('PHP_ERROR_LOG'))
+        ?: dirname($root_dir, 2) . '/logs/php-error.log';
+
+    if (is_dir(dirname($php_error_log))) {
+        ini_set('log_errors', '1');
+        ini_set('error_log', $php_error_log);
+    }
+}
+
+/**
  * Allow WordPress to detect HTTPS when used behind a reverse proxy or a load balancer
  * See https://codex.wordpress.org/Function_Reference/is_ssl#Notes
  */

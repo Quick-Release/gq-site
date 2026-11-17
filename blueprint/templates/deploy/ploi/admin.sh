@@ -161,6 +161,21 @@ else
   echo "public exists and is not a directory or symlink. Set Ploi's web directory to $APP_PATH/web."
 fi
 
+# PHP's error log (apps/cms/config/application.php): requests log to
+# logs/php-error.log in the site root, outside the shipped paths, instead of
+# PHP-FPM's FastCGI stderr, which nginx turns into 502s ("upstream sent too
+# big header"). The config uses the file only once this directory exists.
+# Nothing rotates it on the server, so a deploy keeps one previous file once
+# it passes PHP_ERROR_LOG_MAX_BYTES (64 MiB by default).
+PHP_ERROR_LOG_DIR="$SITE_PATH/logs"
+PHP_ERROR_LOG_MAX_BYTES="${PHP_ERROR_LOG_MAX_BYTES:-67108864}"
+mkdir -p "$PHP_ERROR_LOG_DIR"
+if [ -f "$PHP_ERROR_LOG_DIR/php-error.log" ] \
+  && [ "$(wc -c <"$PHP_ERROR_LOG_DIR/php-error.log")" -gt "$PHP_ERROR_LOG_MAX_BYTES" ]; then
+  mv -f "$PHP_ERROR_LOG_DIR/php-error.log" "$PHP_ERROR_LOG_DIR/php-error.log.1"
+  echo "Rotated logs/php-error.log to logs/php-error.log.1."
+fi
+
 # A Composer-only deployment updates tracked WordPress/plugin files and vendor
 # packages, then exits before any WP-CLI or database operation.
 if [ "${COMPOSER_ONLY:-false}" = "true" ]; then

@@ -80,7 +80,8 @@ printf '8.3'`,
 // Polylang holding `polylangLanguages` (lines of slug, locale and order;
 // none by default), `permalinkStructure` as its permalink structure (plain,
 // "", by default) and each wp call that starts with one of `failing`
-// exiting 1, with GQ Design `gqDesignVersion` installed (none by default).
+// exiting 1, with GQ Design `gqDesignVersion` installed (none by default),
+// after `before(site)` has run against the site directory, if given.
 // Resolves to the exit `code`, `stdout`, `stderr`, both as `output`, the
 // `site` directory, the recorded `calls` (each an array: tool, then
 // arguments) and the COMPOSER_AUTH composer saw.
@@ -98,6 +99,7 @@ export async function deploy(
     patchExit = 0,
     composerOnly = false,
     gqDesignVersion = "",
+    before,
   } = {},
 ) {
   const directory = await temporaryDirectory();
@@ -119,6 +121,7 @@ export async function deploy(
     ...(installed ? { "apps/cms/web/wp/wp-load.php": "<?php\n" } : {}),
     ...siteFiles,
   });
+  if (before) await before(site);
   const scriptPath = join(directory, "admin.sh");
   await writeFile(scriptPath, script);
 
