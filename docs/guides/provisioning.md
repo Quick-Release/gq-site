@@ -208,6 +208,46 @@ line. `gq sync` generates it at `deploy/ploi/admin.sh` (see
 [Generate and sync a site](sites.md)), which is what
 `ploi.deployScript` should name.
 
+### PHP's error log
+
+The CMS's PHP warnings, notices and errors go to `logs/php-error.log` in the
+Ploi site directory (`/home/<user>/<domain>/logs/php-error.log`), next to
+`apps/cms` and outside the paths a release replaces. Read it there, over SSH
+as the site's system user; nothing else changes on the server.
+
+Without it, PHP-FPM sends every logged error to nginx on the FastCGI stderr
+stream: PHP logs to the SAPI when `error_log` is unset, and Ploi's
+`php.ini` leaves it unset with `log_errors = On`. nginx copies that stream
+into its site error log and also reads it into the response's header buffer
+(`fastcgi_buffer_size`, 4 or 8 KB), so a request with enough warnings (a
+block-rich `POST /wp/graphql`, 0.44.2's case) fails with `upstream sent too
+big header while reading response header from upstream` and a 502. A log
+file takes them off that stream whatever their number, so a plugin's
+warnings can no longer cost a response.
+
+- `apps/cms/config/application.php` (managed) sets `log_errors=1` and
+  `error_log` to that file for web requests in every environment but
+  `development` (`display_errors` stays off, as before). WP-CLI keeps
+  printing its warnings to the deploy log and the terminal, and DDEV keeps
+  `WP_DEBUG_LOG`'s `debug.log`. `PHP_ERROR_LOG` in the `.env` names another
+  file. Until the file's directory exists, PHP's default (FastCGI stderr)
+  stays, so a release on a server that hasn't run the new deploy script
+  behaves as before.
+- `deploy/ploi/admin.sh` (managed) creates `logs/` on every deploy, full or
+  Composer-only, and keeps one previous file: a log over
+  `PHP_ERROR_LOG_MAX_BYTES` (64 MiB) becomes `logs/php-error.log.1`.
+- Nothing here is server-wide: no `php.ini`, pool or nginx change.
+  `fastcgi.logging` and the pool's `catch_workers_output` stay as Ploi sets
+  them; once `error_log` is a file, PHP's error log reaches neither. A fatal
+  error that happens before WordPress loads its config (a syntax error in
+  `config/application.php` itself) still goes to stderr.
+
+nginx's FastCGI buffers are Ploi's per-site configuration, which the blueprint
+doesn't manage. Raising them (`fastcgi_buffer_size 32k; fastcgi_buffers 16
+16k;` in the site's `location ~ \.php$` block, Ploi → Site → Manage → NGINX
+configuration) only moves the limit; with the error log on a file it isn't
+needed.
+
 ## Database sync and backup
 
 Live → local only: no `gq` command sends a database to the server. Both run

@@ -242,13 +242,17 @@ verified.` and no `plugins have been disabled` line. Release as usual
 Nomia's separate session belongs in `Quick-Release/nomia-bnq`, local clone
 `/data/code/getquick/clients/apa/nomia-bnq`, in a new worktree.
 
-Keep `deploy/ploi/admin.d/20-wpgraphql-blocks-quiet.sh` for the first adoption
-release if desired: its expected hashes match the shared patch, so it will
-skip safely after the shared runner. It remains a full-release fallback
-until the shared path is verified. Then remove that deploy extension in a
-follow-up Site release. The patch file itself is now **managed**: retain it
-at the same path and remove/replace only its old site-owned README as needed.
-Do not delete the managed patch as part of retiring the Nomia-specific copy.
+`deploy/ploi/admin.d/20-wpgraphql-blocks-quiet.sh` is Nomia's own deploy
+extension (site-owned: `gq sync` never adds, changes or deletes it). On
+0.18.2 to 0.44.1 its expected hashes matched the shared patch's, so it
+skipped after the shared runner and could stay as a fallback. **From 0.44.2
+it must go in the same Site PR as the bump:** the shared runner leaves the
+plugin with the second round's bytes, which the extension doesn't expect, so
+it re-runs `patch` against the new two-round patch file, fails its hash check
+and fails every full deploy. Delete the extension, keep the managed patch file
+at the same path (`gq sync` rewrites it), and delete or rewrite the old
+site-owned `apps/cms/patches/wpgraphql-blocks/README.md`, which still
+describes the extension as a fallback.
 
 Keep `scripts/ops/nomia-502-hotfix/log-audit-remote.mjs` and its production
 audit evidence in Nomia. Once the patched code is verified, retire any active

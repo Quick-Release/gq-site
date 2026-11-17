@@ -3,6 +3,28 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **The CMS's PHP errors go to a log file, never to nginx**
+  ([guide](docs/guides/provisioning.md#phps-error-log)). With `error_log`
+  unset, PHP-FPM sent every logged warning to nginx over FastCGI stderr,
+  which nginx reads into the response's header buffer: enough warnings on
+  one request (0.44.2's block-rich `POST /wp/graphql`) failed it with
+  `upstream sent too big header` and a 502, whichever plugin raised them.
+  `apps/cms/config/application.php` now logs web requests' errors to the
+  Ploi site's `logs/php-error.log` (outside the shipped paths; `PHP_ERROR_LOG`
+  names another file) in every environment but `development`; WP-CLI still
+  prints its warnings. `deploy/ploi/admin.sh` creates `logs/` on every
+  deploy and keeps one previous file once it passes 64 MiB
+  (`PHP_ERROR_LOG_MAX_BYTES`). No server-wide change: Sites get both with
+  `gq sync` and the next CMS release (`pnpm ploi:release`), which runs the
+  new deploy script.
+- **Nomia's `20-wpgraphql-blocks-quiet.sh` must go with the 0.44.2 bump**
+  ([guide](docs/guides/dependency-patches.md#retire-nomias-extension-without-a-rollout-gap)).
+  The site-owned extension checks the first round's hashes, so on 0.44.2 and
+  later it fails every full deploy; the guide no longer suggests keeping it
+  as a fallback.
+
 ## 0.44.2 — 2026-11-17
 
 - **The wpgraphql-blocks warning patch guards the accesses it missed, which
