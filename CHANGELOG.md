@@ -3,6 +3,36 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **Pins.** `@getquick/content` and `getquick/gq-content` 0.7.0, and GQ
+  Design (`getquick/gq-design`, `@quick-release/design-contract`,
+  `@quick-release/design-renderer`) 0.10.6. Content 0.7.0 adds the consent
+  catalog services `viewmedica`, `valet_health` and `reputationhub`, and
+  delivers the CMS's gradient presets (`getquickGradients`, stored with the
+  design presets as `gradients`). GQ Design 0.10.5 stops anonymous reads
+  from creating a `wp_global_styles` post per read (gq-design#131), which on
+  a content Site fed itself through settings events until the design presets
+  query outlasted the Frontend's 8 s refresh timeout; 0.10.6 styles only
+  Design regions in the editor canvas, with a `getquick_design_style_scope`
+  filter for Sites that want the canvas-wide reset.
+  `getquick/getquick-theme` 0.6.2 and `getquick/getquick-ecommerce` 0.4.4
+  (both `^0.10`) are unchanged.
+- **New Sites' pages pass their presets to `blockPresetStyles`**
+  (`blockPresetStyles(content)` in `Home.astro`, `blockPresetStyles(entry)`
+  in `[...slug].astro`), so their content gets
+  `--wp--preset--gradient--<slug>` and `.has-<slug>-gradient-background`.
+
+Existing Sites: follow
+[0.6.2 to 0.7.0](docs/guides/content-pair-migration.md#062-to-070-getquicksite-0450).
+`gq sync` sets the pair's pins (and, on a commerce Site, GQ Design's npm
+pins); raise `getquick/gq-design` to 0.10.6 in `apps/cms/composer.json`,
+change the pages' `blockPresetStyles` calls by hand (they are the Site's),
+choose the editor's style scope, release the CMS before the Frontend and
+refresh the design presets. A Site that ran GQ Design 0.10.4 or earlier
+counts its Global Styles posts and removes the duplicates with GQ Design's
+operator script.
+
 ## 0.44.3 — 2026-11-17
 
 - **The CMS's PHP errors go to a log file, never to nginx**

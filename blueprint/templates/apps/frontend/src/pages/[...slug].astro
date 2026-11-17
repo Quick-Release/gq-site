@@ -38,7 +38,7 @@ const entry = found && "entry" in found ? found.entry : null;
 const chrome =
   delivery.kind === "found" ? delivery.content.chrome : delivery.kind === "missing" ? delivery.chrome : null;
 const alternates = found?.alternates ?? [];
-const { vars, colorRules } = blockPresetStyles(entry?.spacingSizes ?? [], entry?.colors ?? []);
+const { vars, colorRules } = blockPresetStyles(entry);
 const isPost = Boolean(entry?.date);
 const title =
   entry?.title || (delivery.kind === "unavailable" ? copy.pageUnavailable.title : copy.pageMissing.title);

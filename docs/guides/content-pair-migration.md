@@ -531,3 +531,146 @@ store and distinguishes confirmed empty results from unavailable results.
 See the [Content release notes](https://github.com/Quick-Release/gq-content/blob/v0.6.2/docs/releases/0.6.2.md)
 for the public API and refresh procedure. Site rendering and deployment are
 consumer work; `gq sync` only adopts the managed pins.
+
+### 0.6.2 to 0.7.0 (`@getquick/site` 0.45.0)
+
+Both managed Content pins move to exactly `0.7.0`, and the blueprint's GQ
+Design pin to `0.10.6`. Wire contract 2.1.0 is unchanged, and there is no SQL
+migration ([Content release notes](https://github.com/Quick-Release/gq-content/blob/v0.7.0/docs/releases/0.7.0.md)):
+
+- **Consent services.** `viewmedica` (ViewMedica videos,
+  `ondemand.viewmedica.com`), `valet_health` (Valet Health forms and surveys,
+  `link.valethealth.com/widget/form/` and `/widget/survey/`) and
+  `reputationhub` (HighLevel Reputation Hub review widgets,
+  `reputationhub.site/reputation/widgets/`) join the `external_media`
+  catalog. Their iframes stay blocked placeholders until the Site declares
+  them in `consent.services`; declaring one in a granted category prompts
+  visitors again ([consent](consent.md)).
+- **Gradient presets.** The CMS plugin adds WPGraphQL's
+  `getquickGradients { slug gradient }`, from the merged
+  `settings.color.gradients`. The Frontend reads it with the design presets
+  and stores it there as `gradients`. `blockPresetStyles(presets, scope?)`
+  and `presetRootStyle(presets)` take a page's presets (an entry or home
+  content) and emit `--wp--preset--gradient--<slug>` and
+  `.has-<slug>-gradient-background`. The positional forms still work, with
+  gradients last, so a page that passes only the spacing and color lists
+  renders no gradients. A 0.7.0 Frontend reading an older CMS plugin stores
+  presets without gradients and logs a warning. Gradients reach pages served
+  from the store; local development's live reads (no store bound) render an
+  entry without them.
+- **GQ Design 0.10.5** stops anonymous reads (a front-end page, `/tokens` or
+  GraphQL `designTokens`) from creating a `wp_global_styles` post on a Site
+  that has none (gq-design#131). WordPress left each post without its
+  `wp_theme` term, so the next read made another; on a content Site each one
+  sent a `design` settings event whose re-read made the next, until the
+  design presets query took long enough to hit the Frontend's 8 s refresh
+  timeout. GQ Design never deletes the duplicates it made.
+- **GQ Design 0.10.6** styles only Design regions in the editor canvas and on
+  block-theme pages: GQ Design blocks, blocks that author presentation
+  values, and everything inside them
+  ([gq-design ADR 0007](https://github.com/Quick-Release/gq-design/blob/v0.10.6/docs/adr/0007-design-regions-in-plugin-canvases.md)).
+  Core blocks outside them keep the Site's own block styles, presets and
+  palette classes in the editor. The Frontend's renderer keeps the
+  canvas-wide reset on `.gqd-content` by default.
+
+1. **Upgrade the pins.** Set the root `@getquick/site` pin to `0.45.0`, run
+   `pnpm install`, then `pnpm exec gq sync`: it sets both managed content
+   keys to exactly `0.7.0` (on a commerce Site, GQ Design's npm keys to
+   `0.10.6`). In `apps/cms/composer.json`, which is otherwise the Site's,
+   raise `getquick/gq-design` to `0.10.6`. Then run `pnpm install` again and
+   `gq sigillo run local -- gq cms composer update getquick/gq-content getquick/gq-design --with-all-dependencies`.
+   Review and
+   commit `gq.lock.json`, `pnpm-lock.yaml` and `apps/cms/composer.lock`, then
+   check `pnpm exec gq sync --check` and `pnpm exec gq doctor`.
+2. **Pass the presets to `blockPresetStyles`.** The Frontend's pages are the
+   Site's (create-once), so `gq sync` doesn't change them. Wherever a page
+   calls the positional form, pass the page's presets instead, as new Sites'
+   skeletons do:
+
+   ```astro
+   // src/components/Home.astro
+   const { vars, colorRules } = blockPresetStyles(content);
+   // src/pages/[...slug].astro
+   const { vars, colorRules } = blockPresetStyles(entry);
+   ```
+
+   A Site that calls `presetRootStyle` passes the presets the same way. A
+   Site that passes a `scope` keeps it as the second argument:
+   `blockPresetStyles(entry, ".site-content")`.
+
+3. **Choose the editor's style scope.** Under GQ Design 0.10.6 the editor
+   resets only Design regions. Match it to where the Site's Frontend puts
+   `gqd-content`:
+   - A Frontend that applies `gqd-content` only to bodies with Design blocks
+     (texaspainexperts.com) needs nothing: 0.10.6's default is what it wants.
+   - A Frontend that wraps all of an entry's content (the skeleton's pages)
+     or its whole body (Nomia) in `gqd-content` keeps the Frontend's reset on
+     core blocks there. To keep the editor showing them as the Frontend
+     does, return `canvas` from GQ Design's filter in a Site mu-plugin, such
+     as `apps/cms/web/app/mu-plugins/gq-design-style-scope.php`:
+
+     ```php
+     <?php
+     /**
+      * Plugin Name: GQ Design style scope
+      * Description: The Frontend wraps its content in gqd-content, so the editor keeps GQ Design's canvas-wide reset.
+      */
+     add_filter( 'getquick_design_style_scope', static fn() => 'canvas' );
+     ```
+
+     Without it, core headings, links, buttons and lists outside Design
+     blocks look like the Site's block styles in the editor but are reset on
+     the Frontend.
+4. **Release the CMS first, then the Frontend**, and refresh the design
+   presets (`gq frontend refresh`, or any design settings event) so the
+   stored presets gain the gradients. A Frontend released first still
+   serves every page, without gradients, and logs the warning until the CMS
+   has 0.7.0 and the presets are refreshed.
+5. **Remove duplicate Global Styles posts** (below), on a Site that ran GQ
+   Design 0.10.4 or earlier.
+
+Then check a page with a gradient background: its content's container
+carries `--wp--preset--gradient--<slug>` and the page a
+`.has-<slug>-gradient-background` rule.
+
+#### Remove duplicate Global Styles posts
+
+After the CMS runs GQ Design 0.10.5 or later, count the Site's
+`wp_global_styles` posts. This is a read, through break-glass WP-CLI
+([CMS content](cms-content.md#break-glass-wp-cli)):
+
+```sh
+gq sigillo run production -- gq wp -- post list --post_type=wp_global_styles --post_status=any --fields=ID,post_name,post_date
+```
+
+A healthy Site has at most one per theme. If there are more, and the count no
+longer grows a minute after the deploy, remove them with GQ Design's
+operator script,
+[`docs/global-styles-duplicates.md`](https://github.com/Quick-Release/gq-design/blob/v0.10.6/docs/global-styles-duplicates.md).
+It keeps one post for the active theme (the termed one, else the newest,
+which it then terms), deletes the other untermed ones, refuses to change
+anything if an untermed post holds custom styles, and sends one layout cache
+flush for the whole run. If the count still grows, stop: something other
+than GQ Design is creating them.
+
+`gq wp` refuses `eval-file` (PHP evaluation is never break-glass), so a
+person runs the script on the CMS server. Back up the database first, from
+the Site's repository:
+
+```sh
+gq sigillo run production -- gq db backup
+```
+
+Then, as the Site's Ploi system user, save the script as
+`~/dedupe-global-styles.php` (outside the web root) and run it from the
+Site's `apps/cms` (`/home/<system user>/<admin domain>[/<project root>]/apps/cms`):
+a dry run first, then `apply` once its summary is right.
+
+```sh
+wp eval-file ~/dedupe-global-styles.php
+wp eval-file ~/dedupe-global-styles.php apply
+rm ~/dedupe-global-styles.php
+```
+
+Count the posts again with `gq wp -- post list …` above, then run
+`gq frontend refresh` so the Frontend stores presets read from the kept post.

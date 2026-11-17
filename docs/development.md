@@ -403,6 +403,23 @@ The CMS ZIP SHA-256 recorded by the manifest and verified live by the Content
 publication handoff is
 `d143f890d03183fba87bb7c0a6ee73cd83d09bb70318298f985e41c7331684e8`.
 
+The `0.45.0` release adopts the published `0.7.0` pair (consent services
+`viewmedica`, `valet_health` and `reputationhub`; gradient presets) from
+source/tag `561f4d22f4f783305bc65669508508b75081c464`, beside GQ Design
+`0.10.6` (registry and GitHub Packages, commit `74b0098`). The live release
+manifest SHA-256 is
+`70db85d846f18b77f5d45f4de14709794aa0efe5ea9b0d38ed4e40f33d179f6d`; its npm
+archive SHA-256 is
+`560d7e9a1dc782ed1cafb007bc1c52177c505e835b1ef02e82ee44da6e8b21d2` (SRI
+`sha512-0USh/ft1…YI3BFsw==`, as in the npm lock), matching an independent
+`npm pack`, and its CMS ZIP SHA-256 is
+`69c0e8f9a36a2d8296368d92bf292558cdb18d15957cee1918afe05c68e7aec0`. The
+registry again reports a `reference-mismatch` for the tag name. The root
+suite passes; `content-pair.sh` checks the published ZIP and that a page
+served from the store carries the stub CMS's gradient preset, as the
+skeleton's `blockPresetStyles(entry)` and `blockPresetStyles(content)` emit
+it; `frontend-check.sh` passes.
+
 ## Releasing
 
 1. Bump `version` in `package.json`, add its section to `CHANGELOG.md`, and

@@ -17,7 +17,10 @@ const server = readFileSync(runtime, "utf8");
 // by `nodeByUri` only on a Site that configures `collections`, which the
 // blueprint's doesn't. The chrome's GQ Design header and footer
 // (`designPattern`) end the SiteChrome query's text here, and aren't checked:
-// a CMS without them still serves the chrome, with neither.
+// a CMS without them still serves the chrome, with neither. The same goes for
+// DesignPresets' optional fields (0.7.0's `getquickGradients` opens it, then
+// GQ Design's fonts and text styles): the runtime reads the presets again
+// without what a CMS lacks, and the entry query reads the tokens it needs.
 const DELIVERY_QUERIES =
   /`(\s*query (?:HomePage|SiteChrome|EntryByUri|DesignPresets|PublishedRoutes)\b[^`]*)`/gu;
 const COLLECTIONS_QUERY = /\bnode: nodeByUri\(/u;
@@ -32,19 +35,18 @@ const NOT_FIELDS = new Set(["query", "on", "true", "false", "if", "include", "sk
 const MULTILINGUAL_FIELDS = new Set(["language"]);
 
 function selections(text) {
-  return new Set(
+  const words =
     text
       .replace(/\$\{[^}]*\}/gu, "")
       // An interpolation a nested template literal cuts off (the chrome's
-      // `designPattern` fields).
+      // `designPattern` fields, DesignPresets' optional ones).
       .replace(/\$\{[^}]*$/u, "")
       .replace(/^\s*query \w+(\([^)]*\))?/mu, "")
       .replace(/\$\w+/gu, "")
       .replace(/\w+\s*:/gu, "")
       .replace(/"[^"]*"/gu, "")
-      .match(/[A-Za-z_]\w*/gu)
-      .filter((word) => !NOT_FIELDS.has(word) && !/^[A-Z]+$/u.test(word)),
-  );
+      .match(/[A-Za-z_]\w*/gu) ?? [];
+  return new Set(words.filter((word) => !NOT_FIELDS.has(word) && !/^[A-Z]+$/u.test(word)));
 }
 
 test("the readiness schema check covers every field the pinned runtime's queries read", () => {

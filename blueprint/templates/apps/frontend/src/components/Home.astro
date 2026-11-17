@@ -18,7 +18,7 @@ const copy = copyFor(language, siteContent().multilingual);
 const content = home.kind === "found" ? home.content.home : null;
 const chrome = home.kind === "found" ? home.content.chrome : home.kind === "missing" ? home.chrome : null;
 const alternates = home.kind === "found" ? home.content.alternates : [];
-const { vars, colorRules } = blockPresetStyles(content?.spacingSizes ?? [], content?.colors ?? []);
+const { vars, colorRules } = blockPresetStyles(content);
 const siteTitle = content?.page.title || content?.settings.title || "{{Project}}";
 const isVideoHeroPage = content?.page.hasVideoHero ?? false;
 const post = content?.page.databaseId !== undefined ? designPostContext({

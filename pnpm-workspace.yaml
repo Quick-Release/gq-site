@@ -12,6 +12,7 @@ minimumReleaseAgeExclude:
   - "@getquick/content@0.5.1"
   - "@getquick/content@0.6.1"
   - "@getquick/content@0.6.2"
+  - "@getquick/content@0.7.0"
 
 overrides:
   vite: npm:@voidzero-dev/vite-plus-core@1.0.0

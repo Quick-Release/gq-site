@@ -95,8 +95,9 @@ and selected header/footer patterns, including settings authored after the
 Frontend was built. Its scoped `designThemeStyleSheet` applies Preflight and
 resolved theme variables to `.gqd-content`; both stylesheets use the delivered
 theme, so refreshed spacing and breakpoints update together without rebuilding.
-`blockPresetStyles` supplies the CMS's spacing and color presets. Presentation
-values follow Base and upward breakpoint overrides.
+`blockPresetStyles` supplies the CMS's spacing, color and gradient presets
+from the page's presets. Presentation values follow Base and upward
+breakpoint overrides.
 
 Container sizing applies Tailwind's width caps without centering or padding.
 Authors set margins and padding explicitly. The skeleton no longer imposes
