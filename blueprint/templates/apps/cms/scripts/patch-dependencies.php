@@ -3,12 +3,14 @@
 // Managed by @getquick/site. Runs with Composer's PHP, without Node or WordPress.
 // Stage first: patch may report reversed/already-applied hunks during repair.
 // Only the verified final bytes, never patch's exit status, authorize a write.
+// The patch is layered: each later section for a file is a delta on the earlier
+// ones, so an install carrying an earlier round skips its hunks and gains the rest.
 declare(strict_types=1);
 
 $cms = dirname(__DIR__);
 $relativeFiles = [
-    'plugin.php' => '7dee3f7934efa6a70c8c1666f36cb65dd0805ca0a8570ec03d577fb87edc0499',
-    'includes/utils.php' => '6c391ea3dbe2e0dc819f45fd267a61d7a3d4f60f3e0eed6d6086dd19cafd2624',
+    'plugin.php' => 'eabf9f60970ee041b55821200726c2138eab7a672d9e58726809379034c432b5',
+    'includes/utils.php' => '57f42e4d825347f416e70b110632cf53b186996f0f708b8aaacff0944c214a7f',
 ];
 $plugin = $cms . '/web/app/plugins/wpgraphql-blocks';
 $stage = null;

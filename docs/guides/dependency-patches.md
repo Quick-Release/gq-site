@@ -10,6 +10,11 @@ optional properties before JSON serialization. DOM parsing captures libxml
 diagnostics locally and restores the previous libxml mode. It does not change
 PHP's error reporting or install a warning-silencing must-use plugin.
 
+0.44.2 adds a second round that guards the accesses the first round missed,
+which production logged on sparse image and cover blocks (see
+[Adopt the 0.44.2 round](#adopt-the-0442-round)). It is appended to the same
+patch file as a delta on the first round, which stays byte-for-byte as it was.
+
 The dependency stays pinned to `wp-plugin/wpgraphql-blocks: 2.2.0` in the
 CMS skeleton. This is blueprint dependency maintenance, not a new GETQUICK
 runtime plugin. A future plugin version needs a fresh source review and
@@ -58,16 +63,28 @@ unsupported version fails clearly without committing staged changes. Reruns
 verify hashes and syntax without rewriting already-correct installed files.
 Concurrent dependency installations in the same CMS directory are unsupported.
 
-The expected patched hashes are:
+The expected patched hashes, from 0.44.2, are:
+
+```text
+plugin.php          eabf9f60970ee041b55821200726c2138eab7a672d9e58726809379034c432b5
+includes/utils.php  57f42e4d825347f416e70b110632cf53b186996f0f708b8aaacff0944c214a7f
+```
+
+0.18.2 through 0.44.1 expected the first round's bytes, which match Nomia
+PR #3:
 
 ```text
 plugin.php          7dee3f7934efa6a70c8c1666f36cb65dd0805ca0a8570ec03d577fb87edc0499
 includes/utils.php  6c391ea3dbe2e0dc819f45fd267a61d7a3d4f60f3e0eed6d6086dd19cafd2624
 ```
 
-They match Nomia PR #3. Retaining its reviewed patch bytes makes takeover of
-an already-patched Nomia installation idempotent. The new runner fixes gaps
-in its deployment coverage, staging, rerun linting and partial-hunk repair.
+The patch file is layered: it holds the first round's sections unchanged,
+then a second section per file whose hunks are a delta on the first round.
+The runner applies hunks one at a time in that order, so a pristine plugin
+gains both rounds, and a plugin carrying the first round skips those hunks
+(already applied) and gains the second. A further round is appended the same
+way; never edit an earlier round's hunks, or installs carrying it stop
+matching.
 
 ## Adopt on an existing Site
 
@@ -125,6 +142,68 @@ by the blueprint PR.
    counts with the local baseline. Production log paths, credentials, sample
    windows and audits stay **Site-local**. Roll out first on the Reference
    Site, Cooldown Gaming, then on each approved content Site separately.
+
+## Adopt the 0.44.2 round
+
+The first round left some accesses unguarded. With `WP_DEBUG` off, core
+still reports `E_WARNING`, and with no `error_log` set PHP-FPM sends each
+warning to nginx over FastCGI stderr. On a page with many image or cover
+blocks that output overflows nginx's FastCGI header buffer: nginx logs
+`upstream sent too big header` and returns a 502 for `POST /wp/graphql`, and
+`@getquick/content` retries without blocks, so the page loses its blocks.
+Production logged these for core/image blocks without `width`, `height`, `id`
+or `url` and core/cover blocks without `useFeaturedImage` (a default the
+editor doesn't serialize).
+
+The second round guards them, plus the same pattern elsewhere in both files.
+Missing still means falsy, exactly as PHP evaluated it, minus the warning:
+
+- `plugin.php`: the `dynamicContent`, `originalContent`, `htmlContent` and
+  `attributes` arguments; core/audio `src`, `preload`, `autoplay` and `loop`;
+  core/site-logo's image when the logo's attachment is gone; core/media-text
+  `mediaId`; core/cover `useFeaturedImage` and `id`; core/image `width`,
+  `height`, `id` (lookup and alt) and `url`; core/query pagination's
+  `perPage` and `queryId`; core/comments' post `comment_status`.
+- `includes/utils.php`: the posts index (home template) branch, which never
+  sets `$blocks`, `$the_post_id` or `$the_post_content`, and the
+  `postTemplate` argument.
+
+Left as they are: keys that `parse_blocks()` and the plugin's own synthetic
+blocks always set (`blockName`, `innerHTML`, `innerBlocks`), and
+`RootQuery.coreQuery`, which throws before its unguarded code runs (see
+[Verification boundary](#verification-boundary)).
+
+In a **new session and worktree of the Site's repository**, after 0.44.2 is
+published:
+
+1. Bump the exact pin and sync:
+
+   ```sh
+   pnpm add -D -E @getquick/site@0.44.2
+   pnpm exec gq sync
+   pnpm exec gq sync --check
+   ```
+
+   The managed changes are `apps/cms/patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch`
+   and `apps/cms/scripts/patch-dependencies.php` (plus `gq.lock.json`).
+   `apps/cms/composer.json` already has the patch scripts from 0.18.2.
+
+2. Run `pnpm cms:composer` (any Composer install, update or
+   `dump-autoload` runs the patch). It reports
+   `wpgraphql-blocks 2.2.0 warning patch applied`, and `already applied` on a
+   second run. If the CMS's plugin was committed patched, commit the two
+   updated plugin files with the Site PR.
+
+3. Deploy as usual. Both the full and the `COMPOSER_ONLY=true` Ploi deploys
+   run the runner after Composer, so the deployed plugin gets the new bytes
+   from the deploy itself. Confirm the deploy log shows the patch line, then
+   that the nginx site error log stops gaining `Undefined array key` lines
+   from `wpgraphql-blocks` and `upstream sent too big header` lines on block-
+   rich pages.
+
+A Site whose own deploy extension checks the first round's hashes (Nomia's
+`deploy/ploi/admin.d/20-wpgraphql-blocks-quiet.sh`, if it still has it) sees
+the new bytes as unexpected: retire that extension first, as described below.
 
 ## Adopt the CI image fix (0.18.3)
 
@@ -205,11 +284,14 @@ in its own worktree. No gq-platform change is required to publish this patch.
 ## Verification boundary
 
 `node --test test/cms/dependency-patch.test.mjs` exercises pristine upstream
-sources, clean/rerun application, partial file/hunk repair, drift rejection,
+sources, an upgrade from the first round's bytes (including an upgrade
+interrupted between files), clean/rerun application, partial file/hunk repair, drift rejection,
 real PHP syntax and Composer lifecycle execution. The response harness invokes
 the actual registered `ContentNode.blocks` resolver and JSON scalar with
 deterministic WordPress substitutes across all 32 Boolean argument combinations,
-nested blocks, query loops, sparse attributes and template on/off. It compares
+nested blocks, query loops, sparse attributes (image, cover, audio,
+media-text, site-logo, comments and pagination blocks), template on/off, and
+the posts index alongside an entry. It compares
 raw JSON bytes (including field presence/order) and WordPress query arguments,
 and requires zero warnings after reproducing the pristine warning flood.
 Deploy tests cover both paths and failure before activation/database updates.

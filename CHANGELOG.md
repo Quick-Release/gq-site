@@ -3,6 +3,25 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- **The wpgraphql-blocks warning patch guards the accesses it missed, which
+  could cost a block-rich page its blocks**
+  ([guide](docs/guides/dependency-patches.md#adopt-the-0442-round)). The
+  0.18.2 round left core/image `width`, `height`, `id` and `url` and
+  core/cover `useFeaturedImage` and `id` unguarded, and those attributes are
+  often absent. PHP-FPM sends each warning to nginx over FastCGI stderr; on a
+  page with a dozen image or cover blocks that overflows nginx's FastCGI
+  header buffer, `POST /wp/graphql` gets a 502, and `@getquick/content` falls
+  back to the entry without its blocks. A second round, appended to the same
+  patch file as a delta on the first, guards those and every other unguarded
+  access of the same kind in `plugin.php` and `includes/utils.php` (audio,
+  media-text, site-logo, comments, pagination, the posts index branch and the
+  field arguments), with missing still meaning falsy. The runner expects the
+  new bytes and upgrades a plugin carrying the first round as well as a
+  pristine one. Sites get it with `gq sync`, then any Composer install or
+  deploy.
+
 ## 0.44.1 — 2026-11-13
 
 - **The CI release step's result now shows the release's outcome.** Cloudflare
