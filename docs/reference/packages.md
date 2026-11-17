@@ -88,14 +88,20 @@ token.
   packages, naming both. It warns when there is no `composer.lock` yet, or the
   plugin is locked to a branch. A Site that locks no design package passes.
 
-The pin is `0.10.4`: the newest version the Composer registry serves (built
-from tag `v0.10.4`, commit `4d6fea8`) that GitHub Packages also serves for both
+The pin is `0.10.6`: the newest version the Composer registry serves (built
+from tag `v0.10.6`, commit `74b0098`) that GitHub Packages also serves for both
 packages (0.10.3 was never published). 0.10.1 added self-hosted fonts and
 text styles (contract 2.1.0); 0.10.2 lets the text styles size unauthored
 headings and keeps the slot stacks on the content root; 0.10.4 gives an
 unauthored `core/list` `disc` or `decimal` markers, inside, in the editor and
-the presentation stylesheet. `@getquick/content` 0.6.1 bundles that renderer
-on a content Site, and the commerce storefront renders the tokens with
+the presentation stylesheet; 0.10.5 stops anonymous reads from creating
+duplicate Global Styles posts (gq-design#131); 0.10.6 styles only Design
+regions in the editor canvas, unless the Site's `getquick_design_style_scope`
+filter returns `canvas`
+([upgrade](../guides/content-pair-migration.md#062-to-070-getquicksite-0450)).
+`@getquick/content` 0.7.0 bundles GQ Design 0.10.4's renderer on a content
+Site (the pair accepts 0.10.x; the renderer's defaults are unchanged in
+0.10.6), and the commerce storefront renders the tokens with
 `@quick-release/design-renderer`.
 
 `getquick/getquick-theme` 0.6.2 requires `getquick/gq-design`

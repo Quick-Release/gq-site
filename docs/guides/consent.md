@@ -165,9 +165,10 @@ embed of a service the Site hasn't declared, such as a YouTube video in a
 post, is served as a blocked placeholder: nothing loads, and
 `gq site check`'s `third-party-hosts` names it on a homepage. To let
 visitors load it after consent, declare the service in `src/lib/content.ts`
-(`services: ["youtube"]`; the catalog has `youtube`, `vimeo` and
-`google_maps`). A declared service is an optional category, so the banner
-asks for it.
+(`services: ["youtube"]`; the catalog has `youtube`, `vimeo`,
+`google_maps` and, from `@getquick/content` 0.7.0, `viewmedica`,
+`valet_health` and `reputationhub`). A declared service is an optional
+category, so the banner asks for it.
 
 **Proofs.** The generated Frontend's own tests (`src/routes.test.ts`, run by
 `scripts/smoke/frontend-check.sh`) render pages through Astro's Container

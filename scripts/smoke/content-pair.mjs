@@ -57,9 +57,15 @@ import {
 
 // Immutable published pairs: v0.3.1 (source cbf2925), v0.3.2 (source
 // 698b989), v0.4.0 (source 61f51f4), v0.4.2 (source 043afbe), v0.5.0
-// (source 651e4fb), v0.5.1 (source 61be6b2) and v0.6.1 (source 7cf32bc). A
-// new pin brings its release receipt's own npm/ZIP hashes.
+// (source 651e4fb), v0.5.1 (source 61be6b2), v0.6.1 (source 7cf32bc), v0.6.2
+// (source bcf6ce3) and v0.7.0 (source 561f4d2). A new pin brings its release
+// receipt's own npm/ZIP hashes.
 const PUBLISHED = {
+  "0.7.0": {
+    integrity:
+      "sha512-0USh/ft1kB2uHvYgDctmiCDZaDimygiIV1gaQrnh3AMCGUaOuBqFju+XbUELT8rvUGm4baRt5LbuzMGYI3BFsw==",
+    zipSha256: "69c0e8f9a36a2d8296368d92bf292558cdb18d15957cee1918afe05c68e7aec0",
+  },
   "0.6.2": {
     integrity:
       "sha512-heaImDT6lcM4DihQGDeHKyVcRVDXsXl6/FDT4QIWAWUaqkKuIJieEaVF7ifmmmTo+eY0ff3JT+WZ1JlL6T0x/g==",
@@ -256,6 +262,17 @@ const cms = stubCms([
     { id: "page-65", title: "Contact", content: "Write to us.", forms: [CONTACT_FORM] },
   ],
 ]);
+// gq-content 0.7.0's gradient presets: gq frontend refresh stores them with
+// the design presets, and the Site's pages pass a page's presets to
+// blockPresetStyles, so its content gets the variable and the class.
+const gradient = { slug: "sunrise", gradient: "linear-gradient(135deg,#c00 0%,#fc0 100%)" };
+cms.answers.DesignPresets = () => ({
+  designTokens: { colors: [{ slug: "brand", color: cms.color }], spacingSizes: [] },
+  getquickGradients: [gradient],
+});
+const gradientStyled = (html) =>
+  html.includes(`--wp--preset--gradient--${gradient.slug}:${gradient.gradient}`) &&
+  new RegExp(`\\.has-${gradient.slug}-gradient-background\\s*\\{`).test(html);
 const local = localWorker({
   site,
   work,
@@ -306,6 +323,7 @@ try {
       new RegExp(`<a href="/about/"[^>]*>${cms.menuLabel}</a>`).test(home.html),
     `HTTP ${home.status}`,
   );
+  check("the homepage's content has the CMS's gradient presets", gradientStyled(home.html));
   const entry = await visit(port, "/about/");
   check(
     "and an entry, composed by the Site's page",
@@ -314,6 +332,7 @@ try {
       entry.html.includes("<title>About — Acme</title>"),
     `HTTP ${entry.status}`,
   );
+  check("and so does the entry's", gradientStyled(entry.html));
 
   const events = await runGq(site, ["frontend", "events", "check", "--url", siteUrl, "--json"], {
     PUBLICATION_EVENT_SECRET: eventKey,
