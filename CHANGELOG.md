@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.45.0 — 2026-11-17
 
 - **Pins.** `@getquick/content` and `getquick/gq-content` 0.7.0, and GQ
   Design (`getquick/gq-design`, `@quick-release/design-contract`,
