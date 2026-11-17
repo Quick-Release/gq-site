@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -12,6 +13,22 @@ const template = resolve("blueprint/templates/apps/cms");
 const patchPath = "patches/wpgraphql-blocks/2.2.0-quiet-unsafe-access.patch";
 const runner = "scripts/patch-dependencies.php";
 const files = ["plugin.php", "includes/utils.php"];
+// The 0.18.2 round of the patch and the bytes it produced, which Sites
+// deployed on 0.18.2 through 0.44.1 still carry.
+const previousPatch = join(fixture, "quiet-0.18.2.patch");
+const previousHashes = [
+  "7dee3f7934efa6a70c8c1666f36cb65dd0805ca0a8570ec03d577fb87edc0499",
+  "6c391ea3dbe2e0dc819f45fd267a61d7a3d4f60f3e0eed6d6086dd19cafd2624",
+];
+// Warnings production logged from the 0.18.2 round while resolving
+// image and cover blocks without these attributes.
+const productionWarnings = [
+  'Undefined array key "width"',
+  'Undefined array key "height"',
+  'Undefined array key "id"',
+  'Undefined array key "url"',
+  'Undefined array key "useFeaturedImage"',
+];
 
 test("existing sites gain managed patch files while retaining their site-owned Composer configuration", async () => {
   const composer =
@@ -30,7 +47,8 @@ test("existing sites gain managed patch files while retaining their site-owned C
 });
 
 function command(cmd, args, cwd) {
-  const result = spawnSync(cmd, args, { cwd, encoding: "utf8" });
+  // The pristine plugin's warning flood outgrows the default 1 MiB buffer.
+  const result = spawnSync(cmd, args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   assert.ifError(result.error);
   return { ...result, output: result.stdout + result.stderr };
 }
@@ -51,6 +69,40 @@ async function installation() {
 
 async function contents(plugin) {
   return Promise.all(files.map((file) => readFile(join(plugin, file), "utf8")));
+}
+
+function hashes(plugin) {
+  return Promise.all(
+    files.map(async (file) =>
+      createHash("sha256")
+        .update(await readFile(join(plugin, file)))
+        .digest("hex"),
+    ),
+  );
+}
+
+// Bring an installation to what the 0.18.2 round of the patch left behind.
+async function applyPreviousRound(site) {
+  const result = command(
+    "patch",
+    ["-p1", "--batch", "--fuzz=0", "--no-backup-if-mismatch", "-i", previousPatch],
+    site.cms,
+  );
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(await hashes(site.plugin), previousHashes);
+}
+
+async function probe(site) {
+  const theme = join(site.cms, "theme");
+  await mkdir(theme, { recursive: true });
+  await writeFile(join(theme, "theme.json"), '{"styles":{"color":{}}}');
+  const result = command(
+    "php",
+    [resolve("test/support/blocks-response.php"), site.plugin, theme],
+    site.cms,
+  );
+  assert.equal(result.status, 0, result.output);
+  return JSON.parse(result.stdout);
 }
 
 test("clean application and reruns verify exact bytes and PHP syntax without rewriting files", async () => {
@@ -138,28 +190,58 @@ test("version, missing files and source drift fail without changing installed fi
 
 test("real field resolvers preserve response bytes and query arguments across all 32 argument combinations", async () => {
   const site = await installation();
-  const theme = join(site.cms, "theme");
-  await mkdir(theme);
-  await writeFile(join(theme, "theme.json"), '{"styles":{"color":{}}}');
-  const probe = () => {
-    const result = command(
-      "php",
-      [resolve("test/support/blocks-response.php"), site.plugin, theme],
-      site.cms,
-    );
-    assert.equal(result.status, 0, result.output);
-    return JSON.parse(result.stdout);
-  };
-  const before = probe();
+  const before = await probe(site);
   assert.ok(before.warnings.length > 1000, "the pristine plugin must reproduce the warning flood");
   const applied = site.run();
   assert.equal(applied.status, 0, applied.output);
-  const after = probe();
+  const after = await probe(site);
   assert.deepEqual(after.warnings, [], JSON.stringify(after.warnings.slice(0, 5)));
   assert.deepEqual(after.responses, before.responses);
   assert.deepEqual(after.queries, before.queries);
-  assert.equal(after.responses.length, 65);
+  // An entry and the posts index, each across 32 argument combinations,
+  // raw and through the scalar, plus the query lookup.
+  assert.equal(after.responses.length, 129);
   assert.equal(after.libxmlRestored, true);
+});
+
+test("an install carrying the previous patch round is upgraded to zero warnings with identical responses", async () => {
+  const pristine = await installation();
+  const baseline = await probe(pristine);
+  assert.equal(pristine.run().status, 0);
+  const expected = await contents(pristine.plugin);
+
+  const site = await installation();
+  await applyPreviousRound(site);
+  // The previous round still floods the log on sparse image and cover blocks.
+  const previous = await probe(site);
+  const messages = new Set(previous.warnings.map(([, message]) => message));
+  for (const warning of productionWarnings) assert.ok(messages.has(warning), warning);
+  assert.deepEqual(previous.responses, baseline.responses);
+
+  const upgraded = site.run();
+  assert.equal(upgraded.status, 0, upgraded.output);
+  assert.match(upgraded.output, /warning patch applied and PHP syntax verified/u);
+  assert.deepEqual(await contents(site.plugin), expected);
+  const after = await probe(site);
+  assert.deepEqual(after.warnings, [], JSON.stringify(after.warnings.slice(0, 5)));
+  assert.deepEqual(after.responses, baseline.responses);
+  assert.deepEqual(after.queries, baseline.queries);
+  const again = site.run();
+  assert.equal(again.status, 0, again.output);
+  assert.match(again.output, /already applied/u);
+
+  // An upgrade interrupted between its two renames leaves one file current
+  // and the other on the previous round.
+  for (const file of files) {
+    const mixed = await installation();
+    await applyPreviousRound(mixed);
+    await copyFile(join(pristine.plugin, file), join(mixed.plugin, file));
+    const repaired = mixed.run();
+    assert.equal(repaired.status, 0, repaired.output);
+    assert.deepEqual(await contents(mixed.plugin), expected);
+    assert.deepEqual((await readdir(mixed.plugin)).sort(), ["includes", "plugin.php"]);
+    assert.deepEqual(await readdir(join(mixed.plugin, "includes")), ["utils.php"]);
+  }
 });
 
 test("generated Composer lifecycle patches installs, updates and production autoloads without Node", async () => {

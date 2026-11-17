@@ -273,3 +273,169 @@
      }
    }
 
+--- a/web/app/plugins/wpgraphql-blocks/plugin.php
++++ b/web/app/plugins/wpgraphql-blocks/plugin.php
+@@ -42,11 +42,11 @@
+ 
+       // dynamicContent and originalContent are false by default.
+       // if they are true, add them
+-      if($query_args['dynamicContent']){
++      if($query_args['dynamicContent'] ?? false){ // gq-patch-2.2.0
+         $this->dynamicContent = $dynamicContent;
+       }
+ 
+-      if($query_args['originalContent']){
++      if($query_args['originalContent'] ?? false){ // gq-patch-2.2.0
+         $this->originalContent = $originalContent;
+       }
+ 
+@@ -82,19 +82,19 @@
+         libxml_use_internal_errors($libxml_prev);
+         $audio_tags = $dom->getElementsByTagName('audio');
+         if($audio_tags && $audio_tags[0]){
+-          if(!$attributes['src']){
++          if(!($attributes['src'] ?? false)){ // gq-patch-2.2.0
+             $src = $audio_tags[0]->getAttribute('src');
+             $attributes['src'] = $src;
+           }
+-          if(!$attributes['preload']){
++          if(!($attributes['preload'] ?? false)){ // gq-patch-2.2.0
+             $preload = $audio_tags[0]->getAttribute('preload');
+             $attributes['preload'] = $preload;
+           }
+-          if(!$attributes['autoplay']){
++          if(!($attributes['autoplay'] ?? false)){ // gq-patch-2.2.0
+             $autoplay = $audio_tags[0]->hasAttribute('autoplay');
+             $attributes['autoplay'] = $autoplay;
+           }
+-          if(!$attributes['loop']){
++          if(!($attributes['loop'] ?? false)){ // gq-patch-2.2.0
+             $loop = $audio_tags[0]->hasAttribute('loop');
+             $attributes['loop'] = $loop;
+           }
+@@ -108,14 +108,14 @@
+           $logo = wp_get_attachment_image_src( $custom_logo_id , 'full' );
+           $image_alt = get_post_meta($custom_logo_id, '_wp_attachment_image_alt', TRUE);
+           $attributes['id'] = (int)$custom_logo_id;
+-          $attributes['url'] = $logo[0];
++          $attributes['url'] = $logo[0] ?? null; // gq-patch-2.2.0
+           $attributes['alt'] = $image_alt;
+         }
+       }
+ 
+       if ($data['blockName'] == 'core/media-text') {
+         // get media item
+-        $img = wp_get_attachment_image_src($attributes['mediaId'], 'full');
++        $img = wp_get_attachment_image_src($attributes['mediaId'] ?? null, 'full'); // gq-patch-2.2.0
+         if ($img) {
+           $attributes['width'] = $img[1];
+           $attributes['height'] = $img[2];
+@@ -128,12 +128,12 @@
+       }
+ 
+       if ($data['blockName'] == 'core/cover') {
+-        if ($attributes['useFeaturedImage']) {
++        if ($attributes['useFeaturedImage'] ?? false) { // gq-patch-2.2.0
+           $attributes['id'] = get_post_thumbnail_id($post_id);
+           $attributes['url'] = get_the_post_thumbnail_url($post_id, 'full');
+         }
+         // get media item
+-        $img = wp_get_attachment_image_src($attributes['id'], 'full');
++        $img = wp_get_attachment_image_src($attributes['id'] ?? null, 'full'); // gq-patch-2.2.0
+         if ($img) {
+           $attributes['width'] = $img[1];
+           $attributes['height'] = $img[2];
+@@ -146,11 +146,11 @@
+ 
+       if ($data['blockName'] == 'core/image') {
+ 
+-        if($attributes['width']){
++        if($attributes['width'] ?? false){ // gq-patch-2.2.0
+           $attributes['displayWidth'] = $attributes['width'];
+         }
+ 
+-        if($attributes['height']){
++        if($attributes['height'] ?? false){ // gq-patch-2.2.0
+           $attributes['displayHeight'] = $attributes['height'];
+         }
+ 
+@@ -158,9 +158,9 @@
+         unset($attributes['width']);
+ 
+         // get media item
+-        $img = wp_get_attachment_image_src($attributes['id'], 'full');
++        $img = wp_get_attachment_image_src($attributes['id'] ?? null, 'full'); // gq-patch-2.2.0
+         if ($img) {
+-          $image_alt = get_post_meta($attributes['id'], '_wp_attachment_image_alt', TRUE);
++          $image_alt = get_post_meta($attributes['id'] ?? null, '_wp_attachment_image_alt', TRUE); // gq-patch-2.2.0
+           $attributes['url'] = $img[0];
+           $attributes['width'] = $img[1];
+           $attributes['height'] = $img[2];
+@@ -184,7 +184,7 @@
+             $attributes['alt'] = $alt;
+           }
+ 
+-          if(!$attributes['url']){
++          if(!($attributes['url'] ?? false)){ // gq-patch-2.2.0
+             $url = $img_tags[0]->getAttribute('src');
+             $attributes['url'] = $url;
+           }
+@@ -285,8 +285,8 @@
+               foreach ($innerBlock['innerBlocks'] as $key2 => $paginationInnerBlock) {
+                 if ($paginationInnerBlock['blockName'] === "core/query-pagination-numbers") {
+                   $innerBlocksRaw[$key1]['innerBlocks'][$key2]['attrs']['totalResults'] = $query->found_posts - intval($query_attrs['offset'] ?? 0);
+-                  $innerBlocksRaw[$key1]['innerBlocks'][$key2]['attrs']['totalPages'] = ceil(($query->found_posts - intval($query_attrs['offset'] ?? 0)) / $query_attrs['perPage']);
+-                  $innerBlocksRaw[$key1]['innerBlocks'][$key2]['attrs']['queryId'] = $attributes['queryId'];
++                  $innerBlocksRaw[$key1]['innerBlocks'][$key2]['attrs']['totalPages'] = ceil(($query->found_posts - intval($query_attrs['offset'] ?? 0)) / ($query_attrs['perPage'] ?? null)); // gq-patch-2.2.0
++                  $innerBlocksRaw[$key1]['innerBlocks'][$key2]['attrs']['queryId'] = $attributes['queryId'] ?? null; // gq-patch-2.2.0
+                 }
+               }
+             } else if ($innerBlock['blockName'] === 'core/post-template') {
+@@ -470,7 +470,7 @@
+         $htmlContent = str_replace("\n", "", $htmlContent);
+         $htmlContent = str_replace("\r", "", $htmlContent);
+         $htmlContent = str_replace("\t", "", $htmlContent);
+-        if($query_args['htmlContent']){
++        if($query_args['htmlContent'] ?? false){ // gq-patch-2.2.0
+           $this->htmlContent = $htmlContent;
+         }
+       }
+@@ -488,7 +488,7 @@
+       if ($data['blockName'] === "core/comments") {
+         $comments_allowed_globally = get_option('default_comment_status');
+         $temp_post = get_post($post_id);
+-        if (!$comments_allowed_globally || ($comments_allowed_globally && $temp_post->comment_status === "closed")) {
++        if (!$comments_allowed_globally || ($comments_allowed_globally && ($temp_post->comment_status ?? null) === "closed")) { // gq-patch-2.2.0
+           unset($this->htmlContent);
+           $innerBlocks = [];
+         }
+@@ -498,7 +498,7 @@
+         $this->innerBlocks = $innerBlocks;
+       }
+ 
+-      if ($attributes && $query_args['attributes']) {
++      if ($attributes && ($query_args['attributes'] ?? false)) { // gq-patch-2.2.0
+         $this->attributes = $attributes;
+       }
+     }
+--- a/web/app/plugins/wpgraphql-blocks/includes/utils.php
++++ b/web/app/plugins/wpgraphql-blocks/includes/utils.php
+@@ -267,14 +267,14 @@
+ 
+   // if there are no template blocks, i.e. no template was found, 
+   // then just set equal to the page blocks;
+-  if (!$templateBlocks || !$query_args['postTemplate']) {
+-    $templateBlocks = $blocks;
++  if (!($templateBlocks ?? null) || !($query_args['postTemplate'] ?? false)) { // gq-patch-2.2.0
++    $templateBlocks = $blocks ?? null; // gq-patch-2.2.0
+   }
+ 
+   $mappedBlocks = [];
+-  foreach ($templateBlocks as $block) {
++  foreach ($templateBlocks ?? [] as $block) { // gq-patch-2.2.0
+     if (isset($block['blockName'])) {
+-      $mappedBlocks[] = new Block($block, $the_post_id, $the_post_content, $query_args, $global_theme_styles, $global_db_styles);
++      $mappedBlocks[] = new Block($block, $the_post_id ?? null, $the_post_content ?? null, $query_args, $global_theme_styles, $global_db_styles); // gq-patch-2.2.0
+     }
+   }
+   return $mappedBlocks;

@@ -381,6 +381,11 @@ The GPL-3 license is retained. Source SHA-256 values:
 - plugin.php: `1f3f0190cde9c8b5172239b95411ed15c86b708cac284b89a6c8f1ab4a735e98`
 - utils.php: `c5a2fda8bce3e540e893428a4df1da94762159dc0d9cf5616b11b73ce1ee68f7`
 
+`wpgraphql-blocks-2.2.0/quiet-0.18.2.patch` is the managed warning patch as
+`@getquick/site` 0.18.2 through 0.44.1 shipped it. Sites deployed on those
+versions carry its output (plugin.php `7dee3f79…`, utils.php `6c391ea3…`),
+so the tests apply it to prove the current patch upgrades such an install.
+
 The dependency-patch suite uses these independent bytes to reproduce the
 warnings, apply/repair the managed patch, reject drift, lint PHP and compare
 actual registered resolver/scalar responses before and after. Do not regenerate
