@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.44.3 — 2026-11-17
 
 - **The CMS's PHP errors go to a log file, never to nginx**
   ([guide](docs/guides/provisioning.md#phps-error-log)). With `error_log`
