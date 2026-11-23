@@ -657,6 +657,9 @@ run pnpm cf:releases
 run pnpm cf:media
 run pnpm ploi:media
 run pnpm cf:ci
+open_url "https://dash.cloudflare.com/$CF_ACCOUNT_ID/r2/default/buckets/$PROJECT-ci-backups/settings"
+step "Under Object lifecycle rules, check for an enabled rule that expires objects after 7 days across all prefixes."
+confirm_default_no "Is the 7-day expiry rule present?" || { warn "CI backup expiry check failed."; exit 1; }
 run pnpm frontend:secrets
 run pnpm ploi:events
 pause

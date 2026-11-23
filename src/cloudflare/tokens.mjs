@@ -113,10 +113,10 @@ export async function ensureBucket(request, bucket) {
   return "created";
 }
 
-// Creates the bucket with a temporary token that can only manage buckets.
+// Ensures the bucket and runs any bucket configuration with the same temporary token.
 export function ensureBucketWithTemporaryToken(
   request,
-  { accountId, bucket, project, purpose, fetch },
+  { accountId, bucket, project, purpose, fetch, configure },
   groups,
 ) {
   return withTemporaryToken(
@@ -127,7 +127,11 @@ export function ensureBucketWithTemporaryToken(
       policies: [accountPolicy(accountId, ["Workers R2 Storage Write"], groups)],
       fetch,
     },
-    (setup) => ensureBucket(setup, bucket),
+    async (setup) => {
+      const state = await ensureBucket(setup, bucket);
+      if (configure) await configure(setup, bucket);
+      return state;
+    },
   );
 }
 
