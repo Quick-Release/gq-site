@@ -3,7 +3,7 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
-## Unreleased
+## 0.45.1 — 2026-11-23
 
 - `gq cloudflare ci` ensures seven-day object expiry on new and existing CI
   backup buckets while preserving other lifecycle rules. Existing Sites can
