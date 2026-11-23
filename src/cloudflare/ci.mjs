@@ -30,6 +30,35 @@ import {
   tokenName,
 } from "./tokens.mjs";
 
+const snapshotExpiryRule = {
+  id: "expire-ci-snapshots-7d",
+  enabled: true,
+  conditions: { prefix: "" },
+  deleteObjectsTransition: { condition: { type: "Age", maxAge: 7 * 24 * 60 * 60 } },
+};
+
+async function ensureSnapshotExpiry(request, bucket) {
+  const path = `/r2/buckets/${encodeURIComponent(bucket)}/lifecycle`;
+  const { rules = [] } = await request("GET", path);
+  const hasExpiry = rules.some((rule) => {
+    const condition = rule.deleteObjectsTransition?.condition;
+    return (
+      rule.enabled &&
+      rule.conditions.prefix === "" &&
+      condition?.type === "Age" &&
+      condition.maxAge === snapshotExpiryRule.deleteObjectsTransition.condition.maxAge
+    );
+  });
+  if (hasExpiry) return;
+
+  const usedIds = new Set(rules.map(({ id }) => id));
+  const baseId = snapshotExpiryRule.id;
+  let id = baseId;
+  for (let suffix = 2; usedIds.has(id); suffix++) id = `${baseId}-${suffix}`;
+
+  await request("PUT", path, { rules: [...rules, { ...snapshotExpiryRule, id }] });
+}
+
 export const artifactsPermissions = ["Artifacts Read", "Artifacts Write"];
 export const ciDeployPermissions = [
   "Account Settings Read",
@@ -140,7 +169,7 @@ export async function runCloudflareCi({ context, parsed, env, fetch, exec, io, i
   ui.note(
     [
       ...plans.map(({ spec, plan }) => `${symbol[plan]} ${spec.name} → ${spec.secrets.join(", ")}`),
-      `• bucket ${backupBucket}: created if missing`,
+      `• bucket ${backupBucket}: created if missing, with 7-day object expiry`,
       namespaceExists
         ? `✓ Artifacts namespace ${namespace} (${jurisdiction}); repository ${repo}: created if missing`
         : `• Artifacts namespace ${namespace} (${jurisdiction}) and repository ${repo}: created if missing`,
@@ -159,7 +188,14 @@ export async function runCloudflareCi({ context, parsed, env, fetch, exec, io, i
     step.message(`Ensuring bucket ${backupBucket}`);
     await ensureBucketWithTemporaryToken(
       request,
-      { accountId, bucket: backupBucket, project: ops.project, purpose: "CI backups", fetch },
+      {
+        accountId,
+        bucket: backupBucket,
+        project: ops.project,
+        purpose: "CI backups",
+        fetch,
+        configure: ensureSnapshotExpiry,
+      },
       groups,
     );
 

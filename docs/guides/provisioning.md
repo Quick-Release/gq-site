@@ -336,6 +336,17 @@ read:
   CI Worker matches pushes by namespace and repository name, so it keeps
   working without a redeploy. `gq doctor` reports the same mismatch.
 
+The CI backup bucket expires snapshots and cache pointers after seven days.
+`gq cloudflare ci` ensures this rule on new and existing buckets and preserves
+other lifecycle rules, including Cloudflare's default multipart-abort rule.
+The pinned `@cloudflare/ci` 0.2.0 treats missing snapshot objects as a cache miss
+and runs a full install.
+
+For an existing Site, bump its `@getquick/site` pin to a release containing
+this change, install dependencies, then run `pnpm cf:ci` (or
+`gq sigillo run operations -- gq cloudflare ci`) from the Site root.
+The CI Worker can keep its current deployment and `@cloudflare/ci` pin.
+
 `gq sync` generates the site's CI Worker in `infra/ci`, with its own
 Wrangler (a site that keeps one elsewhere points `ci.directory` at it);
 these commands deploy and connect it:

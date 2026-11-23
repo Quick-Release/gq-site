@@ -76,12 +76,14 @@ function fakeCloudflare({
   buckets = [],
   domains = {},
   cors = {},
+  lifecycle = {},
   namespaces = [],
   repos = [],
   purgeFails = false,
 } = {}) {
   const state = {
     cors: structuredClone(cors),
+    lifecycle: structuredClone(lifecycle),
     purged: [],
     tokens: tokens.map((token) => ({ status: "active", ...token })),
     buckets: [...buckets],
@@ -156,6 +158,16 @@ function fakeCloudflare({
     if (method === "POST" && path === "/r2/buckets") {
       state.buckets.push(data.name);
       return ok({});
+    }
+    const lifecyclePath = /^\/r2\/buckets\/([^/]+)\/lifecycle$/u.exec(path);
+    if (lifecyclePath) {
+      const [, bucket] = lifecyclePath;
+      assert.ok(state.buckets.includes(bucket));
+      if (method === "GET") return ok({ rules: state.lifecycle[bucket] ?? [] });
+      if (method === "PUT") {
+        state.lifecycle[bucket] = data.rules;
+        return ok({});
+      }
     }
     const corsPath = /^\/r2\/buckets\/([^/]+)\/cors$/u.exec(path);
     if (corsPath) {
@@ -642,6 +654,52 @@ test("cloudflare media leaves a bucket that already allows public GET/HEAD alone
 
 // --- gq cloudflare ci --------------------------------------------------------
 
+const ciSnapshotExpiry = {
+  id: "expire-ci-snapshots-7d",
+  enabled: true,
+  conditions: { prefix: "" },
+  deleteObjectsTransition: { condition: { type: "Age", maxAge: 604800 } },
+};
+
+test("cloudflare ci adds expiry to an existing backup bucket and preserves its lifecycle rules", async () => {
+  const fixture = await site();
+  const bucket = "fixture-ci-backups";
+  const otherRules = [
+    {
+      id: "Default Multipart Abort Rule",
+      enabled: true,
+      conditions: { prefix: "" },
+      abortMultipartUploadsTransition: { condition: { type: "Age", maxAge: 604800 } },
+    },
+    {
+      id: "expire-logs",
+      enabled: true,
+      conditions: { prefix: "logs/" },
+      deleteObjectsTransition: { condition: { type: "Age", maxAge: 86400 } },
+    },
+  ];
+  const { fetch, state } = fakeCloudflare({
+    buckets: [bucket],
+    lifecycle: { [bucket]: otherRules },
+  });
+  const { exec } = fakeSigillo();
+  const run = () => fixture.run(["cloudflare", "ci"], { env: ENV, fetch, exec });
+
+  const first = await run();
+  assert.equal(first.code, 0, first.stderr);
+  assert.deepEqual(state.lifecycle[bucket], [...otherRules, ciSnapshotExpiry]);
+
+  const second = await run();
+  assert.equal(second.code, 0, second.stderr);
+  const writes = fetch.requests.filter(
+    ({ method, url }) => method === "PUT" && url.endsWith("/lifecycle"),
+  );
+  assert.equal(writes.length, 1);
+  const setup = state.created.find(({ name }) => name.includes("CI backups bucket setup"));
+  assert.equal(bearer(writes[0]), `Bearer ${setup.value}`);
+  assert.ok(state.deleted.includes(setup.id));
+});
+
 test("cloudflare ci creates the CI tokens, the backup bucket and the Artifacts repository", async () => {
   const fixture = await site();
   const { fetch, state } = fakeCloudflare();
@@ -651,6 +709,7 @@ test("cloudflare ci creates the CI tokens, the backup bucket and the Artifacts r
 
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(state.buckets, ["fixture-ci-backups"]);
+  assert.deepEqual(state.lifecycle["fixture-ci-backups"], [ciSnapshotExpiry]);
   const byName = Object.fromEntries(state.created.map((token) => [token.name, token]));
   const artifacts = byName["GETQUICK FIXTURE Artifacts"];
   const backups = byName["GETQUICK FIXTURE CI Backups R2"];
@@ -681,6 +740,9 @@ test("cloudflare ci reads the stored Artifacts token when it creates nothing", a
   const fixture = await site();
   const { fetch, state } = fakeCloudflare({
     buckets: ["fixture-ci-backups"],
+    lifecycle: {
+      "fixture-ci-backups": [{ ...ciSnapshotExpiry, id: "existing-retention" }],
+    },
     namespaces: [{ namespace: "fixture-ns", jurisdiction: "eu" }],
     repos: [{ name: "fixture-repo", remote: "https://git.example.test/existing.git" }],
     tokens: [
@@ -704,6 +766,9 @@ test("cloudflare ci reads the stored Artifacts token when it creates nothing", a
   );
   const repoRead = fetch.requests.find(({ url }) => url.includes("/artifacts/"));
   assert.equal(bearer(repoRead), "Bearer stored-artifacts");
+  assert.ok(
+    !fetch.requests.some(({ method, url }) => method === "PUT" && url.endsWith("/lifecycle")),
+  );
   assert.ok(state.created.every(({ name }) => name.endsWith("(temporary)")));
 });
 

@@ -3,6 +3,13 @@
 All notable changes to `@getquick/site` are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/); each release is tagged `v<version>`.
 
+## Unreleased
+
+- `gq cloudflare ci` ensures seven-day object expiry on new and existing CI
+  backup buckets while preserving other lifecycle rules. Existing Sites can
+  update their `@getquick/site` pin and rerun `pnpm cf:ci`.
+  See [Provisioning](docs/guides/provisioning.md).
+
 ## 0.45.0 — 2026-11-17
 
 - **Pins.** `@getquick/content` and `getquick/gq-content` 0.7.0, and GQ
